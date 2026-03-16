@@ -1,0 +1,1959 @@
+.mb10 {
+  margin-bottom: 10px;
+}
+
+.mb20 {
+  margin-bottom: 20px;
+}
+
+.mt50 {
+  margin-top: 50px;
+} 
+
+.textCenter {
+  text-align: center;
+}
+
+/* 모달 css */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.2); /* 어둡고 투명한 레이어 */
+  backdrop-filter: blur(3px); 
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+  animation: fadeIn 0.2s ease-in;
+  padding: 20px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modalContent {
+  width: 70vw;
+  min-width: 1344px;
+  height: auto;
+  background: #1a1d2e;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 10px 12px 20px rgba(0, 0, 0, 0.4);
+  position: relative;
+  overflow: hidden;
+  padding: 25px;
+}
+
+.remonteModalContent {
+  width: 1100px;
+  height: 761px;
+
+  padding: 26px 16px;
+
+  background: #292D43;
+  border-radius: 23px;
+
+  box-shadow: 10px 12px 20px rgba(0, 0, 0, 0.4);
+}
+
+.modalTopDiv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 17px;
+}
+
+.modalTitle {
+  display: flex;
+  align-items: center;
+}
+
+
+.modalTitle img {
+  width: 32px;
+  height: 32px;
+  margin-right: 20px;
+}
+
+.modalTitle div {
+  font-size: 25px;
+}
+
+.modalTitle div span {
+  font-size: 20px;
+  color: #9DADCB;
+}
+
+.workStart {
+  width: 100px;
+  height: 30px;
+  font-size: 14px;
+  border: 1px solid #fff;
+  color: #fff;
+  border-radius: 6px;
+  background: transparent;
+  margin-right: 10px;
+}
+
+.closeBtn {
+    width: 30px;
+    line-height: 30px;
+    border: none;
+    color: white;
+    background: transparent;
+    font-size: 30px;
+    cursor: pointer;
+}
+
+.cameraView {
+  margin-top: 20px;
+  position: relative;
+  width: 1066px;
+  height: 478px;
+
+  position: relative;
+}
+
+/* 실제 스크롤 영역: 네이티브 스크롤바는 숨김 */
+.inner {
+  max-height: inherit;
+  overflow-y: scroll;
+  padding-right: 3px; /* 오른쪽 커스텀 스크롤바 공간 */
+  padding-bottom: 10px;
+  box-sizing: border-box;
+
+  /* 스크롤바 숨김(네이티브) */
+  scrollbar-width: none; /* Firefox */
+}
+.inner::-webkit-scrollbar {
+  display: none; /* Chrome/Edge */
+}
+
+.scrollTrack {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  right: 3px;
+
+  width: 2px;
+  border-radius: 50px;
+  background:transparent;
+}
+
+/* 썸(움직이는 막대) */
+.scrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+
+  width: 100%;
+  height: 50%;            /* JS가 동적으로 조절 */
+  border-radius: 50px;
+  background: #EAEAED;     /* 요청 색상 */
+}
+
+
+.customSelectBox {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 150px;
+}
+
+.modalCamSeletWrapper {
+  position: absolute;
+  left: 166px;
+  top: 17px;
+  z-index: 10;
+}
+
+.modalCamSelect {
+  width: 138px;
+  height: 29px;
+  padding: 0 10px 0 20px;
+
+  border-radius: 5px;
+  border: 1px solid #fff;
+  font-size: 13px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modalCamSelect img {
+  width: 11px;
+  height: 6px;
+}
+
+.modalCamSeletbox {
+  width: 138px;
+  height: auto;
+  font-size: 13px;
+
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid #fff;
+  border-radius: 5px;
+  
+  position: absolute;
+  top: 37px;
+  z-index: 10;
+  overflow-y: auto;
+  cursor: pointer;
+}
+
+.modalCamSeletbox div {
+  width: 100%;
+  height: 29px;
+  line-height: 29px;
+  padding: 0 10px;
+  color: #fff; 
+}
+
+.modalCamSeletbox div:hover {
+  background: #d2d3d7;
+  border-radius: 4px;
+  width: 100%;
+  height: 29px;
+  padding: 0 10px;
+  color: #16192c;
+}
+
+.cameraView .video-box {
+  width: 100%;
+  height: 100%;
+
+  position: relative;
+  overflow: hidden;
+  
+  border-radius: 15px;
+  border: 1px solid #fff;
+}
+
+.topRightPostion {
+  position: absolute;
+  top: 17px;
+  right: 20px;
+  z-index: 10;
+}
+
+.topRightIcon {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  gap: 20px;
+  justify-content: center;
+}
+
+.videoStatusCustom button {
+  width: 43px;
+  height: 21px;
+}
+
+.videoStatusCustom button div {
+  font-size: 10px;
+}
+
+.robotStatus {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.robotStatus img {
+  width: 21px;
+  margin-right: 10px;
+}
+
+.middlePosition {
+  position: absolute;
+  bottom: 235px;
+  right: 35px;
+}
+
+.middleBtnTotal {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.floorFlex {
+  width: 270px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap-reverse;
+  justify-content: flex-start;
+  text-align: center;
+  font-size: 14px;
+  gap: 5px;
+
+  text-align: center;
+  font-size: 14px;
+}
+
+.floorFlex div {
+  flex-grow: 0;
+  flex-shrink: 0;
+  flex-basis: calc(250px / 5);
+  height: 30px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+}
+
+.floorFlex div.active {
+  background: #e46463;
+}
+
+.floorGrid div {
+  width: calc(100% / 6);
+  line-height: 30px;
+  border: 1px solid #fff;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.floorGrid div:hover {
+  background: #d95a59;
+}
+
+.bottomPosition {
+  /* position: absolute;
+  bottom: 20px; */
+  width: 100%;
+  height: 167px;
+}
+
+.bottomFlex {
+  display: flex;
+  justify-content: space-between;
+
+  width: 100%;
+
+  margin-top: 21px;
+}
+/* 
+.modeBox {
+  width: 20%;
+}
+
+.viewBtn {
+  width: 15%;
+} */
+
+.middleBtnBottom {
+  width: 544px;
+  height: 77px;
+
+  padding: 11px 13px;
+
+  border-radius: 10px;
+
+  background: #333954;
+}
+
+.viewBox {
+  width: 291px;
+  height: 167px;
+
+  border: 1px solid #fff;
+  
+  border-radius: 11px;
+  position: relative;
+}
+
+.viewBox video {
+  width: 100%;
+  height: 200px;
+  border: 1px solid #fff;
+  border-radius: 15px;
+  box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
+  position: relative;
+}
+
+.Floors {
+  width: 28px;
+  height: 22px;
+  line-height: 22px;
+
+  font-size: 12px;
+  text-align: center;
+
+  border: 1px solid #333853;
+  border-radius: 4px;
+
+  background: #868794;
+
+  position: absolute;
+  top: 10px;
+  left: 13px;
+}
+
+.viewExchangeBtn {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+
+  background: #868794;
+  
+  border: 1px solid #333853;
+  border-radius: 5px;
+  
+  position: absolute;
+  right: 11px;
+  bottom: 14px;
+  
+  cursor: pointer;
+}
+
+.viewExchangeBtn img {
+  width: 100%;
+}
+
+.mapViewExchangeBtn {
+  background: #727489;
+}
+
+.camViewExchangeBtn {
+  background: #ffffff;
+}
+
+.modeBtnCommonBox {
+  width: 267px;
+  height: 77px;
+  padding: 11px 13px;
+
+  background: #333954;
+
+  border-radius: 10px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.standSitBtn,
+.speedBtn,
+.camBtn,
+.zoomBtnBox {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.zoomBtnBox {
+  position: absolute;
+
+  bottom: 21px;
+  right: 22px;
+  
+  width: 92px;
+}
+
+.zoomBtn {
+  width: 38px;
+  height: 38px;
+
+  border: 1px solid #303342;
+  border-radius: 50px;
+
+  background: #4D4F5D;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+}
+
+.zoomBtn img {
+  width: 19px;
+  height: 18px;
+}
+
+.standSitBtn {
+  margin-right: 10px;
+}
+
+.standSitBtn div {
+  width: 117px;
+  height: 29px;
+  line-height: 29px;
+
+  border-radius: 5px;
+  border: 1px solid #fff;
+
+  text-align: center;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.speedBtn div {
+  width: 72px;
+  height: 29px;
+  line-height: 29px;
+
+  border-radius: 5px;
+  border: 1px solid #fff;
+
+  text-align: center;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.middleBtnTop {
+  display: flex;
+  justify-content: space-between;
+}
+
+.freshBtnTitle {
+  margin-bottom: 12px;
+}
+
+.freshBtnSubtitle {
+  margin-right: 18px;
+
+  font-size: 13px;
+}
+
+.freshBtnFlex {
+  display: flex;
+  align-items: center;
+}
+
+.freshOn.active {
+  background: #5F9F71;
+}
+
+.freshOff.active {
+  background: #C2444C;
+}
+
+.freshBtn div {
+  width: 92px;
+  height: 29px;
+  line-height: 29px;
+
+  border-radius: 5px;
+  border: 1px solid #fff;
+
+  text-align: center;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.freshBtnMr8 {
+  margin-right: 8px;
+}
+
+.freshBtnFront {
+  margin-right: 40px;
+}
+
+.camBtn div,
+.zoomBtn div {
+  height: 28px;
+  border: 1px solid #fff;
+  line-height: 28px;
+  text-align: center;
+  border-radius: 5px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.standSitBtn div:hover,
+.speedBtn div:hover,
+.camBtn div:hover,
+.camBtn div.active,
+.zoomBtn div:hover {
+  background: #808291;
+}
+
+.standSitBtn div,
+.camBtn div,
+.zoomBtn div {
+  width: 48%;
+}
+
+.speedBtn div {
+  width: 30%;
+}
+
+.powerBtn {
+  width: 10%;
+}
+
+.powerImg {
+  width: 60px;
+  height: 60px;
+  border-radius: 50px;
+  background: #79b883;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #fff;
+  margin: 0 auto;
+  cursor: pointer;
+}
+
+.powerImg:hover,
+.powerImg:focus {
+  background: #a12a3d;
+}
+
+.powerBtn img {
+  height: 33px;
+}
+
+.mapCategoryTitle {
+    color: #3c3c51;
+}
+
+.categoryTitle {
+    color: #fff;
+}
+
+.mapStandSitBtn div,
+.mapSpeedBtn div,
+.mapCamBtn div,
+.mapZoomBtn div,
+.mapFloorLine div,
+.mapPowerImg {
+  border: 1px solid #26273a;
+  color: #3c3c51;
+}
+
+.mapStandSitBtn div:hover,
+.mapSpeedBtn div:hover,
+.mapZoomBtn div:hover,
+.mapCamBtn div:hover,
+.mapCamBtn div.active {
+  background: #808291;
+  color: #fff;
+}
+
+.floorLine div {
+  border: 1px solid rgba(255, 255, 255);
+  color: #fff;
+}
+
+
+/* Robot Detail Modal */
+
+.insertModalContent {
+  width: 660PX;
+  height: 630PX;
+
+  background: #292D43;
+  
+  border-radius: 19px;
+
+  position: relative;
+  overflow: hidden;
+  padding: 26px 23PX;
+}
+
+.insertCloseBtn {
+  width: 40px;
+  height: 40px;
+  
+  border: none;
+  
+  color: white;
+  background: transparent;
+  font-size: 30px;
+  
+  cursor: pointer;
+
+  position: absolute;
+  top: 36px;
+  right: 27px;
+}
+
+.insertTitle {
+  display: flex;
+  align-items: center;
+
+  margin-bottom: 24px;
+}
+
+.insertTitle img {
+  width: 36px;
+  height: 43PX;
+
+  margin-right: 24px;
+}
+
+.insertTitle h2 {
+  font-weight: 500;
+  font-size: 28px;
+  margin: 0;
+  color: #ffffff;
+}
+
+.itemBoxContainer {
+  width: 100%;
+  height: 421px;
+
+  border-radius: 21px;
+  background: #3B415F;
+  
+  padding: 42px 44px;
+
+  margin-top: 20px;
+}
+
+.insertItemBox {
+  width: 100%;
+  height: 71px;
+
+  padding: 15px 0;
+
+  display: flex;
+  justify-content: space-between;
+}
+
+.slidebarinsert {
+  display: flex;
+  justify-content: space-between;
+}
+
+.insertItemBox div {
+  font-size: 16px;
+}
+
+.insertItemBox input {
+  width: 350px;
+  height: 40px;
+  border-radius: 6px;
+  padding: 5px 10px;
+  border: 1px solid #7f8ca7;
+  background: #4a4f6c;
+  color: #fcffff;
+}
+
+.insertItemBox input:focus {
+  outline: none;
+}
+
+.insertItemBox input::placeholder {
+  color: #fcffff;
+  font-size: 12px;
+  font-weight: 300;
+}
+
+.batterySliderWrap {
+  width: 350px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.batterySliderTrackArea {
+  height: 26px;
+  display: flex;
+  align-items: center;
+}
+
+/* range 기본 스타일 제거 */
+.batterySlider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+
+  /* 중요: 활성(왼쪽) / 비활성(오른쪽) 분기 */
+  background: linear-gradient(
+    to right,
+    #79C9F2 0%,
+    #79C9F2 var(--percent),
+    #7B7F8D var(--percent),
+    #7B7F8D 100%
+  );
+}
+
+/* Webkit thumb */
+.batterySlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #79C9F2;
+
+  /* 이미지처럼 살짝 떠보이게(선택) */
+  box-shadow: 0 0 0 3px rgba(121, 201, 242, 0.15);
+  border: none;
+}
+
+/* Firefox thumb */
+.batterySlider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #79C9F2;
+  border: none;
+  box-shadow: 0 0 0 3px rgba(121, 201, 242, 0.15);
+}
+
+/* Firefox track 색이 별도라서 투명 처리 후 input background를 사용 */
+.batterySlider::-moz-range-track {
+  background: transparent;
+}
+
+/* 라벨: 좌/우 끝 정렬 */
+.batterySliderLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 500;
+  color: #F1F3F8;
+}
+
+.insertConfrimBtn {
+  width: 154px;
+  height: 44px;
+
+  border-radius: 10px;
+
+  margin-top: 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.insertConfrimBtn img {
+  width: 11px;
+  height: 11px;
+
+  margin-right: 29px;
+}
+
+.btnTotal {
+  display: flex;
+  width: 100%;
+  justify-content: flex-end;
+  margin-top: 35px;
+}
+
+.detailModalContent {
+  width: 907px;
+  height: 600px;
+
+  background: #292D43;
+
+  border-radius: 27px;
+  
+  position: relative;
+  
+  overflow: hidden;
+  padding: 27px 26px;
+}
+
+.detailCloseBtn {
+  width: 27px;
+  height: 27px;
+
+  border: none;
+  color: white;
+  
+  background: transparent;
+  font-size: 23px;
+  
+  position: absolute;
+  top: 35px;
+  right: 29px;
+
+  cursor: pointer;
+}
+
+.detailTitle {
+  display: flex;
+  align-items: center;
+}
+
+.detailTitle img {
+  width: 35px;
+  height: 46px;
+  
+  margin-right: 25px;
+}
+
+.detailTitle h2 {
+  font-weight: 500;
+  font-size: 28px;
+  color: #ffffff;
+  
+  margin: 0;
+}
+
+.detailItemBoxContainer {
+  width: 100%;
+  height: 372px;
+
+  border-radius: 12px;
+
+  margin-top: 26px;
+}
+
+.detailBoxFs {
+  font-size: 13px;
+}
+
+.detailRowItemBox {
+  display: flex;
+
+  width: 100%;
+  height: 75px;
+}
+
+.detailItemBox {
+  display: flex;
+  width: 427px;
+}
+
+.btnBline {
+  border-bottom: 1px solid #7881a1;
+}
+
+
+.itemTitleBox {
+  width: 150px;
+  line-height: 75px;
+  
+  background: #3c415f;
+  
+  padding-left: 30px;
+
+  font-weight: 500;
+}
+
+
+.itemContentBox {
+  width: 277px;
+  background: #465376;
+  padding: 0 29px;
+  font-weight: 300;
+}
+
+.plusPd11 {
+  padding: 0 29px;
+}
+
+.batteryBar input,
+.itemContentBox input {
+  width: 100%;
+  height: 33px;
+
+  background: transparent;
+
+  border-radius: 5px;
+  border: none;
+  color: #ffffff;
+}
+
+.editMode .batteryBar input,
+.editMode .itemContentBox input {
+  width: 100%;
+
+  background: #556082;
+
+  border-radius: 5px;
+  border: 1px solid #8AACC7;
+  padding: 0 11px;
+
+  color: #ffffff;
+}
+
+.editMode .batteryBar input:focus,
+.editMode .itemContentBox input:focus {
+  outline: none;
+}
+
+.editMode .itemContentBox input::placeholder {
+  color: #F2F2F2;
+}
+
+/* range 기본 스타일 제거 */
+.batteryBarInputBg {
+  border-radius: 0;
+
+  /* 중요: 활성(왼쪽) / 비활성(오른쪽) 분기 */
+  background: linear-gradient(
+    to right,
+    #A6A6A6 0%,
+    #A6A6A6 var(--percent),
+    #7F7F7F var(--percent),
+    #7F7F7F 100%
+  );
+}
+
+/* Webkit thumb */
+.batteryBarInputBg::-webkit-slider-thumb {
+  border-radius: 100%;
+  background: #A6A6A6;
+}
+
+/* Firefox thumb */
+.batteryBarInputBg::-moz-range-thumb {
+  border-radius: 100%;
+  background: #A6A6A6;
+}
+
+/* Firefox track 색이 별도라서 투명 처리 후 input background를 사용 */
+.batteryBarInputBg::-moz-range-track {
+  background: transparent;
+}
+
+.detailBattery {
+  width: 427px;
+
+  background: #465376;
+
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  
+  padding-bottom: 10px;
+}
+
+.batteryBarInputBg {
+  background: #A6A6A6;
+}
+
+.batteryBarFc {
+  color: #A6A6A6;
+}
+
+.lhUnset {
+  line-height: unset;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.borderTl8 {
+  border-top-left-radius: 8px;
+}
+
+.borderTr8 {
+  border-top-right-radius: 8px;
+}
+
+.borderBl8 {
+  border-bottom-left-radius: 8px;
+}
+
+.borderBr8 {
+  border-bottom-right-radius: 8px;
+}
+
+.insertBtnTotal {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btnTotal {
+  width: 100%;
+  margin-top: 30px;
+}
+
+.btnLeftBox {
+  width: 100%;
+  
+  display: flex;
+  cursor: pointer;
+}
+
+.btnRightBox {
+  width: 100%;
+
+  display: flex;
+  justify-content: flex-end;
+  cursor: pointer;
+}
+
+.btnBgGray {
+  background: #626a81;
+}
+
+.mr10 {
+  margin-right: 10px;
+}
+
+.btnBgGray:focus,
+.btnBgGray:hover {
+  background: #484e64;
+}
+
+
+/* 모달 delete 추가 알림 css */
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.confirmBox {
+  
+  width: 481px;
+  height: 257px;
+  border-radius: 14px;
+  
+  background: #282d43ff;
+  
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+   
+  position: relative;
+}
+
+.confirmBox .closeBox {
+  background: transparent;
+  border: none;
+
+  position: absolute;
+  top: 26px;
+  right: 23px;
+}
+
+.confirmBox .closeBox img {
+  width: 19px;
+  height: 19px;
+}
+
+.confirmButtons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmContents {
+  margin: 100px 0 50px 0;
+
+  text-align: center;
+  white-space: pre-line;
+  font-size: 16px;
+
+  
+}
+
+.btnItemCommon {
+  width: 167px;
+  height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  border-radius: 9px;
+  border: none;
+  cursor: pointer;
+
+  color: #ffffff;
+}
+
+.btnItemCommon img {
+  width: 13px;
+  height: 14px;
+
+  margin-right: 15px;
+}
+
+.btnBgRed {
+  border: 1px solid #BF0E14;
+  background: #941621;
+  margin-right: 20px;
+}
+
+.btnBgBlue {
+  border: 1px solid #0E85B7;
+  background: #196189;
+}
+
+
+/* videoPlayModal */
+
+.videoViewText {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.videoViewTopText {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+  width: 230px;
+  align-items: center;
+  height: 30px;
+  line-height: 30px;
+}
+
+.videoViewTopText .nameBox {
+    text-align: center;
+    border: 1px solid #fff;
+}
+
+.videoViewTopText .RobotCamNameBox {
+  width: 80px;
+  border-radius: 6px;
+  height: 100%;
+}
+
+.videoViewTopText .videoNameBox {
+  width: 55px;
+  border-radius: 17px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+.cameratypeIcon {
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border-radius: 50px;
+  margin-right: 5px;
+}
+
+.videoViewBox {
+  border-radius: 20px;
+  position: relative;
+  cursor: pointer;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.videoViewBox:fullscreen {
+  width: 100%;
+  height: 100%;
+}
+
+.videoView {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ⭐ 전체화면일 때 비디오 100% 꽉 채우기 */
+.videoView {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.videoViewIcon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100px;
+  height: 100px;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.videoViewIcon img {
+    width: 40%;
+}
+
+.playerWrapper {
+  width: 100%;
+  height: 800px;
+  margin-top: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+
+.video {
+  width: 100%;
+  display: block;
+  background: #111827;
+}
+
+/* 컨트롤 바 */
+.controlBox {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+}
+
+.playBarBox {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #e5e7eb;
+  margin-top: 10px;
+}
+
+.fullscreenControls .playBarBox {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #e5e7eb;
+  margin-top: unset;
+}
+
+.fullscreenControls {
+  position: fixed;         /* 비디오 위에 오버레이 */
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: rgba(0,0,0,0.3);
+  transition: opacity 0.2s ease;
+  height: 80px;
+  padding: 10px 15px;
+}
+
+/* 컨트롤 바 */
+.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 전체화면에서만 자동 숨김 */
+.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.hide {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.iconBtn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  width: 30px;
+}
+
+.iconBtn:hover {
+  opacity: 0.8;
+}
+
+.iconBtn img {
+    height: 20px;
+}
+
+.timeText {
+  min-width: 90px;
+  text-align: center;
+  color: #7e7e7e;
+}
+
+.timeText span {
+  color: #f3ffff;
+}
+
+/* 재생 위치 슬라이더 */
+.progressBar {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 4px;
+  outline: none;
+  background: #808080; /* 🔘 회색 전체 구간 */
+  cursor: pointer;
+}
+
+.fullscreenControls .progressBar {
+  margin-top: 10px;
+}
+
+
+/* thumb 동그라미 */
+.progressBar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #8dd4f5; /* 🔵 진행색과 맞춰도 되고 다른색도 가능 */
+  cursor: pointer;
+}
+
+.progressBar::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #8dd4f5;
+  border: 2px solid white;
+}
+
+/* 볼륨 슬라이더 */
+
+/* 전체 구간 (회색) */
+.volumeBar {
+  -webkit-appearance: none;
+  width: 65px;
+  height: 3px;                        /* progressBar와 통일 */
+  border-radius: 4px;
+  outline: none;
+  background: #818181;                /* 전체 구간 회색 */
+  cursor: pointer;
+  position: relative;
+}
+
+/* 진행된 구간 색 (재생바와 동일한 gradient 방식) */
+.volumeBar::-webkit-slider-runnable-track {
+  height: 3px;
+  background: linear-gradient(
+    to right,
+    #ffffff 0%,                        /* 진행 구간 색 (청록) */
+    #ffffff var(--volume-percent, 50%),/* progressPercent처럼 볼륨에 맞춰 변경 */
+    #818181 var(--volume-percent, 50%),/* 전체 구간 회색 */
+    #818181 100%
+  );
+}
+
+/* thumb 동그라미 (progressBar 동일) */
+.volumeBar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;                /* progressBar thumb 색과 동일 */
+  cursor: pointer;
+  margin-top: -4px;                   /* 중앙 정렬 */
+  position: relative;
+  z-index: 2;
+}
+
+
+
+/* Header - Alerts */
+.alertsModalContent {
+  width: 467px;
+  height: 554px;
+  border-radius: 17px;
+  background: #292D43;
+
+  padding: 35px 19px 35px 27px;
+
+  box-shadow: 10px 12px 20px rgba(0, 0, 0, 0.4);
+}
+
+
+.alertsModalTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  margin-bottom: 16px;
+}
+
+.alertsModalTitle {
+  display: flex;
+}
+
+.alertsModalTitle img {
+  width: 27px;
+  height: 30px;
+  margin-right: 16px;
+}
+
+.alertsModalTitle h2 {
+  margin: 0;
+}
+
+.alertsModalTop button {
+  background: transparent;
+  border: none;
+  
+  width: 22px;
+  height: 22px;
+
+  color: #ffffff;
+  font-size: 22px;
+}
+
+.alertsContents {
+  width: 100%;
+  height: auto;
+  max-height: 369px;
+
+  position: relative;
+  overflow: hidden;
+}
+
+/* 실제 스크롤 영역: 네이티브 스크롤바는 숨김 */
+.alertsScroll {
+  max-height: inherit;
+  overflow-y: scroll;
+  padding-right: 3px; /* 오른쪽 커스텀 스크롤바 공간 */
+  padding-bottom: 10px;
+  box-sizing: border-box;
+
+  /* 스크롤바 숨김(네이티브) */
+  scrollbar-width: none; /* Firefox */
+}
+.alertsScroll::-webkit-scrollbar {
+  display: none; /* Chrome/Edge */
+}
+
+.scrollTrack {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  right: 5px;
+
+  width: 7px;
+  border-radius: 50px;
+  background:transparent;
+}
+
+/* 썸(움직이는 막대) */
+.scrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+
+  width: 100%;
+  height: 50%;            /* JS가 동적으로 조절 */
+  border-radius: 50px;
+  background: #9496A1;     /* 요청 색상 */
+}
+
+.alertsItem {
+  width: 398px;
+  height: 67px;
+
+  background: #3B415E;
+  border-radius: 5px;
+
+  padding: 12px 16px 7px 16px;
+
+  position: relative;
+  
+  font-size: 10px;
+}
+
+.alertsItem:not(:last-child) {
+  margin-bottom: 9px;
+}
+
+.alertsItem .topContents {
+  display: flex;
+  align-items: center;
+
+  width: 100%;
+}
+
+.aletsType {
+  width: 62px;
+  height: 24px;
+  line-height: 24px;
+  border-radius: 5px;
+  text-align: center;
+
+  margin-right: 7px;
+}
+
+/* 타입별 배지 색상 */
+.badge--notice   { background-color: #327F47; } /* 녹색 */
+.badge--schedule { background-color: #A96E3A; } /* 다크 노랑 */
+.badge--emerg    { background-color: #A9121B; } /* 빨강 */
+.badge--robot    { background-color: #107CAB; } /* 파랑 */
+
+.aletsStatus {
+  width: 29px;
+  height: 16px;
+  border-radius: 2px;
+
+  font-size: 10px;
+  text-align: center;
+
+  background: #B11A26;
+
+  margin-right: 7px;
+}
+
+.aletsStatusEmpty {
+  width: 0;
+}
+
+.aletsContent {
+  font-size: 10px;
+  color: #BBBCC2;
+
+  flex: 1;
+  min-width: 0;  
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.aletsDate {
+  font-size: 8px;
+  color: #BBBCC2;
+
+  margin: 12px 0 0 72px;
+}
+
+.alertsItem button {
+  width: 76px;
+  height: 25px;
+  border-radius: 50px;
+  border: 1px solid #989BA8;
+  background: #292D43;
+
+  position: absolute;
+  bottom: 7px;
+  right: 10px;
+}
+
+.alertsItem button img {
+  width: 11px;
+  height: 9px;
+
+  margin-right: 6px;
+}
+
+.alertsItem button span {
+  font-size: 10px;
+  color: #FFFFFF;
+}
+
+.pgBtnDiv {
+  width: 100%;
+
+  display: flex;
+  justify-content: center;
+
+  margin-top: 42px;
+}
+
+.alertsPgBtn {
+  width: 187px;
+  height: 38px;
+
+  border-radius: 7px;
+  border: 1px solid #0D86B9;
+
+  background: #196188;
+  color: #F2F2F2;
+
+}
+
+
+/* WorkScheduleModal */
+
+.robotScheduleModalContent {
+  width: 481px;
+  height: 440px;
+
+  padding: 27px 28px 36px 28px;
+  border-radius: 15px;
+
+  background: #292D43;
+
+  position: relative;
+}
+
+.scheduleCloseBtn {
+  border: none;
+  
+  width: 29px;
+  height: 29px;
+
+  background: transparent;
+
+  font-size: 20px;
+  color: #ffffff;
+
+  position: absolute;
+  right: 28px;
+
+}
+
+.scheduleTitle, .scheduleNoneTitle {
+  margin-top: 76px;
+  margin-bottom: 59px;
+  text-align: center;
+
+  font-weight: 600;
+}
+
+.schedulePathTitle {
+  color : #D9D9D9;
+  font-size: 14px;
+
+  margin-bottom: 11px;
+}
+
+.scheduleTitleB {
+  color : #8DD4F5;
+}
+
+.scheduleTitleR {
+  color : #FF7171;
+}
+
+
+.schedulePathBox .schedulePathContents {
+  width: 412px;
+  height: 102px;
+  max-height: 102px;
+  line-height: 150%;
+
+  background: #3A3D52;
+
+  border: 1px solid #AEAFB8;
+  border-radius: 4px;
+
+  padding: 11px 9px 20px;
+  margin-bottom: 47px;
+
+  position: relative;
+  overflow: hidden;
+}
+
+/* 실제 스크롤 영역: 네이티브 스크롤바는 숨김 */
+.scheduleInner {
+  max-height: inherit;
+  overflow-y: scroll;
+  padding-right: 3px; /* 오른쪽 커스텀 스크롤바 공간 */
+  padding-bottom: 20px;
+  box-sizing: border-box;
+
+  /* 스크롤바 숨김(네이티브) */
+  scrollbar-width: none; /* Firefox */
+}
+.scheduleInner::-webkit-scrollbar {
+  display: none; /* Chrome/Edge */
+}
+
+.scheduleScrollTrack {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  right: 9px;
+
+  width: 7px;
+  border-radius: 50px;
+  background:transparent;
+}
+ 
+/* 썸(움직이는 막대) */
+.scheduleScrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+
+  width: 100%;
+  height: 50%;            /* JS가 동적으로 조절 */
+  border-radius: 50px;
+  background: #EAEAED;     /* 요청 색상 */
+}
+
+.workBtnBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 19px;
+}
+
+.workBtnCommon {
+  width: 178px;
+  height: 50px;
+
+  border-radius: 11px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #fff;
+  font-weight: 500;
+}
+.workBtnCommon img {
+  width: 12px;
+  height: 12px;
+
+  border-radius: 11px;;
+  margin-right: 15px;
+}
+
+.workBtnBgRed {
+  background: #941621;
+  border: 1px solid #BF0E14;
+}
+
+.workBtnBgBlue {
+  background: #107DAD;
+  border: 1px solid #107DAD;
+}
+
+
+.robotScheduleNoneModalContent {
+  width: 481px;
+  height: 253px;
+
+  padding: 27px 28px 36px 28px;
+  border-radius: 7px;
+
+  background: #292D43;
+
+  position: relative;
+}
+
+.placePathModalContent {
+  width: 481px;
+  height: 508px;
+
+  padding: 28px 29px;
+  border-radius: 15px;
+
+  background: #292D43;
+
+  position: relative;
+}
+
+.placeCloseBtn {
+  border: none;
+  
+  width: 29px;
+  height: 29px;
+
+  background: transparent;
+
+  font-size: 20px;
+  color: #ffffff;
+
+  position: absolute;
+  right: 28px;
+
+}
+
+.placeTitle {
+  margin-top: 38px;
+  margin-bottom: 41px;
+  text-align: center;
+
+  font-weight: 600;
+}
+
+.placePathBox {
+  width: 412px;
+  height: 216px;
+  max-height: 216px;
+
+  overflow: hidden;
+
+  background: #3B415F;
+
+  border-radius: 10px;
+
+  padding: 13px 29px 13px 9px ;
+  margin-bottom: 51px;
+
+  position: relative;
+}
+
+.placePathItem {
+  width: 100%;
+  height: 38px;
+  line-height: 38px;
+
+  padding: 0 16px;
+
+  display: flex;
+  align-items: center;
+
+  cursor: pointer;
+}
+
+.placePathItem:hover {
+  background: #4F546F;
+}
+
+.placePathItem.active {
+  background: #2F577C;
+}
+
+.placePathItem img {
+  width: 20px;
+  height: 20px;
+
+  margin-right: 15px;
+}
+
+.placePathTitle {
+  color : #D9D9D9;
+  font-size: 14px;
+}
+
+/* 실제 스크롤 영역: 네이티브 스크롤바는 숨김 */
+.placeInner {
+  max-height: inherit;
+  overflow-y: scroll;
+  padding-right: 3px; /* 오른쪽 커스텀 스크롤바 공간 */
+  padding-bottom: 10px;
+  box-sizing: border-box;
+
+  /* 스크롤바 숨김(네이티브) */
+  scrollbar-width: none; /* Firefox */
+}
+.placeInner::-webkit-scrollbar {
+  display: none; /* Chrome/Edge */
+}
+
+.placeScrollTrack {
+  position: absolute;
+  top: 15px;
+  bottom: 15px;
+  right: 10px;
+
+  width: 8px;
+  border-radius: 50px;
+  background:transparent;
+}
+
+/* 썸(움직이는 막대) */
+.placeScrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+
+  width: 100%;
+  height: 50%;            /* JS가 동적으로 조절 */
+  border-radius: 50px;
+  background: #EAEAED;     /* 요청 색상 */
+}

@@ -1,0 +1,591 @@
+
+.videoListTab {
+    position: absolute;
+    top: 12px;
+    right: 0px;
+    display: flex;
+    gap: 15px;
+    z-index: 0;
+}
+
+.videoListTab div {
+    background: #1f2232;
+    border-radius: 20px 20px 0 0;
+
+    width: 156px;
+    height: 64px;
+
+    font-size: 18px;
+    font-weight: 600;
+    
+    color: #656f87;
+    cursor: pointer;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.videoListTab div.active {
+    background: #282d43;
+    color: #9cacca;
+}
+
+.videoList,
+.DT {
+  background: #282d43;
+  border-radius: 10px;
+  width: 100%;
+  height: 730px;
+  padding: 20px;
+  z-index: 1;
+  position: absolute;
+  top: 73px;
+}
+
+.videoListTopPosition {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    height: 40px;
+}
+
+.videoListTopPosition h2 {
+    font-weight: 500;
+    margin: 0 ;
+    color: #92d4f4;
+}
+
+.videoSearch {
+    display: flex;
+    gap: 25px;
+    color: #edf3fd;
+}
+
+.videoSelect,
+.dtSearch {
+    display: flex;
+    gap: 10px;
+    position: relative;
+}
+
+.videoSelect .selete,
+.dtSearch .selete {
+    width: 140px;
+    background: #34384d;
+    border: 2px solid #4c586e;
+    color: #dedee0;
+    padding: 5px 14px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: 13px;
+    height: 33px;
+}
+
+.videoSelect .selete img,
+.dtSearch .selete img {
+    height: 40%;
+}
+
+.seletboxCommon {
+    width: 140px;
+    padding: 10px;
+    background: #202334;
+    border-radius: 5px;
+    cursor: pointer;
+    z-index: 30;
+    font-size: 13px;
+}
+
+.videoSeletbox,
+.robotTypeSeletbox {
+    position: absolute;
+    top: 45px;
+    height: auto;
+}
+
+.robotSeletbox {
+    position: absolute;
+    top: 45px;
+    height: 200px;
+    overflow-y: auto;
+}
+
+.robotSeletbox::-webkit-scrollbar {
+  width: 4px;
+}
+.robotSeletbox::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+.robotSeletbox::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.videoSeletbox div,
+.robotSeletbox div,
+.robotTypeSeletbox div {
+    width: 100%;
+    height: 35px;
+    line-height: 35px;
+    padding: 0 10px;
+    font-size: 14px;
+    color: #dedee0;
+}
+
+.videoSeletbox div:hover,
+.robotSeletbox div:hover,
+.robotTypeSeletbox div:hover {
+    background: #d2d3d7;
+    border-radius: 4px;
+    width: 100%;
+    height: 35px;
+    padding: 0 10px;
+    line-height: 35px;
+    color: #16192c;
+}
+
+.videoPeriod {
+    display: flex;
+    width: 280px;
+    line-height: 30px;
+    font-size: 14px;
+    color: #dedee0;
+}
+
+.videoPeriod div {
+    width: calc(100% / 4);
+    text-align: center;
+    height: 33px;
+    cursor: pointer;
+}
+
+.videoPeriod .PeriodItemL {
+    border-radius: 6px 0 0 6px;
+    border: 2px solid #4c586e;
+}
+
+.videoPeriod .PeriodItemLM {
+    border-top: 2px solid #4c586e;
+    border-right: 2px solid #4c586e;
+    border-bottom: 2px solid #4c586e;
+}
+
+.videoPeriod .PeriodItemMR {
+    border-top: 2px solid #4c586e;
+    border-bottom: 2px solid #4c586e;
+}
+
+.videoPeriod .PeriodItemR {
+    border-radius: 0 6px 6px 0;
+    border: 2px solid #4c586e;
+}
+
+.videoPeriod div:hover,
+.videoPeriod div.active {
+    background: #204766;
+}
+
+.videoDate {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.startDate,
+.endDate {
+    width: 130px;
+    background: #494c5f;
+    border: 1px solid #8a96ac;
+    padding: 5px 14px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: 13px;
+    height: 33px;
+}
+
+.startDate img,
+.endDate img {
+    height: 60%;
+}
+
+.videoViewContainer {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.videoViewItem {
+    width: 100%;
+    background: #3b425f;
+    padding: 11px;
+    border-radius: 14px;
+}
+
+.videoViewBox {
+    border-radius: 20px;
+    position: relative;
+    cursor: pointer;
+}
+
+.videoView {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.videoView img {
+    width: 100%;
+    object-fit: cover;
+}
+
+.videoViewIcon {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+}
+
+.videoViewIcon img {
+    width: 20%;
+}
+
+.videoViewText {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+    font-size: 11px;
+    height: 25px;
+}
+
+.videoViewTopText {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 5px;
+    width: 55%;
+}
+
+.videoExport {
+    width: 100px;
+    line-height: 30px;
+    border-radius: 4px;
+    background: #656e86;
+    text-align: center;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.videoExport img {
+    margin-right: 5px;
+    width: 12px;
+}
+
+.videoViewTopText .nameBox {
+    text-align: center;
+    border: 1px solid #808395;
+    color: #ececed;
+}
+
+.videoViewTopText .RobotCamNameBox {
+    width: 70px;
+    border-radius: 6px;
+    padding: 3px;
+}
+
+.videoViewTopText .videoNameBox {
+    width: 50px;
+    border-radius: 17px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 9px;
+}
+
+.cameratypeIcon {
+    width: 10px;
+    height: 10px;
+    background: #fff;
+    border-radius: 50px;
+}
+
+.videoViewBottomText {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+    font-size: 10px;
+}
+
+.videoTopTextColor {
+    color: #ececed;
+}
+
+.videoTextColor {
+    color: #93cbf5;
+    margin-bottom: 2px;
+}
+
+.pagenationPosition {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+}
+
+/* donut */
+.donutContainerFlex{
+    display: flex;
+    gap: 2%;
+}
+
+.totalDonutCount {
+    display: flex;
+}
+
+.dtDonutLeftBox {
+    width: 33%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3%;
+    position: relative;
+}
+
+.totalDonutCount {
+    display: flex;
+    width: 170px;
+    border-radius: 50px;
+    border: 1px solid #b6b9c8;
+    padding: 6px 10px;
+    align-items: center;
+    justify-content: space-around;
+    color: #dcd9de;
+    position: absolute;
+    top: 15px;
+    left: 0;
+}
+
+.totalDonutCount .totalCount {
+    color: #b7c1ce;
+}
+
+.totalCount span {
+    color: #928b8b;
+}
+
+.leftChart {
+    margin-top: 25px;
+}
+
+.robotTypeTotal {
+    width: 75%;
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+    align-items: stretch;
+}
+
+.robotTypeOne {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.robotTypeName {
+    display: flex;
+}
+
+.robotTypeOne img {
+    width: 35px;
+    margin-right: 15px;
+}
+
+.robotTypeIconBox {
+  width: 35px;
+  height: 35px;
+  border-radius: 50%;
+  background-color: #3f4256;
+  display: flex;            
+  justify-content: center;
+  align-items: center;
+  margin-right: 15px;
+}
+
+.robotTypeIconBox img {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  object-fit: contain;
+}
+
+.oneContentFs20 {
+    font-size: 20px;
+}
+
+.oneContentCountBox {
+    display: flex;
+    gap: 2%;
+    width: 180px;
+    justify-content: flex-end;
+}
+
+.oneContentFs25 {
+    font-size: 25px;
+    font-family: 'Gmarket Sans';
+    font-weight: 700;
+}
+
+.oneContentFs25 span {
+    font-size: 18px;
+    font-family: 'Gmarket Sans';
+    font-weight: 500;
+}
+
+.oneContentBar {
+    font-size: 20px;
+    color: #98a7c4;
+}
+
+.oneSpanColor {
+    color: #bfbdbe;
+}
+
+.dtDonutRightBox {
+    width: 67%;
+}
+
+.useItemDonutBox {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid #949bb7;
+    border-radius: 10px;
+    position: relative;
+    background:
+        linear-gradient(
+        to right,
+        transparent 0,
+        /* 1번째 선 */
+        transparent calc(25% - 10px),
+        rgba(255, 255, 255, 0.3) calc(25% - 10px),
+        rgba(255, 255, 255, 0.3) calc(25% - 9px),
+        transparent calc(25% - 9px),
+
+        /* 2번째 선 */
+        transparent calc(50% - 10px),
+        rgba(255, 255, 255, 0.3) calc(50% - 10px),
+        rgba(255, 255, 255, 0.3) calc(50% - 9px),
+        transparent calc(50% - 9px),
+
+        /* 3번째 선 */
+        transparent calc(75% - 10px),
+        rgba(255, 255, 255, 0.3) calc(75% - 10px),
+        rgba(255, 255, 255, 0.3) calc(75% - 9px),
+        transparent calc(75% - 9px)
+        );
+
+    /* ✅ 핵심: 세로 길이를 80%로 줄임 */
+    background-size: 100% 70%;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+
+.itemBoxBg {
+    width: 100%;
+    border-radius: 10px;
+    background: #333855;
+    padding: 10px 15px;
+    margin-top: 13px;
+}
+
+.itemTitleBox {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.itemDataTotal {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 130px;
+    height: 30px;
+    background: #282d43;
+    border-radius: 50px;
+    font-size: 14px;
+    color: #dbd3ce;
+}
+
+.leftText {
+    margin-right: 10px;
+}
+
+.middleText {
+    margin-right: 5px;
+}
+
+.rightText {
+    font-size: 12px;
+    color: #8f8da1;
+}
+
+.taskTextColor {
+    color: #719851;
+}
+
+.timeTextColor {
+    color: #1984b1;
+}
+
+.time .timeTextColor span {
+    color: #8f8da1;
+}
+
+.errorTextColor {
+    color: #ae4653;
+}
+
+.dtDonutRightBox h2 {
+    margin: 0;
+    font-weight: 500;
+}
+
+/* Log History */
+.container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.container img {
+    width: 80px;
+}
+
+.container .topTitle {
+    margin-top: 15px;
+    font-size: 35px;
+    font-weight: 600;
+    color: #b0b5bc;
+}
+
+.container .contentText {
+    margin-top: 15px;
+    font-size: 15px;
+    font-weight: 400;
+    color: #aaadbf;
+}

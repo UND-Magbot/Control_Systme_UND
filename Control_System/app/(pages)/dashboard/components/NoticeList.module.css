@@ -1,0 +1,44 @@
+.notice-list {
+    font-size: 11px;
+}
+
+.notice-list div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.notice-item { 
+  display: flex; 
+  gap: 8px; 
+  align-items: center;
+  padding: 5px;
+  color: #BFBFBF;
+  border-bottom: 1px solid #475A83;
+  cursor: pointer;
+}
+
+.badge, .new { 
+  width: 60px;
+  height: 24px;
+  line-height: 24px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  margin-right: 8px;
+  text-align: center;
+  color: #fff;
+}
+
+.new {
+  width: 28px;
+  background-color: #af1117;
+  height: 18px;
+  line-height: 18px;
+}
+
+/* 타입별 배지 색상만 분기 */
+.badge--notice   { background-color: #327F47; } /* 녹색 */
+.badge--schedule { background-color: #A96E3A; } /* 다크 노랑 */
+.badge--emerg    { background-color: #A9121B; } /* 빨강 */
+.badge--robot    { background-color: #107CAB; } /* 파랑 */

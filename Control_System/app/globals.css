@@ -1,0 +1,128 @@
+* { box-sizing: border-box; }
+
+html, body { 
+    margin: 0; 
+    overflow: auto;   
+    font-family: 'Pretendard', 'Noto Sans'; 
+    color: #fff; 
+    background-color: #333853;
+    font-weight: 400;
+    user-select: none; 
+}
+
+.page-container {
+    margin-top: 141px;     /* Header 높이 */
+    margin-left: 240px;   /* Sidebar 너비 */    
+
+    min-width: 1550px;
+
+    padding: 0 30px 30px;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* 폰트 */
+@font-face {
+  font-family: 'Noto Sans';
+  font-style: normal;
+  font-weight: 100;
+  src: 
+  url('/fonts/noto-sans-v42-latin-100.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  url('/fonts/NotoSans-Thin.ttf') format('ttf');
+}
+
+@font-face {
+  font-family: 'Noto Sans';
+  font-style: normal;
+  font-weight: 200;
+  src: url('/fonts/noto-sans-v42-latin-200.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  url('/fonts/NotoSans-Light.ttf') format('ttf'); 
+}
+
+@font-face {
+  font-family: 'Noto Sans';
+  font-style: normal;
+  font-weight: 300;
+  src: url('/fonts/noto-sans-v42-latin-300.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  url('/fonts/NotoSans-ExtraLight.ttf') format('ttf'); 
+}
+
+@font-face {
+  font-family: 'Noto Sans';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/noto-sans-v42-latin-regular.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  url('/fonts/NotoSans-Regular.ttf') format('ttf'); 
+}
+
+@font-face {
+  font-family: 'Noto Sans';
+  font-style: normal;
+  font-weight: 500;
+  src: url('/fonts/noto-sans-v42-latin-500.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  url('/fonts/NotoSans-Medium.ttf') format('ttf'); 
+}
+
+@font-face {
+  font-family: 'Noto Sans';
+  font-style: normal;
+  font-weight: 600;
+  src: url('/fonts/noto-sans-v42-latin-600.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  url('/fonts/NotoSans-SemiBold.ttf') format('ttf'); 
+}
+
+@font-face {
+  font-family: 'Noto Sans';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/noto-sans-v42-latin-700.woff2') format('woff2'), /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  url('/fonts/NotoSans-Bold.ttf') format('ttf');
+}
+
+@font-face {
+  font-family: 'Noto Sans';
+  font-style: normal;
+  font-weight: 800;
+  src: url('/fonts/noto-sans-v42-latin-800.woff2') format('woff2'),
+  url('/fonts/NotoSans-ExtraBold.ttf') format('ttf'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+@font-face {
+  font-family: 'Noto Sans';
+  font-style: normal;
+  font-weight: 900;
+  src: url('/fonts/noto-sans-v42-latin-900.woff2') format('woff2'),
+  url('/fonts/NotoSans-Black.ttf') format('ttf'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard/PretendardVariable.woff2") format("woff2"),
+  url('/fonts/Pretendard/PretendardVariable.ttf') format('ttf'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  font-weight: 45 920;
+  font-style: normal;
+}
+
+/* 지마켓 산스 : 데이터 - 통계 탭 메뉴 */
+@font-face {
+  font-family: 'Gmarket Sans';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/GmarketSansBold.woff2') format('woff2'),
+  url('/fonts/GmarketSansTTFBold.ttf') format('ttf'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+@font-face {
+  font-family: 'Gmarket Sans';
+  font-style: normal;
+  font-weight: 500;
+  src: url('/fonts/GmarketSansMedium.woff2') format('woff2'),
+  url('/fonts/GmarketSansTTFMedium.ttf') format('ttf'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+button {
+  cursor: pointer;
+}

@@ -1,0 +1,409 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+}
+
+.modal {
+  width: 600px;
+  border-radius: 17px;
+  background: #292D43;
+  padding: 25px 31px;
+  position: relative;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+
+.closeBtn {
+  width: 24px;
+  height: 25px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 23px;
+  position: absolute;
+  top: 22px;
+  right: 26px;
+  cursor: pointer;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.headerLeft img {
+  width: 26px;
+  height: 26px;
+}
+
+.headerLeft h2 {
+  margin: 0;
+  font-weight: 500;
+  font-size: 28px;
+  color: #fff;
+}
+
+.bodyCard {
+  width: 100%;
+  border-radius: 15px;
+  background: #3B415F;
+  margin-top: 18px;
+  padding: 17px 26px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 14px;
+  color: #fff;
+  font-size: 16px;
+}
+
+.updateRow {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  color: #fff;
+  font-size: 16px;
+}
+
+.rowTall {
+  align-items: flex-start;
+}
+
+.label {
+  width: 90px;
+  flex: 0 0 90px;
+}
+
+.selectWrap {
+  position: relative;
+  width: 373px;
+  height: 35px;
+}
+
+.selectBox {
+  width: 100%;
+  height: 35px;
+  background: #454B67;
+  border-radius: 5px;
+  border: 1px solid #8AACC7;
+  padding: 0 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.selectBox img {
+  width: 12px;
+  height: 8px;
+}
+
+.dropdown {
+  width: 100%;
+  max-height: 200px;
+  padding: 9px;
+  background: #202334;
+  border-radius: 5px;
+  position: absolute;
+  top: 45px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdownInner {
+  max-height: 182px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.dropdownInner::-webkit-scrollbar { display: none; }
+
+.option {
+  width: 100%;
+  height: 35px;
+  line-height: 35px;
+  padding: 0 10px;
+  color: #fff;
+  font-size: 13px;
+  border-radius: 4px;
+}
+.option:hover {
+  background: #d2d3d7;
+  color: #16192c;
+}
+
+.input {
+  width: 373px;
+  height: 35px;
+  
+  background: #454B67;
+  
+  border-radius: 5px;
+  border: 1px solid #8AACC7;
+  
+  padding: 0 11px;
+
+  font-weight: 400;
+  color: #fff;
+  font-size: 12px;
+}
+
+.input::placeholder {
+  color: #fff;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.xyBox {
+  width: 373px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.xyRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.xyLabel {
+  width: 52px;
+  font-size: 12px;
+  color: #fff;
+  opacity: 0.95;
+}
+
+.mapBox {
+  width: 100%;
+  height: 235px;
+  background: #6f6f6f;
+  border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+  margin: 8px 0 14px;
+}
+
+.mapTopLeft {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+}
+
+.floorChip {
+  width: 40px;
+  height: 26px;
+  line-height: 26px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.55);
+  color: #fff;
+  text-align: center;
+  font-size: 12px;
+  background: rgba(32,35,52,0.45);
+}
+
+.mapTopRight {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+}
+
+.pinBtn {
+  width: 28px;
+  height: 28px;
+
+  border-radius: 50px;
+  border: 1px solid rgba(255,255,255,0.55);
+  
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  background: rgba(32,35,52,0.35);
+
+  cursor: pointer;
+}
+
+.pinBtnActive {
+  background: #C04040;
+}
+
+.pinBtn img {
+  width: 14px;
+  height: 14px;
+}
+
+.pinMarker {
+  position: absolute;
+  height: 40px;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.pinMarkerGhost {
+  position: absolute;
+  height: 40px;
+  pointer-events: none;
+  z-index: 59;
+  opacity: 0.75;
+}
+
+.mapCanvas {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.mapImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.95;
+}
+
+.pinMock {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50px;
+  border: 2px solid #ff4b4b;
+  left: 52%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 75, 75, 0.15);
+}
+
+.mapBottomRight {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+}
+
+.mapHint {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: #9DADCB;
+  opacity: 0.9;
+  text-align: right;
+}
+
+.zoomBtn {
+  width: 28px;
+  height: 28px;
+  
+  border-radius: 50px;
+  border: 1px solid rgba(255,255,255,0.55);
+  
+  background: rgba(32,35,52,0.35);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+}
+
+.zoomBtn img { 
+  width: 14px; 
+  height: 14px; 
+}
+
+.rowTextArea {
+  align-items: flex-start;
+}
+
+.textarea {
+  width: 373px;
+  height: 78px;
+  resize: none;
+  background: #454B67;
+  border-radius: 5px;
+  border: 1px solid #8AACC7;
+  padding: 10px 11px;
+  color: #fff;
+  font-size: 12px;
+}
+.textarea::placeholder {
+  color: #fff;
+  opacity: 0.9;
+}
+
+.updatedAtRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 2px;
+  padding-top: 10px;
+  color: #cfd6e6;
+  font-size: 12px;
+}
+.updatedAtLabel {
+  width: 90px;
+  opacity: 0.9; 
+}
+
+.updatedAtValue {
+  color: #ffffff;
+  opacity: 0.95;
+  font-size: 12px;
+}
+
+.edit:focus {
+  outline: none;
+}
+
+.footer {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.footerBtn {
+  width: 154px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: #fff;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.footerBtn img {
+  width: 11px;
+  height: 11px;
+}
+
+.btnRed {
+  border: 1px solid #BF0E14;
+  background: #941621;
+}
+
+.btnBlue {
+  border: 1px solid #0E85B7;
+  background: #196189;
+}

@@ -1,0 +1,637 @@
+.robot-chk-btn button.active,
+.floor-btn button.active {
+  background-color: rgba(255, 255, 255);
+  color: #202334;
+}
+
+.robot-chk-btn button,
+.floor-btn button {
+  padding: 5px 15px;
+  border: 1px solid #fff;
+  background-color: #292D43;
+  color: #BFBFBF;
+  font-size: 13px;
+  margin-right: 5px;
+  cursor: pointer;
+}
+
+.robot-chk-btn button:hover,
+.robot-chk-btn button:active,
+.floor-btn button:hover,
+.floor-btn button:active {
+  background-color: #fff;
+  color: #202334;
+}
+
+.view-div {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.view-box {
+  width: 100%;
+  height: 100%;
+  background-color: #d6d6d6;
+  color: #222;
+}
+
+.viewBtn,
+.mapButton {
+  position: absolute;
+  display: flex;
+  bottom: 15px;
+  right: 15px;
+}
+
+.mapButton {
+  width: 59px;
+  justify-content: space-between;
+}
+
+.viewBtn .camerabtn {
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  width: 110px;
+  height: 35px;
+  background: rgba(247, 247, 247, 0.8);
+  border: 1px solid #909198;
+  color: rgb(53, 57, 80);
+  cursor: pointer;
+  margin-left: 10px; 
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.viewBtn .camerabtn.active,
+.viewBtn .camerabtn:hover,
+.viewBtn .camerabtn:focus,
+.viewBtn .camerabtn:active {
+  background: rgba(125, 127, 142, 0.8);
+  border: 1px solid #5c5c6d;
+  color: #ffffff;
+}
+
+.viewBtn .camerabtn img {
+  width: 20px;
+}
+
+.zoomIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 25px;
+  height: 25px;
+  
+  background-color: transparent;
+  border-radius: 50px;
+  border: 1px solid #F5F6F8;
+  cursor: pointer;
+}
+
+.remote-icon,
+.path-icon {
+  width: auto;
+  height: 16px;
+  margin-right: 8px;
+}
+
+.zoomIcon img {
+  height: 14px;
+}
+
+.remote-icon img,
+.path-icon img {
+  height: 100%;
+}
+
+.tab-buttons {
+  display: flex;
+  border-bottom: 2px solid #4B618B;
+  position: relative;
+}
+
+.tab-buttons .tab-btn {
+  width: 170px;
+  height: 37px;
+  padding: 3px 10px;
+  font-size: 12px;
+  border-radius: 10px 10px 0 0;
+  background-color: transparent;
+  border: none;
+  color: #9DADCB;
+  cursor: pointer;
+
+  border-top: 1px solid #4B618B;
+  border-left: 1px solid #4B618B;
+  border-right: 1px solid #4B618B;
+  border-bottom: none;    
+}
+
+.tab-buttons .tab-btn.active {
+  position: relative;
+  border: 1px solid #4B618B;
+  border-bottom: none;
+  z-index: 1;
+  color: #fff;
+}
+
+.tab-buttons .tab-btn.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  background: #292D43;
+}
+
+.seletWrapper {
+  position: relative;
+}
+
+.selete {
+  width: 100%;
+  height: 29px;
+  background: #33384c; 
+  
+  padding: 0 19px;
+  border-radius: 4px;
+  border: 1px solid #8a96ac;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.selete img {
+  width: 12px;
+  height: 8px;
+}
+
+.seletbox {
+  width: 100%;
+  max-height: 200px;
+  font-size: 13px;
+  
+  padding: 9px;
+  
+  background: #202334;
+  border-radius: 5px;
+  
+  position: absolute;
+  top: 45px;
+  
+  cursor: pointer;
+  z-index: 10;
+  overflow: hidden;
+}
+
+.seletbox .floorLabel,
+.seletbox .robotsLabel,
+.modalSeletbox .robotsItem {
+  width: 100%;
+  height: 29px;
+  line-height: 29px;
+  padding: 0 10px;
+  color: #fff; 
+}
+
+.seletbox .floorLabel:hover,
+.seletbox .robotsLabel:hover,
+.modalSeletbox .robotsItem:hover {
+  background: #d2d3d7;
+  border-radius: 4px;
+  width: 100%;
+  height: 29px;
+  line-height: 29px;
+  padding: 0 10px;
+  color: #16192c;
+}
+
+.mapSelectBox div:hover {
+  background: #858899;
+  color: #fdffff;
+}
+
+/* 모달 - 로봇 셀렉트 */
+
+.modalSeletWrapper {
+  position: absolute;
+  top: 17px;
+  left: 17px;
+  z-index: 10;
+}
+
+.modalRobotSelect {
+  width: 138px;
+  height: 29px;
+  padding: 0 10px 0 20px;
+
+  border-radius: 5px;
+  border: 1px solid #fff;
+  font-size: 13px;
+  
+  cursor: pointer;
+  
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mapSelect {
+  border: 1px solid #ffffff;
+  color: #ffffff;
+}
+
+.modalRobotSelect img {
+  width: 11px;
+  height: 6px;
+}
+
+.modalSeletbox {
+  width: 138px;
+  height: auto;
+  max-height: 200px;
+
+  font-size: 13px;
+
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid #fff;
+  border-radius: 5px;
+
+  position: absolute;
+  top: 37px;
+  z-index: 10;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.mapSelectBox {
+  border: 1px solid #26273a;
+}
+
+.mapSelectBox div {
+    color: #3c3c51;
+}
+
+
+.remote-div,
+.path-div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 118px;
+  height: 29px;
+  padding: 0 17px;
+  background-color: #454d72;
+  border-radius: 5px;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.path-div {
+  font-size: 13px;
+  margin-left: 5px;
+}
+
+.remote-icon,
+.path-icon {
+  width: auto;
+  height: 16px;
+  margin-right: 15px;
+}
+
+
+.videoStatusBox {
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  gap: 10px;
+}
+
+.videoStatusBtn {
+  width: 100%;
+  height: 100%;
+  border-radius: 50px;
+  font-weight: 500;
+  border: 1px solid #fff;
+  background: transparent;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.mapVideoStatusBtn {
+  border: 1px solid #26273a;
+  color: #3c3c51;
+}
+
+.videoStatusBtn.active {
+  background: #d95a59;
+}
+
+.mapVideoStatusBtn.active {
+  color: #ffffff;
+}
+
+.roundIcon {
+  border-radius: 50px;
+  background-color: #ffffff;
+  width: 8px;
+  height: 8px;
+}
+
+.mapVideoStatusBtn .roundIcon {
+  background-color: #343856;
+}
+
+.mapVideoStatusBtn.active .roundIcon {
+  background-color: #ffffff;
+}
+
+.remotePad {
+  position: relative;
+  width: 196px;
+  height: 165px;
+
+  border-radius: 13px;
+  background: #333954;
+}
+
+.remotePad .padImg {
+  width: 196px;
+  height: 165px;
+}
+
+.PadControlKey {
+  position: absolute;
+  top: 10%;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.padIconGrid {
+  display: grid;
+  grid-template-rows: repeat(3, 1fr);
+}
+
+.topIcon,
+.middleIcon,
+.bottomIcon,
+.returnIcon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.topIcon div,
+.bottomIcon div {
+  width: 44px;
+  height: 41px;
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.middleIcon .leftBtn,
+.middleIcon .stopBox,
+.middleIcon .rightBtn {
+  width: 41px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.returnIcon {
+  width: 29px;
+  height: 30px;
+}
+
+.stopBox,
+.stopInerBox {
+  flex-direction: column;
+  border: 1px solid #fff;
+  border-radius: 50px;
+  justify-content: center;
+}
+
+.mapStopBox,
+.mapStopInerBox {
+  border: 1px solid #323547;
+}
+
+.stopInerBox {
+  width: 35px;
+  height: 38px;
+  background: #c85152;
+  display: flex;
+  align-items: center;
+}
+
+.stopInerBox:hover {
+  background: #cc3032;
+}
+
+.stopText {
+  margin: 0;
+  text-align: center;
+  font-size: 10px;
+}
+
+.topIcon img,
+.bottomIcon img {
+  height: 10px;
+}
+
+.middleIcon img,
+.returnIcon img {
+  height: 16px;
+}
+
+
+.upBtn {
+  border-top: 1px solid #fff;
+  border-left: 1px solid #fff;
+  border-right: 1px solid #fff;
+  border-radius: 10px 10px 0 0;
+  padding-top: 10px;
+}
+
+.mapUpBtn {
+  border-top: 1px solid #323547;
+  border-left: 1px solid #323547;
+  border-right: 1px solid #323547;
+}
+
+.leftBtn {
+  border-top: 1px solid #fff;
+  border-left: 1px solid #fff;
+  border-bottom: 1px solid #fff;
+  border-radius: 10px 0 0 10px;
+  padding-left: 10px;
+}
+
+.mapLeftBtn {
+  border-top: 1px solid #323547;
+  border-left: 1px solid #323547;
+  border-bottom: 1px solid #323547;
+  border-radius: 10px 0 0 10px;
+  padding-left: 10px;
+}
+
+.rightBtn {
+  border-top: 1px solid #fff;
+  border-right: 1px solid #fff;
+  border-bottom: 1px solid #fff;
+  border-radius: 0 10px 10px 0;
+  padding-right: 10px;
+  justify-content: flex-end;
+}
+
+.mapRightBtn {
+  border-top: 1px solid #323547;
+  border-right: 1px solid #323547;
+  border-bottom: 1px solid #323547;
+  border-radius: 0 10px 10px 0;
+  padding-right: 10px;
+  justify-content: flex-end;
+}
+
+.bottomBtn {
+  border-left: 1px solid #fff;
+  border-right: 1px solid #fff;
+  border-bottom: 1px solid #fff;
+  border-radius: 0 0 10px 10px;
+  padding-bottom: 10px;
+  align-items: flex-end;
+}
+
+.mapBottomBtn {
+  border-left: 1px solid #323547;
+  border-right: 1px solid #323547;
+  border-bottom: 1px solid #323547;
+  border-radius: 0 0 10px 10px;
+  padding-bottom: 10px;
+  align-items: flex-end;
+}
+
+.leftre {
+  position: absolute;
+  bottom: 30px;
+  left: 25px;
+  cursor: pointer;
+}
+
+.rightre {
+  position: absolute;
+  bottom: 30px;
+  right: 25px;
+  cursor: pointer;
+}
+
+.returnIcon {
+  border: 1px solid #fff;
+  border-radius: 50px;
+}
+
+.mapReturnIcon {
+  border: 1px solid #323547;
+}
+
+.upBtn:hover,
+.leftBtn:hover,
+.rightBtn:hover,
+.bottomBtn:hover,
+.leftre:hover,
+.rightre:hover {
+  background: #808291;
+}
+
+
+/* 로봇관리 - 로봇 CRUD 버튼 */
+
+.robotCrudBox {
+  width: 128px;
+  height: 29px;
+  
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+
+  padding: 8px 12px;
+  background: #196189;
+  
+  border: none;
+  border-radius: 6px;
+  
+  font-size: 12px;
+  color: #e1fbfa;
+}
+
+.robotCrudBtn img {
+  height: 10px;
+}
+
+
+.plusBtn {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 30px;
+}
+
+
+
+/* 실제 스크롤 영역: 네이티브 스크롤바는 숨김 */
+.inner {
+  max-height: inherit;
+  overflow-y: scroll;
+  padding-right: 3px; /* 오른쪽 커스텀 스크롤바 공간 */
+  padding-bottom: 10px;
+  box-sizing: border-box;
+
+  /* 스크롤바 숨김(네이티브) */
+  scrollbar-width: none; /* Firefox */
+}
+.inner::-webkit-scrollbar {
+  display: none; /* Chrome/Edge */
+}
+
+.scrollTrack {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  right: 3px;
+
+  width: 2px;
+  border-radius: 50px;
+  background:transparent;
+}
+
+/* 썸(움직이는 막대) */
+.scrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+
+  width: 100%;
+  height: 50%;            /* JS가 동적으로 조절 */
+  border-radius: 50px;
+  background: #EAEAED;     /* 요청 색상 */
+}

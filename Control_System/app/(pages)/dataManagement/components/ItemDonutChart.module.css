@@ -1,0 +1,105 @@
+
+.itemDonutContainer {
+    display: flex;
+    width: 100%;
+    padding: 10px 15px;
+}
+
+.leftFlexBox {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    width: 40%;
+}
+
+/* 상단 제목 */
+.itemDonutTitle {
+    font-size: 17px;
+    font-weight: 500;
+    margin-bottom: 14px;
+    color: #abbddf;
+}
+
+/* 아래 표시값 (예: 298h 42m) */
+.itemDonutValue {
+    font-size: 20px;
+    color: #9ca3af;
+    display: flex;
+    gap: 5px;
+}
+
+.itemHourValue,
+.itemMinuteValue,
+.itemDataValue {
+  font-size: 20px;
+  color: #f2f0ea;
+  font-weight: 700;
+  font-family: 'Gmarket Sans';
+}
+
+.itemHourValue span,
+.itemMinuteValue span,
+.itemDataValue span {
+  font-size: 13px;
+  color: #9ca3af;
+  font-weight: 500;
+  font-family: 'Gmarket Sans';
+}
+
+/* 전체 컨테이너 (카드 안에서 위치 잡기용) */
+.totalDonut {
+    width: 60%;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 바깥 컬러 도넛 부분 (conic-gradient 들어가는 곳) */
+.totalDonutOuter {
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    position: relative;
+}
+
+/* 안쪽 어두운 링 + 중앙 원 */
+.totalDonutInner {
+    position: absolute;
+    inset: 16px;
+    border-radius: 50%;
+    background-color: #333855;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 중앙 텍스트 영역 */
+.totalDonutCenter {
+  text-align: center;
+  color: #e5e7eb;
+  display: flex;
+  align-items: baseline;
+}
+
+.centerNumber {
+  font-size: 25px;
+  font-weight: 700;
+  margin-top: 5px;
+  font-family: 'Gmarket Sans';
+}
+
+.centerUnit {
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 500;
+  margin-top: 2px;
+  font-family: 'Gmarket Sans';
+}
+
+.centerUnit span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e5e7eb;
+  font-family: 'Gmarket Sans';
+}

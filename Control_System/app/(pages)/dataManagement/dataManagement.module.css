@@ -1,0 +1,29 @@
+.topPosition {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-top: 15px;
+    margin-bottom: 21px;
+}
+
+.topPosition h1 {
+    margin: 0;
+    font-weight: 500;
+    font-size: 30px;
+}
+
+.tabPosition {
+    position: relative;
+    min-width: 1550px;
+}
+
+.container {
+    background: #282d43;
+    border-radius: 15px;
+    width: 100%;
+    height: 730px;
+}
+
+.videoList {
+    width: 100%;
+}

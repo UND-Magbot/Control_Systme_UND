@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+noah/
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+fastapi-starter/out/
+
+# Junk files (accidentally created)
+fastapi-starter/1
+fastapi-starter/Math.min(Math.max(v
+fastapi-starter/clampTranslate(prev.x
+fastapi-starter/r.id
+fastapi-starter/rect.top
+fastapi-starter/void
+fastapi-starter/{

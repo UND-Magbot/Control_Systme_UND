@@ -1,0 +1,52 @@
+.seletWrapper {
+    position: relative;
+}
+
+.selete {
+    width: 150px;
+    background: #33384c; 
+    border: 1px solid #8a96ac;
+    padding:5px 14px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: 13px;
+    height: 33px;
+}
+
+.selete img {
+    height: 40%;
+}
+
+.seletbox {
+    width: 150px;
+    height: auto;
+    padding: 14px;
+    background: #202334;
+    border-radius: 5px;
+    position: absolute;
+    top: 45px;
+    cursor: pointer;
+    z-index: 10;
+    overflow-y: auto;
+}
+
+.seletbox div {
+    width: 100%;
+    height: 35px;
+    line-height: 35px;
+    padding: 0 10px;
+    color: #fff; 
+}
+
+.seletbox div:hover {
+    background: #d2d3d7;
+    border-radius: 4px;
+    width: 100%;
+    height: 35px;
+    padding: 0 10px;
+    line-height: 35px;
+    color: #16192c;
+}

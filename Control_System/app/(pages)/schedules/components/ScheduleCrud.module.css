@@ -1,0 +1,811 @@
+.scheduleModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+
+.scheduleModalContainer {
+
+  width: 600px;
+  height: auto;
+  border-radius: 17px;
+
+  padding: 25px 31px;
+  
+  background: #292D43;
+  
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+   
+  position: relative;
+
+}
+
+.CloseBtn {
+    width: 24px;
+    height: 25px;
+    
+    border: none;
+    
+    background: transparent;
+    color: white;
+    font-size: 23px;
+    
+    position: absolute;
+    top: 28px;
+    right: 34px;
+    
+    cursor: pointer;
+}
+
+.Title {
+  display: flex;
+  align-items: center;
+}
+
+.Title img {
+  width: 35px;
+  height: 37px;
+  
+  margin-right: 25px;
+}
+
+.Title h2 {
+  font-weight: 500;
+  font-size: 28px;
+  color: #ffffff;
+  
+  margin: 0;
+}
+
+.itemContainer {
+    width: 100%;
+    height: auto;
+
+    border-radius: 15px;
+
+    background: #3B415F;
+
+    margin-top: 26px;
+    padding: 17px 32px;
+}
+
+.itemBox {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    margin-bottom: 24px;
+
+    width: 100%;
+    height: 35px;
+
+    font-size: 16px;
+    color: #FFFFFF;
+}
+
+.itemLeftMg {
+    margin-left: 44px;
+}
+
+.itemRadioBox {
+    display: flex;
+    align-items: center;
+
+    margin-bottom: 24px;
+
+    width: 100%;
+    height: 35px;
+
+    font-size: 16px;
+    color: #FFFFFF;
+    overflow: visible;
+}
+
+.repeatDateFlex {
+  display: grid;
+  grid-template-columns: repeat(7, 34px) 40px;
+  justify-items: center;
+  align-items: center;
+  gap: 8px;
+
+  width: 373px;
+  height: 100%;
+
+  font-size: 12px;
+}
+
+.repeatDateFlex .dateItem {
+  width: 100%;
+  line-height: 25px;
+
+  border-radius: 5px;
+  border: 1px solid #8AACC7;
+
+  text-align: center;
+
+  background: #454B67;
+
+  cursor: pointer;
+}
+
+.itemEndDateBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  width: 120px;
+  height: 30px;
+  
+  border-radius: 5px;
+  border: 1px solid #8AACC7;
+  
+  padding: 0 10px;
+  margin-left: 15px;
+  
+  font-size: 13px;
+}
+
+.repeatDateFlex .repeatDateItem img {
+  width: 11px;
+  height: 11px;
+
+  margin-right: 5px;
+
+  cursor: pointer;
+}
+
+
+.itemBox input {
+    width: 373px;
+    height: 35px;
+
+    background: #454B67;
+
+    border-radius: 5px;
+    border: 1px solid #8AACC7;
+
+    padding: 0 11px;
+
+    font-weight: 400;
+}
+
+.itemBox input::placeholder {
+    color: #ffffff;
+    font-weight: 400;
+
+    font-size: 12px;
+}
+
+.seletWrapper {
+  position: relative;
+ 
+  width: 373px;
+  height: 100%;
+}
+
+.editSeletWrapper {
+  position: relative;
+  height: 100%;
+}
+
+.itemSelectBox {
+    width: 100%;
+    height: 100%;
+    
+    background: #454B67;
+
+    border-radius: 5px;
+    border: 1px solid #8AACC7;
+
+    padding: 0 11px;
+
+    font-weight: 400;
+    font-size: 12px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    
+    cursor: pointer;
+}
+
+.itemSelectBox img {
+  width: 12px;
+  height: 8px;
+}
+
+.seletbox {
+  width: 100%;
+  max-height: 200px;
+  font-size: 13px;
+  
+  padding: 9px;
+  
+  background: #202334;
+  border-radius: 5px;
+  
+  position: absolute;
+  top: 45px;
+  
+  cursor: pointer;
+  z-index: 100;
+  overflow: hidden;
+}
+
+/* custom select (robot list style) */
+.selecteWrapper {
+  position: relative;
+  width: 373px;
+  height: 35px;
+}
+
+.selecte {
+  width: 100%;
+  height: 35px;
+  background: #454B67;
+  border-radius: 5px;
+  border: 1px solid #8AACC7;
+  padding: 5px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.selecte img {
+  height: 40%;
+}
+
+.timeSelecte img {
+  height: 25%;
+}
+
+.selectebox {
+  width: 100%;
+  height: auto;
+  padding: 10px;
+  background: #202334;
+  border-radius: 5px;
+  position: absolute;
+  top: 45px;
+  cursor: pointer;
+  z-index: 20;
+  overflow: hidden;
+}
+
+.selecteInner {
+  max-height: 175px;
+  overflow-y: scroll;
+  scrollbar-width: none;
+}
+
+.selecteInner::-webkit-scrollbar {
+  display: none;
+}
+
+.selecteOption {
+  width: 100%;
+  height: 35px;
+  line-height: 35px;
+  padding: 0 10px;
+  color: #fff;
+  font-size: 13px;
+}
+
+.selecteOption:hover {
+  background: #d2d3d7;
+  color: #16192c;
+  border-radius: 4px;
+}
+
+.selecteScrollTrack {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  right: 4px;
+  width: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.selecteScrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  border-radius: 999px;
+  background: #eaeaed;
+}
+
+.selecteCompact {
+  width: 63px;
+}
+
+.selecte.selecteCompact {
+  padding: 0 7px;
+  font-size: 12px;
+}
+
+.selecteboxCompact {
+  width: 63px;
+}
+
+.inner {
+  max-height: 175px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.innerScroll {
+  max-height: 160px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.inner::-webkit-scrollbar {
+  display: none;
+}
+
+.innerScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollTrack {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  right: 4px;
+  width: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.scrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  border-radius: 999px;
+  background: #eaeaed;
+}
+
+.radioBtnFlex {
+    display: flex;
+    gap: 32px;
+}
+
+.radioBtnBox {
+    display: flex;
+    align-items: center;
+}
+
+.radioBtnBox img {
+  width: 12px;
+  height: 12px;
+
+  margin-right: 5px;
+
+  cursor: pointer;
+}
+
+.itemDateBox {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    width: 373px;
+    height: 35px;
+    
+    font-weight: 400;
+    font-size: 12px;
+}
+
+.itemDateBox .itemDate {
+    width: 118px;
+    line-height: 35px;
+
+    background: #454B67;
+
+    border-radius: 4px;
+    border: 1px solid #8AACC7;
+
+    padding: 0 7px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    cursor: pointer;
+    position: relative;
+}
+
+.calendarPopover {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  z-index: 30;
+}
+
+
+.itemDateBox .createitemAmPm,
+.itemDateBox .createitemHour,
+.itemDateBox .createitemMinute {
+    width: 63px;
+    height: 35px;
+
+    border-radius: 4px;
+    border: 1px solid #8AACC7;
+
+    padding: 0 7px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    cursor: pointer;
+}
+
+.itemDateBox .itemAmPm,
+.itemDateBox .itemHour,
+.itemDateBox .itemMinute {
+    width: 63px;
+    height: 35px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    cursor: pointer;
+}
+
+.itemDateBox .itemAmPm img,
+.itemDateBox .itemHour img,
+.itemDateBox .itemMinute img,
+.itemDateBox .createitemAmPm img,
+.itemDateBox .createitemHour img,
+.itemDateBox .createitemMinute img {
+    width: 13px;
+    height: 8px;
+}
+
+.itemDateBox .itemDate img {
+    width: 14px;
+    height: 14px;
+}
+
+.pathBoxFlex {
+    display: flex;
+    align-items: center;
+
+    margin-bottom: 24px;
+
+    width: 100%;
+    height: 35px;
+
+    font-size: 16px;
+    color: #FFFFFF;
+}
+
+.itemBoxBtn {
+    width: 160px;
+    height: 34px;
+
+    border-radius: 5px;
+
+    background: #606A9E;
+    border: none;
+
+    color: #FFFFFF;
+
+    padding: 0 17px;
+    margin-left: 100px;
+}
+
+.itemPathBoxEdit .itemBoxBtn {
+  margin-left: 0;
+}
+
+
+.insertBtnTotal {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.insertConfrimBtn {
+  width: 154px;
+  height: 44px;
+
+  border-radius: 10px;
+
+  color: #FFFFFF;
+  font-size: 14px;
+
+  margin-top: 42px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+}
+
+.insertConfrimBtn img {
+  width: 11px;
+  height: 11px;
+
+  margin-right: 29px;
+}
+
+.btnBgRed {
+  border: 1px solid #BF0E14;
+  background: #941621;
+  margin-right: 20px;
+}
+
+.btnBgBlue {
+  border: 1px solid #0E85B7;
+  background: #196189;
+}
+
+
+/* Schedule Detail Modal Styles */
+
+.TitleCircle {
+    width: 20px;
+    height: 20px;
+    
+    background: #00B0EE;
+    border-radius: 50px;
+    
+    margin-right: 25px;
+}
+
+.btnTotal {
+  width: 100%;
+  margin-top: 30px;
+}
+
+.btnLeftBox {
+  width: 100%;
+  
+  display: flex;
+  justify-content: flex-end;
+
+  cursor: pointer;
+}
+
+.btnItemCommon {
+  width: 167px;
+  height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  border-radius: 9px;
+  border: none;
+  cursor: pointer;
+
+  color: #ffffff;
+}
+
+.btnItemCommon img {
+  width: 13px;
+  height: 14px;
+
+  margin-right: 15px;
+}
+
+.btnBgGray {
+  background: #626a81;
+}
+
+.mr10 {
+  margin-right: 10px;
+}
+
+.btnBgGray:focus,
+.btnBgGray:hover {
+  background: #484e64;
+}
+
+.itemDetail {
+    width: 373px;
+}
+
+.itemtitle {
+    color: #B8B8BA;
+
+    font-weight: 600;
+}
+
+.itemPathBox {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    margin-bottom: 24px;
+
+    width: 100%;
+    height: 90px;
+
+    font-size: 16px;
+    color: #FFFFFF;
+}
+
+.itemPathBoxEdit {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  height: auto;
+  gap: 8px;
+  margin-left: 100px;
+}
+
+.itemPathAction {
+  margin-top: 4px;
+}
+
+.itemPath {
+    width: 373px;
+    height: 85px;
+
+    border: 1px solid #D9DAE0;
+    border-radius: 5px ;
+    
+    background: #454B67;
+
+    padding: 8px;
+}
+
+.itemScroll {
+    padding: 12px 10px;
+    line-height: 150%;
+}
+
+/* ====== (추가) 수정모드: 작업일시 레이아웃 보정 ====== */
+.itemDateBoxRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* itemDateBox 내부 첫 라벨(시작/종료) 폭 고정 */
+.itemDateLabel {
+  width: 32px;
+  text-align: left;
+  font-size: 12px;
+  color: #ffffff;
+}
+
+/* ====== (추가) 수정모드: 반복요일 버튼 ====== */
+.repeatDayBtn {
+  width: 35px;
+  height: 35px;
+  border-radius: 6px;
+  border: 1px solid #8AACC7;
+  background: #454B67;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.repeatDayBtnActive {
+  background: #196189;
+  border-color: #0E85B7;
+}
+
+/* ====== (추가) 수정모드: '매일' 체크 UI를 이미지 톤으로 ====== */
+.everydayBox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  font-size: 12px;
+  color: #ffffff;;
+}
+
+/* 기본 체크박스는 숨기고 아이콘으로 표현하려면(선택) */
+.everydayBox input {
+  width: 14px;
+  height: 14px;
+
+  background: transparent;
+  border: none;
+
+  cursor: pointer;
+}
+
+/* ====== (추가) 수정모드: 반복종료 '종료 날짜' 박스 ====== */
+.repeatEndDateBox {
+  width: 118px;
+  height: 35px;
+
+  background: #454B67;
+  border: 1px solid #8AACC7;
+  border-radius: 4px;
+
+  padding: 0 7px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  font-size: 12px;
+  color: #ffffff;
+
+  position: relative;
+  z-index: 2;
+}
+
+.repeatEndDateBoxDisabled {
+  opacity: 0.6;
+}
+
+.repeatEndDateText {
+  white-space: nowrap;
+}
+
+.repeatEndDateBox img {
+  width: 14px;
+  height: 14px;
+}
+
+/* 수정모드 input 텍스트 색상 */
+.editInput {
+  color: #ffffff;
+}
+
+/* placeholder는 가독성을 위해 살짝 톤 다운 권장 */
+.editInput::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+
+/* itemSelectBox도 높이를 wrapper에 맞추고, 폰트/패딩은 유지 */
+.itemSelectBox {
+  width: 373px;
+  height: 100%;
+
+
+  padding: 0 11px;
+  font-weight: 400;
+  font-size: 12px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  cursor: pointer;
+}
+
+/* 드롭다운도 wrapper 폭을 그대로 쓰게 */
+.seletbox {
+  width: 100%;
+  max-height: 200px;
+  font-size: 13px;
+
+  padding: 9px;
+  background: #202334;
+  border-radius: 5px;
+
+  position: absolute;
+  top: calc(100% + 10px);
+
+  cursor: pointer;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.noMb {
+  margin-bottom: unset;
+}

@@ -1,0 +1,84 @@
+.topPosition {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-top: 15px;
+    margin-bottom: 21px;
+}
+
+.topPosition h1 {
+    margin: 0;
+    font-weight: 500;
+    min-width: 350px;
+    font-size: 30px;
+}
+
+.legendContainer{
+    display: flex;
+    font-size: 10px;
+}
+
+.statusLegend,
+.workLegend {
+  display: flex;
+  gap: 11px;
+}
+
+.statusLegend {
+  width: 253px;
+  height: 25px;
+
+  border: 1px solid #CBCBD0;
+  border-radius: 12px 0 0 12px;
+
+  background: #24273B;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workLegend {
+  width: 273px;
+  height: 25px;
+
+  border: 1px solid #CBCBD0;
+  border-radius: 0 12px 12px 0;
+
+  background: #24273B;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statusItem {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+}
+
+.statusCircle {
+    width: 7px;
+    height: 7px;
+    border-radius: 50px;
+
+    display: flex;
+}
+
+.waitingC {
+    background-color: #FFC635;
+}
+
+.workingC {
+    background-color: #00B0EE;
+}
+
+.errorC {
+    background-color: #FF0000;
+}
+
+.completedC {
+    background-color: #92D050;
+}

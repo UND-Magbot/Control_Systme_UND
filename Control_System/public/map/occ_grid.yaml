@@ -1,0 +1,6 @@
+image: /var/opt/robot/data/maps//map-20251119-132919/occ_grid.pgm
+resolution: 0.1
+origin: [-19.9, -18.4, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

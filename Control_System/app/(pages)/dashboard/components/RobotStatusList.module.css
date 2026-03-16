@@ -1,0 +1,90 @@
+.status {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+  }
+  
+.status th,
+.status td {
+  padding: 5px 0;
+  height: 45px;
+}
+  
+.status thead tr {
+    background: #202334;
+}
+
+.status thead th {
+    position: relative;
+    color: #9DADCB;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.status tbody td {
+    position: relative;
+    color: #b9c1cb;
+    font-size: 13px;
+}
+  
+.status thead th:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    width: 1px;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.25);
+}
+  
+.status tr:nth-child(2n) {
+  background-color: rgba(51, 56, 76, 0.8);
+}
+    
+.status th:nth-child(1) { width: 12%; }
+.status th:nth-child(2) { width: 15%; }
+.status th:nth-child(3) { width: 20%; }
+.status th:nth-child(4) { width: 16%; }
+.status th:nth-child(5) { width: 12%; }
+.status th:nth-child(6) { width: 12%; }
+
+
+/* ✅ 로봇 인덱스별 색상 지정 */
+.robot-color-1 {
+  color: #FF0000;
+}
+
+.robot-color-2 {
+  color: #00B0EE;
+}
+
+.robot-color-3 {
+  color: #92D050;
+}
+  
+.robot_status_icon_div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.robot_status_icon_div img,
+.status td img {
+  width: auto;
+  height: 15px;
+}
+
+.info-box {
+  border-radius: 50px;
+  width: 65px;
+  height: 23px;
+  line-height: 23px;
+  background: rgba(82, 92, 113, 0.8);
+  font-size: 9px;
+  color: #fff;
+  border: 1px solid #9499af;
+  cursor: pointer;
+}
+

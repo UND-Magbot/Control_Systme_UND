@@ -1,0 +1,177 @@
+.top-div {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.title-div {
+  display: flex;
+  align-items: center;
+}
+
+.title-div div {
+  width: auto;
+  height: 23px;
+  margin-right: 15px;
+}
+
+.title-div div img {
+  height: 100%;
+}
+
+.title-div h2 {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 500;
+}
+
+.middle-div {
+    height: 75%;
+    margin-bottom: 20px;
+}
+
+.view-div {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.view-div .video-box {
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
+}
+.cameraWrapper {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: black;
+  position: relative;
+  border-radius: 10px;
+}
+
+.cameraImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camSeletWrapper {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 10;
+}
+
+.camSelete {
+  width: 101px;
+  height: 27px;
+  padding: 0 14px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  
+  background: #8F909D;
+  border-radius: 5px;
+  font-size: 13px;
+}
+
+.camSelete img {
+  width: 14px;
+  height: auto;
+}
+
+.camSeletbox {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+
+  width: 102px;
+  height: auto;
+  max-height: 101px;
+
+  border-radius: 5px;
+  background: #8F909D;
+  padding: 4px 8px;
+  
+  overflow: hidden; /* 네이티브 스크롤바 제거 */
+}
+
+.camSeletbox .camLabel {
+  width: 100%;
+  line-height: 21px;
+  border-radius: 3px;
+  font-size: 13px;
+  margin: 4px 0;
+  padding-left: 6px;
+}
+
+.camSeletbox .camLabel:hover {
+  background: #B9C0CA;
+}
+
+.bottom-div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.remote-div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 118px;
+  height: 29px;
+  padding: 0 17px;
+  background-color: #454d72;
+  border-radius: 5px;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.remote-icon {
+  width: auto;
+  height: 20px;
+  margin-right: 5px;
+}
+
+.remote-icon img{
+  height: 100%;
+}
+
+.robotName {
+  position: absolute;
+  width: 120px;
+  height: 35px;
+  line-height: 35px;
+  background: rgba(187, 191, 194, 0.8);
+  border: 1px solid #fdffff;
+  border-radius: 6px;
+  text-align: center;
+  color: #fff;
+  top: 15px;
+  left: 15px;
+  z-index: 10;
+}
+
+.customSelectBox {
+  width: 151px;
+  margin-left: 3px;
+}
+
+.popup {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  z-index: 10;
+}

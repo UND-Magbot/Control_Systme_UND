@@ -1,0 +1,901 @@
+.robotListTab {
+    position: absolute;
+    top: 12px;
+    right: 0px;
+    display: flex;
+    gap: 15px;
+    z-index: 0;
+}
+
+.robotListTab div {
+    background: #1f2232;
+    border-radius: 20px 20px 0 0;
+    
+    width: 156px;
+    height: 64px;
+    
+    
+    font-size: 18px;
+    font-weight: 600;
+
+    color: #656f87;
+    cursor: pointer;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.robotListTab div.active {
+    background: #282d43;
+    color: #9cacca;
+}
+
+
+.RobotStatusTopPosition {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 7px;
+  height: 40px;
+}
+
+.RobotSearch {
+  display: flex;
+  gap: 10px;
+}
+
+.statusListBox {
+  height: 552px;
+}
+
+.status {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+  }
+  
+.status th,
+.status td {
+  padding: 5px 0;
+  height: 50px;
+}
+  
+.status thead tr {
+    background: #202334;
+}
+
+.status thead th {
+    position: relative;
+    color: #9DADCB;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.status thead th img {
+    width: 18px;
+    height: 18px;
+}
+
+.status tbody td {
+    position: relative;
+    color: #b9c1cb;
+    font-size: 14px;
+}
+  
+.status thead th:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    width: 1px;
+    height: 14px;
+    background: rgba(255, 255, 255, 0.25);
+}
+  
+.status tr:nth-child(2n) {
+  background-color: rgba(51, 56, 76, 0.8);
+}
+
+.status tr.selectedRow td {
+  background: #214766;
+}
+    
+.status th:nth-child(1) { width: 5%; }
+.status th:nth-child(2) { width: 12%; }
+.status th:nth-child(3) { width: 16%; }
+.status th:nth-child(4) { width: 18%; }
+.status th:nth-child(5) { width: 12%; }
+.status th:nth-child(6) { width: 10%; }
+.status th:nth-child(7) { width: 10%; }
+
+
+/* ✅ 로봇 인덱스별 색상 지정 */
+.robot-color-1 {
+  color: #FF0000;
+}
+
+.robot-color-2 {
+  color: #00B0EE;
+}
+
+.robot-color-3 {
+  color: #92D050;
+}
+  
+.robot_status_icon_div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.robot_status_icon_div img,
+.status td img {
+  width: auto;
+  height: 20px;
+}
+
+.info-box {
+  border-radius: 50px;
+  width: 65px;
+  height: 23px;
+  line-height: 23px;
+  background: rgba(82, 92, 113, 0.8);
+  font-size:10px;
+  color: #fff;
+  border: 1px solid #9499af;
+  cursor: pointer;
+}
+
+.viewMap {
+  width: 85%;
+  height: 90%;
+  border-radius: 50px;
+  border: 1px solid #8f94a8;
+  font-size: 13px;
+  margin: 0 auto;
+  cursor: pointer;
+}
+
+.viewMap:hover {
+  background-color: var(--robot-color);
+  color: #fff;
+}
+
+.bottomPosition {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pagePosition {
+  justify-items: center;
+  margin-bottom: 15px;
+}
+
+.placePagination {
+  justify-items: center;
+  margin-bottom: 8px;
+}
+
+.robotWorkBox {
+  display: flex;
+  gap: 9px;
+}
+
+.robotWorkCommonBtn {
+  width: 120px;
+  height: 39px;
+
+  border-radius: 8px;
+  padding: 8px 12px;
+
+  background: #3F4256;
+
+  font-size: 12px;
+
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+}
+
+.robotWorkCommonBtn img {
+  height: 12px;
+}
+
+.commonBox {
+  width: 100%;
+  height: 280px;
+  position: relative;
+  border: 1px solid #fff;
+  border-radius: 12px;
+  font-size: 14px;
+  overflow: hidden;
+  position: relative;
+}
+
+
+/* camera&map */
+
+.floorBox,
+.robotBox {
+  line-height: 30px;
+  border: 1px solid #fff;
+  border-radius: 5px;
+  text-align: center;
+  z-index: 10;
+}
+
+.floorBox{
+  position: absolute;
+  width: 40px;
+  top: 15px;
+  left: 15px;
+}
+
+.robotBox {
+  position: absolute;
+  width: 80px;
+  top: 15px;
+  left: 15px;
+}
+
+.zoomPosition,
+.cameraPosition {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+}
+
+.zoomFlex,
+.cameraFlex {
+  display: flex;
+  gap: 8px;
+}
+
+.zoomBox,
+.camBox {
+  border: 1px solid #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+
+.zoomBox:hover,
+.camBox:hover,
+.camBox.active {
+  background: #747683;
+}
+
+.zoomBox {
+  width: 33px;
+  height: 33px;
+  border-radius: 50px;
+}
+
+.zoomBox img {
+  height: 16px;
+}
+
+.camBox {
+  width: 80px;
+  line-height: 32px;
+  border-radius: 5px;
+}
+
+
+.RobotListTab {
+  background: #282d43;
+  border-radius: 10px;
+  padding: 20px;
+  
+  width: 100%;
+  height: 730px;
+  
+  display: flex;
+  justify-content: space-between;
+  gap: 50px;
+}
+
+.RobotStatusList {
+  width: 1010px;
+  height: 401px;
+}
+
+.cameraMapView {
+  width: 500px;
+  height: 270px;
+}
+
+
+.RobotStatusList h2,
+.cameraMapView h2,
+.robotPlaceBox h2,
+.placeTopBar h2 {
+  font-weight: 500;
+  margin: 0;
+  color: #92d4f4;
+}
+
+.cameraMapView {
+  margin-bottom: 15px;
+}
+
+.robotPlaceBox {
+  margin-bottom: 15px;
+  height: 40px;
+}
+
+.cameraMapView h2,
+.robotPlaceBox h2 {
+  margin-bottom: 15px;
+}
+
+.modalOpenBox {
+  display: flex;
+  justify-content: space-between;
+}
+
+.customRemoteDiv,
+.customPathDiv {
+  height: 33px;
+}
+
+.cameraWrapper {
+  width: 100%;
+  aspect-ratio: 16 / 8.7;   /* 📌 핵심! 영상 비율을 강제함 */
+  overflow: hidden;
+  background: black;
+  border-radius: 10px;
+  position: relative;
+}
+.cameraImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;   /* 📌 contain: 찢어지지 않음 (cover는 잘릴 수 있음) */
+  display: block;
+}
+
+
+
+.camSelectWrapper {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 10;
+}
+
+.camSelectButton {
+  width: 101px;
+  height: 27px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #8F909D;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.camSelectButton img {
+  width: 14px;
+  height: auto;
+}
+
+.camSelectMenu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  width: 102px;
+  max-height: 120px;
+  border-radius: 5px;
+  background: #8F909D;
+  padding: 4px 8px;
+  overflow: hidden;
+}
+
+.camSelectInner {
+  max-height: 120px;
+  overflow-y: scroll;
+  scrollbar-width: none;
+}
+
+.camSelectInner::-webkit-scrollbar {
+  display: none;
+}
+
+.camOption {
+  width: 100%;
+  line-height: 21px;
+  border-radius: 3px;
+  font-size: 13px;
+  margin: 4px 0;
+  padding-left: 6px;
+  cursor: pointer;
+}
+
+.camOption:hover,
+.camOptionActive {
+  background: #B9C0CA;
+}
+
+.camScrollTrack {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 4px;
+  width: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.camScrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  border-radius: 999px;
+  background: #eaeaed;
+}
+
+/* selectBox */
+.selecteWrapper {
+    position: relative;
+}
+
+.selecte {
+    width: 140px;
+    background: #33384c; 
+    border: 1px solid #8a96ac;
+    padding:5px 14px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: 13px;
+    height: 33px;
+}
+
+.selecte img {
+    height: 40%;
+}
+
+.selectebox {
+    width: 140px;
+    height: auto;
+    padding: 10px;
+    background: #202334;
+    border-radius: 5px;
+    position: absolute;
+    top: 45px;
+    cursor: pointer;
+    z-index: 20;
+    overflow: hidden;
+}
+
+.selecteInner {
+    max-height: 175px;
+    overflow-y: scroll;
+    scrollbar-width: none;
+}
+
+.selecteInner::-webkit-scrollbar {
+    display: none;
+}
+
+.selecteInner div {
+    width: 100%;
+    height: 35px;
+    line-height: 35px;
+    padding: 0 10px;
+    color: #fff;
+    font-size: 13px;
+}
+
+.selecteInner div:hover {
+    background: #d2d3d7;
+    border-radius: 4px;
+    width: 100%;
+    height: 35px;
+    padding: 0 10px;
+    line-height: 35px;
+    color: #16192c;
+}
+
+.selecteScrollTrack {
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    right: 4px;
+    width: 6px;
+    border-radius: 999px;
+    background: transparent;
+}
+
+.selecteScrollThumb {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    border-radius: 999px;
+    background: #eaeaed;
+}
+
+.place,
+.path {
+  background: #282d43;
+  border-radius: 10px;
+  width: 100%;
+  height: 730px;
+  padding: 20px;
+  z-index: 1;
+  position: absolute;
+  top: 77px;
+}
+
+
+.container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.container img {
+    width: 80px;
+}
+
+.container .topTitle {
+    margin-top: 15px;
+    font-size: 35px;
+    font-weight: 600;
+    color: #b0b5bc;
+}
+
+.container .contentText {
+    margin-top: 15px;
+    font-size: 15px;
+    font-weight: 400;
+    color: #aaadbf;
+}
+
+/* 장소관리 css */
+
+/* place 탭 레이아웃: 좌(리스트) + 우(맵) */
+.placeWrap {
+  width: 100%;
+  height: 730px;
+  background: #282d43;
+  border-radius: 10px;
+  padding: 20px;
+
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.placeLeft {
+  flex: 1 1 40%;
+  min-width: 0;
+}
+
+.placeRight {
+  flex: 1 1 60%;
+  min-width: 0;
+}
+
+/* 타이틀 라인: h2 + 필터 2개 */
+.placeTopBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  height: 40px;
+}
+
+.placeFilters {
+  display: flex;
+  gap: 10px;
+}
+
+/* 장소 테이블: 기존 status 톤 유지, 열 폭만 별도 지정 */
+.placeTable th:nth-child(1) { width: 6%; }
+.placeTable th:nth-child(2) { width: 18%; } /* 로봇명 */
+.placeTable th:nth-child(3) { width: 12%; } /* 층별 */
+.placeTable th:nth-child(4) { width: 34%; } /* 장소명 */
+.placeTable th:nth-child(5) { width: 30%; } /* 좌표 */
+
+/* 맵 카드: 기존 commonBox 톤을 기반으로 스크린샷 형태에 맞춤 */
+.placeMapCard {
+  width: 100%;
+  max-width: 928px;
+  height: 522px;
+
+  border-radius: 18px;
+  
+  background: #262A3E;
+  
+  overflow: hidden;
+  position: relative;
+  
+  box-sizing: border-box;
+}
+
+.placeRobotMarkerLabel {
+  background: #FF0000;
+  border-radius: 10px;
+  padding: 2px 8px;
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* 하단 안내 문구 */
+.placeHint {
+  margin-top: 20px;
+  font-size: 12px;
+  color: #9DADCB;
+  opacity: 0.9;
+  text-align: right;
+}
+
+.placePrimaryBtn {
+  width: 120px;
+  height: 35px;
+  border-radius: 8px;
+  padding: 8px 14px;
+
+  background: #284A68;   /* 첨부 이미지의 장소 등록 버튼 톤 */
+  color: #fff;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  cursor: pointer;
+  user-select: none;
+}
+
+.placePrimaryBtn:disabled {
+  opacity: 0.4;
+  background: #3a3f55; /* 기존 톤 유지 */
+}
+
+/* 아이콘을 이미지로 쓰지 않고 체크 문자로 처리할 때 */
+.placePrimaryBtn img {
+  width: 11px;
+  height: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== 장소 관리 탭 ===== */
+.placeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 40px;
+}
+
+.placeActions {
+  display: flex;
+  gap: 10px;
+}
+
+.placeAddBtn {
+  width: 110px;
+  height: 29px;
+  border-radius: 6px;
+  padding: 8px 12px;
+
+  background: #196188;
+  border: 1px solid #0D86B9;
+
+  font-size: 12px;
+  color: #fff;
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+.placeAddBtn img {
+  height: 12px;
+}
+
+.placeGrayBtn {
+  width: 110px;
+  height: 29px;
+  border-radius: 6px;
+  padding: 8px 12px;
+
+  background: #3F4256;
+  border: 1px solid rgba(255,255,255,0.25);
+
+  font-size: 12px;
+  color: #fff;
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+.placeGrayBtn img {
+  height: 12px;
+}
+
+.placeListBox {
+  height: 565px;
+}
+
+.placeTable {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+}
+
+.placeTable thead tr {
+  background: #202334;
+}
+
+.placeTable th,
+.placeTable td {
+  padding: 5px 0;
+  height: 50px;
+}
+
+.placeTable th {
+  position: relative;
+  color: #9DADCB;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.placeTable tbody td {
+  color: #b9c1cb;
+  font-size: 14px;
+}
+
+.placeTable thead th:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.placeTable tr:nth-child(2n) {
+  background-color: rgba(51, 56, 76, 0.8);
+}
+
+.selectedPlaceRow td {
+  background: #214766;
+}
+
+.coordText {
+  display: inline-block;
+  margin: 0 6px;
+  font-size: 12px;
+  color: #cfd6e6;
+}
+
+/* =========================
+   ✅ 경로 관리(Path) 탭
+========================= */
+
+.pathWrap {
+  width: 100%;
+  height: 730px;
+  background: #282d43;
+  border-radius: 10px;
+  padding: 20px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pathTopBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 40px;
+}
+
+.pathTopBar h2 {
+  font-weight: 500;
+  margin: 0;
+  color: #92d4f4;
+}
+
+.pathFilters {
+  display: flex;
+  gap: 10px;
+}
+
+.pathListBox {
+  height: 565px; /* 이미지 테이블 영역 톤 맞춤 */
+}
+
+.pathPagination {
+  justify-items: center;
+  margin-bottom: 8px;
+}
+
+.pathBottomBar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 좌측 "경로 등록" 버튼 (이미지 톤) */
+.pathPrimaryBtn {
+  width: 120px;
+  height: 35px;
+  border-radius: 8px;
+  padding: 8px 14px;
+
+  background: #284A68;
+  color: #fff;
+
+  font-size: 13px;
+  font-weight: 600;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  cursor: pointer;
+  user-select: none;
+}
+
+.pathPrimaryBtn img {
+  width: 11px;
+  height: 11px;
+}
+
+/* 경로 테이블 컬럼 폭 (이미지 기준) */
+.pathTable th:nth-child(1) { width: 5%; }   /* 체크 */
+.pathTable th:nth-child(2) { width: 10%; }  /* 로봇명 */
+.pathTable th:nth-child(3) { width: 12%; }  /* 작업유형 */
+.pathTable th:nth-child(4) { width: 12%; }  /* 경로명 */
+.pathTable th:nth-child(5) { width: 46%; }  /* 경로순서 */
+.pathTable th:nth-child(6) { width: 15%; }  /* 변경일시 */
+
+/* 경로순서 셀: 한 줄로 길게 + 넘치면 ... */
+.pathOrderCell {
+  text-align: left;
+  padding: 0 10px !important;
+}
+
+.pathOrderText {
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

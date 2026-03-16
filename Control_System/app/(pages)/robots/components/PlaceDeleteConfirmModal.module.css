@@ -1,0 +1,83 @@
+/* 모달 delete 추가 알림 css */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 90;
+}
+
+.box {
+  width: 481px;
+  height: 257px;
+  border-radius: 14px;
+  
+  background: #282d43ff;
+  
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+   
+  position: relative;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+
+  position: absolute;
+  top: 26px;
+  right: 23px;
+}
+
+.closeBtn img {
+  width: 19px;
+  height: 19px;
+}
+
+.message {
+  margin: 100px 0 50px 0;
+  
+  text-align: center;
+  white-space: pre-line;
+  font-size: 16px; 
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btnItemCommon {
+  width: 167px;
+  height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  border-radius: 9px;
+  border: none;
+  cursor: pointer;
+
+  color: #ffffff;
+}
+
+.btnItemCommon img {
+  width: 13px;
+  height: 14px;
+
+  margin-right: 15px;
+}
+
+.btnBgRed {
+  border: 1px solid #BF0E14;
+  background: #941621;
+  margin-right: 20px;
+}
+
+.btnBgBlue {
+  border: 1px solid #0E85B7;
+  background: #196189;
+}
