@@ -10,4 +10,6 @@ services:
     build: ./fastapi-starter
     container_name: control-backend
     network_mode: host
+    volumes:
+      - ./fastapi-starter/data:/app/data
     restart: unless-stopped
