@@ -28,6 +28,57 @@ sock.bind(("", 30001))
 # 위치 폴링 (추가)
 # ============================================================
 latest_position = {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
+latest_nav_status = {"status": None, "timestamp": 0}
+
+def nav_poll_loop():
+    global latest_nav_status
+    nav_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    nav_sock.settimeout(1.0)
+
+    print("📡 네비 상태 폴링 시작")
+
+    while True:
+        try:
+            asdu = {
+                "PatrolDevice": {
+                    "Type": 1007,
+                    "Command": 1,
+                    "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "Items": {}
+                }
+            }
+            asdu_bytes = json.dumps(asdu).encode("utf-8")
+            asdu_len = len(asdu_bytes)
+            header = struct.pack(
+                "<4BHHB7B",
+                0xEB, 0x91, 0xEB, 0x90,
+                asdu_len, 1, 0x01,
+                *(0x00,) * 7
+            )
+            nav_sock.sendto(header + asdu_bytes, (ROBOT_IP, ROBOT_PORT))
+
+            data, addr = nav_sock.recvfrom(4096)
+            try:
+                msg = json.loads(data.decode())
+            except:
+                msg = json.loads(data[16:].decode())
+
+            pd = msg.get("PatrolDevice", {})
+            if pd.get("Type") == 1007 and pd.get("Command") == 1:
+                items = pd.get("Items", {})
+                status = items.get("Status", items.get("State"))
+                if status is not None:
+                    latest_nav_status = {
+                        "status": status,
+                        "timestamp": time.time()
+                    }
+        except socket.timeout:
+            pass
+        except Exception as e:
+            print("[NAV POLL ERR]", e)
+
+        time.sleep(2)
+
 
 def position_poll_loop():
     global latest_position
@@ -296,6 +347,9 @@ def udp_receiver_loop():
             if action == "POSITION":
                 server_sock.sendto(json.dumps(latest_position).encode("utf-8"), addr)
 
+            elif action == "NAV_STATUS":
+                server_sock.sendto(json.dumps(latest_nav_status).encode("utf-8"), addr)
+
             elif action == "UP": hold_motion(move_forward, duration=1.0)
             elif action == "DOWN": hold_motion(move_backward, duration=1.0)
             elif action == "LEFT": hold_motion(move_left, duration = 1.5, interval = 0.0001)
@@ -338,6 +392,7 @@ def udp_receiver_loop():
 # 실행 시작
 # ============================================================
 threading.Thread(target=position_poll_loop, daemon=True).start()
+threading.Thread(target=nav_poll_loop, daemon=True).start()
 threading.Thread(target=udp_receiver_loop, daemon=True).start()
 
 print("✅ 로봇 제어 시스템 실행 중...")

@@ -300,32 +300,24 @@ def request_navigation(sock):
 
 def nav_thread():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("0.0.0.0", PC_PORT_NAV))
-    sock.settimeout(0.5)
+    sock.settimeout(2.0)
 
     global robot_nav
     last_status = None
 
-    print(f"📡 네비 Listener 시작 (PORT={PC_PORT_NAV})")
+    print(f"📡 네비 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
     while True:
         try:
-            request_navigation(sock)
+            msg = json.dumps({"action": "NAV_STATUS"}).encode("utf-8")
+            sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
+
             data, addr = sock.recvfrom(4096)
+            nav = json.loads(data.decode("utf-8"))
 
-            try:
-                msg = json.loads(data.decode())
-            except:
-                msg = json.loads(data[16:].decode())
-
-            pd = msg.get("PatrolDevice", {})
-            if pd.get("Type") != 1007 or pd.get("Command") != 1:
-                continue
-
-            items = pd.get("Items", {})
-            status = items.get("Status", items.get("State"))
-
+            status = nav.get("status")
             if status is None:
+                time.sleep(REQ_INTERVAL_POS)
                 continue
 
             if last_status != status:
