@@ -46,6 +46,13 @@ def save_current_waypoint():
         "total": len(waypoints),
     }
 
+@point.post("/clearpoints")
+def clear_waypoints():
+    with open(WAYPOINT_FILE, "w") as f:
+        json.dump([], f, indent=4)
+    return {"status": "ok", "msg": "웨이포인트 초기화 완료"}
+
+
 # JSON 파일 존재하지 않을 경우 생성
 os.makedirs("./data", exist_ok=True)
 if not os.path.exists(WAYPOINT_FILE):

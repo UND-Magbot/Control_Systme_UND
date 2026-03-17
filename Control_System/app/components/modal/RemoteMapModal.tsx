@@ -475,6 +475,11 @@ const batteryPercentage =
   const fastHandle = () => fetch(`${API_BASE}/robot/fast`, { method: "POST" });
   const handleWorkStart = () => fetch(`${API_BASE}/nav/startmove`, {method: "POST"});
   const handlesavePoint = () => fetch(`${API_BASE}/nav/savepoint`, {method: "POST"});
+  const handleClearPoints = () => {
+    if (confirm("웨이포인트를 초기화하시겠습니까?")) {
+      fetch(`${API_BASE}/nav/clearpoints`, {method: "POST"});
+    }
+  };
 
 // fresh
 type FlashTarget = "front" | "rear";
@@ -608,6 +613,7 @@ useEffect(() => {
             <div>원격 제어 <span>(실시간 카메라 및 위치 맵)</span></div>
           </div>
           <div>
+            <button type='button' className={styles.workStart} onClick={handleClearPoints}>위치 초기화</button>
             <button type='button' className={styles.workStart} onClick={handlesavePoint}>위치 저장</button>
             <button type='button' className={styles.workStart} onClick={handleWorkStart}>작업 시작</button>
             <button type='button' className={styles.closeBtn} onClick={handleClose}>✕</button>
