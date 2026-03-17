@@ -264,6 +264,7 @@ def status_thread():
     while True:
         if time.time() - last_hb > 1:
             send_heartbeat(sock)
+            request_position(sock)
             last_hb = time.time()
 
         try:
@@ -279,6 +280,13 @@ def status_thread():
             if pd["Type"] == 1002 and pd["Command"] == 5:
                 robot_status["battery"] = pd["Items"].get("BatteryStatus", {})
                 robot_status["timestamp"] = time.time()
+
+            if pd["Type"] == 1007 and pd["Command"] == 2:
+                items = pd["Items"]
+                robot_position["x"] = items.get("PosX", 0.0)
+                robot_position["y"] = items.get("PosY", 0.0)
+                robot_position["yaw"] = items.get("Yaw", 0.0)
+                robot_position["timestamp"] = time.time()
 
         except socket.timeout:
             pass
