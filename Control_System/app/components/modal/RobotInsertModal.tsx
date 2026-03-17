@@ -3,6 +3,7 @@
 import styles from './Modal.module.css';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
+import { API_BASE } from "@/app/config";
 
 
 export default function RobotInsertModal({ 
@@ -129,7 +130,7 @@ export default function RobotInsertModal({
             limit_battery: returnBattery
         };
         try {
-            const res = await fetch("http://192.168.0.21:3002/DB/RobotInsert", {
+            const res = await fetch(`${API_BASE}/DB/RobotInsert`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

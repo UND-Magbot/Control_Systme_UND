@@ -1,6 +1,6 @@
 import type { RobotRowData } from "@/app/type";
 
-const API_BASE = "http://192.168.0.21:3002";
+const API_BASE = process.env.API_BASE ?? "http://localhost:8000";
 
 export default async function getRobots(): Promise<RobotRowData[]> {
   let raw: any[];

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./PlaceCrudModal.module.css";
 import type { RobotRowData } from "@/app/type";
 import { mockPlaceRows } from "@/app/mock/robotPlace_data";
+import { API_BASE } from "@/app/config";
 
 export type PlaceRowData = {
   id: number;
@@ -110,7 +111,7 @@ export default function PlaceCrudModal({
   useEffect(() => {
   if (!isOpen) return;
 
-  fetch("http://192.168.0.21:3002/DB/robots")
+  fetch(`${API_BASE}/DB/robots`)
     .then(res => res.json())
     .then(data => {
       setDbRobots(data);
@@ -202,8 +203,8 @@ export default function PlaceCrudModal({
       const isEditMode = mode === "edit" && initial?.id;
 
       const url = isEditMode
-        ? `http://192.168.0.21:3002/DB/places/${initial.id}`   // 🔥 수정
-        : `http://192.168.0.21:3002/DB/places`;                // 🔥 신규
+        ? `${API_BASE}/DB/places/${initial.id}`   // 🔥 수정
+        : `${API_BASE}/DB/places`;                // 🔥 신규
 
       const method = isEditMode ? "PUT" : "POST";
 
@@ -267,7 +268,7 @@ export default function PlaceCrudModal({
 
   // useEffect(() => {
   //     const loadRobotPos = () => {
-  //         fetch("http://192.168.0.21:3002/robot/position")
+  //         fetch("http://localhost:8000/robot/position")
   //             .then(res => res.json())
   //             .then(data => setRobotPos(data))
   //             .catch(() => {});

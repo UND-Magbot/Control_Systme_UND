@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { RobotRowData, Camera, Floor, Video } from '@/app/type';
 import styles from './RobotList.module.css';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
+import { API_BASE } from "@/app/config";
 
 type CombinedProps = {
     selectedRobotId: number | null;
@@ -54,7 +55,7 @@ export default function CameraView({
         ws.onclose = () => console.log("🔥 Thermal WS closed");
     };
 
-    const [cameraStream, setCameraStream] = useState("http://192.168.0.21:3002/Video/1");
+    const [cameraStream, setCameraStream] = useState(`${API_BASE}/Video/1`);
     const handleCameraTab = (idx: number, cam: Camera) => {
         setSelectedCam(cam);
         setCameraTabActiveIndex(idx);
@@ -71,7 +72,7 @@ export default function CameraView({
         if (wsRef.current) wsRef.current.close();
         setThermalUrl(null);
 
-        const url = `http://192.168.0.21:3002/Video/${cam.id}`;
+        const url = `${API_BASE}/Video/${cam.id}`;
         setCameraStream(url);
         setIsOpenCam(false);
     };

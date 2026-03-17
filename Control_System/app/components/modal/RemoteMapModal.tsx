@@ -4,6 +4,7 @@ import styles from './Modal.module.css';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { RobotRowData, Video, Camera, PrimaryViewType } from '@/app/type';
 import { VideoStatus, RemotePad, ModalRobotSelect } from '@/app/components/button';
+import { API_BASE } from "@/app/config";
 
 type RobotViewModalProps = {
   isOpen: boolean;
@@ -69,7 +70,7 @@ export default function RemoteModal({
   const [isCamOpen, setIsCamOpen] = useState(false);
   const camWrapperRef = useRef<HTMLDivElement>(null);
   const [selectedCam, setSelectedCam] = useState<number | null>(null);
-  const [cameraStream, setCameraStream] = useState("http://192.168.0.21:3002/Video/1");
+  const [cameraStream, setCameraStream] = useState(`${API_BASE}/Video/1`);
 
   //"open 시 1회 초기화” + “모달 내 변경은 유지” 적용
   const didInitOnOpenRef = useRef(false);
@@ -149,7 +150,7 @@ export default function RemoteModal({
   // 로봇 위치 주기적 갱신
   // useEffect(() => {
   //   const fetchRobotPos = () => {
-  //     fetch("http://192.168.0.21:3002/robot/position")
+  //     fetch("http://localhost:8000/robot/position")
   //       .then(res => res.json())
   //       .then(data => setRobotPos(data))
   //       .catch(() => {});
@@ -328,7 +329,7 @@ useEffect(() => {
 
 // useEffect(() => {
 //   const fetchStatus = () => {
-//     fetch("http://192.168.0.21:3002/robot/status")
+//     fetch("http://localhost:8000/robot/status")
 //       .then(res => res.json())
 //       .then(data => setRobotStatus(data))
 //       .catch(() => {});
@@ -467,13 +468,13 @@ const batteryPercentage =
 
 
   /* --- robot control API --- */
-  const standHandle = () => fetch("http://192.168.0.21:3002/robot/stand", { method: "POST" });
-  const sitHandle = () => fetch("http://192.168.0.21:3002/robot/sit", { method: "POST" });
-  const slowHandle = () => fetch("http://192.168.0.21:3002/robot/slow", { method: "POST" });
-  const normalHandle = () => fetch("http://192.168.0.21:3002/robot/normal", { method: "POST" });
-  const fastHandle = () => fetch("http://192.168.0.21:3002/robot/fast", { method: "POST" });
-  const handleWorkStart = () => fetch("http://192.168.0.21:3002/nav/startmove", {method: "POST"});
-  const handlesavePoint = () => fetch("http://192.168.0.21:3002/nav/savepoint", {method: "POST"});
+  const standHandle = () => fetch(`${API_BASE}/robot/stand`, { method: "POST" });
+  const sitHandle = () => fetch(`${API_BASE}/robot/sit`, { method: "POST" });
+  const slowHandle = () => fetch(`${API_BASE}/robot/slow`, { method: "POST" });
+  const normalHandle = () => fetch(`${API_BASE}/robot/normal`, { method: "POST" });
+  const fastHandle = () => fetch(`${API_BASE}/robot/fast`, { method: "POST" });
+  const handleWorkStart = () => fetch(`${API_BASE}/nav/startmove`, {method: "POST"});
+  const handlesavePoint = () => fetch(`${API_BASE}/nav/savepoint`, {method: "POST"});
 
 // fresh
 type FlashTarget = "front" | "rear";
@@ -483,14 +484,14 @@ const sendFlashCommand = async (target: FlashTarget, value: FlashValue) => {
   if(target == "front")
   {
     console.log("front");
-    if(value == "on") { fetch("http://192.168.0.21:3002/robot/front_on", { method: "POST" }); }
-    else{ fetch("http://192.168.0.21:3002/robot/front_off", { method: "POST" }); }
+    if(value == "on") { fetch(`${API_BASE}/robot/front_on`, { method: "POST" }); }
+    else{ fetch(`${API_BASE}/robot/front_off`, { method: "POST" }); }
   }
   else
   {
     console.log("rear");
-    if(value == "on") { fetch("http://192.168.0.21:3002/robot/rear_on", { method: "POST" }); }
-    else{ fetch("http://192.168.0.21:3002/robot/rear_off", { method: "POST" }); }
+    if(value == "on") { fetch(`${API_BASE}/robot/rear_on`, { method: "POST" }); }
+    else{ fetch(`${API_BASE}/robot/rear_off`, { method: "POST" }); }
   }
 };
 
@@ -519,7 +520,7 @@ const selectedCamLabel = useMemo(() => {
   //   setSelectedCam(camId);
   //   setCameraTabActiveIndex(idx);
 
-  //   const newUrl = `http://192.168.0.21:3002/Video/${camId}`;
+  //   const newUrl = `http://localhost:8000/Video/${camId}`;
   //   setCameraStream(newUrl);
   //   setIsCamOpen(false);
   // };
@@ -543,7 +544,7 @@ const handleCameraTab = (idx: number, cam: Camera) => {
   if (wsRef.current) wsRef.current.close();
   setThermalUrl(null);
 
-  const nextUrl = cam.webrtcUrl || `http://192.168.0.21:3002/Video/${cam.id}`;
+  const nextUrl = cam.webrtcUrl || `${API_BASE}/Video/${cam.id}`;
   setCameraStream(nextUrl);
   setIsCamOpen(false);
 };
@@ -582,7 +583,7 @@ useEffect(() => {
   setActiveCam(baseCam.id);
   setCameraTabActiveIndex(nextIdx);
 
-  const nextUrl = baseCam.webrtcUrl || `http://192.168.0.21:3002/Video/${baseCam.id}`;
+  const nextUrl = baseCam.webrtcUrl || `${API_BASE}/Video/${baseCam.id}`;
   setCameraStream(nextUrl);
   setIsCamOpen(false);
 }, [isOpen, initialCam?.id, initialCamIndex, camera, activeCam]);

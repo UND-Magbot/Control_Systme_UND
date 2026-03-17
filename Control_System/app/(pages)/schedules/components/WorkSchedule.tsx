@@ -8,6 +8,7 @@ import ScheduleInsert from './ScheduleInsert';
 import ScheduleDetail from './ScheduleDetail';
 import type { RobotRowData } from '@/app/type';
 import { mockScheduleRows, type ScheduleStatus } from "@/app/mock/schedule_data";
+import { API_BASE } from "@/app/config";
 
 
 // 주간
@@ -240,7 +241,7 @@ export default function Page({ robots }: RobotScheduleProps) {
     useEffect(() => {
         const fetchSchedules = async () => {
             try {
-            const res = await fetch("http://192.168.0.21:3002/DB/schedule");
+            const res = await fetch(`${API_BASE}/DB/schedule`);
             const data = await res.json();
             setSchedules(data);
             } catch (e) {

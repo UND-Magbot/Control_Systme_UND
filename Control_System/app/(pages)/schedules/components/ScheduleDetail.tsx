@@ -7,6 +7,7 @@ import DeleteConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import RepeatConfirmModal, { type RepeatConfirmMode, type RepeatConfirmScope } from '@/app/(pages)/schedules/components/RepeatConfirmModals';
 import MiniCalendar from './MiniCalendar';
+import { API_BASE } from "@/app/config";
 
 
 type ScheduleDetailProps = {
@@ -495,7 +496,7 @@ export default function ScheduleDetail({
     useEffect(() => {
       if (!isOpen) return;
 
-      fetch("http://192.168.0.21:3002/robots")
+      fetch(`${API_BASE}/robots`)
         .then((res) => res.json())
         .then((data) =>
           setRobots(data.map((r: any, i: number) => ({
@@ -510,7 +511,7 @@ export default function ScheduleDetail({
    useEffect(() => {
     if (!isOpen) return;
 
-    fetch("http://192.168.0.21:3002/DB/getpath")
+    fetch(`${API_BASE}/DB/getpath`)
       .then((res) => res.json())
       .then((data) =>
         setPathOptions(
@@ -530,7 +531,7 @@ export default function ScheduleDetail({
 
     setLoading(true);
 
-    fetch(`http://192.168.0.21:3002/DB/schedule/${event.id}`)
+    fetch(`${API_BASE}/DB/schedule/${event.id}`)
       .then(res => res.json())
       .then(data => {
         const start = new Date(data.StartDate);

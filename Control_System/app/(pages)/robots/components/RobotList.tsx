@@ -20,6 +20,7 @@ import PlaceDeleteConfirmModal from "./PlaceDeleteConfirmModal";
 import PlaceMapView from "./PlaceMapView";
 import PathCrudModal from "@/app/(pages)/robots/components/PathCrudModal";
 import PathDeleteConfirmModal from "@/app/(pages)/robots/components/PathDeleteConfirmModal";
+import { API_BASE } from "@/app/config";
 
 type FixedScrollbarArgs = {
   enabled: boolean;
@@ -619,7 +620,7 @@ const resetCurrentPage = () => {
 
   const fetchPlaces = async () => {
     try {
-      const res = await fetch("http://192.168.0.21:3002/DB/places");
+      const res = await fetch(`${API_BASE}/DB/places`);
       const data = await res.json();
       console.log(data)
       const mapped: PlaceRow[] = data.map((p: any) => ({
@@ -925,7 +926,7 @@ const resetCurrentPage = () => {
   const fetchPathsFromDB = async () => {
     console.log("🚀 fetchPathsFromDB 호출됨");
     try {
-      const res = await fetch("http://192.168.0.21:3002/DB/getpath");
+      const res = await fetch(`${API_BASE}/DB/getpath`);
       if (!res.ok) throw new Error("경로 목록 조회 실패");
 
       const data = await res.json();
@@ -957,7 +958,7 @@ const resetCurrentPage = () => {
     pathOrder: string;
   }) => {
     try {
-      const res = await fetch("http://192.168.0.21:3002/DB/path", {
+      const res = await fetch(`${API_BASE}/DB/path`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

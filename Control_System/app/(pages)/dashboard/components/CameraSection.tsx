@@ -6,6 +6,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import {RobotSelectBox, PlusBtn} from '@/app/components/button';
 import RemoteMapModal from "@/app/components/modal/RemoteMapModal";
+import { API_BASE } from "@/app/config";
 
 type CombinedProps = {
   cameras: Camera[];
@@ -39,7 +40,7 @@ export default function CameraSection({
   const [remoteModalOpen, setRemoteModalOpen] = useState(false);
 
   // 선택된 카메라 스트림 URL 상태 기본값: 첫 번째 카메라
-  const [cameraStream, setCameraStream] = useState("http://192.168.0.21:3002/Video/1");
+  const [cameraStream, setCameraStream] = useState(`${API_BASE}/Video/1`);
 
   const activeCam = cameras[cameraTabActiveIndex];
 

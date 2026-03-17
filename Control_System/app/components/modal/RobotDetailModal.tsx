@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef, useMemo  } from 'react';
 import type { RobotRowData } from '@/app/type';
 import type { RobotDraft } from "@/app/(pages)/robots/components/RobotList";
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
+import { API_BASE } from "@/app/config";
 
 type DetailModalProps = {
     isOpen: boolean;
@@ -34,7 +35,7 @@ export default function RobotDetailModal({
         
         console.log("🚀 fetch robot detail id:", selectedRobotId);
 
-        fetch(`http://192.168.0.21:3002/DB/robots/${selectedRobotId}`)
+        fetch(`${API_BASE}/DB/robots/${selectedRobotId}`)
             .then((res) => {
                 if (!res.ok) {
                     throw new Error("로봇 상세 조회 실패");
@@ -229,7 +230,7 @@ export default function RobotDetailModal({
 
         try {
             const res = await fetch(
-            `http://192.168.0.21:3002/DB/robots/${selectedRobotId}`,
+            `${API_BASE}/DB/robots/${selectedRobotId}`,
             { method: "DELETE" }
             );
 
@@ -300,7 +301,7 @@ export default function RobotDetailModal({
 
         try {
             const res = await fetch(
-            `http://192.168.0.21:3002/DB/robots/${selectedRobotId}`,
+            `${API_BASE}/DB/robots/${selectedRobotId}`,
             {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },

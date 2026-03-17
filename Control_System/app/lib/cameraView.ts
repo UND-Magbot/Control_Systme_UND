@@ -1,6 +1,5 @@
 import type { Camera } from "@/app/type";
-
-const API_BASE = process.env.API_BASE; // 서버 컴포넌트용 환경변수
+import { API_BASE } from "@/app/config";
 
 // 서버에서 카메라 목록 가져오고 → 가공해서 반환
 export default async function getCameras(): Promise<Camera[]> {
@@ -15,8 +14,8 @@ export default async function getCameras(): Promise<Camera[]> {
   // const raw = await res.json();
   
   const raw = [
-    { id: 1, label: "CAM 1", type:"http", webrtcUrl: "http://192.168.0.21:3002/Video/1" },
-    { id: 2, label: "CAM 2", type:"http", webrtcUrl: "http://192.168.0.21:3002/Video/2" },
+    { id: 1, label: "CAM 1", type:"http", webrtcUrl: `${API_BASE}/Video/1` },
+    { id: 2, label: "CAM 2", type:"http", webrtcUrl: `${API_BASE}/Video/2` },
     { id: 3, label: "CAM 3", type:"ws", webrtcUrl: "ws://192.168.0.154:8765" }
     // ,
     // { id: 4, label: "CAM 3", type:"ws", webrtcUrl: "ws://192.168.0.154:8765" },

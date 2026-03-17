@@ -5,6 +5,7 @@ import { ZoomControl, FloorSelectBox, RobotPathBtn, PlusBtn } from "@/app/compon
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { Floor, RobotRowData, Video, Camera } from '@/app/type'
 import { createZoomHandler } from "@/app/utils/zoom";
+import { API_BASE } from "@/app/config";
 
 import React from 'react';
 
@@ -39,7 +40,7 @@ export default function MapSection({ floors, robots, video, cameras }:FloorSelec
     
       useEffect(() => {
         const fetchRobotPos = () => {
-          fetch("http://192.168.0.21:3002/robot/position")
+          fetch(`${API_BASE}/robot/position`)
             .then(res => res.json())
             .then(data => setRobotPos(data))
             .catch(() => {});
