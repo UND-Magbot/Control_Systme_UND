@@ -14,10 +14,10 @@ WAYPOINT_FILE = "./data/waypoints.json"
 @point.post("/savepoint")
 def save_current_waypoint():
 
-    # 위치 쓰레드에서 수집 중인 전역 변수 사용
-    current_pos = app.main.robot_position
+    # 🔥 단발 위치 요청 사용 (가장 정확)
+    current_pos = app.main.get_robot_position_once()
 
-    if current_pos["timestamp"] == 0:
+    if current_pos is None:
         return {"status": "error", "msg": "로봇 위치 응답 없음"}
 
     waypoint = {
