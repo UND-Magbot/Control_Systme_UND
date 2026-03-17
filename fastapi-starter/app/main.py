@@ -204,31 +204,28 @@ def request_position(sock):
     sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
 
 
+RECEIVER_IP = "10.21.31.106"
+RECEIVER_PORT = 40000
+
 def position_thread():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("0.0.0.0", PC_PORT_POS))
-    sock.settimeout(0.5)
+    sock.settimeout(2.0)
 
-    print(f"📡 위치 Listener 시작 (PORT={PC_PORT_POS})")
+    print(f"📡 위치 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
     while True:
         try:
-            request_position(sock)
+            msg = json.dumps({"action": "POSITION"}).encode("utf-8")
+            sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
+
             data, addr = sock.recvfrom(4096)
+            pos = json.loads(data.decode("utf-8"))
 
-            try:
-                msg = json.loads(data.decode())
-            except:
-                msg = json.loads(data[16:].decode())
-
-            pd = msg["PatrolDevice"]
-
-            if pd["Type"] == 1007 and pd["Command"] == 2:
-                items = pd["Items"]
-                robot_position["x"] = items.get("PosX", 0.0)
-                robot_position["y"] = items.get("PosY", 0.0)
-                robot_position["yaw"] = items.get("Yaw", 0.0)
-                robot_position["timestamp"] = time.time()
+            if pos.get("timestamp", 0) > 0:
+                robot_position["x"] = pos["x"]
+                robot_position["y"] = pos["y"]
+                robot_position["yaw"] = pos["yaw"]
+                robot_position["timestamp"] = pos["timestamp"]
 
         except socket.timeout:
             pass
