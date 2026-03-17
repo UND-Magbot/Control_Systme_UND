@@ -9,6 +9,5 @@ services:
   backend:
     build: ./fastapi-starter
     container_name: control-backend
-    ports:
-      - "3002:3002"
+    network_mode: host
     restart: unless-stopped
