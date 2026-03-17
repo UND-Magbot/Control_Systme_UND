@@ -39,7 +39,7 @@ export default function CameraSection({
   const [remoteModalOpen, setRemoteModalOpen] = useState(false);
 
   // 선택된 카메라 스트림 URL 상태 기본값: 첫 번째 카메라
-  const [cameraStream, setCameraStream] = useState("http://localhost:8000/Video/1");
+  const [cameraStream, setCameraStream] = useState("http://192.168.0.21:3002/Video/1");
 
   const activeCam = cameras[cameraTabActiveIndex];
 

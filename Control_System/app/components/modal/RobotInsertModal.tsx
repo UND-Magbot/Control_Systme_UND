@@ -129,7 +129,7 @@ export default function RobotInsertModal({
             limit_battery: returnBattery
         };
         try {
-            const res = await fetch("http://localhost:8000/DB/RobotInsert", {
+            const res = await fetch("http://192.168.0.21:3002/DB/RobotInsert", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

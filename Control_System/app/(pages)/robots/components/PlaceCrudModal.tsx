@@ -110,7 +110,7 @@ export default function PlaceCrudModal({
   useEffect(() => {
   if (!isOpen) return;
 
-  fetch("http://localhost:8000/DB/robots")
+  fetch("http://192.168.0.21:3002/DB/robots")
     .then(res => res.json())
     .then(data => {
       setDbRobots(data);
@@ -202,8 +202,8 @@ export default function PlaceCrudModal({
       const isEditMode = mode === "edit" && initial?.id;
 
       const url = isEditMode
-        ? `http://localhost:8000/DB/places/${initial.id}`   // 🔥 수정
-        : `http://localhost:8000/DB/places`;                // 🔥 신규
+        ? `http://192.168.0.21:3002/DB/places/${initial.id}`   // 🔥 수정
+        : `http://192.168.0.21:3002/DB/places`;                // 🔥 신규
 
       const method = isEditMode ? "PUT" : "POST";
 
@@ -267,7 +267,7 @@ export default function PlaceCrudModal({
 
   // useEffect(() => {
   //     const loadRobotPos = () => {
-  //         fetch("http://localhost:8000/robot/position")
+  //         fetch("http://192.168.0.21:3002/robot/position")
   //             .then(res => res.json())
   //             .then(data => setRobotPos(data))
   //             .catch(() => {});

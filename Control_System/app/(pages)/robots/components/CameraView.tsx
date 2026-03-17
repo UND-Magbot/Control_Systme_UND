@@ -54,7 +54,7 @@ export default function CameraView({
         ws.onclose = () => console.log("🔥 Thermal WS closed");
     };
 
-    const [cameraStream, setCameraStream] = useState("http://localhost:8000/Video/1");
+    const [cameraStream, setCameraStream] = useState("http://192.168.0.21:3002/Video/1");
     const handleCameraTab = (idx: number, cam: Camera) => {
         setSelectedCam(cam);
         setCameraTabActiveIndex(idx);
@@ -71,7 +71,7 @@ export default function CameraView({
         if (wsRef.current) wsRef.current.close();
         setThermalUrl(null);
 
-        const url = `http://localhost:8000/Video/${cam.id}`;
+        const url = `http://192.168.0.21:3002/Video/${cam.id}`;
         setCameraStream(url);
         setIsOpenCam(false);
     };

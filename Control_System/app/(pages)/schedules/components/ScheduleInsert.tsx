@@ -304,7 +304,7 @@ export default function InsertModal({
     useEffect(() => {
         if (!isOpen) return;
 
-        fetch("http://localhost:8000/DB/way-names") // 예시
+        fetch("http://192.168.0.21:3002/DB/way-names") // 예시
             .then(res => res.json())
             .then((data) => {
             const paths = data.map((row: any) => ({
@@ -525,7 +525,7 @@ export default function InsertModal({
             repeatEndType === "date" ? repeatEndDate : null,
         };
 
-        const res = await fetch("http://localhost:8000/DB/schedule", {
+        const res = await fetch("http://192.168.0.21:3002/DB/schedule", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),

@@ -240,7 +240,7 @@ export default function Page({ robots }: RobotScheduleProps) {
     useEffect(() => {
         const fetchSchedules = async () => {
             try {
-            const res = await fetch("http://localhost:8000/DB/schedule");
+            const res = await fetch("http://192.168.0.21:3002/DB/schedule");
             const data = await res.json();
             setSchedules(data);
             } catch (e) {

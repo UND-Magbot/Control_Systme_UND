@@ -34,7 +34,7 @@ export default function RobotDetailModal({
         
         console.log("🚀 fetch robot detail id:", selectedRobotId);
 
-        fetch(`http://localhost:8000/DB/robots/${selectedRobotId}`)
+        fetch(`http://192.168.0.21:3002/DB/robots/${selectedRobotId}`)
             .then((res) => {
                 if (!res.ok) {
                     throw new Error("로봇 상세 조회 실패");
@@ -229,7 +229,7 @@ export default function RobotDetailModal({
 
         try {
             const res = await fetch(
-            `http://localhost:8000/DB/robots/${selectedRobotId}`,
+            `http://192.168.0.21:3002/DB/robots/${selectedRobotId}`,
             { method: "DELETE" }
             );
 
@@ -300,7 +300,7 @@ export default function RobotDetailModal({
 
         try {
             const res = await fetch(
-            `http://localhost:8000/DB/robots/${selectedRobotId}`,
+            `http://192.168.0.21:3002/DB/robots/${selectedRobotId}`,
             {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },

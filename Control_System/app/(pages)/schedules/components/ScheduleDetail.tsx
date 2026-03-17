@@ -495,7 +495,7 @@ export default function ScheduleDetail({
     useEffect(() => {
       if (!isOpen) return;
 
-      fetch("http://localhost:8000/robots")
+      fetch("http://192.168.0.21:3002/robots")
         .then((res) => res.json())
         .then((data) =>
           setRobots(data.map((r: any, i: number) => ({
@@ -510,7 +510,7 @@ export default function ScheduleDetail({
    useEffect(() => {
     if (!isOpen) return;
 
-    fetch("http://localhost:8000/DB/getpath")
+    fetch("http://192.168.0.21:3002/DB/getpath")
       .then((res) => res.json())
       .then((data) =>
         setPathOptions(
@@ -530,7 +530,7 @@ export default function ScheduleDetail({
 
     setLoading(true);
 
-    fetch(`http://localhost:8000/DB/schedule/${event.id}`)
+    fetch(`http://192.168.0.21:3002/DB/schedule/${event.id}`)
       .then(res => res.json())
       .then(data => {
         const start = new Date(data.StartDate);

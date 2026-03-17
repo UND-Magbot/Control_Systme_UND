@@ -39,7 +39,7 @@ export default function MapSection({ floors, robots, video, cameras }:FloorSelec
     
       useEffect(() => {
         const fetchRobotPos = () => {
-          fetch("http://localhost:8000/robot/position")
+          fetch("http://192.168.0.21:3002/robot/position")
             .then(res => res.json())
             .then(data => setRobotPos(data))
             .catch(() => {});
