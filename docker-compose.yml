@@ -1,0 +1,14 @@
+services:
+  frontend:
+    build: ./Control_System
+    container_name: control-frontend
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
+  backend:
+    build: ./fastapi-starter
+    container_name: control-backend
+    ports:
+      - "3002:3002"
+    restart: unless-stopped
