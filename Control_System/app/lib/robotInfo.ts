@@ -3,15 +3,20 @@ import type { RobotRowData } from "@/app/type";
 const API_BASE = process.env.API_BASE ?? "http://localhost:8000";
 
 export default async function getRobots(): Promise<RobotRowData[]> {
-  const res = await fetch(`${API_BASE}/DB/robots`, {
-    cache: "no-store",
-  });
+  let raw: any[];
+  try {
+    const res = await fetch(`${API_BASE}/DB/robots`, {
+      cache: "no-store",
+    });
 
-  if (!res.ok) {
-    throw new Error("Failed to fetch robots");
+    if (!res.ok) {
+      return [];
+    }
+
+    raw = await res.json();
+  } catch {
+    return [];
   }
-
-  const raw = await res.json();
 
   const robots = raw.map((item: any, index: number): RobotRowData => ({
     id: item.id,
