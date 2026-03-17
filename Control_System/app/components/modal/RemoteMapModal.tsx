@@ -544,7 +544,8 @@ const handleCameraTab = (idx: number, cam: Camera) => {
   if (wsRef.current) wsRef.current.close();
   setThermalUrl(null);
 
-  const nextUrl = cam.webrtcUrl || `${API_BASE}/Video/${cam.id}`;
+  const rawUrl = cam.webrtcUrl || `/Video/${cam.id}`;
+  const nextUrl = rawUrl.startsWith("ws") ? rawUrl : `${API_BASE}${rawUrl}`;
   setCameraStream(nextUrl);
   setIsCamOpen(false);
 };
@@ -583,8 +584,9 @@ useEffect(() => {
   setActiveCam(baseCam.id);
   setCameraTabActiveIndex(nextIdx);
 
-  const nextUrl = baseCam.webrtcUrl || `${API_BASE}/Video/${baseCam.id}`;
-  setCameraStream(nextUrl);
+  const rawUrl2 = baseCam.webrtcUrl || `/Video/${baseCam.id}`;
+  const nextUrl2 = rawUrl2.startsWith("ws") ? rawUrl2 : `${API_BASE}${rawUrl2}`;
+  setCameraStream(nextUrl2);
   setIsCamOpen(false);
 }, [isOpen, initialCam?.id, initialCamIndex, camera, activeCam]);
 

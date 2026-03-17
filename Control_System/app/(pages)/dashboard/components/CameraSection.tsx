@@ -86,7 +86,8 @@ export default function CameraSection({
     if (wsRef.current) wsRef.current.close();
     setThermalUrl(null);
 
-    setCameraStream(cam.webrtcUrl);
+    const url = cam.webrtcUrl.startsWith("ws") ? cam.webrtcUrl : `${API_BASE}${cam.webrtcUrl}`;
+    setCameraStream(url);
   };
 
   // 로봇 선택 핸들러
