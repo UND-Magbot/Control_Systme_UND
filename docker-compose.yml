@@ -1,15 +1,15 @@
 services:
   frontend:
-    build: ./Control_System
+    build: ./Frontend
     container_name: control-frontend
     ports:
       - "3001:3001"
     restart: unless-stopped
 
   backend:
-    build: ./fastapi-starter
+    build: ./Backend
     container_name: control-backend
     network_mode: host
     volumes:
-      - ./fastapi-starter/data:/app/data
+      - ./Backend/data:/app/data
     restart: unless-stopped

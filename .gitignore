@@ -22,13 +22,13 @@ env/
 Thumbs.db
 
 # Build output
-fastapi-starter/out/
+Backend/out/
 
 # Junk files (accidentally created)
-fastapi-starter/1
-fastapi-starter/Math.min(Math.max(v
-fastapi-starter/clampTranslate(prev.x
-fastapi-starter/r.id
-fastapi-starter/rect.top
-fastapi-starter/void
-fastapi-starter/{
+Backend/1
+Backend/Math.min(Math.max(v
+Backend/clampTranslate(prev.x
+Backend/r.id
+Backend/rect.top
+Backend/void
+Backend/{
