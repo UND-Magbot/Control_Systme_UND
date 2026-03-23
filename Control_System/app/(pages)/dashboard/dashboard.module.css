@@ -1,60 +1,67 @@
 .container-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: minmax(320px, 4fr) minmax(220px, 2fr);
   gap: 16px;
+  flex: 1;
+  min-height: var(--page-body-min-height);
 }
 
 .top-common-div {
   width: 100%;
-  height: calc((800px - 16px) * 3 / 5);
+  min-height: 280px;
   border-radius: 13px;
-  padding: 10px 20px;
-  background-color: #292D43;
-}
+  padding: 16px 20px;
+  background-color: var(--surface-3);
+  overflow: hidden;
 
-.top-div {
-  width: 100%;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
+  flex-direction: column;
+  border: 1px solid rgba(146, 212, 244, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.2s ease;
 }
 
-.title-div {
-  display: flex;
-  align-items: center;
-}
-
-.title-div div {
-  width: auto;
-  height: 23px;
-  margin-right: 15px;
-}
-
-.title-div div img {
-  height: 100%;
-}
-
-.title-div h2 {
-  margin: 0;
-  font-size: 23px;
-  font-weight: 500;
-  line-height: 40px;
+.top-common-div:hover,
+.bottom-common-div:hover {
+  border-color: rgba(146, 212, 244, 0.15);
 }
 
 .bottom-common-div {
   width: 100%;
-  min-width: 580px;
-  height: calc((800px - 16px) * 2 / 5);
+  min-height: 220px;
   border-radius: 13px;
-  padding: 10px 20px;
-  background-color: #292D43;
+  padding: 16px 20px;
+  background-color: var(--surface-3);
+  overflow: hidden;
+
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(146, 212, 244, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.2s ease;
 }
 
-.plusBtn {
-  background: transparent;
-  border: none;
-  color: #fff;
-  font-size: 30px;
-  margin-right: 8px;
+.moreLink {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.15s;
+  margin-right: 4px;
+}
+.moreLink:hover {
+  color: var(--text-primary);
+}
+
+@media (max-width: 1200px) {
+  .container-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    min-height: unset;
+    height: auto;
+  }
+  .top-common-div,
+  .bottom-common-div {
+    min-height: 200px;
+  }
 }

@@ -7,21 +7,25 @@ import styles from './Button.module.css';
 
 type RobotSelectBoxProps = {
   robots: RobotRowData[];
-  activeIndex: number; 
+  activeIndex: number;
+  selectedRobot?: RobotRowData | null;
   onSelect: (index: number, robot: RobotRowData) => void;
   className?: string;
+  selectStyles?: Record<string, string>;
 };
 
 export default function RobotSelectBox({
   robots,
   activeIndex,
+  selectedRobot = null,
   onSelect,
-  className
+  className,
+  selectStyles
 }: RobotSelectBoxProps) {
-  
+  const s = selectStyles ?? styles;
+
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [selectedRobot, setSelectedRobot] = useState<RobotRowData | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -44,13 +48,15 @@ export default function RobotSelectBox({
     };
   }, []);
 
-  const handleSelectRobot = (robot: RobotRowData) => {
-    setSelectedRobot(robot);
+  const handleSelectRobot = (idx: number, robot: RobotRowData) => {
+    onSelect(idx, robot);
     setIsOpen(false);
   };
 
+  const needsScroll = robots.length > 3;
+
   useCustomScrollbar({
-    enabled: isOpen,
+    enabled: isOpen && needsScroll,
     scrollRef,
     trackRef,
     thumbRef,
@@ -58,30 +64,62 @@ export default function RobotSelectBox({
     deps: [robots.length],
   });
 
+  const selectRef = useRef<HTMLDivElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+
+  const calcPosition = () => {
+    if (!selectRef.current) return;
+    const rect = selectRef.current.getBoundingClientRect();
+    setDropdownStyle({
+      position: "fixed",
+      top: rect.bottom + 6,
+      left: rect.left,
+      width: rect.width,
+    });
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    window.addEventListener("scroll", calcPosition, true);
+    window.addEventListener("resize", calcPosition);
+    return () => {
+      window.removeEventListener("scroll", calcPosition, true);
+      window.removeEventListener("resize", calcPosition);
+    };
+  }, [isOpen]);
+
+  const handleToggle = () => {
+    if (!isOpen) calcPosition();
+    setIsOpen(!isOpen);
+  };
+
   return (
 
-    <div ref={wrapperRef} className={`${styles.seletWrapper} ${className ?? ""}`}>
-      <div className={styles.selete} onClick={() => setIsOpen(!isOpen)}>
-        <span>{selectedRobot?.no ?? "로봇명 선택"}</span>
+    <div ref={wrapperRef} className={`${s.seletWrapper} ${className ?? ""}`}>
+      <div ref={selectRef} className={s.selete} onClick={handleToggle}>
+        <span>{selectedRobot?.no ?? "로봇 명"}</span>
         {isOpen ? (
           <img src="/icon/arrow_up.png" alt="arrow_up" />
         ) : (
           <img src="/icon/arrow_down.png" alt="arrow_down" />
         )}
-      </div> 
+      </div>
       {isOpen && (
-        <div className={styles.seletbox}>
-          <div ref={scrollRef} className={styles.inner} role="listbox">
+        <div className={s.seletbox} style={dropdownStyle}>
+          <div ref={scrollRef} className={s.inner} style={{ maxHeight: needsScroll ? 112 : "none", overflowY: needsScroll ? "scroll" : "visible" }} role="listbox">
           {robots.map((robot, idx) => (
-            <div key={robot.id} className={`${styles.robotsLabel} ${ activeIndex === idx ? styles["active"] : "" }`.trim()}
-            onClick={() => handleSelectRobot(robot)}>{robot.no}
+            <div key={robot.id} className={`${s.robotsLabel} ${ activeIndex === idx ? s["active"] : "" }`.trim()}
+            onClick={() => handleSelectRobot(idx, robot)}>{robot.no}
             </div>
           ))}
           </div>
 
-          <div ref={trackRef} className={styles.scrollTrack}>
-            <div ref={thumbRef} className={styles.scrollThumb} />
-          </div>
+          {needsScroll && (
+            <div ref={trackRef} className={s.scrollTrack}>
+              <div ref={thumbRef} className={s.scrollThumb} />
+            </div>
+          )}
         </div>
       )}
     </div>

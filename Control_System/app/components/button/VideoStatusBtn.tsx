@@ -30,7 +30,6 @@ export default function VideoSelector ({
           onMouseEnter={() => setHoveredIndex(idx)}
           onMouseLeave={() => setHoveredIndex(null)}
         >
-          <div className={styles.roundIcon}></div>
           <div>{item.label}</div>
         </button>
       ))}

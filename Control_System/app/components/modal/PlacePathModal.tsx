@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { RobotRowData } from '@/app/type';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import { mockPlaces } from '@/app/mock/place_data';
+import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 
 
 type WorkModalProps = {
@@ -40,32 +41,14 @@ export default function RobotDetailModal({
 
     const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
 
-    // ESC 키로 모달 닫기
-    useEffect(() => {
-        const handleEscape = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        
-        if (isOpen) {
-            document.addEventListener('keydown', handleEscape);
-            document.body.style.overflow = 'hidden'; // 스크롤 방지
-        }
-        
-        return () => {
-            document.removeEventListener('keydown', handleEscape);
-            document.body.style.overflow = 'unset';
-        };
-    }, [isOpen, onClose]);
+    useModalBehavior({ isOpen, onClose });
 
     const handleCancel = () => {
         onClose();
     };
     
     const handleOk = () => {
-        if (selectedPlaceId === null) {
-            alert("이동할 장소를 선택해 주세요.");
-            return;
-        }
+        if (selectedPlaceId === null) return;
 
         const selectedPlace = mockPlaces.find(
             (p) => p.id === selectedPlaceId
@@ -86,7 +69,10 @@ export default function RobotDetailModal({
     };
 
     useEffect(() => {
-      if (isOpen) setSelectedPlaceId(null);
+      if (isOpen) {
+        setSelectedPlaceId(null);
+        if (scrollRef.current) scrollRef.current.scrollTop = 0;
+      }
     }, [isOpen]);
 
     useCustomScrollbar({
@@ -105,45 +91,57 @@ export default function RobotDetailModal({
         <div className={styles.modalOverlay} onClick={onClose}>
             <div className={styles.placePathModalContent} onClick={(e) => e.stopPropagation()}>
                 <button className={styles.placeCloseBtn} onClick={onClose}>✕</button>
+                <div className={styles.placeModalHeader}>
+                    <img src="/icon/robot_place_w.png" alt="" />
+                    <h2>장소 이동</h2>
+                </div>
                 <div className={styles.placeTitle}>
                     아래 이동할 장소를 먼저 선택해 주세요.
                 </div>
 
                 <div className={styles.placePathBox}>
-                    <div ref={scrollRef} className={styles.placeInner} role="listbox">
-                        {mockPlaces.map((place) => {
-                            const isSelected = selectedPlaceId === place.id;
-
-                            return (
-                                <div
-                                key={place.id}
-                                className={`${styles.placePathItem} ${isSelected ? styles.active : ""}`}
-                                role="option"
-                                aria-selected={isSelected}
-                                onClick={() => handleSelectPlace(place.id)}
-                                >
-                                <img
-                                    src={isSelected ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
-                                    alt=""
-                                />
-                                <div className={styles.placePathTitle}>{place.name}</div>
-                                </div>
-                            );
-                        })}
-                        <div ref={trackRef} className={styles.placeScrollTrack}>
-                            <div ref={thumbRef} className={styles.placeScrollThumb} />
-                        </div>
+                    {mockPlaces.length === 0 ? (
+                        <div className={styles.placeEmpty}>등록된 장소가 없습니다.</div>
+                    ) : (
+                        <>
+                            <div ref={scrollRef} className={styles.placeInner} role="listbox">
+                                {mockPlaces.map((place) => {
+                                    const isSelected = selectedPlaceId === place.id;
+                                    return (
+                                        <div
+                                            key={place.id}
+                                            className={`${styles.placePathItem} ${isSelected ? styles.active : ""}`}
+                                            role="option"
+                                            aria-selected={isSelected}
+                                            onClick={() => handleSelectPlace(place.id)}
+                                        >
+                                            <img
+                                                src={isSelected ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
+                                                alt=""
+                                            />
+                                            <div className={styles.placePathTitle}>{place.name}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    )}
+                    <div ref={trackRef} className={styles.placeScrollTrack}>
+                        <div ref={thumbRef} className={styles.placeScrollThumb} />
                     </div>
                 </div>
 
                 <div className={styles.workBtnBox}>
-                    <button className={`${styles.workBtnCommon} ${styles.workBtnBgRed}`} onClick={handleCancel} >
-                        <img src="/icon/close_btn.png" alt="cancel"/>
-                        <div>취소</div>
+                    <button className={`${styles.workBtnCommon} ${styles.workBtnBgRed}`} onClick={handleCancel}>
+                        <img src="/icon/close_btn.png" alt="" />
+                        취소
                     </button>
-                    <button className={`${styles.workBtnCommon} ${styles.workBtnBgBlue}`}  onClick={handleOk}>
-                        <img src="/icon/check.png" alt="save" />
-                        <div>확인</div>
+                    <button
+                        className={`${styles.workBtnCommon} ${styles.workBtnBgBlue} ${selectedPlaceId === null ? styles.workBtnDisabled : ""}`}
+                        onClick={handleOk}
+                    >
+                        <img src="/icon/check.png" alt="" />
+                        확인
                     </button>
                 </div>
             </div>

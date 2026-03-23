@@ -1,77 +1,8 @@
-.topPosition {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-
-    width: 900px;
-    
-    padding-top: 15px;
-    margin-bottom: 21px;
-}
-
-.topPosition h1 {
-    margin: 0;
-    font-weight: 500;
-    font-size: 30px;
-}
-
-.countBox {
-    display: flex;
-}
-
 .tabPosition {
     position: relative;
     min-width: 1123px;
-}
-
-.robotCount {
+    flex: 1;
+    min-height: 0;
     display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 5px;
-    
-    padding: 5px 10px;
-
-    border: 1px solid #bec2db;
-    border-radius: 12px 0 0 12px;
-
-    background: #24273B;
-    
-    width: 217px;
-    height: 24px;
-    font-size: 11px;
-}
-
-.batteryCount {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 5px;
-
-    padding: 5px 10px;
-    
-    border: 1px solid #bec2db;
-    border-radius: 0 12px 12px 0;
-
-    background: #31364F;
-
-    width: 160px;
-    height: 24px;
-    font-size: 11px;
-}
-
-.countItem div {
-    display: inline-block;
-}
-
-.totalNumber, .itemNumber {
-    margin-left: 5px;
-}
-
-.robotCount .totalNumber, .robotCount .itemNumber {
-    color: #ea7f81;
-}
-
-.batteryCount .itemNumber {
-    color: #b1e4ff;
+    flex-direction: column;
 }

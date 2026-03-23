@@ -1,32 +1,67 @@
+.tableWrapper {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tableScroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.tableScroll::-webkit-scrollbar {
+    width: 4px;
+}
+
+.tableScroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.tableScroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+}
+
+.tableScroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
 .status {
     width: 100%;
     border-collapse: collapse;
     text-align: center;
-  }
-  
-.status th,
-.status td {
-  padding: 5px 0;
-  height: 45px;
 }
-  
+
+.status th {
+  padding: 8px 4px;
+  height: 44px;
+}
+
+.status td {
+  padding: 8px 4px;
+  height: 48px;
+}
+
 .status thead tr {
-    background: #202334;
+    background: var(--surface-1);
+    border-bottom: 2px solid var(--border-subtle);
 }
 
 .status thead th {
-    position: relative;
-    color: #9DADCB;
-    font-size: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-md);
     font-weight: 600;
+    letter-spacing: -0.01em;
+    background: var(--surface-1);
 }
 
-.status tbody td {
-    position: relative;
-    color: #b9c1cb;
-    font-size: 13px;
-}
-  
 .status thead th:not(:last-child)::after {
     content: "";
     position: absolute;
@@ -34,57 +69,139 @@
     right: 0;
     transform: translateY(-50%);
     width: 1px;
-    height: 14px;
-    background: rgba(255, 255, 255, 0.25);
-}
-  
-.status tr:nth-child(2n) {
-  background-color: rgba(51, 56, 76, 0.8);
-}
-    
-.status th:nth-child(1) { width: 12%; }
-.status th:nth-child(2) { width: 15%; }
-.status th:nth-child(3) { width: 20%; }
-.status th:nth-child(4) { width: 16%; }
-.status th:nth-child(5) { width: 12%; }
-.status th:nth-child(6) { width: 12%; }
-
-
-/* ✅ 로봇 인덱스별 색상 지정 */
-.robot-color-1 {
-  color: #FF0000;
+    height: 20px;
+    background: var(--border-subtle);
 }
 
-.robot-color-2 {
-  color: #00B0EE;
+.status tbody tr {
+    cursor: pointer;
 }
 
-.robot-color-3 {
-  color: #92D050;
-}
-  
-.robot_status_icon_div {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+.status tbody tr:nth-child(2n) {
+    background-color: rgba(48, 53, 72, 0.6);
 }
 
-.robot_status_icon_div img,
-.status td img {
-  width: auto;
-  height: 15px;
+.status tbody td {
+    position: relative;
+    color: var(--text-secondary);
+    font-size: var(--font-size-md);
+}
+
+.status th:nth-child(1) { width: 14%; }  /* 로봇 명 */
+.status th:nth-child(2) { width: 20%; }  /* 배터리 */
+.status th:nth-child(3) { width: 14%; }  /* 네트워크 */
+.status th:nth-child(4) { width: 12%; }  /* 전원 */
+.status th:nth-child(5) { width: 10%; }  /* 위치 */
+.status th:nth-child(6) { width: 15%; }  /* 정보 */
+
+
+/* ── 로봇 명 ── */
+.robotName {
+  font-weight: 600;
+  font-size: var(--font-size-md);
+  white-space: nowrap;
+}
+
+
+/* ── 상태 dot 인디케이터 ── */
+.statusDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.dot-online {
+  background: var(--color-success);
+  box-shadow: 0 0 4px var(--color-success);
+}
+
+.dot-offline {
+  background: var(--text-muted);
+}
+
+.dot-error {
+  background: var(--color-error);
+  box-shadow: 0 0 4px var(--color-error);
+  animation: errorPulse 2s ease-in-out infinite;
+}
+
+@keyframes errorPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .info-box {
-  border-radius: 50px;
-  width: 65px;
-  height: 23px;
-  line-height: 23px;
-  background: rgba(82, 92, 113, 0.8);
-  font-size: 9px;
-  color: #fff;
-  border: 1px solid #9499af;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 5px 12px;
+  background: transparent;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-subtle);
   cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
 }
 
+.info-box:hover {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  color: var(--text-primary);
+}
+
+.info-box:active {
+  transform: scale(0.96);
+}
+
+/* ── 상태 pill 뱃지 ── */
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 12px;
+  border-radius: 20px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.status-online {
+  color: var(--text-primary);
+}
+
+.status-offline {
+  color: var(--text-tertiary);
+}
+
+.status-error {
+  color: var(--color-error-soft);
+}
+
+
+/* ── 조건 분기: Offline / Power OFF 행 ── */
+.offlineRow {
+  opacity: 0.45;
+}
+
+/* ── 조건 분기: 배터리 위험 깜빡임 ── */
+.criticalBattery {
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ── 비활성 텍스트 ── */
+.dimText {
+  color: var(--text-muted);
+  font-weight: 400;
+}

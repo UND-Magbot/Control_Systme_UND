@@ -25,12 +25,12 @@ export default function CancelConfirmModal({
 
                 <div className={styles.confirmButtons}>
                     <button className={`${styles.btnItemCommon} ${styles.btnBgRed}`} onClick={onCancel} >
-                        <img src="/icon/close_btn.png" alt="cancel"/>
-                        <div>취소</div>
+                        <span className={styles.btnIcon}><img src="/icon/close_btn.png" alt="cancel"/></span>
+                        <span>취소</span>
                     </button>
                     <button className={`${styles.btnItemCommon} ${styles.btnBgBlue}`}  onClick={onConfirm}>
-                        <img src="/icon/check.png" alt="save" />
-                        <div>확인</div>
+                        <span className={styles.btnIcon}><img src="/icon/check.png" alt="save" /></span>
+                        <span>확인</span>
                     </button>
                 </div>
             </div>

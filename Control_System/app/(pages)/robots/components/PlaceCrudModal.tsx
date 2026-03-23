@@ -1,20 +1,30 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import styles from "./PlaceCrudModal.module.css";
 import type { RobotRowData } from "@/app/type";
-import { mockPlaceRows } from "@/app/mock/robotPlace_data";
+import { CanvasMap } from "@/app/components/map";
+import type { CanvasMapHandle } from "@/app/components/map";
+import { TEST_MAP_CONFIG } from "@/app/components/map/mapConfigs";
+import PathAlertsModal from "./PathAlertsModal";
+import PlaceDeleteConfirmModal from "./PlaceDeleteConfirmModal";
+import type { PlaceRow } from "@/app/mock/robotPlace_data";
+import type { POIItem } from "@/app/components/map/types";
+import DropdownSelect from "@/app/components/button/DropdownSelect";
+import ZoomControl from "@/app/components/button/ZoomControl";
 import { API_BASE } from "@/app/config";
 
 export type PlaceRowData = {
   id: number;
-  robotNo: string; // "Robot 1"
-  floor: string;   // "1F"
-  name: string;    // 장소명
-  x: string;       // 좌표 문자열(입력 UX 우선)
+  robotNo: string;
+  floor: string;
+  name: string;
+  x: string;
   y: string;
+  direction: string;
   desc: string;
-  updatedAt: string; // "2025.12.12 오전 10:35:47"
+  updatedAt: string;
 };
 
 type Mode = "create" | "edit";
@@ -28,8 +38,9 @@ type Props = {
   isOpen: boolean;
   mode: Mode;
   robots: RobotRowData[];
-  floors?: string[]; // 없으면 기본값 사용
+  floors?: string[];
   initial?: PlaceRowData | null;
+  existingPlaces?: PlaceRow[];
   onClose: () => void;
   onSubmit: (payload: PlaceRowData) => void;
 };
@@ -42,18 +53,15 @@ export default function PlaceCrudModal({
   robots,
   floors = DEFAULT_FLOORS,
   initial = null,
+  existingPlaces = [],
   onClose,
   onSubmit,
 }: Props) {
   const isEdit = mode === "edit";
 
-  // selectbox open states
-  const [robotOpen, setRobotOpen] = useState(false);
-  const [floorOpen, setFloorOpen] = useState(false);
+  const mapRef = useRef<CanvasMapHandle>(null);
+  const dirWheelRef = useRef<HTMLDivElement>(null);
 
-  const robotWrapRef = useRef<HTMLDivElement>(null);
-  const floorWrapRef = useRef<HTMLDivElement>(null);
-  
   const [dbRobots, setDbRobots] = useState<DBRobot[]>([]);
 
   // form state
@@ -62,27 +70,36 @@ export default function PlaceCrudModal({
   const [name, setName] = useState<string>("");
   const [x, setX] = useState<string>("");
   const [y, setY] = useState<string>("");
+  const [direction, setDirection] = useState<string>("");
   const [desc, setDesc] = useState<string>("");
   const [isPinMode, setIsPinMode] = useState(false);
-  const [pinHoverPos, setPinHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [pinPlaced, setPinPlaced] = useState(false);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCloseConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+  const [hoverCoords, setHoverCoords] = useState<{ x: number; y: number } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    robotNo?: string;
+    floor?: string;
+    name?: string;
+    coordinates?: string;
+    direction?: string;
+  }>({});
 
   const nowText = useMemo(() => {
     const d = new Date();
-    const y = d.getFullYear();
+    const yr = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
-
     const hours = d.getHours();
     const ampm = hours < 12 ? "오전" : "오후";
     const hh = String(hours % 12 === 0 ? 12 : hours % 12).padStart(2, "0");
     const mm = String(d.getMinutes()).padStart(2, "0");
     const ss = String(d.getSeconds()).padStart(2, "0");
-
-    return `${y}.${m}.${dd} ${ampm} ${hh}:${mm}:${ss}`;
+    return `${yr}.${m}.${dd} ${ampm} ${hh}:${mm}:${ss}`;
   }, []);
 
-  // form state 아래쯤에 추가
   const [floorDirty, setFloorDirty] = useState(false);
   const [xDirty, setXDirty] = useState(false);
   const [yDirty, setYDirty] = useState(false);
@@ -90,36 +107,46 @@ export default function PlaceCrudModal({
   // robotNo가 바뀌면 해당 로봇의 "최근 위치"를 찾는다(목업 기준)
   const latestRobotPose = useMemo(() => {
     if (!robotNo) return null;
-
-    // mockPlaceRows 중 robotNo가 같은 것들 중 마지막(=최신이라고 가정)
-    const candidates = mockPlaceRows.filter((r) => r.robotNo === robotNo);
+    const candidates = existingPlaces.filter((r) => r.robotNo === robotNo);
     if (candidates.length === 0) return null;
-
-    return candidates[candidates.length - 1]; // { floor, x, y ... }
+    return candidates[candidates.length - 1];
   }, [robotNo]);
 
-  // 로봇 선택이 바뀌었을 때 자동 채움 (사용자가 직접 입력한 값은 보호)
+  // 로봇 선택이 바뀌었을 때 자동 채움 (create 모드에서만)
   useEffect(() => {
     if (!latestRobotPose) return;
-
-    // 층: 사용자가 직접 고르지 않았다면 로봇 위치층으로 자동 세팅
+    if (mode === "edit" && initial) return;
     if (!floorDirty) setFloor(latestRobotPose.floor);
+  }, [latestRobotPose, mode, initial, floorDirty]);
 
-    // 좌표는 맵에서만 설정
-  }, [latestRobotPose, floorDirty, xDirty, yDirty]);
-
+  // create 모드: 로봇+층 선택 완료 시 핀 모드 자동 활성화
   useEffect(() => {
-  if (!isOpen) return;
+    if (mode !== "create") return;
+    if (!robotNo || !floor) return;
+    if (pinPlaced || x || y) return; // 이미 좌표 설정됨
+    setIsPinMode(true);
+  }, [robotNo, floor, mode, pinPlaced, x, y]);
 
-  fetch(`${API_BASE}/DB/robots`)
-    .then(res => res.json())
-    .then(data => {
-      setDbRobots(data);
-    })
-    .catch(err => {
-      console.error("로봇 목록 DB 조회 실패", err);
-    });
-}, [isOpen]);
+  // DB 로봇 목록 fetch
+  const [robotFetchError, setRobotFetchError] = useState(false);
+  const fetchRobots = useCallback(() => {
+    setRobotFetchError(false);
+    fetch(`${API_BASE}/DB/robots`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data) => setDbRobots(data))
+      .catch((err) => {
+        console.error("로봇 목록 DB 조회 실패", err);
+        setRobotFetchError(true);
+        setAlertMessage("로봇 목록을 불러오지 못했습니다.");
+      });
+  }, []);
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchRobots();
+  }, [isOpen, fetchRobots]);
 
   // open/close lifecycle
   useEffect(() => {
@@ -131,64 +158,121 @@ export default function PlaceCrudModal({
       setName(initial.name ?? "");
       setX(initial.x ?? "");
       setY(initial.y ?? "");
+      setDirection(initial.direction ?? "");
       setDesc(initial.desc ?? "");
-      setPinPlaced(false);
+      setPinPlaced(!!(initial.x && initial.y));
     } else {
       setRobotNo("");
       setFloor("");
       setName("");
       setX("");
       setY("");
+      setDirection("");
       setDesc("");
       setPinPlaced(false);
     }
     setIsPinMode(false);
-    setPinHoverPos(null);
+    setFieldErrors({});
+    setSaveSuccessOpen(false);
 
-    // ✅ 핵심: edit로 열릴 때는 initial 값을 보호해야 하므로 dirty=true
-    // create로 열릴 때는 자동 채움이 필요하므로 dirty=false
     const isEditOpen = mode === "edit" && !!initial;
     setFloorDirty(isEditOpen);
     setXDirty(isEditOpen);
     setYDirty(isEditOpen);
 
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onEsc);
-    document.body.style.overflow = "hidden";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initial, mode]);
 
-    return () => {
-      document.removeEventListener("keydown", onEsc);
-      document.body.style.overflow = "unset";
-    };
-  }, [isOpen, initial, mode, onClose]);
-
-  // outside click closes selectboxes
+  // Enter 키 저장 단축키
   useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-
-      if (robotWrapRef.current && !robotWrapRef.current.contains(t)) setRobotOpen(false);
-      if (floorWrapRef.current && !floorWrapRef.current.contains(t)) setFloorOpen(false);
+    if (!isOpen) return;
+    const onEnter = (e: KeyboardEvent) => {
+      if (e.key !== "Enter") return;
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "textarea") return; // textarea에서는 줄바꿈
+      if (isSubmitting) return;
+      if (!canSave) return;
+      e.preventDefault();
+      submit();
     };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, []);
+    document.addEventListener("keydown", onEnter);
+    return () => document.removeEventListener("keydown", onEnter);
+  }, [isOpen, isSubmitting, robotNo, floor, name, x, y, direction]);
+
+  // 미저장 변경사항 감지
+  const hasUnsavedChanges = useMemo(() => {
+    if (isEdit && initial) {
+      return (
+        robotNo !== (initial.robotNo ?? "") ||
+        floor !== (initial.floor ?? "") ||
+        name !== (initial.name ?? "") ||
+        x !== (initial.x ?? "") ||
+        y !== (initial.y ?? "") ||
+        direction !== (initial.direction ?? "") ||
+        desc !== (initial.desc ?? "")
+      );
+    }
+    return !!(robotNo || floor || name || x || y || direction || desc);
+  }, [isEdit, initial, robotNo, floor, name, x, y, direction, desc]);
+
+  const handleClose = () => {
+    if (isSubmitting) return;
+    if (hasUnsavedChanges) {
+      setCloseConfirmOpen(true);
+      return;
+    }
+    onClose();
+  };
+
+  useModalBehavior({ isOpen, onClose: handleClose, disabled: isSubmitting });
+
+  // 필수 필드 실시간 검증
+  const canSave = !!(robotNo && floor && name.trim() && x && y && (direction || direction === "0"));
+
+  // 장소명 실시간 중복 검사
+  const nameDuplicateMsg = useMemo(() => {
+    const trimmed = name.trim();
+    if (!trimmed || !robotNo || !floor) return "";
+    const isDuplicate = existingPlaces.some(
+      (p) =>
+        p.robotNo === robotNo &&
+        p.floor === floor &&
+        p.placeName.toLowerCase() === trimmed.toLowerCase() &&
+        p.id !== initial?.id
+    );
+    return isDuplicate ? "동일한 로봇/층에 같은 장소명이 이미 존재합니다." : "";
+  }, [name, robotNo, floor, existingPlaces, initial?.id]);
+
+  // blur 검증 핸들러
+  const validateFieldOnBlur = (field: string) => {
+    switch (field) {
+      case "name":
+        if (!name.trim()) {
+          setFieldErrors((prev) => ({ ...prev, name: "장소명을 입력해 주세요." }));
+        } else if (nameDuplicateMsg) {
+          setFieldErrors((prev) => ({ ...prev, name: nameDuplicateMsg }));
+        }
+        break;
+    }
+  };
 
   const submit = async () => {
-    if (!robotNo) {
-      alert("로봇명을 선택해 주세요.");
-      return;
+    // 필드별 에러 수집
+    const errors: typeof fieldErrors = {};
+    if (!robotNo) errors.robotNo = "로봇명을 선택해 주세요.";
+    if (!floor) errors.floor = "층을 선택해 주세요.";
+    if (!name.trim()) errors.name = "장소명을 입력해 주세요.";
+    else if (nameDuplicateMsg) errors.name = nameDuplicateMsg;
+    if (!x || !y) errors.coordinates = "지도에서 장소 좌표를 선택해 주세요.";
+    else if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) errors.coordinates = "좌표값이 올바르지 않습니다.";
+    if (!direction && direction !== "0") errors.direction = "방향을 입력해 주세요.";
+    else {
+      const dirNum = Number(direction);
+      if (!Number.isFinite(dirNum) || dirNum < 0 || dirNum > 360) errors.direction = "방향은 0~360 범위여야 합니다.";
     }
-    if (!floor) {
-      alert("층을 선택해 주세요.");
-      return;
-    }
-    if (!name.trim()) {
-      alert("장소명을 입력해 주세요.");
-      return;
-    }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
 
     const dbPayload = {
       RobotName: robotNo,
@@ -196,33 +280,35 @@ export default function PlaceCrudModal({
       Floor: floor,
       LocationX: Number(x),
       LocationY: Number(y),
+      LocationDir: Number(direction),
       Imformation: desc || null,
     };
 
+    setIsSubmitting(true);
     try {
       const isEditMode = mode === "edit" && initial?.id;
-
       const url = isEditMode
-        ? `${API_BASE}/DB/places/${initial.id}`   // 🔥 수정
-        : `${API_BASE}/DB/places`;                // 🔥 신규
-
+        ? `${API_BASE}/DB/places/${initial.id}`
+        : `${API_BASE}/DB/places`;
       const method = isEditMode ? "PUT" : "POST";
 
       const res = await fetch(url, {
         method,
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(dbPayload),
       });
 
       if (!res.ok) {
+        const status = res.status;
+        if (status === 400) throw new Error("입력값이 올바르지 않습니다.");
+        if (status === 409) throw new Error("동일한 장소가 이미 존재합니다.");
+        if (status === 401 || status === 403) throw new Error("권한이 없습니다. 관리자에게 문의하세요.");
+        if (status >= 500) throw new Error("서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
         throw new Error(isEditMode ? "DB 수정 실패" : "DB 저장 실패");
       }
 
       const saved = await res.json();
 
-      // ✅ UI 반영
       onSubmit({
         id: saved.id ?? initial?.id,
         robotNo,
@@ -230,566 +316,480 @@ export default function PlaceCrudModal({
         floor,
         x,
         y,
+        direction,
         desc,
         updatedAt: nowText,
       });
 
-      onClose();
+      setSaveSuccessOpen(true);
     } catch (err) {
       console.error(err);
-      alert("장소 저장 중 오류가 발생했습니다.");
+      const message = err instanceof TypeError
+        ? "네트워크 연결을 확인해 주세요."
+        : err instanceof Error
+          ? err.message
+          : "장소 저장 중 오류가 발생했습니다.";
+      setAlertMessage(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-
-  // 줌 인/아웃, 드래그 기능 구현
-  const [scale, setScale] = useState(1);
-  const [translate, setTranslate] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
-
-  const panStartRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
-  const innerRef = useRef<HTMLDivElement | null>(null);
-
-  const handleZoomFromChild = (action: string) => {
-    setScale(prev => {
-      if (action === "in") return Math.min(prev + 0.2, 3);
-      if (action === "out") return Math.max(prev - 0.2, 0.5);
-      return 1;
-    });
-  };
-
-  /* -------------------------------------------------
-      FastAPI에서 로봇 좌표 받아오기
-  -------------------------------------------------- */
-  const [robotPos, setRobotPos] = useState({ x: 0, y: 0, yaw: 0 });
-
-  // useEffect(() => {
-  //     const loadRobotPos = () => {
-  //         fetch("http://localhost:8000/robot/position")
-  //             .then(res => res.json())
-  //             .then(data => setRobotPos(data))
-  //             .catch(() => {});
-  //     };
-
-  //     loadRobotPos();
-  //     const timer = setInterval(loadRobotPos, 1000);
-  //     return () => clearInterval(timer);
-  // }, []);
-
-  /* -------------------------------------------------
-      mapSize 측정
-  -------------------------------------------------- */
-  const [mapSize, setMapSize] = useState({ w: 0, h: 0 });
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const timer = setTimeout(() => {
-      if (!wrapperRef.current) return;
-
-      setMapSize({
-        w: wrapperRef.current.clientWidth,
-        h: wrapperRef.current.clientHeight,
-      });
-
-      console.log("🗺 mapSize set:", {
-        w: wrapperRef.current.clientWidth,
-        h: wrapperRef.current.clientHeight,
-      });
-    }, 0);
-
-    return () => clearTimeout(timer);
-  }, [isOpen]);
-
-  /* -------------------------------------------------
-      world → pixel
-  -------------------------------------------------- */
-  const mapResolution = 0.1;
-  const mapOriginX = -19.9;
-  const mapOriginY = -15.5;
-  const mapPixelWidth = 427;
-  const mapPixelHeight = 240;
-
-  const worldToPixel = (x: number, y: number) => {
-      const px = (x - mapOriginX) / mapResolution;
-      const py = (y - mapOriginY) / mapResolution;
-
-      return {
-          x: px * (mapSize.w / mapPixelWidth),
-          y: mapSize.h - (py * (mapSize.h / mapPixelHeight)),
-      };
-  };
-
-  const pixelToWorld = (px: number, py: number) => {
-      const worldX = mapOriginX + (px / (mapSize.w / mapPixelWidth)) * mapResolution;
-      const worldY =
-        mapOriginY + ((mapSize.h - py) / (mapSize.h / mapPixelHeight)) * mapResolution;
-
-      return { x: worldX, y: worldY };
-  };
-
-  const robotScreenPos = useMemo(() => {
-      if (mapSize.w === 0 || mapSize.h === 0) return { x: -9999, y: -9999 };
-      return worldToPixel(robotPos.x, robotPos.y);
-  }, [robotPos, mapSize]);
-
-  /* ---------------- Drag & Zoom ---------------- */
-  const clampTranslate = (nx: number, ny: number) => {
-      const wrap = wrapperRef.current;
-      const img = imgRef.current;
-      if (!wrap || !img) return { x: nx, y: ny };
-
-      const wrapW = wrap.clientWidth;
-      const wrapH = wrap.clientHeight;
-
-      const baseW = img.clientWidth;
-      const baseH = img.clientHeight;
-
-      const scaledW = baseW * scale;
-      const scaledH = baseH * scale;
-
-      const maxOffsetX = Math.max(0, (scaledW - wrapW) / 2);
-      const maxOffsetY = Math.max(0, (scaledH - wrapH) / 2);
-
-      const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
-
-      return {
-          x: clamp(nx, -maxOffsetX, maxOffsetX),
-          y: clamp(ny, -maxOffsetY, maxOffsetY),
-      };
-  };
-
-  const onMouseDown = (e: React.MouseEvent) => {
-      if (scale <= 1) return;
-
-      const img = imgRef.current;
-      if (!img) return;
-
-      const rect = img.getBoundingClientRect();
-      const inside =
-          e.clientX >= rect.left && e.clientX <= rect.right &&
-          e.clientY >= rect.top && e.clientY <= rect.bottom;
-
-      if (!inside) return;
-
-      setIsPanning(true);
-      panStartRef.current = {
-          x: e.clientX,
-          y: e.clientY,
-          tx: translate.x,
-          ty: translate.y,
-      };
-  };
-
-  const onMouseMove = (e: React.MouseEvent) => {
-      if (!isPanning || !panStartRef.current) return;
-      const { x, y, tx, ty } = panStartRef.current;
-      const dx = e.clientX - x;
-      const dy = e.clientY - y;
-
-      const next = clampTranslate(tx + dx, ty + dy);
-      setTranslate(next);
-  };
-
-  const endPan = () => {
-      setIsPanning(false);
-      panStartRef.current = null;
-  };
-
-  useEffect(() => {
-      setTranslate(prev => clampTranslate(prev.x, prev.y));
-  }, [scale]);
-
-  useEffect(() => {
-    if (!latestRobotPose) return;
-    setRobotPos({ x: latestRobotPose.x, y: latestRobotPose.y, yaw: 0 });
-  }, [latestRobotPose]);
-
+  // CanvasMap의 worldToPixelScreen으로 핀 위치 계산
   const pinScreenPos = useMemo(() => {
     const px = Number(x);
     const py = Number(y);
     if (Number.isNaN(px) || Number.isNaN(py)) return null;
-    if (mapSize.w === 0 || mapSize.h === 0) return null;
+    if (!mapRef.current) return null;
 
-    const pos = worldToPixel(px, py);
+    const pos = mapRef.current.worldToPixelScreen(px, py);
     return {
       left: `${pos.x}px`,
       top: `${pos.y}px`,
     } as React.CSSProperties;
-  }, [x, y, mapSize]);
+  }, [x, y]);
 
-  useEffect(() => {
-    if (!latestRobotPose) return;
-
-    // edit 모드에서 initial이 있으면(=기존 장소 수정) 자동 덮어쓰기 금지
-    if (mode === "edit" && initial) return;
-
-    if (!floorDirty) setFloor(latestRobotPose.floor);
-    // 좌표는 맵에서만 설정
-  }, [latestRobotPose, mode, initial, floorDirty, xDirty, yDirty]);
-
-  const title = isEdit ? "장소 수정" : "장소 등록";
-  const mapCurrentImage = "/map/map_test_6_800x450.png";
-  const getMapPixelFromEvent = (e: React.MouseEvent) => {
-    const wrap = wrapperRef.current;
-    console.log("wrap:", wrap);
-    console.log("mapSize:", mapSize);
-    if (!wrap || mapSize.w === 0 || mapSize.h === 0) {
-      console.warn("❌ mapPixel blocked");
-      return null;
-    }
-    const rect = wrap.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const localY = e.clientY - rect.top;
-
-    const cx = rect.width / 2;
-    const cy = rect.height / 2;
-    const x1 = localX - translate.x;
-    const y1 = localY - translate.y;
-    const x2 = (x1 - cx) / scale + cx;
-    const y2 = (y1 - cy) / scale + cy;
-
-    const clampedX = Math.max(0, Math.min(rect.width, x2));
-    const clampedY = Math.max(0, Math.min(rect.height, y2));
-
-    return { x: clampedX, y: clampedY };
-  };
-
-  const handleMapClick = (e: React.MouseEvent) => {
-    console.log("🟡 map clicked");
-    console.log("isPinMode:", isPinMode);
-
-    if (!isPinMode || isPanning) return;
-    
-    const mapPixel = getMapPixelFromEvent(e);
-    console.log("🟢 mapPixel:", mapPixel);
-
-    if (!mapPixel) return;
-
-    const world = pixelToWorld(mapPixel.x, mapPixel.y);
-    console.log("🔵 world:", world);
-
+  // 맵 클릭 → world 좌표로 핀 배치
+  const handleMapClick = (worldCoords: { x: number; y: number }) => {
+    if (!isPinMode || isSubmitting) return;
     setXDirty(true);
     setYDirty(true);
-    setX(world.x.toFixed(2));
-    setY(world.y.toFixed(2));
-    setPinHoverPos(null);
+    setX(worldCoords.x.toFixed(3));
+    setY(worldCoords.y.toFixed(3));
     setPinPlaced(true);
+    setIsPinMode(false); // 핀 배치 후 자동 해제
+    setFieldErrors((prev) => ({ ...prev, coordinates: undefined }));
   };
 
-  const handleMapMouseMove = (e: React.MouseEvent) => {
-    onMouseMove(e);
-    if (!isPinMode || isPanning || pinPlaced) return;
-    const mapPixel = getMapPixelFromEvent(e);
-    if (!mapPixel) return;
-    setPinHoverPos(mapPixel);
+  // 좌표 초기화
+  const handleCoordReset = () => {
+    setX("");
+    setY("");
+    setPinPlaced(false);
+    setXDirty(false);
+    setYDirty(false);
+    setIsPinMode(true); // 핀 모드 자동 활성화
+    setFieldErrors((prev) => ({ ...prev, coordinates: undefined }));
   };
 
-  const handleMapMouseLeave = () => {
-    endPan();
-    setPinHoverPos(null);
+  const handleDirectionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val === "" || val === "-") { setDirection(val); return; }
+    const num = Number(val);
+    if (num < 0) setDirection("0");
+    else if (num > 360) setDirection("360");
+    else setDirection(val);
   };
+
+  const handleDirectionBlur = () => {
+    if (direction === "" || direction === "-") {
+      if (direction === "-") setDirection("");
+      if (!direction) {
+        setFieldErrors((prev) => ({ ...prev, direction: "방향을 입력해 주세요." }));
+      }
+      return;
+    }
+    const num = Number(direction);
+    if (isNaN(num)) { setDirection(""); return; }
+    const clamped = Math.max(0, Math.min(360, Math.round(num)));
+    setDirection(String(clamped));
+    setFieldErrors((prev) => ({ ...prev, direction: undefined }));
+  };
+
+  // 방향 인디케이터 클릭으로 방향 설정
+  const handleDirectionWheelClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    let angle = Math.atan2(dx, -dy) * (180 / Math.PI);
+    if (angle < 0) angle += 360;
+    const rounded = Math.round(angle);
+    setDirection(String(rounded));
+    setFieldErrors((prev) => ({ ...prev, direction: undefined }));
+  };
+
+  const title = isEdit ? "장소 수정" : "장소 등록";
+
+  // 로봇 위치 (latestRobotPose 기반)
+  const robotPosForMap = latestRobotPose
+    ? { x: latestRobotPose.x, y: latestRobotPose.y, yaw: 0 }
+    : null;
+
+  // 지도 위 기존 장소 POI 표시 (동일 로봇+층)
+  const mapPois: POIItem[] = useMemo(() => {
+    if (!robotNo || !floor) return [];
+    return existingPlaces
+      .filter((p) => p.robotNo === robotNo && p.floor === floor && p.id !== initial?.id)
+      .map((p) => ({ id: p.id, name: p.placeName, x: p.x, y: p.y, floor: p.floor }));
+  }, [robotNo, floor, existingPlaces, initial?.id]);
+
+  // 마우스 호버 좌표 핸들러
+  const handleMapMouseMove = useCallback((coords: { x: number; y: number }) => {
+    setHoverCoords(coords);
+  }, []);
 
   if (!isOpen) return null;
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
+    <div className={styles.overlay} onClick={handleClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <button className={styles.closeBtn} onClick={onClose} aria-label="close">
-          ✕
-        </button>
-
         <div className={styles.header}>
           <div className={styles.headerLeft}>
             <img src="/icon/robot_place_w.png" alt="" />
             <h2>{title}</h2>
           </div>
+          <button className={styles.closeBtn} onClick={handleClose} aria-label="close">
+            ✕
+          </button>
         </div>
 
-        <div className={styles.bodyCard}>
-          {/* 로봇명 */}
-          <div className={styles.row}>
-            <div className={styles.label}>로봇명</div>
-            <div ref={robotWrapRef} className={styles.selectWrap}>
-              <div className={styles.selectBox} onClick={() => setRobotOpen((v) => !v)}>
-                <span>{robotNo || "로봇명을 선택하세요"}</span>
-                <img
-                  src={robotOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"}
-                  alt=""
-                />
-              </div>
+        {/* ─── 2패널 본문 ─── */}
+        <div className={styles.modalBody}>
+          {/* ─── 좌측: 폼 패널 ─── */}
+          <div className={styles.formPanel}>
+            {/* 기본 정보 섹션 */}
+            <div className={styles.sectionGroup}>
+              <div className={styles.sectionTitle}>기본 정보<span className={styles.sectionTitleLine} /></div>
 
-              {robotOpen && (
-                <div className={styles.dropdown}>
-                  <div className={styles.dropdownInner}>
-                    {dbRobots.map((r) => (
-                      <div
-                        key={r.id}
-                        className={styles.option}
-                        onClick={() => {
-                          setRobotNo(r.RobotName);
-
-                          // 로봇을 새로 선택했으니 로봇 최근 위치 기반 자동채움 허용
-                          setFloorDirty(false);
-                          setXDirty(false);
-                          setYDirty(false);
-
-                          setRobotOpen(false);
-                        }}
-                      >
-                        {r.RobotName}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 층별 */}
-          <div className={styles.row}>
-            <div className={styles.label}>층별</div>
-            <div ref={floorWrapRef} className={styles.selectWrap}>
-              <div className={styles.selectBox} onClick={() => setFloorOpen((v) => !v)}>
-                <span>{floor || "층을 선택하세요"}</span>
-                <img
-                  src={floorOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"}
-                  alt=""
-                />
-              </div>
-
-              {floorOpen && (
-                <div className={styles.dropdown}>
-                  <div className={styles.dropdownInner}>
-                    {floors.map((f) => (
-                      <div
-                        key={f}
-                        className={styles.option}
-                        onClick={() => {
-                          setFloor(f);
-                          setFloorDirty(true);
-                          setFloorOpen(false);
-                        }}
-                      >
-                        {f}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 장소명 */}
-          <div className={styles.row}>
-            <div className={styles.label}>장소명</div>
-            <input
-              className={`${styles.input} ${styles.edit}`}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="50자(100byte) 이내로 작성하세요"
-              maxLength={50}
-            />
-          </div>
-
-          {/* 장소좌표 */}
-          <div className={`${styles.row} ${styles.rowTall}`}>
-            <div className={styles.label}>장소좌표</div>
-            <div className={styles.xyBox}>
-              <div className={styles.xyRow}>
-                <div className={styles.xyLabel}>X 좌표</div>
-                <input
-                  className={`${styles.input} ${styles.edit}`}
-                  value={x}
-                  readOnly
-                  placeholder="좌표값을 지도에서 선택해 주세요."
-                />
-              </div>
-              <div className={styles.xyRow}>
-                <div className={styles.xyLabel}>Y 좌표</div>
-                <input
-                  className={`${styles.input} ${styles.edit}`}
-                  value={y}
-                  readOnly
-                  placeholder="좌표값을 지도에서 선택해 주세요."
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* 맵 프리뷰 */}
-          <div className={styles.mapBox}>
-            <div className={styles.mapTopLeft}>
-              <div className={styles.floorChip}>{floor || "1F"}</div>
-            </div>
-            <div className={styles.mapTopRight}>
-              <div
-                className={`${styles.pinBtn} ${isPinMode ? styles.pinBtnActive : ""}`}
-                title="pin"
-                onClick={() => {
-                  setIsPinMode((v) => {
-                    const next = !v;
-                    if (next) {
-                      setPinHoverPos(null);
-                      setPinPlaced(false);
-                    } else {
-                      setPinHoverPos(null);
-                      if (isEdit && initial) {
-                        setX(initial.x ?? "");
-                        setY(initial.y ?? "");
-                        setXDirty(true);
-                        setYDirty(true);
-                      } else {
-                        setX("");
-                        setY("");
-                        setXDirty(false);
-                        setYDirty(false);
-                      }
-                      setPinPlaced(false);
-                    }
-                    return next;
-                  });
-                }}
-                role="button"
-                aria-pressed={isPinMode}
-              >
-                <img src={"/icon/robot_place_w.png"} alt="" />
-              </div>
-            </div>
-
-            <div
-                ref={wrapperRef}
-                style={{
-                    width: "100%",
-                    height: "100%",
-                    userSelect: "none",
-                    background: "rgb(128, 128, 128)",
-                    touchAction: "none",
-                    cursor: isPinMode
-                      ? "none"
-                      : scale > 1 ? (isPanning ? "grabbing" : "grab") : "default",
-                }}
-                onMouseDown={onMouseDown}
-                onMouseMove={handleMapMouseMove}
-                onMouseUp={endPan}
-                onMouseLeave={handleMapMouseLeave}
-                onClick={handleMapClick}
-            >
-                <div
-                    ref={innerRef}
-                    style={{
-                    width: "100%",
-                    height: "100%",
-                    position: "relative",
-                    transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-                    transformOrigin: "center center",
-                    transition: isPanning ? "none" : "transform 120ms ease",
+              {/* 로봇명 */}
+              <div className={styles.row}>
+                <div className={`${styles.label} ${styles.required}`}>로봇명</div>
+                <div className={styles.selectWrap}>
+                  <DropdownSelect<DBRobot>
+                    placeholder="로봇명을 선택하세요"
+                    value={dbRobots.find((r) => r.RobotName === robotNo) ?? null}
+                    options={dbRobots}
+                    getLabel={(r) => r.RobotName}
+                    getKey={(r) => r.id}
+                    onChange={(r) => {
+                      setRobotNo(r.RobotName);
+                      setFloorDirty(false);
+                      setXDirty(false);
+                      setYDirty(false);
+                      setFieldErrors((prev) => ({ ...prev, robotNo: undefined }));
                     }}
-                >
-                    {/* MAP IMAGE */}
-                    <img
-                        ref={imgRef}
-                        src={mapCurrentImage}
-                        draggable={false}
-                        style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "contain",
-                        pointerEvents: "none",
-                        }}
-                    />
-
-                    {/* ROBOT MARKER */}
-                    {latestRobotPose && (
-                      <img
-                          src="/icon/robot_location(1).png"
-                          style={{
-                          position: "absolute",
-                          left: `${robotScreenPos.x}px`,
-                          top: `${robotScreenPos.y}px`,
-                          height: "38px",
-                          transform: "translate(-50%, -50%)",
-                          pointerEvents: "none",
-                          zIndex: 50,
-                          }}
-                      />
-                    )}
-                    {isPinMode && !pinPlaced && pinHoverPos && (
-                      <img
-                        src="/icon/place_point.png"
-                        alt=""
-                        className={styles.pinMarkerGhost}
-                        style={{
-                          left: `${pinHoverPos.x}px`,
-                          top: `${pinHoverPos.y}px`,
-                          transform: "translate(-50%, -100%)",
-                        }}
-                      />
-                    )}
-                    {isPinMode && pinPlaced && pinScreenPos && (
-                      <img
-                        src="/icon/place_point.png"
-                        alt=""
-                        className={styles.pinMarker}
-                        style={{
-                          ...pinScreenPos,
-                          transform: "translate(-50%, -100%)",
-                        }}
-                      />
-                    )}
+                    disabled={isEdit}
+                    emptyMessage={
+                      robotFetchError ? (
+                        <>불러오기 실패 <span className={styles.retryLink} onClick={fetchRobots}>다시 시도</span></>
+                      ) : "등록된 로봇이 없습니다"
+                    }
+                    className={styles.modalSelect}
+                  />
+                  {isEdit && <div className={styles.fieldHint}>수정 모드에서는 변경할 수 없습니다</div>}
+                  {fieldErrors.robotNo && <div className={styles.fieldError}>{fieldErrors.robotNo}</div>}
                 </div>
+              </div>
+
+              {/* 층별 */}
+              <div className={styles.row}>
+                <div className={`${styles.label} ${styles.required}`}>층</div>
+                <div className={styles.selectWrap}>
+                  <DropdownSelect<string>
+                    placeholder="층을 선택하세요"
+                    value={floor || null}
+                    options={floors}
+                    getLabel={(f) => f}
+                    getKey={(f) => f}
+                    onChange={(f) => {
+                      setFloor(f);
+                      setFloorDirty(true);
+                      setFieldErrors((prev) => ({ ...prev, floor: undefined }));
+                    }}
+                    className={styles.modalSelect}
+                  />
+                  {fieldErrors.floor && <div className={styles.fieldError}>{fieldErrors.floor}</div>}
+                </div>
+              </div>
+
+              {/* 장소명 */}
+              <div className={styles.row}>
+                <div className={`${styles.label} ${styles.required}`}>장소명</div>
+                <div className={styles.inputWrap}>
+                  <input
+                    className={`${styles.input} ${styles.edit} ${fieldErrors.name || nameDuplicateMsg ? styles.inputError : ""}`}
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setFieldErrors((prev) => ({ ...prev, name: undefined }));
+                    }}
+                    onBlur={() => validateFieldOnBlur("name")}
+                    placeholder="50자(100byte) 이내로 작성하세요"
+                    maxLength={50}
+                  />
+                  <div className={`${styles.charCounter} ${name.length >= 40 ? styles.charCounterWarn : ""}`}>
+                    {name.length}/50
+                  </div>
+                  {fieldErrors.name && <div className={styles.fieldError}>{fieldErrors.name}</div>}
+                  {!fieldErrors.name && nameDuplicateMsg && <div className={styles.fieldError}>{nameDuplicateMsg}</div>}
+                </div>
+              </div>
             </div>
 
-            <div className={styles.mapBottomRight}>
-              <div className={styles.zoomBtn} onClick={() => handleZoomFromChild("in")}>
-                <img src="/icon/zoom-in-w.png" alt="+" />
+            {/* 위치 정보 섹션 */}
+            <div className={styles.sectionGroup}>
+              <div className={styles.sectionTitle}>
+                위치 정보
+                <span className={styles.sectionTitleLine} />
+                {(x && y) && (
+                  <button
+                    type="button"
+                    className={styles.coordResetBtn}
+                    onClick={handleCoordReset}
+                  >
+                    좌표 초기화
+                  </button>
+                )}
               </div>
-              <div className={styles.zoomBtn} onClick={() => handleZoomFromChild("out")}>
-                <img src="/icon/zoom-out-w.png" alt="-" />
+
+              {/* 장소좌표 X, Y */}
+              <div className={`${styles.row} ${styles.rowAlignTop}`}>
+                <div className={`${styles.label} ${styles.required}`}>좌표</div>
+                <div className={styles.xyBoxInline}>
+                  <div className={styles.xyInlineItem}>
+                    <div className={styles.xyLabel}>X</div>
+                    <input
+                      className={`${styles.xyInput} ${styles.edit} ${x ? styles.xyInputFilled : styles.xyInputEmpty}`}
+                      value={x}
+                      readOnly
+                      tabIndex={-1}
+                      placeholder="지도에서 선택"
+                    />
+                  </div>
+                  <div className={styles.xyInlineItem}>
+                    <div className={styles.xyLabel}>Y</div>
+                    <input
+                      className={`${styles.xyInput} ${styles.edit} ${y ? styles.xyInputFilled : styles.xyInputEmpty}`}
+                      value={y}
+                      readOnly
+                      tabIndex={-1}
+                      placeholder="지도에서 선택"
+                    />
+                  </div>
+                </div>
               </div>
+              {(fieldErrors.coordinates) && (
+                <div className={styles.xyErrorRow}>
+                  <div className={styles.fieldError}>{fieldErrors.coordinates}</div>
+                </div>
+              )}
+
+              {/* 방향 */}
+              <div className={styles.directionRow}>
+                <div className={`${styles.label} ${styles.required}`}>방향(°)</div>
+                <div className={styles.directionInputWrap}>
+                  <input
+                    className={`${styles.xyInput} ${styles.edit} ${direction ? styles.xyInputFilled : styles.xyInputEmpty}`}
+                    value={direction}
+                    onChange={handleDirectionChange}
+                    onBlur={handleDirectionBlur}
+                    placeholder="0~360"
+                    type="number"
+                    min={0}
+                    max={360}
+                  />
+                  <div
+                    ref={dirWheelRef}
+                    className={styles.directionIndicator}
+                    onClick={handleDirectionWheelClick}
+                    title="클릭하여 방향 설정"
+                    role="button"
+                    aria-label="방향 설정 휠"
+                  >
+                    {(direction || direction === "0") && (
+                      <div
+                        className={styles.directionArrow}
+                        style={{ transform: `rotate(${Number(direction)}deg)` }}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+              {fieldErrors.direction && (
+                <div className={styles.xyErrorRow}>
+                  <div className={styles.fieldError}>{fieldErrors.direction}</div>
+                </div>
+              )}
+            </div>
+
+            {/* 장소설명 */}
+            <div className={styles.sectionGroup}>
+              <div className={`${styles.row} ${styles.rowTextArea}`} style={{ marginBottom: 0 }}>
+                <div className={styles.label}>장소설명</div>
+                <div className={styles.textareaWrap}>
+                  <textarea
+                    className={`${styles.textarea} ${styles.edit}`}
+                    value={desc}
+                    onChange={(e) => setDesc(e.target.value)}
+                    placeholder="100자(200byte) 이내로 작성하세요"
+                    maxLength={100}
+                  />
+                  <div className={`${styles.charCounter} ${desc.length >= 90 ? styles.charCounterWarn : ""}`}>
+                    {desc.length}/100
+                  </div>
+                </div>
+              </div>
+
+              {isEdit && (
+                <div className={styles.updateRow}>
+                  <div className={styles.label}>수정일시</div>
+                  <div className={styles.updatedAtValue}>
+                    {initial?.updatedAt ?? nowText}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          <div className={styles.mapHint}>
-            *우측 상단 핀 버튼으로 좌표 선택 모드를 켜거나 끌 수 있습니다.
-          </div>
 
-          {/* 장소설명 */}
-          <div className={`${styles.row} ${styles.rowTextArea}`}>
-            <div className={styles.label}>장소설명</div>
-            <textarea
-              className={`${styles.textarea} ${styles.edit}`}
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              placeholder="100자(200byte) 이내로 작성하세요"
-              maxLength={100}
-            />
-          </div>
-
-          {isEdit && (
-            <div className={styles.updateRow}>
-              <div className={styles.label}>수정일시</div>
-              <div className={styles.updatedAtValue}>
-                {initial?.updatedAt ?? nowText}
+          {/* ─── 우측: 맵 패널 ─── */}
+          <div className={styles.mapPanel}>
+            {/* 맵 툴바 */}
+            <div className={styles.mapToolbar}>
+              <div className={styles.mapToolbarLeft}>
+                <span className={styles.mapToolbarLabel}>지도</span>
+                <div className={styles.floorChip}>{floor || "1F"}</div>
+              </div>
+              <div className={styles.mapToolbarRight}>
+                <div
+                  className={`${styles.pinBtn} ${isPinMode ? styles.pinBtnActive : ""}`}
+                  title="좌표 선택"
+                  onClick={() => setIsPinMode((v) => !v)}
+                  role="button"
+                  aria-pressed={isPinMode}
+                >
+                  <img src="/icon/place_point.png" alt="" />
+                </div>
               </div>
             </div>
-          )}
+
+            {/* 맵 캔버스 */}
+            <div className={`${styles.mapContainer} ${isPinMode ? styles.mapBoxPinActive : ""}`}>
+              <div className={styles.mapBox}>
+                {isPinMode && (
+                  <div className={styles.pinBanner}>지도를 클릭하여 장소 좌표를 선택하세요</div>
+                )}
+
+                <CanvasMap
+                  ref={mapRef}
+                  config={TEST_MAP_CONFIG}
+                  robotPos={robotPosForMap}
+                  showRobot={!!latestRobotPose}
+                  pois={mapPois}
+                  showPois={mapPois.length > 0}
+                  selectedPoiId={isEdit ? initial?.id : undefined}
+                  onMapClick={isPinMode ? handleMapClick : undefined}
+                  onMapMouseMove={isPinMode ? handleMapMouseMove : undefined}
+                  style={{ cursor: isPinMode ? "crosshair" : undefined }}
+                >
+                  {pinPlaced && pinScreenPos && (
+                    <img
+                      src="/icon/place_point.png"
+                      alt=""
+                      className={styles.pinMarker}
+                      style={{
+                        ...pinScreenPos,
+                        transform: "translate(-50%, -100%)",
+                      }}
+                    />
+                  )}
+                </CanvasMap>
+
+                {isPinMode && hoverCoords && (
+                  <div className={styles.coordPreview}>
+                    X: {hoverCoords.x.toFixed(3)}, Y: {hoverCoords.y.toFixed(3)}
+                  </div>
+                )}
+
+                <div className={styles.mapBottomRight}>
+                  <ZoomControl onClick={(action) => mapRef.current?.handleZoom(action)} />
+                </div>
+              </div>
+            </div>
+
+            {/* 좌표 상태바 */}
+            <div className={styles.coordStatusBar}>
+              <div className={styles.coordStatusItem}>
+                <span className={styles.coordStatusLabel}>X</span>
+                <span className={x ? styles.coordStatusValue : styles.coordStatusEmpty}>
+                  {x || "미선택"}
+                </span>
+              </div>
+              <div className={styles.coordStatusItem}>
+                <span className={styles.coordStatusLabel}>Y</span>
+                <span className={y ? styles.coordStatusValue : styles.coordStatusEmpty}>
+                  {y || "미선택"}
+                </span>
+              </div>
+              <div className={styles.coordStatusItem}>
+                <span className={styles.coordStatusLabel}>D</span>
+                <span className={(direction || direction === "0") ? styles.coordStatusValue : styles.coordStatusEmpty}>
+                  {(direction || direction === "0") ? `${direction}°` : "미입력"}
+                </span>
+              </div>
+            </div>
+
+            <div className={styles.mapHint}>
+              *우측 상단 핀 버튼으로 좌표 선택 모드를 켜거나 끌 수 있습니다.
+            </div>
+          </div>
         </div>
 
-        {/* 하단 버튼(이미지 톤: 취소=Red / 저장=Blue) */}
+        {/* 하단 버튼 */}
         <div className={styles.footer}>
-          <button className={`${styles.footerBtn} ${styles.btnRed}`} onClick={onClose}>
+          <button className={`${styles.footerBtn} ${styles.btnRed}`} onClick={handleClose} disabled={isSubmitting}>
             <img src="/icon/close_btn.png" alt="" />
             취소
           </button>
-          <button className={`${styles.footerBtn} ${styles.btnBlue}`} onClick={submit}>
-            <img src="/icon/check.png" alt="" />
-            저장
+          <button
+            className={`${styles.footerBtn} ${styles.btnBlue}`}
+            onClick={submit}
+            disabled={!canSave || isSubmitting}
+            title={!canSave ? "모든 필수 항목을 입력해 주세요." : undefined}
+          >
+            {isSubmitting ? (
+              <>
+                <div className={styles.btnSpinner} />
+                저장 중...
+              </>
+            ) : (
+              <>
+                <img src="/icon/check.png" alt="" />
+                저장
+              </>
+            )}
           </button>
         </div>
       </div>
+
+      {alertMessage && (
+        <PathAlertsModal
+          isOpen={!!alertMessage}
+          message={alertMessage}
+          onCancel={() => setAlertMessage(null)}
+          onConfirm={() => setAlertMessage(null)}
+        />
+      )}
+
+      <PlaceDeleteConfirmModal
+        isOpen={isCloseConfirmOpen}
+        message="변경사항이 저장되지 않습니다. 닫으시겠습니까?"
+        onCancel={() => setCloseConfirmOpen(false)}
+        onConfirm={() => {
+          setCloseConfirmOpen(false);
+          onClose();
+        }}
+      />
+
+      {saveSuccessOpen && (
+        <PathAlertsModal
+          isOpen={saveSuccessOpen}
+          message={isEdit ? "장소가 수정되었습니다." : "장소가 등록되었습니다."}
+          onCancel={() => { setSaveSuccessOpen(false); onClose(); }}
+          onConfirm={() => { setSaveSuccessOpen(false); onClose(); }}
+        />
+      )}
     </div>
   );
 }

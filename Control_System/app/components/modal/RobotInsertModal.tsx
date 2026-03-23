@@ -1,133 +1,65 @@
 'use client';
 
 import styles from './Modal.module.css';
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { API_BASE } from "@/app/config";
+import { useBatterySlider } from '@/app/hooks/useBatterySlider';
+import { useModalBehavior } from '@/app/hooks/useModalBehavior';
+import { useAlertModal } from '@/app/hooks/useAlertModal';
 
-
-export default function RobotInsertModal({ 
+export default function RobotInsertModal({
     isOpen,
-    onClose 
+    onClose
 }: { isOpen: boolean; onClose: () => void; }){
-    
 
-    useEffect(() => {
-        const handleEscape = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        
-        if (isOpen) {
-            document.addEventListener('keydown', handleEscape);
-            document.body.style.overflow = 'hidden'; // 스크롤 방지
-        }
-        
-        return () => {
-            document.removeEventListener('keydown', handleEscape);
-            document.body.style.overflow = 'unset';
-        };
-        }, [isOpen, onClose]);
+    const apiAlert = useAlertModal();
 
-    // 배터리 수치 확인 알림창
-    const [batteryAlertOpen, setBatteryAlertOpen] = useState(false);
-    const [batteryAlertMsg, setBatteryAlertMsg] = useState("");
-        
-    const MIN = 15;
-    const MAX = 30;
-    const DEFAULT_RETURN_BATTERY = 30;
-    
+    // 성공 알림창
+    const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+
+    // 로딩 상태
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useModalBehavior({ isOpen, onClose, disabled: isSubmitting });
+
+    // 필드 에러 상태
+    const [errors, setErrors] = useState<Record<string, boolean>>({});
+    // 409 중복 SN 에러 메시지
+    const [snDuplicateMsg, setSnDuplicateMsg] = useState("");
+
     const [robotName, setRobotName] = useState("");
     const [robotModel, setRobotModel] = useState("");
     const [robotSN, setRobotSN] = useState("");
 
-    // 단일 소스: 배터리 복귀 기준(%)
-    const [returnBattery, setReturnBattery] = useState<number>(DEFAULT_RETURN_BATTERY);
-
-    // 입력창에는 문자열이 필요(타이핑 중 공백/부분 입력 허용)
-    const [returnBatteryText, setReturnBatteryText] = useState<string>(String(DEFAULT_RETURN_BATTERY));
-
-    // 마지막 정상값(범위 밖 입력 시 되돌릴 용도)
-    const lastValidRef = useRef<number>(DEFAULT_RETURN_BATTERY);
-
-    const clamp = (n: number) => Math.min(MAX, Math.max(MIN, n));
-
-    const commitByNumber = (n: number) => {
-        const v = clamp(n);
-        setReturnBattery(v);
-        setReturnBatteryText(String(v));
-        lastValidRef.current = v;
-    };
-
-    const sliderPercent = useMemo(() => {
-        const p = ((returnBattery - MIN) / (MAX - MIN)) * 100;
-        return Number.isFinite(p) ? p : 0;
-    }, [returnBattery]);
-
-    // 조건1: 슬라이더 드래그(15~30)
-    const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const v = Number(e.target.value);
-        commitByNumber(v); // 조건2: 슬라이더 값이 그대로 input에 반영
-    };
-
-    // 조건3: input 입력 시 슬라이더도 재세팅(정상 범위면)
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const raw = e.target.value;
-
-        // 숫자만 허용(빈값은 타이핑 중 허용)
-        if (!/^\d*$/.test(raw)) return;
-
-        setReturnBatteryText(raw);
-
-        // 타이핑 중 빈값이면 확정하지 않음
-        if (raw === '') return;
-
-        const n = Number(raw);
-        if (Number.isNaN(n)) return;
-
-        // 정상 범위면 즉시 동기화
-        if (n >= MIN && n <= MAX) {
-        commitByNumber(n);
-        }
-    };
-
-    // 조건4: input에 15~30 밖 입력 시 알림 + 되돌리기
-    const validateAndFix = () => {
-        const raw = returnBatteryText.trim();
-        // 빈값이면 마지막 정상값으로 복원
-        if (raw === '') {
-        commitByNumber(lastValidRef.current);
-        return;
-        }
-
-        const n = Number(raw);
-        if (Number.isNaN(n) || n < MIN || n > MAX) {
-        setBatteryAlertMsg(`복귀 배터리양은 ${MIN}~${MAX} 범위내에서 숫자만 직접 기입하거나 \n 최소 복귀 배터리양 조정바로 설정해 주세요.`);
-        setBatteryAlertOpen(true);
-        // 마지막 정상값으로 되돌림
-        commitByNumber(lastValidRef.current);
-        } else {
-        commitByNumber(n);
-        }
-    };
-
-    const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') {
-        e.preventDefault();
-        validateAndFix();
-        }
-    };
-
+    const battery = useBatterySlider({ min: 15, max: 30, defaultValue: 30 });
 
     const handleCancel = () => {
+        if (isSubmitting) return;
         onClose();
     };
-      
-    const handleSave = async  () => {
+
+    const handleSave = async () => {
+        if (isSubmitting) return;
+
+        // 필수 필드 유효성 검증
+        const newErrors: Record<string, boolean> = {};
+        if (!robotName.trim()) newErrors.robotName = true;
+        if (!robotModel.trim()) newErrors.robotModel = true;
+        if (!robotSN.trim()) newErrors.robotSN = true;
+        if (Object.keys(newErrors).length > 0) {
+            setErrors(newErrors);
+            return;
+        }
+
+        setIsSubmitting(true);
+        setSnDuplicateMsg("");
+
         const payload = {
             robot_id: robotSN,
             robot_name: robotName,
             robot_model: robotModel,
-            limit_battery: returnBattery
+            limit_battery: battery.value
         };
         try {
             const res = await fetch(`${API_BASE}/DB/RobotInsert`, {
@@ -139,107 +71,195 @@ export default function RobotInsertModal({
             });
             if (res.status === 409) {
                 const data = await res.json();
-                alert(data.detail || "이미 등록된 시리얼 넘버입니다.");
+                const msg = data.detail || "이미 등록된 시리얼 넘버입니다.";
+                setSnDuplicateMsg(msg);
+                setErrors((prev) => ({ ...prev, robotSN: true }));
                 return;
             }
             if (!res.ok) {
                 throw new Error("로봇 등록 실패");
             }
 
-            onClose();
+            setSaveSuccessOpen(true);
         } catch (err) {
             console.error(err);
-            alert("로봇 등록 중 오류 발생");
+            apiAlert.show("로봇 등록 중 오류가 발생했습니다.");
+        } finally {
+            setIsSubmitting(false);
         }
-        onClose();
     };
 
+    // 모달 오픈 시 전체 폼 초기화
     useEffect(() => {
         if (!isOpen) return;
 
-        setReturnBattery(DEFAULT_RETURN_BATTERY);
-        setReturnBatteryText(String(DEFAULT_RETURN_BATTERY));
-        lastValidRef.current = DEFAULT_RETURN_BATTERY;
+        setRobotName("");
+        setRobotModel("");
+        setRobotSN("");
+        setErrors({});
+        setSnDuplicateMsg("");
+        setIsSubmitting(false);
+        battery.reset();
     }, [isOpen]);
 
     if (!isOpen) return null;
-    
+
+    const isFormEmpty = !robotName.trim() || !robotModel.trim() || !robotSN.trim();
+
     return (
         <>
-            <div className={styles.modalOverlay} onClick={onClose}>
+            <div className={styles.modalOverlay} onClick={isSubmitting ? undefined : onClose}>
                 <div className={styles.insertModalContent} onClick={(e) => e.stopPropagation()}>
-                    <button className={styles.insertCloseBtn} onClick={onClose}>✕</button>
+                    <button className={styles.insertCloseBtn} onClick={handleCancel} disabled={isSubmitting} aria-label="닫기">✕</button>
                     <div className={styles.insertTitle}>
                         <img src="/icon/robot_status_w.png" alt="Robot Registeration" />
                         <h2>로봇 등록</h2>
                     </div>
                     <div className={styles.itemBoxContainer}>
                         <div className={styles.insertItemBox}>
-                            <div>로봇명</div>
-                            <input type="text" maxLength={20} value={robotName} onChange={(e) => setRobotName(e.target.value)}placeholder='20글자 이내로 작성해 주세요.' />
+                            <div className={styles.insertItemLabel}>로봇명 <span className={styles.requiredMark}>*</span></div>
+                            <div className={styles.insertInputWrap}>
+                                <input
+                                    type="text"
+                                    maxLength={20}
+                                    value={robotName}
+                                    onChange={(e) => { setRobotName(e.target.value); setErrors((p) => ({ ...p, robotName: false })); }}
+                                    placeholder='20글자 이내로 작성해 주세요.'
+                                    className={errors.robotName ? styles.inputError : ""}
+                                    aria-label="로봇명"
+                                    aria-invalid={errors.robotName || false}
+                                />
+                                {errors.robotName && <div className={styles.errorMessage}>필수 입력 항목입니다.</div>}
+                            </div>
                         </div>
                         <div className={styles.insertItemBox}>
-                            <div>모델명</div>
-                            <input type="text" maxLength={20} value={robotModel} onChange={(e) => setRobotModel(e.target.value)} placeholder='20글자 이내로 작성해 주세요.' />
+                            <div className={styles.insertItemLabel}>모델 <span className={styles.requiredMark}>*</span></div>
+                            <div className={styles.insertInputWrap}>
+                                <input
+                                    type="text"
+                                    maxLength={20}
+                                    value={robotModel}
+                                    onChange={(e) => { setRobotModel(e.target.value); setErrors((p) => ({ ...p, robotModel: false })); }}
+                                    placeholder='20글자 이내로 작성해 주세요.'
+                                    className={errors.robotModel ? styles.inputError : ""}
+                                    aria-label="모델"
+                                    aria-invalid={errors.robotModel || false}
+                                />
+                                {errors.robotModel && <div className={styles.errorMessage}>필수 입력 항목입니다.</div>}
+                            </div>
                         </div>
                         <div className={styles.insertItemBox}>
-                            <div>시리얼 넘버(SN)</div>
-                            <input type="text" maxLength={20} value={robotSN} onChange={(e) => setRobotSN(e.target.value)} placeholder='20글자 이내로 작성해 주세요.' />
+                            <div className={styles.insertItemLabel}>시리얼 번호 <span className={styles.requiredMark}>*</span></div>
+                            <div className={styles.insertInputWrap}>
+                                <input
+                                    type="text"
+                                    maxLength={20}
+                                    value={robotSN}
+                                    onChange={(e) => { setRobotSN(e.target.value); setErrors((p) => ({ ...p, robotSN: false })); setSnDuplicateMsg(""); }}
+                                    placeholder='20글자 이내로 작성해 주세요.'
+                                    className={errors.robotSN ? styles.inputError : ""}
+                                    aria-label="시리얼 번호"
+                                    aria-invalid={errors.robotSN || false}
+                                />
+                                {errors.robotSN && (
+                                    <div className={styles.errorMessage}>
+                                        {snDuplicateMsg || "필수 입력 항목입니다."}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         <div className={styles.insertItemBox}>
-                            <div>복귀 배터리양</div>
+                            <div className={styles.insertItemLabel}>복귀 배터리양</div>
                             <input type="text"
                                 inputMode="numeric"
-                                value={returnBatteryText}
-                                onChange={handleInputChange}
-                                onBlur={validateAndFix}
-                                onKeyDown={handleInputKeyDown}
-                                placeholder='아래 조정바로 설정하거나 15~30사이의 숫자만 기입 (%제외)' />
+                                value={battery.text}
+                                onChange={battery.handleInputChange}
+                                onBlur={battery.validateAndFix}
+                                onKeyDown={battery.handleInputKeyDown}
+                                placeholder='아래 조정바로 설정하거나 15~30사이의 숫자만 기입 (%제외)'
+                                aria-label="복귀 배터리양"
+                            />
                         </div>
                         <div className={styles.slidebarinsert}>
-                            <div />
+                            <div className={styles.insertItemLabel} />
                             <div className={styles.batterySliderWrap}>
                                 <div className={styles.batterySliderTrackArea}>
                                 <input
                                     className={styles.batterySlider}
                                     type="range"
-                                    min={MIN}
-                                    max={MAX}
+                                    min={battery.min}
+                                    max={battery.max}
                                     step={1}
-                                    value={returnBattery}
-                                    onChange={handleSliderChange}
+                                    value={battery.value}
+                                    onChange={battery.handleSliderChange}
                                     aria-label="복귀 배터리양 조정"
-                                    style={{ ['--percent' as any]: `${sliderPercent}%` }}
+                                    style={{ ['--percent' as any]: `${battery.sliderPercent}%` }}
                                 />
                                 </div>
 
                                 <div className={styles.batterySliderLabels}>
-                                <span>{MIN}%</span>
-                                <span>{MAX}%</span>
+                                <span>{battery.min}%</span>
+                                <span>{battery.max}%</span>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div className={styles.insertBtnTotal}>
-                        <div className={`${styles.insertConfrimBtn} ${styles.btnBgRed}`} onClick={handleCancel} >
+                        <button
+                            type="button"
+                            className={`${styles.insertConfrimBtn} ${styles.btnBgRed}`}
+                            onClick={handleCancel}
+                            disabled={isSubmitting}
+                        >
                             <img src="/icon/close_btn.png" alt="cancel"/>
                             <div>취소</div>
-                        </div>
-                        <div className={`${styles.insertConfrimBtn} ${styles.btnBgBlue}`}  onClick={handleSave}>
-                            <img src="/icon/check.png" alt="save" />
-                            <div>저장</div>
-                        </div>
+                        </button>
+                        <button
+                            type="button"
+                            className={`${styles.insertConfrimBtn} ${styles.btnBgBlue} ${(isSubmitting || isFormEmpty) ? styles.btnDisabled : ""}`}
+                            onClick={handleSave}
+                            disabled={isSubmitting || isFormEmpty}
+                        >
+                            {isSubmitting ? (
+                                <div className={styles.btnSpinner} />
+                            ) : (
+                                <img src="/icon/check.png" alt="save" />
+                            )}
+                            <div>{isSubmitting ? "저장 중..." : "저장"}</div>
+                        </button>
                     </div>
                 </div>
             </div>
-            {batteryAlertOpen && (
+            {battery.alertOpen && (
                 <CancelConfirmModal
-                    message={batteryAlertMsg}
-                    onConfirm={() => setBatteryAlertOpen(false)}
-                    onCancel={() => setBatteryAlertOpen(false)}
+                    message={battery.alertMsg}
+                    onConfirm={battery.closeAlert}
+                    onCancel={battery.closeAlert}
+                />
+            )}
+            {apiAlert.isOpen && (
+                <CancelConfirmModal
+                    message={apiAlert.message}
+                    onConfirm={apiAlert.close}
+                    onCancel={apiAlert.close}
+                />
+            )}
+            {saveSuccessOpen && (
+                <CancelConfirmModal
+                    message="로봇이 등록되었습니다."
+                    onConfirm={() => {
+                        setSaveSuccessOpen(false);
+                        onClose();
+                        window.location.reload();
+                    }}
+                    onCancel={() => {
+                        setSaveSuccessOpen(false);
+                        onClose();
+                        window.location.reload();
+                    }}
                 />
             )}
         </>
     );
-    
+
 }

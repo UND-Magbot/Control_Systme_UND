@@ -40,14 +40,12 @@
 .viewBtn,
 .mapButton {
   position: absolute;
+  bottom: 14px;
+  right: 14px;
   display: flex;
-  bottom: 15px;
-  right: 15px;
-}
-
-.mapButton {
-  width: 59px;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .viewBtn .camerabtn {
@@ -81,17 +79,29 @@
 }
 
 .zoomIcon {
+  width: 34px;
+  height: 34px;
+
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+
   display: flex;
   align-items: center;
   justify-content: center;
 
-  width: 25px;
-  height: 25px;
-  
-  background-color: transparent;
-  border-radius: 50px;
-  border: 1px solid #F5F6F8;
   cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.zoomIcon:hover {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.zoomIcon:active {
+  transform: scale(0.93);
 }
 
 .remote-icon,
@@ -102,8 +112,10 @@
 }
 
 .zoomIcon img {
-  height: 14px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
+
 
 .remote-icon img,
 .path-icon img {
@@ -199,22 +211,24 @@
 .seletbox .robotsLabel,
 .modalSeletbox .robotsItem {
   width: 100%;
-  height: 29px;
-  line-height: 29px;
-  padding: 0 10px;
-  color: #fff; 
+  height: 30px;
+  line-height: 30px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  transition: background 0.15s ease;
 }
 
 .seletbox .floorLabel:hover,
 .seletbox .robotsLabel:hover,
 .modalSeletbox .robotsItem:hover {
-  background: #d2d3d7;
-  border-radius: 4px;
-  width: 100%;
-  height: 29px;
-  line-height: 29px;
-  padding: 0 10px;
-  color: #16192c;
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+.modalSeletbox .robotsItem.active {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
 }
 
 .mapSelectBox div:hover {
@@ -225,63 +239,76 @@
 /* 모달 - 로봇 셀렉트 */
 
 .modalSeletWrapper {
-  position: absolute;
-  top: 17px;
-  left: 17px;
+  position: relative;
   z-index: 10;
+  min-width: 160px;
 }
 
 .modalRobotSelect {
-  width: 138px;
-  height: 29px;
-  padding: 0 10px 0 20px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px 0 12px;
 
-  border-radius: 5px;
-  border: 1px solid #fff;
-  font-size: 13px;
-  
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+
   cursor: pointer;
-  
+
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.modalRobotSelect:hover {
+  border-color: var(--color-info);
+  background: rgba(0, 0, 0, 0.55);
 }
 
 .mapSelect {
-  border: 1px solid #ffffff;
-  color: #ffffff;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
 }
 
 .modalRobotSelect img {
-  width: 11px;
-  height: 6px;
+  width: 12px;
+  height: auto;
+  opacity: 0.7;
 }
 
 .modalSeletbox {
-  width: 138px;
+  width: 100%;
   height: auto;
-  max-height: 200px;
+  max-height: 102px; /* 아이템 30px × 3 + padding 12px */
 
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 
-  padding: 6px 8px;
-  background: transparent;
-  border: 1px solid #fff;
-  border-radius: 5px;
+  padding: 6px 6px;
+  background: var(--surface-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 
   position: absolute;
-  top: 37px;
-  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 9999;
   overflow: hidden;
   cursor: pointer;
 }
 
 .mapSelectBox {
-  border: 1px solid #26273a;
+  border: 1px solid var(--border-subtle);
 }
 
 .mapSelectBox div {
-    color: #3c3c51;
+    color: var(--text-secondary);
 }
 
 
@@ -305,6 +332,32 @@
   margin-left: 5px;
 }
 
+.path-div-modern {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 20px;
+  background-color: var(--surface-elevated);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.path-div-modern:hover {
+  background-color: var(--color-info-bg);
+  border-color: var(--color-info-border);
+}
+
+.path-div-modern .path-icon {
+  margin-right: 0;
+}
+
 .remote-icon,
 .path-icon {
   width: auto;
@@ -313,49 +366,66 @@
 }
 
 
+/* Segmented Control (AR/MR) */
 .videoStatusBox {
   display: flex;
   align-items: center;
-  font-size: 15px;
-  gap: 10px;
+  font-size: var(--font-size-xs);
+  height: 30px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border-subtle);
+  padding: 3px;
+  gap: 0;
 }
 
 .videoStatusBtn {
-  width: 100%;
   height: 100%;
-  border-radius: 50px;
+  border-radius: 4px;
   font-weight: 500;
-  border: 1px solid #fff;
+  border: none;
   background: transparent;
-  color: #fff;
+  color: var(--text-muted);
   display: flex;
+  transition: background 0.15s ease, color 0.15s ease;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
+  padding: 0 10px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
+
 .mapVideoStatusBtn {
-  border: 1px solid #26273a;
-  color: #3c3c51;
+  color: var(--text-muted);
 }
 
 .videoStatusBtn.active {
-  background: #d95a59;
+  background: var(--color-error-soft);
+  color: var(--text-primary);
 }
 
 .mapVideoStatusBtn.active {
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .roundIcon {
-  border-radius: 50px;
+  border-radius: 50%;
+  width: 6px;
+  height: 6px;
+  background-color: currentColor;
+  opacity: 0.6;
+}
+
+.videoStatusBtn.active .roundIcon {
   background-color: #ffffff;
-  width: 8px;
-  height: 8px;
+  opacity: 1;
 }
 
 .mapVideoStatusBtn .roundIcon {
-  background-color: #343856;
+  background-color: currentColor;
 }
 
 .mapVideoStatusBtn.active .roundIcon {
@@ -566,44 +636,48 @@
 /* 로봇관리 - 로봇 CRUD 버튼 */
 
 .robotCrudBox {
-  width: 128px;
-  height: 29px;
-  
+  width: 120px;
+  height: 39px;
+  margin: 0;
+
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 
   padding: 8px 12px;
-  background: #196189;
-  
-  border: none;
-  border-radius: 6px;
-  
-  font-size: 12px;
-  color: #e1fbfa;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 8px;
+
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  font-weight: 500;
+
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
 }
 
-.robotCrudBtn img {
-  height: 10px;
+.robotCrudBox:hover {
+  background: var(--color-info-selected);
 }
 
+.robotCrudBox:active {
+  transform: scale(0.97);
+}
 
-.plusBtn {
-  background: transparent;
-  border: none;
-  color: #fff;
-  font-size: 30px;
+.robotCrudBox img {
+  height: 11px;
+  width: auto;
 }
 
 
 
 /* 실제 스크롤 영역: 네이티브 스크롤바는 숨김 */
 .inner {
-  max-height: inherit;
-  overflow-y: scroll;
-  padding-right: 3px; /* 오른쪽 커스텀 스크롤바 공간 */
-  padding-bottom: 10px;
+  max-height: 90px; /* 아이템 30px × 3 */
+  overflow-y: auto;
+  padding: 0;
   box-sizing: border-box;
 
   /* 스크롤바 숨김(네이티브) */

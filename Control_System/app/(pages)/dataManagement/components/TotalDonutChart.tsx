@@ -4,6 +4,13 @@ import type { DonutCommonInfo } from "@/app/type";
 import { buildConicGradient, DEFAULT_BACKGROUND_COLOR } from "@/app/utils/buildConicGradient";
 import styles from "./TotalDonutChart.module.css";
 
+const robotTypeKorMap: Record<string, string> = {
+  QUADRUPED: "4족 보행",
+  COBOT: "협동 로봇",
+  AMR: "자율주행",
+  HUMANOID: "휴머노이드",
+};
+
 type DonutChartProps = {
   data: DonutCommonInfo[];
 
@@ -100,20 +107,18 @@ export default function DonutChart({
                           </>
                         ) : selectedRobotTypeLabel ? (
                           <>
-                            <div className={styles.centerLabelTop}>{selectedRobotTypeLabel}</div>
-                            <div className={styles.centerLabelTop}>ROBOT</div>
+                            <div className={styles.centerLabelTop}>{robotTypeKorMap[selectedRobotTypeLabel] ?? selectedRobotTypeLabel}</div>
                           </>
                         ) : (
                           <>
-                            <div className={styles.centerLabelTop}>TOTAL</div>
-                            <div className={styles.centerLabelTop}>ROBOTS</div>
+                            <div className={styles.centerLabelTop}>전체</div>
                           </>
                         )}
 
                         {/* 공통: 숫자 + 단위 → 로봇 이름 선택된 경우엔 감춤 */}
                         {!selectedRobotName && (
                           <>
-                            <div className={styles.centerNumber}>{FilterTotalUnits}</div>
+                            <div className={styles.centerNumber}>{FilterTotalUnits ?? 0}</div>
                             <div className={styles.centerUnit}>units</div>
                           </>
                         )}

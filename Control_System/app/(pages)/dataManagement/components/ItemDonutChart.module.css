@@ -1,64 +1,71 @@
 
 .itemDonutContainer {
     display: flex;
+    align-items: center;
     width: 100%;
-    padding: 10px 15px;
+    padding: clamp(8px, 0.6vw, 14px) clamp(8px, 0.6vw, 14px);
+    gap: clamp(8px, 0.7vw, 14px);
 }
 
 .leftFlexBox {
     display: flex;
     flex-direction: column;
-    justify-content: space-around;
-    width: 40%;
+    justify-content: center;
+    flex: 1;
+    min-width: 0;
+    gap: clamp(6px, 0.5vw, 10px);
 }
 
 /* 상단 제목 */
 .itemDonutTitle {
-    font-size: 17px;
+    font-size: clamp(11px, 0.9vw, 15px);
     font-weight: 500;
-    margin-bottom: 14px;
     color: #abbddf;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-/* 아래 표시값 (예: 298h 42m) */
+/* 아래 표시값 */
 .itemDonutValue {
-    font-size: 20px;
+    font-size: clamp(13px, 1.15vw, 20px);
     color: #9ca3af;
     display: flex;
-    gap: 5px;
+    align-items: baseline;
+    gap: 2px;
 }
 
 .itemHourValue,
 .itemMinuteValue,
 .itemDataValue {
-  font-size: 20px;
+  font-size: clamp(14px, 1.2vw, 22px);
   color: #f2f0ea;
   font-weight: 700;
   font-family: 'Gmarket Sans';
+  white-space: nowrap;
 }
 
 .itemHourValue span,
 .itemMinuteValue span,
 .itemDataValue span {
-  font-size: 13px;
+  font-size: clamp(9px, 0.75vw, 13px);
   color: #9ca3af;
   font-weight: 500;
   font-family: 'Gmarket Sans';
 }
 
-/* 전체 컨테이너 (카드 안에서 위치 잡기용) */
+/* 도넛 영역 */
 .totalDonut {
-    width: 60%;
-    height: 120px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-/* 바깥 컬러 도넛 부분 (conic-gradient 들어가는 곳) */
+/* 바깥 컬러 도넛 */
 .totalDonutOuter {
-    width: 110px;
-    height: 110px;
+    width: clamp(50px, 4.5vw, 90px);
+    height: clamp(50px, 4.5vw, 90px);
     border-radius: 50%;
     position: relative;
 }
@@ -66,7 +73,7 @@
 /* 안쪽 어두운 링 + 중앙 원 */
 .totalDonutInner {
     position: absolute;
-    inset: 16px;
+    inset: 14%;
     border-radius: 50%;
     background-color: #333855;
     display: flex;
@@ -83,22 +90,20 @@
 }
 
 .centerNumber {
-  font-size: 25px;
+  font-size: clamp(13px, 1.2vw, 22px);
   font-weight: 700;
-  margin-top: 5px;
   font-family: 'Gmarket Sans';
 }
 
 .centerUnit {
-  font-size: 12px;
+  font-size: clamp(8px, 0.65vw, 11px);
   color: #9ca3af;
   font-weight: 500;
-  margin-top: 2px;
   font-family: 'Gmarket Sans';
 }
 
 .centerUnit span {
-  font-size: 12px;
+  font-size: clamp(8px, 0.65vw, 11px);
   font-weight: 700;
   color: #e5e7eb;
   font-family: 'Gmarket Sans';

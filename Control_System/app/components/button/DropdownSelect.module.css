@@ -1,0 +1,103 @@
+.wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.compact {
+  width: auto;
+  min-width: 70px;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: var(--ds-trigger-padding, 8px 12px);
+  border-radius: var(--ds-border-radius, 6px);
+  background: var(--ds-trigger-bg, var(--surface-2));
+  border: 1px solid var(--ds-trigger-border, var(--border-strong));
+  cursor: pointer;
+  font-size: var(--ds-font-size, var(--font-size-xs));
+  color: var(--text-primary);
+  min-height: var(--ds-trigger-height, 34px);
+}
+
+.compact .trigger {
+  padding: 6px 10px;
+  min-height: 30px;
+}
+
+.trigger:hover {
+  background: var(--ds-trigger-hover-bg, var(--surface-3));
+}
+
+.arrow {
+  width: 12px;
+  height: 8px;
+  flex-shrink: 0;
+}
+
+.selectedText {
+  color: var(--text-primary);
+}
+
+.placeholderText {
+  color: var(--ds-placeholder-color, var(--text-tertiary));
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: var(--ds-menu-z, 50);
+  border-radius: var(--ds-border-radius, 6px);
+  background: var(--ds-menu-bg, var(--surface-3));
+  border: 1px solid var(--ds-menu-border, var(--border-strong));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  max-height: 180px;
+  overflow: hidden;
+}
+
+.menuInner {
+  overflow-y: auto;
+  max-height: 180px;
+  padding: 4px 0;
+}
+
+.option {
+  padding: var(--ds-option-padding, 8px 12px);
+  font-size: var(--ds-font-size, var(--font-size-xs));
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.option:hover {
+  background: var(--ds-option-hover-bg, var(--surface-4));
+}
+
+.optionActive {
+  background: var(--ds-option-hover-bg, var(--surface-4));
+  color: var(--accent);
+}
+
+/* ─── Disabled ─── */
+.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.disabled .trigger {
+  cursor: default;
+  background: var(--surface-4);
+}
+
+/* ─── Empty message ─── */
+.emptyMessage {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--ds-font-size, var(--font-size-xs));
+}

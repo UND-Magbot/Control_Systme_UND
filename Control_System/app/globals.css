@@ -1,22 +1,159 @@
+:root {
+    /* Layout */
+    --header-height: 80px;
+    --sidebar-width: 200px;
+    --layout-gap: 16px;
+    --content-top: calc(var(--header-height) + var(--layout-gap));
+    --page-padding-x: 30px;
+    --page-padding-bottom: 30px;
+    --content-height: calc(100vh - var(--content-top));
+
+    /* Page Layout */
+    --tab-height: 42px;
+    --page-body-min-height: 500px;
+
+    /* Font Size Scale */
+    --font-size-2xs:  8px;
+    --font-size-xs:   10px;
+    --font-size-sm:   12px;
+    --font-size-base: 13px;
+    --font-size-md:   14px;
+    --font-size-lg:   15px;
+    --font-size-xl:   18px;
+    --font-size-2xl:  23px;
+    --font-size-3xl:  28px;
+    --font-size-4xl:  30px;
+    --font-size-hero: 35px;
+
+    /* Surface (dark → light) */
+    --surface-0: #1a1d2e;
+    --surface-1: #202334;
+    --surface-2: #262A3E;
+    --surface-3: #292D43;
+    --surface-4: #333853;
+    --surface-5: #3B415F;
+    --surface-input:        #454B67;
+    --surface-select:       #33384c;
+    --surface-elevated:     #465376;
+    --surface-button:       #3F4256;
+    --surface-mode:         #333954;
+    --surface-tab-inactive: #1f2232;
+    --surface-tab-active:   #292D43;
+
+    /* Text */
+    --text-primary:   #ffffff;
+    --text-secondary: #cfd6e6;
+    --text-tertiary:  #9DADCB;
+    --text-muted:     #656f87;
+    --text-accent:    #92d4f4;
+    --text-inverse:   #202334;
+
+    /* Status */
+    --color-error:        #FF0000;
+    --color-error-soft:   #ff4b4b;
+    --color-error-bg:     #941621;
+    --color-error-border: #BF0E14;
+    --color-error-badge:  #A9121B;
+    --color-error-hover:  #C04040;
+
+    --color-info:          #00B0EE;
+    --color-info-bg:       #196189;
+    --color-info-border:   #0E85B7;
+    --color-info-badge:    #107CAB;
+    --color-info-selected: #214766;
+
+    --color-success:        #92D050;
+    --color-success-bg:     #327F47;
+    --color-success-active: #5F9F71;
+
+    --color-warning:       #FFC635;
+    --color-warning-badge: #A96E3A;
+
+    --color-accent:        #92d4f4;
+    --color-accent-light:  #b1e4ff;
+    --color-accent-pink:   #ea7f81;
+    --color-accent-slider: #79C9F2;
+
+    /* Border */
+    --border-subtle:  rgba(255, 255, 255, 0.25);
+    --border-default: #8a96ac;
+    --border-strong:  #bec2db;
+    --border-input:   #8AACC7;
+
+    /* Icon Size */
+    --icon-xs:    12px;
+    --icon-sm:    16px;
+    --icon-md:    20px;
+    --icon-lg:    24px;
+    --icon-xl:    30px;
+    --icon-2xl:   36px;
+    --icon-3xl:   42px;
+    --icon-hero:  68px;
+    --icon-power: 60px;
+}
+
 * { box-sizing: border-box; }
 
-html, body { 
-    margin: 0; 
-    overflow: auto;   
-    font-family: 'Pretendard', 'Noto Sans'; 
-    color: #fff; 
-    background-color: #333853;
+html, body {
+    margin: 0;
+    overflow: hidden;
+    height: 100vh;
+    font-family: 'Pretendard', 'Noto Sans';
+    color: var(--text-primary);
+    background-color: var(--surface-4);
     font-weight: 400;
-    user-select: none; 
+    user-select: none;
 }
 
 .page-container {
-    margin-top: 141px;     /* Header 높이 */
-    margin-left: 240px;   /* Sidebar 너비 */    
+    margin-top: var(--content-top);
+    margin-left: calc(var(--sidebar-width) + var(--layout-gap));
 
-    min-width: 1550px;
+    height: var(--content-height);
+    overflow-y: hidden;
+    overflow-x: hidden;
 
-    padding: 0 30px 30px;
+    padding: 0 var(--page-padding-x) var(--page-padding-bottom) 0;
+
+    display: flex;
+    flex-direction: column;
+}
+
+/* 페이지 본문 컨테이너 — 남은 공간을 자동으로 채움 */
+.page-body {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 14px;
+    margin-bottom: 20px;
+}
+
+.page-header h1 {
+    margin: 0;
+    font-weight: 500;
+    font-size: var(--font-size-3xl);
+}
+
+/* 탭이 있는 페이지용 헤더 (타이틀 좌 + 탭 우) */
+.page-header-tab {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-top: 14px;
+    margin-bottom: 0;
+}
+
+.page-header-tab h1 {
+    margin: 0;
+    font-weight: 500;
+    font-size: var(--font-size-3xl);
+    padding-bottom: 12px;
 }
 
 a {

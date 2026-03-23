@@ -5,6 +5,7 @@ import type { RobotRowData, Camera, Floor, Video } from '@/app/type';
 import styles from './RobotList.module.css';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import { API_BASE } from "@/app/config";
+import RemoteMapModal from "@/app/components/modal/RemoteMapModal";
 
 type CombinedProps = {
     selectedRobotId: number | null;
@@ -17,6 +18,8 @@ type CombinedProps = {
 
 export default function CameraView({
     selectedRobot,
+    robots,
+    video,
     cameras
 }: CombinedProps) {
 
@@ -32,7 +35,13 @@ export default function CameraView({
     const scrollRef = useRef<HTMLDivElement>(null);
     const trackRef = useRef<HTMLDivElement>(null);
     const thumbRef = useRef<HTMLDivElement>(null);
-    
+
+    // 로딩/에러 상태
+    const [camStatus, setCamStatus] = useState<"loading" | "loaded" | "error">("loading");
+
+    // 원격 제어 모달
+    const [remoteModalOpen, setRemoteModalOpen] = useState(false);
+
     const connectThermalWS = () => {
         if (wsRef.current) wsRef.current.close();
 
@@ -49,18 +58,20 @@ export default function CameraView({
 
             prevObjectUrlRef.current = nextUrl;
             setThermalUrl(nextUrl);
+            setCamStatus("loaded");
             }
         };
 
-        ws.onclose = () => console.log("🔥 Thermal WS closed");
+        ws.onerror = () => setCamStatus("error");
+        ws.onclose = () => console.log("Thermal WS closed");
     };
 
     const [cameraStream, setCameraStream] = useState(`${API_BASE}/Video/1`);
     const handleCameraTab = (idx: number, cam: Camera) => {
         setSelectedCam(cam);
         setCameraTabActiveIndex(idx);
+        setCamStatus("loading");
 
-        // 🔥 카메라 3번 = Thermal
         if (cam.id === 3) {
             setThermalUrl(null);
             connectThermalWS();
@@ -68,7 +79,6 @@ export default function CameraView({
             return;
         }
 
-        // 🔹 일반 MJPEG
         if (wsRef.current) wsRef.current.close();
         setThermalUrl(null);
 
@@ -76,10 +86,19 @@ export default function CameraView({
         setCameraStream(url);
         setIsOpenCam(false);
     };
-      
-    
-  
-    const defaultRobotName = selectedRobot?.no || "Robot 1";
+
+    const handleRetry = () => {
+        setCamStatus("loading");
+        const cam = selectedCam ?? cameras[cameraTabActiveIndex];
+        if (cam?.id === 3) {
+            connectThermalWS();
+        } else {
+            const url = `${API_BASE}/Video/${cam?.id ?? 1}?t=${Date.now()}`;
+            setCameraStream(url);
+        }
+    };
+
+    const defaultRobotName = selectedRobot?.no || "선택 안 됨";
 
     useEffect(() => {
         const handleOutsideClick = (e: MouseEvent) => {
@@ -117,26 +136,59 @@ export default function CameraView({
         deps: [cameras.length],
     });
 
+    const isThermal = (selectedCam?.id ?? cameras[cameraTabActiveIndex]?.id) === 3;
+
     return (
         <div className={styles.commonBox}>
-            <div className={styles.robotBox}>{defaultRobotName}</div>
-            
             <div className={styles.cameraWrapper}>
-                {selectedCam?.id === 3 && thermalUrl ? (
-                    <img src={thermalUrl} className={styles.cameraImg} />
+                {camStatus === "loading" && (
+                    <div className={styles.cameraOverlay}>
+                        <div className={styles.spinner} />
+                        <span>카메라 연결 중...</span>
+                    </div>
+                )}
+
+                {camStatus === "error" && (
+                    <div className={styles.cameraOverlay}>
+                        <span>카메라 연결 실패</span>
+                        <button onClick={handleRetry}>재시도</button>
+                    </div>
+                )}
+
+                {isThermal && thermalUrl ? (
+                    <img
+                        src={thermalUrl}
+                        className={styles.cameraImg}
+                        onLoad={() => setCamStatus("loaded")}
+                        onError={() => setCamStatus("error")}
+                    />
                 ) : (
-                    <img src={cameraStream} className={styles.cameraImg} />
+                    <img
+                        src={cameraStream}
+                        className={styles.cameraImg}
+                        onLoad={() => setCamStatus("loaded")}
+                        onError={() => setCamStatus("error")}
+                    />
                 )}
             </div>
 
-            <div ref={camWrapperRef} className={styles.camSelectWrapper}>
+            {/* 좌상단: 로봇명 */}
+            <div className={styles.cornerTopLeft}>
+                <span className={styles.cornerLabel}>{defaultRobotName}</span>
+            </div>
+
+            {/* 우상단: 전체보기 */}
+            <div className={styles.cornerTopRight}>
+                <div className={styles.overlayBtn} onClick={() => setRemoteModalOpen(true)}>
+                    <img src="/icon/full-screen.png" alt="전체보기" />
+                </div>
+            </div>
+
+            {/* 우하단: 카메라 셀렉트 */}
+            <div ref={camWrapperRef} className={styles.cornerBottomRight}>
                 <div className={styles.camSelectButton} onClick={() => setIsOpenCam((v) => !v)}>
                     <span>{selectedCam?.label ?? cameras[cameraTabActiveIndex]?.label ?? "CAM 1"}</span>
-                    {isOpenCam ? (
-                        <img src="/icon/arrow_up.png" alt="arrow_up" />
-                    ) : (
-                        <img src="/icon/arrow_down.png" alt="arrow_down" />
-                    )}
+                    <img src={isOpenCam ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
                 </div>
                 {isOpenCam && (
                     <div className={styles.camSelectMenu}>
@@ -144,7 +196,7 @@ export default function CameraView({
                             {cameras.map((cam, idx) => (
                                 <div
                                     key={cam.id}
-                                    className={`${styles.camOption} ${selectedCamIndex === idx ? styles.camOptionActive : ""}`}
+                                    className={styles.camOption}
                                     onClick={() => handleCameraTab(idx, cam)}
                                 >
                                     {cam.label}
@@ -157,6 +209,16 @@ export default function CameraView({
                     </div>
                 )}
             </div>
+
+            <RemoteMapModal
+                isOpen={remoteModalOpen}
+                onClose={() => setRemoteModalOpen(false)}
+                selectedRobots={selectedRobot}
+                robots={robots}
+                video={video}
+                camera={cameras}
+                primaryView="camera"
+            />
         </div>
     );
 }

@@ -1,35 +1,7 @@
-.top-div {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.title-div {
-  display: flex;
-  align-items: center;
-}
-
-.title-div div {
-  width: auto;
-  height: 23px;
-  margin-right: 15px;
-}
-
-.title-div div img {
-  height: 100%;
-}
-
-.title-div h2 {
-  margin: 0;
-  font-size: 23px;
-  font-weight: 500;
-}
-
 .middle-div {
-    height: 75%;
-    margin-bottom: 20px;
+    flex: 1;
+    min-height: 0;
+    margin-bottom: 12px;
 }
 
 .view-div {
@@ -37,6 +9,9 @@
     height: 100%;
     position: relative;
     overflow: hidden;
+    border-radius: 10px;
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
 }
 
 .view-div .video-box {
@@ -45,98 +20,56 @@
     border-radius: 10px;
 }
 .cameraWrapper {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
-  background: black;
-  position: relative;
+  background: var(--surface-1);
   border-radius: 10px;
 }
 
 .cameraImg {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
-.camSeletWrapper {
-  position: absolute;
-  right: 14px;
-  bottom: 14px;
-  z-index: 10;
-}
-
-.camSelete {
-  width: 101px;
-  height: 27px;
-  padding: 0 14px;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  
-  background: #8F909D;
-  border-radius: 5px;
-  font-size: 13px;
-}
-
-.camSelete img {
-  width: 14px;
-  height: auto;
-}
-
-.camSeletbox {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
-
-  width: 102px;
-  height: auto;
-  max-height: 101px;
-
-  border-radius: 5px;
-  background: #8F909D;
-  padding: 4px 8px;
-  
-  overflow: hidden; /* 네이티브 스크롤바 제거 */
-}
-
-.camSeletbox .camLabel {
-  width: 100%;
-  line-height: 21px;
-  border-radius: 3px;
-  font-size: 13px;
-  margin: 4px 0;
-  padding-left: 6px;
-}
-
-.camSeletbox .camLabel:hover {
-  background: #B9C0CA;
-}
 
 .bottom-div {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.select-group {
+  display: flex;
+  gap: 8px;
 }
 
 .remote-div {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 118px;
-  height: 29px;
-  padding: 0 17px;
-  background-color: #454d72;
-  border-radius: 5px;
-  border: none;
-  color: #fff;
+  gap: 8px;
+  height: 36px;
+  padding: 0 20px;
+  background-color: var(--surface-elevated);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: 500;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.remote-div:hover {
+  background-color: var(--color-info-bg);
+  border-color: var(--color-info-border);
 }
 
 .remote-icon {
   width: auto;
-  height: 20px;
-  margin-right: 5px;
+  height: 16px;
 }
 
 .remote-icon img{
@@ -145,17 +78,18 @@
 
 .robotName {
   position: absolute;
-  width: 120px;
-  height: 35px;
-  line-height: 35px;
-  background: rgba(187, 191, 194, 0.8);
-  border: 1px solid #fdffff;
-  border-radius: 6px;
-  text-align: center;
-  color: #fff;
-  top: 15px;
-  left: 15px;
+  top: 12px;
+  left: 12px;
   z-index: 10;
+  padding: 4px 14px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
 }
 
 .customSelectBox {
@@ -170,8 +104,101 @@
   padding: 10px 12px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.75);
-  color: #fff;
-  font-size: 12px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
   line-height: 1.4;
   z-index: 10;
+}
+
+/* 로딩 오버레이 */
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-md);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--surface-5);
+  border-top-color: var(--color-info);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 에러 오버레이 */
+.errorOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-md);
+}
+
+.errorIcon {
+  width: 28px;
+  height: 28px;
+  opacity: 0.5;
+}
+
+.retryBtn {
+  margin-top: 4px;
+  padding: 6px 16px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.retryBtn:hover {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+}
+
+/* 로봇 미등록 오버레이 */
+.emptyOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-md);
+}
+
+.emptySubText {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  opacity: 0.7;
 }

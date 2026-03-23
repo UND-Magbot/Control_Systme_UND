@@ -1,84 +1,49 @@
-.topPosition {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    padding-top: 15px;
-    margin-bottom: 21px;
-}
-
-.topPosition h1 {
-    margin: 0;
-    font-weight: 500;
-    min-width: 350px;
-    font-size: 30px;
-}
-
 .legendContainer{
     display: flex;
-    font-size: 10px;
-}
-
-.statusLegend,
-.workLegend {
-  display: flex;
-  gap: 11px;
+    font-size: var(--font-size-xs);
 }
 
 .statusLegend {
-  width: 253px;
+  display: flex;
+  gap: 11px;
+
   height: 25px;
 
-  border: 1px solid #CBCBD0;
-  border-radius: 12px 0 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
 
-  background: #24273B;
+  background: var(--surface-2);
 
-  display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.workLegend {
-  width: 273px;
-  height: 25px;
-
-  border: 1px solid #CBCBD0;
-  border-radius: 0 12px 12px 0;
-
-  background: #24273B;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0 16px;
 }
 
 .statusItem {
     display: flex;
     align-items: center;
     gap: 4px;
-
 }
 
 .statusCircle {
     width: 7px;
     height: 7px;
     border-radius: 50px;
-
     display: flex;
 }
 
 .waitingC {
-    background-color: #FFC635;
+    background-color: var(--color-warning);
 }
 
 .workingC {
-    background-color: #00B0EE;
+    background-color: var(--color-info);
 }
 
 .errorC {
-    background-color: #FF0000;
+    background-color: var(--color-error);
 }
 
 .completedC {
-    background-color: #92D050;
+    background-color: var(--color-success);
 }

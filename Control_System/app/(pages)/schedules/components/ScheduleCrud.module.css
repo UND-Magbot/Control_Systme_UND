@@ -10,100 +10,132 @@
 
 
 .scheduleModalContainer {
-
   width: 600px;
   height: auto;
-  border-radius: 17px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 14px;
 
-  padding: 25px 31px;
-  
+  padding: 22px 28px 20px;
+
   background: #292D43;
-  
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-   
-  position: relative;
 
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+
+  position: relative;
+}
+
+.scheduleModalContainer::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scheduleModalContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scheduleModalContainer::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
 }
 
 .CloseBtn {
-    width: 24px;
-    height: 25px;
-    
+    width: 28px;
+    height: 28px;
+
     border: none;
-    
+
     background: transparent;
-    color: white;
-    font-size: 23px;
-    
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 20px;
+    line-height: 28px;
+
     position: absolute;
-    top: 28px;
-    right: 34px;
-    
+    top: 26px;
+    right: 28px;
+
     cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.CloseBtn:hover {
+    color: #ffffff;
 }
 
 .Title {
   display: flex;
   align-items: center;
+  gap: 14px;
 }
 
 .Title img {
-  width: 35px;
-  height: 37px;
-  
-  margin-right: 25px;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .Title h2 {
-  font-weight: 500;
-  font-size: 28px;
+  font-weight: 600;
+  font-size: 20px;
   color: #ffffff;
-  
   margin: 0;
+  letter-spacing: -0.2px;
 }
 
 .itemContainer {
     width: 100%;
     height: auto;
 
-    border-radius: 15px;
+    border-radius: 10px;
 
     background: #3B415F;
 
-    margin-top: 26px;
-    padding: 17px 32px;
+    margin-top: 14px;
+    padding: 16px 20px 6px;
 }
 
 .itemBox {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 16px;
 
-    margin-bottom: 24px;
+    margin-bottom: 12px;
 
     width: 100%;
-    height: 35px;
+    min-height: 32px;
 
-    font-size: 16px;
+    font-size: 13px;
     color: #FFFFFF;
 }
 
+.itemBox > div:first-child {
+    min-width: 64px;
+    flex-shrink: 0;
+    line-height: 32px;
+}
+
 .itemLeftMg {
-    margin-left: 44px;
+    margin-left: 0;
 }
 
 .itemRadioBox {
     display: flex;
     align-items: center;
+    gap: 16px;
 
-    margin-bottom: 24px;
+    margin-bottom: 12px;
 
     width: 100%;
-    height: 35px;
+    height: 32px;
 
-    font-size: 16px;
+    font-size: 13px;
     color: #FFFFFF;
     overflow: visible;
+}
+
+.itemRadioBox > div:first-child {
+    min-width: 64px;
+    flex-shrink: 0;
 }
 
 .repeatDateFlex {
@@ -161,24 +193,27 @@
 
 
 .itemBox input {
-    width: 373px;
-    height: 35px;
+    flex: 1;
+    min-width: 0;
+    height: 32px;
 
-    background: #454B67;
+    background: var(--surface-5);
 
-    border-radius: 5px;
-    border: 1px solid #8AACC7;
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
 
-    padding: 0 11px;
+    padding: 0 12px;
 
+    font-size: 13px;
     font-weight: 400;
+    color: var(--text-primary);
+    transition: border-color 0.15s ease;
 }
 
 .itemBox input::placeholder {
-    color: #ffffff;
+    color: var(--text-muted);
     font-weight: 400;
-
-    font-size: 12px;
+    font-size: var(--font-size-sm);
 }
 
 .seletWrapper {
@@ -190,27 +225,30 @@
 
 .editSeletWrapper {
   position: relative;
+  flex: 1;
+  min-width: 0;
   height: 100%;
 }
 
 .itemSelectBox {
     width: 100%;
     height: 100%;
-    
-    background: #454B67;
 
-    border-radius: 5px;
-    border: 1px solid #8AACC7;
+    background: var(--surface-5, #454B67);
 
-    padding: 0 11px;
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle, #8AACC7);
+
+    padding: 0 12px;
 
     font-weight: 400;
-    font-size: 12px;
+    font-size: 13px;
+    color: var(--text-primary, #ffffff);
 
     display: flex;
     align-items: center;
     justify-content: space-between;
-    
+
     cursor: pointer;
 }
 
@@ -223,39 +261,43 @@
   width: 100%;
   max-height: 200px;
   font-size: 13px;
-  
-  padding: 9px;
-  
-  background: #202334;
-  border-radius: 5px;
-  
+
+  padding: 6px;
+
+  background: var(--surface-3, #202334);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #3b425c);
+
   position: absolute;
-  top: 45px;
-  
+  top: calc(100% + 4px);
+
   cursor: pointer;
   z-index: 100;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 /* custom select (robot list style) */
 .selecteWrapper {
   position: relative;
-  width: 373px;
-  height: 35px;
+  flex: 1;
+  min-width: 0;
+  height: 32px;
 }
 
 .selecte {
   width: 100%;
-  height: 35px;
-  background: #454B67;
-  border-radius: 5px;
-  border: 1px solid #8AACC7;
-  padding: 5px 14px;
+  height: 32px;
+  background: var(--surface-5, #454B67);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #8AACC7);
+  padding: 0 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
   font-size: 13px;
+  color: var(--text-primary, #ffffff);
 }
 
 .selecte img {
@@ -269,14 +311,16 @@
 .selectebox {
   width: 100%;
   height: auto;
-  padding: 10px;
-  background: #202334;
-  border-radius: 5px;
+  padding: 6px;
+  background: var(--surface-3, #202334);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #3b425c);
   position: absolute;
-  top: 45px;
+  top: calc(100% + 4px);
   cursor: pointer;
   z-index: 20;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .selecteInner {
@@ -291,17 +335,22 @@
 
 .selecteOption {
   width: 100%;
-  height: 35px;
-  line-height: 35px;
+  height: 32px;
+  line-height: 32px;
   padding: 0 10px;
-  color: #fff;
+  color: var(--text-primary, #fff);
   font-size: 13px;
+  border-radius: 4px;
+  transition: background 0.12s ease;
 }
 
 .selecteOption:hover {
-  background: #d2d3d7;
-  color: #16192c;
-  border-radius: 4px;
+  background: var(--surface-4, #3b425c);
+}
+
+.selecteOptionActive {
+  background: var(--surface-4, #3b425c);
+  color: var(--accent, #00B0EE);
 }
 
 .selecteScrollTrack {
@@ -326,15 +375,23 @@
 
 .selecteCompact {
   width: 63px;
+  flex: none;
 }
 
 .selecte.selecteCompact {
-  padding: 0 7px;
+  padding: 0 8px;
   font-size: 12px;
+  height: 32px;
 }
 
 .selecteboxCompact {
   width: 63px;
+}
+
+.selecteboxCompact .selecteOption {
+  height: 30px;
+  line-height: 30px;
+  font-size: 12px;
 }
 
 .inner {
@@ -385,6 +442,7 @@
 .radioBtnBox {
     display: flex;
     align-items: center;
+    gap: 6px;
 }
 
 .radioBtnBox img {
@@ -398,26 +456,27 @@
 
 .itemDateBox {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 6px;
 
-    width: 373px;
-    height: 35px;
-    
+    flex: 1;
+    min-width: 0;
+    height: 32px;
+
     font-weight: 400;
     font-size: 12px;
 }
 
 .itemDateBox .itemDate {
-    width: 118px;
-    line-height: 35px;
+    width: 110px;
+    line-height: 32px;
 
-    background: #454B67;
+    background: var(--surface-5);
 
-    border-radius: 4px;
-    border: 1px solid #8AACC7;
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
 
-    padding: 0 7px;
+    padding: 0 8px;
 
     display: flex;
     align-items: center;
@@ -425,6 +484,8 @@
 
     cursor: pointer;
     position: relative;
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
 }
 
 .calendarPopover {
@@ -484,18 +545,24 @@
 .pathBoxFlex {
     display: flex;
     align-items: center;
+    gap: 16px;
 
-    margin-bottom: 24px;
+    margin-bottom: 12px;
 
     width: 100%;
     height: 35px;
 
-    font-size: 16px;
+    font-size: 14px;
     color: #FFFFFF;
 }
 
+.pathBoxFlex > div:first-child {
+    min-width: 64px;
+    flex-shrink: 0;
+}
+
 .itemBoxBtn {
-    width: 160px;
+    width: auto;
     height: 34px;
 
     border-radius: 5px;
@@ -504,9 +571,11 @@
     border: none;
 
     color: #FFFFFF;
+    font-size: 13px;
+    white-space: nowrap;
 
-    padding: 0 17px;
-    margin-left: 100px;
+    padding: 0 20px;
+    cursor: pointer;
 }
 
 .itemPathBoxEdit .itemBoxBtn {
@@ -514,41 +583,59 @@
 }
 
 
+.errorMessage {
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: 12px;
+  border-radius: 6px;
+  background: rgba(255, 77, 77, 0.15);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
 .insertBtnTotal {
   width: 100%;
   display: flex;
   justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .insertConfrimBtn {
-  width: 154px;
-  height: 44px;
+  width: 130px;
+  height: 36px;
 
-  border-radius: 10px;
+  border-radius: 8px;
 
   color: #FFFFFF;
-  font-size: 14px;
-
-  margin-top: 42px;
+  font-size: 13px;
+  font-weight: 500;
 
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
 
   cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
 .insertConfrimBtn img {
-  width: 11px;
-  height: 11px;
-
-  margin-right: 29px;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 .btnBgRed {
-  border: 1px solid #BF0E14;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-button);
+}
+
+.btnBgRed:hover {
+  border-color: #BF0E14;
   background: #941621;
-  margin-right: 20px;
 }
 
 .btnBgBlue {
@@ -556,57 +643,66 @@
   background: #196189;
 }
 
+.btnBgBlue:hover {
+  background: #1a7aaa;
+}
+
 
 /* Schedule Detail Modal Styles */
 
 .TitleCircle {
-    width: 20px;
-    height: 20px;
-    
+    width: 18px;
+    height: 18px;
+
     background: #00B0EE;
-    border-radius: 50px;
-    
-    margin-right: 25px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
 
 .btnTotal {
   width: 100%;
-  margin-top: 30px;
+  margin-top: 14px;
 }
 
 .btnLeftBox {
   width: 100%;
-  
+
   display: flex;
   justify-content: flex-end;
-
-  cursor: pointer;
+  gap: 10px;
 }
 
 .btnItemCommon {
-  width: 167px;
-  height: 48px;
+  width: 130px;
+  height: 36px;
 
   display: flex;
   align-items: center;
   justify-content: center;
-  
-  border-radius: 9px;
+  gap: 8px;
+
+  border-radius: 8px;
   border: none;
   cursor: pointer;
 
   color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.2s ease;
 }
 
 .btnItemCommon img {
-  width: 13px;
-  height: 14px;
-
-  margin-right: 15px;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 .btnBgGray {
   background: #626a81;
+}
+
+.btnBgGray:hover {
+  background: #4e5570;
 }
 
 .mr10 {
@@ -620,6 +716,7 @@
 
 .itemDetail {
     width: 373px;
+    line-height: 32px;
 }
 
 .itemtitle {
@@ -630,25 +727,28 @@
 
 .itemPathBox {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
 
-    margin-bottom: 24px;
+    margin-bottom: 16px;
 
     width: 100%;
-    height: 90px;
 
-    font-size: 16px;
+    font-size: 14px;
     color: #FFFFFF;
+}
+
+.itemPathBox > div:first-child {
+    min-width: 64px;
+    flex-shrink: 0;
+    padding-top: 8px;
 }
 
 .itemPathBoxEdit {
   flex-direction: column;
   align-items: flex-start;
-  justify-content: flex-start;
-  height: auto;
   gap: 8px;
-  margin-left: 100px;
+  padding-left: 80px;
 }
 
 .itemPathAction {
@@ -656,20 +756,24 @@
 }
 
 .itemPath {
-    width: 373px;
-    height: 85px;
+    flex: 1;
+    min-width: 0;
+    height: 60px;
 
-    border: 1px solid #D9DAE0;
-    border-radius: 5px ;
-    
-    background: #454B67;
+    border: 1px solid var(--border-subtle, #4a506a);
+    border-radius: 6px;
+
+    background: var(--surface-2, #2B2E3E);
 
     padding: 8px;
+    overflow-y: auto;
 }
 
 .itemScroll {
-    padding: 12px 10px;
-    line-height: 150%;
+    padding: 8px 10px;
+    line-height: 160%;
+    font-size: 13px;
+    color: var(--text-secondary, #cfd6e6);
 }
 
 /* ====== (추가) 수정모드: 작업일시 레이아웃 보정 ====== */
@@ -690,13 +794,15 @@
 
 /* ====== (추가) 수정모드: 반복요일 버튼 ====== */
 .repeatDayBtn {
-  width: 35px;
-  height: 35px;
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
-  border: 1px solid #8AACC7;
-  background: #454B67;
+  border: 1px solid var(--border-subtle, #8AACC7);
+  background: var(--surface-5, #454B67);
   color: #ffffff;
+  font-size: 12px;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .repeatDayBtnActive {
@@ -727,14 +833,14 @@
 
 /* ====== (추가) 수정모드: 반복종료 '종료 날짜' 박스 ====== */
 .repeatEndDateBox {
-  width: 118px;
-  height: 35px;
+  width: 110px;
+  height: 32px;
 
-  background: #454B67;
-  border: 1px solid #8AACC7;
-  border-radius: 4px;
+  background: var(--surface-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
 
-  padding: 0 7px;
+  padding: 0 8px;
 
   display: flex;
   align-items: center;
@@ -808,4 +914,241 @@
 
 .noMb {
   margin-bottom: unset;
+}
+
+/* ====== 필드별 에러 메시지 ====== */
+.fieldError {
+  color: var(--color-error-soft);
+  font-size: var(--font-size-sm);
+  margin-top: 4px;
+  display: block;
+  padding-left: 80px;
+}
+
+.inputError {
+  border-color: var(--color-error) !important;
+}
+
+/* ====== 섹션 구분선 ====== */
+.sectionDivider {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 2px;
+  padding-top: 12px;
+}
+
+/* ====== 바이트 카운터 ====== */
+.byteCounter {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: right;
+}
+
+.byteCounterWarn {
+  color: var(--color-error-soft);
+}
+
+/* input 내부 우측에 바이트 카운터 배치 */
+.inputWithByte {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.inputWithByte input {
+  width: 100%;
+  padding-right: 56px;
+}
+
+.byteInline {
+  position: absolute;
+  right: 10px;
+  top: 17px;
+  transform: translateY(-50%);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.inputWithByte .fieldError {
+  position: relative;
+  margin-top: 4px;
+  padding-left: 0;
+}
+
+/* ====== 로딩 텍스트 ====== */
+.loadingText {
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ====== 재시도 버튼 ====== */
+.retryBtn {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-button);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.retryBtn:hover {
+  background: var(--surface-elevated);
+}
+
+/* ====== itemBox 래퍼 (필드 에러 지원) ====== */
+.itemBoxWrap {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.itemBoxWrap .itemBox {
+  margin-bottom: 0;
+}
+
+/* ====== 미저장 확인 모달 ====== */
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 200;
+}
+
+.confirmBox {
+  background: #292D43;
+  border-radius: 12px;
+  padding: 28px 32px;
+  text-align: center;
+  color: #ffffff;
+  min-width: 340px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.confirmBox p {
+  font-size: 15px;
+  margin-bottom: 24px;
+}
+
+.confirmBtnGroup {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.confirmBtnGroup button {
+  width: 120px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: #ffffff;
+}
+
+.confirmBtnStay {
+  background: #626a81;
+}
+
+.confirmBtnStay:hover {
+  background: #484e64;
+}
+
+.confirmBtnLeave {
+  background: #941621;
+  border: 1px solid #BF0E14;
+}
+
+.confirmBtnLeave:hover {
+  background: #7a1019;
+}
+
+/* ====== 상태 색상 dot ====== */
+.statusDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.statusDotWaiting { background: var(--color-info, #00B0EE); }
+.statusDotWorking { background: var(--color-warning, #F5A623); }
+.statusDotCompleted { background: var(--color-success, #34C759); }
+.statusDotError { background: var(--color-error, #FF4D4D); }
+.statusDotCancelled { background: #888; }
+
+/* ====== 로딩 오버레이 ====== */
+.detailLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  gap: 12px;
+  color: var(--text-secondary, #9DADCB);
+  font-size: 14px;
+}
+
+.detailSpinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent, #00B0EE);
+  border-radius: 50%;
+  animation: detailSpin 0.7s linear infinite;
+}
+
+@keyframes detailSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ====== 삭제 버튼 (상세 모달용) ====== */
+.btnItemCommon.btnBgRed {
+  background: #626a81;
+  border: 1px solid transparent;
+}
+
+.btnItemCommon.btnBgRed:hover {
+  background: #941621;
+  border-color: #BF0E14;
+}
+
+/* ====== 삭제 버튼 (등록 모달용 - insertConfrimBtn에서 사용) ====== */
+.insertConfrimBtn.btnBgRed {
+  background: var(--surface-button, #626a81);
+  border: 1px solid var(--border-subtle);
+}
+
+.insertConfrimBtn.btnBgRed:hover {
+  background: #941621;
+  border-color: #BF0E14;
+}
+
+/* ====== 저장 버튼 ====== */
+.btnBgBlue {
+  background: #196189;
+  border: 1px solid #0E85B7;
+}
+
+.btnBgBlue:hover {
+  background: #0d4f70;
+}
+
+/* ====== 버튼 비활성화 ====== */
+.btnDisabled {
+  opacity: 0.6;
+  pointer-events: none;
 }

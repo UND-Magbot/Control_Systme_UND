@@ -1,36 +1,33 @@
 import type { RobotRowData } from "@/app/type";
-
-const API_BASE = process.env.API_BASE ?? "http://localhost:8000";
+import { API_BASE } from "@/app/config";
 
 export default async function getRobots(): Promise<RobotRowData[]> {
-  let raw: any[];
+  let raw: any[] = [];
+
   try {
     const res = await fetch(`${API_BASE}/DB/robots`, {
       cache: "no-store",
     });
-
-    if (!res.ok) {
-      return [];
+    if (res.ok) {
+      raw = await res.json();
     }
-
-    raw = await res.json();
   } catch {
-    return [];
+    // API 실패 시 raw는 빈 배열 유지 → 아래에서 mock 데이터로 대체
   }
 
-  const robots = raw.map((item: any, index: number): RobotRowData => ({
+  const robots = raw.map((item: any): RobotRowData => ({
     id: item.id,
 
-    // 🔥 여기 핵심: 자동 Robot 번호 생성
-    no: `Robot ${index + 1}`,
+    // DB 컬럼명: RobotName (PascalCase)
+    no: item.RobotName ?? "",
 
     // 표시용 정보
     type: item.robot_type ?? "",
-    info: item.robot_name ?? "",
+    info: item.RobotName ?? "",
 
-    // 상태
+    // 상태 (실시간 폴링으로 덮어씌워짐)
     battery: item.battery ?? 0,
-    return: item.limit_battery ?? 30,
+    return: item.LimitBattery ?? 30,
     isCharging: item.is_charging ?? false,
     network: item.network ?? "Online",
     power: item.power ?? "On",
@@ -44,14 +41,14 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     waitingTime: item.waiting_time ?? 0,
     dockingTime: item.docking_time ?? 0,
 
-    // 메타 정보
-    operator: item.admin_id ?? "",
-    serialNumber: item.serial_number ?? "",
-    model: item.model_name ?? "",
-    group: item.group ?? "",
-    softwareVersion: item.software_version ?? "",
-    site: item.site ?? "",
-    registrationDateTime: item.created_at ?? "",
+    // 메타 정보 (DB 컬럼명: PascalCase)
+    operator: item.ProductCompany ?? "",
+    serialNumber: item.SerialNumber ?? "",
+    model: item.ModelName ?? "",
+    group: item.Group ?? "",
+    softwareVersion: item.SWversion ?? "",
+    site: item.Site ?? "",
+    registrationDateTime: item.Adddate ?? "",
   }));
 
   return robots;

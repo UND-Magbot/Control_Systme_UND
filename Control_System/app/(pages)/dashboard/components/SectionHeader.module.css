@@ -1,0 +1,36 @@
+.sectionHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 32px;
+    margin-bottom: 12px;
+}
+
+.titleGroup {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.iconWrapper {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.iconWrapper img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    opacity: 0.85;
+}
+
+.sectionHeader h2 {
+    margin: 0;
+    font-size: var(--font-size-2xl);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
+}

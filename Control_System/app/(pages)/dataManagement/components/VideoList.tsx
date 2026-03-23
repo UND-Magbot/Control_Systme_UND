@@ -1,24 +1,28 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import styles from './VideoList.module.css';
 import Pagination from "@/app/components/pagination";
 import Calendar from "@/app/components/Calendar";
-import type { RobotRowData, Camera, Video, VideoItem, Period, LogItem, RobotType } from '@/app/type';
+import type { RobotRowData, Camera, Video, VideoItem, Period, LogItem, RobotType, DonutCommonInfo } from '@/app/type';
 import VideoPlayModal from '@/app/components/modal/VideoPlayModal';
 import { convertMinutesToText } from "@/app/utils/convertMinutesToText";
 import TotalDonutChart from "./TotalDonutChart";
 import ItemDonutChart from "./ItemDonutChart";
 import { buildRobotTypeDonut, buildTaskCountDonut, buildTimeDonut, buildErrorDonut } from '../../../utils/Charts';
+import LogList from "./LogList";
+import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 
 const PAGE_SIZE = 8;
 
 type VideoListProps = {
   cameras: Camera[];
   robots: RobotRowData[];
+  statisticsData: RobotRowData[];
   video: Video[];
   videoData: VideoItem[];
   robotTypeData: RobotType[];
+  logData: LogItem[];
 }
 
 // 오늘 날짜만 필터하는 유틸
@@ -38,25 +42,21 @@ const filterTodayVideos = (videoData: VideoItem[]) => {
 };
 
 
-export default function VideoList({ 
-    videoData, 
-    robots, 
-    video, 
-    robotTypeData, 
+export default function VideoList({
+    videoData,
+    robots,
+    statisticsData,
+    video,
+    robotTypeData,
+    logData,
 }:VideoListProps) {
 
-    const [videoActiveIndex, setVideoActiveIndex] = useState<number | null>(null);
-    const [robotActiveIndex, setRobotActiveIndex] = useState<number | null>(null);
-    
     const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
     const [selectedRobot, setSelectedRobot] = useState<RobotRowData | null>(null);
     const [selectedPeriod, setSelectedPeriod] = useState<Period | null>(null);
-    
+
     const [externalStartDate, setExternalStartDate] = useState<string | null>(null);
     const [externalEndDate, setExternalEndDate] = useState<string | null>(null);
-    
-    // 로봇 타입 선택 인덱스 (-1 = Total Robots)
-    const [robotTypeActiveIndex, setRobotTypeActiveIndex] = useState<number>(-1);
 
     // 선택된 로봇 타입 (Total Robots = null)
     const [selectedRobotType, setSelectedRobotType] = useState<RobotType | null>(null);
@@ -74,24 +74,16 @@ export default function VideoList({
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<"video" | "dt" | "log">("video");
 
-    const [isVideoOpen, setIsVideoOpen] = useState(false);
-    const [isRobotOpen, setIsRobotOpen] = useState(false);
-    const [isRobotTypeOpen, setIsRobotTypeOpen] = useState(false);
-    const videoWrapperRef = useRef<HTMLDivElement>(null);
-    const robotWrapperRef = useRef<HTMLDivElement>(null);
-    const robotTypeWrapperRef = useRef<HTMLDivElement>(null);
 
-    
+
     // 탭별 페이지 상태
     const [videoPage, setVideoPage] = useState(1);
     const [dtPage, setDtPage] = useState(1);
     const [logPage, setLogPage] = useState(1);
 
-    const logData:LogItem[] = [];
-
     // 현재 탭에 따라 참조할 데이터/페이지 선택
-    let currentPage;
-    let currentData;
+    let currentPage: number;
+    let currentData: unknown[];
 
     switch (activeTab) {
     case "video":
@@ -138,18 +130,12 @@ export default function VideoList({
 
             setSelectedPeriod(null);
 
-            setVideoActiveIndex(-1);
-            setRobotActiveIndex(-1);
-
         } else if (tab === "dt" && activeTab !== "dt") {
             setDtPage(1);
 
             // 로봇 이름/타입 선택 초기화
-            setSelectedRobot(null);        // 로봇 이름 선택 초기화
-            setRobotActiveIndex(-1);       // 로봇 이름 인덱스 초기화
-
-            setSelectedRobotType(null);    // 로봇 타입 선택 초기화
-            setRobotTypeActiveIndex(-1);   // 로봇 타입 인덱스 초기화
+            setSelectedRobot(null);
+            setSelectedRobotType(null);
         } else if (tab === "log") {
             setLogPage(1);
         }
@@ -196,7 +182,7 @@ export default function VideoList({
                 // 데이터 없을 때 안전 처리
                 setExternalStartDate(null);
                 setExternalEndDate(null);
-0            }
+            }
             return;
         }
 
@@ -216,31 +202,6 @@ export default function VideoList({
         setExternalEndDate(periodFormatDate(today));
     };
 
-    // 그 위쪽 state 선언은 그대로 두고, 핸들러만 수정
-    const videoStatusClick = (idx: number, option: Video) => {
-        setVideoActiveIndex(idx);
-        if (option.label === "Total") {
-            setSelectedVideo(null);
-        } else {
-            setSelectedVideo(option);
-        }
-        setIsVideoOpen(false);
-    };
-
-    const robotStatusClick = (idx: number) => {
-        setRobotActiveIndex(idx);
-
-        if (idx === 0) {
-            // Total 선택
-            setSelectedRobot(null);
-        } else {
-            // 실제 로봇 데이터는 idx - 1
-            setSelectedRobot(robots[idx - 1]);
-        }
-
-        setIsRobotOpen(false);
-    };
-  
     const formatVideoTime = (time: string) => {
         const [hh, mm, ss] = time.split(":").map(Number);
     
@@ -277,50 +238,12 @@ export default function VideoList({
 
     // Video 클릭 시 실행되는 핸들러
     const VideoPlayClick = (idx: number, videoData: VideoItem) => {
-        setVideoActiveIndex(idx);
         setPlayedVideoId(videoData.id);
         setPlayedVideo(videoData);
         setVideoPlayModalOpen(true)
 
         console.log("선택된 로봇 (Location 클릭):", videoData.id, videoData.filename);
     };
-
-    useEffect(() => {
-        const handleOutsideClick = (e: MouseEvent) => {
-          const target = e.target as Node;
-      
-          // 비디오 셀렉트 외부 클릭 → 닫기
-          if (
-            isVideoOpen &&
-            videoWrapperRef.current &&
-            !videoWrapperRef.current.contains(target)
-          ) {
-            setIsVideoOpen(false);
-          }
-      
-          // 로봇 셀렉트 외부 클릭 → 닫기
-          if (
-            isRobotOpen &&
-            robotWrapperRef.current &&
-            !robotWrapperRef.current.contains(target)
-          ) {
-            setIsRobotOpen(false);
-          }
-
-          // 로봇 셀렉트 외부 클릭 → 닫기
-          if (
-            isRobotTypeOpen &&
-            robotTypeWrapperRef.current &&
-            !robotTypeWrapperRef.current.contains(target)
-          ) {
-            setIsRobotTypeOpen(false);
-          }
-        };
-      
-        document.addEventListener("mousedown", handleOutsideClick);
-        return () => document.removeEventListener("mousedown", handleOutsideClick);
-    }, [isVideoOpen, isRobotOpen, isRobotTypeOpen]);
-
 
     useEffect(() => {
     setSearchFilterData(filterTodayVideos(videoData));
@@ -336,6 +259,21 @@ export default function VideoList({
         // 비디오 타입/로봇 선택이 바뀔 때마다 1페이지로 이동
         setVideoPage(1);
     }, [selectedVideo, selectedRobot]);
+
+    useEffect(() => {
+        // DT 탭 필터 변경 시 1페이지로 이동
+        if (activeTab === "dt") {
+            setDtPage(1);
+        }
+    }, [selectedRobotType]);
+
+    useEffect(() => {
+        // 필터 적용 후 현재 페이지가 범위를 초과하면 1페이지로 리셋
+        const maxPage = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+        if (currentPage > maxPage) {
+            getPageSetter()(1);
+        }
+    }, [totalItems]);
 
 
     // 썸네일 생성
@@ -363,6 +301,14 @@ export default function VideoList({
     }, []);
 
     
+    // 로봇 명 셀렉트 옵션: robots API 기반, 로봇 종류 필터 연동
+    const robotNameItems = useMemo(() => {
+        const source = selectedRobotType
+            ? robots.filter(r => r.type === selectedRobotType.label)
+            : robots;
+        return source.map(r => ({ id: r.id, label: r.no }));
+    }, [robots, selectedRobotType]);
+
     const robotTypeColorMap: Record<string, string> = {
         QUADRUPED: "#fa0203",
         COBOT: "#03abf3",
@@ -370,79 +316,45 @@ export default function VideoList({
         HUMANOID: "#f79418",
     };
 
-    const filteredRobots = robots.filter((r) => {
-        // 타입 선택됨 → 필터 적용
+    const robotTypeKorMap: Record<string, string> = {
+        QUADRUPED: "4족 보행",
+        COBOT: "협동 로봇",
+        AMR: "자율주행",
+        HUMANOID: "휴머노이드",
+    };
+
+    // ── 통계 데이터 필터 (statisticsData 기반) ──
+    const filteredStatistics = statisticsData.filter((r) => {
         if (selectedRobotType) {
             if (r.type !== selectedRobotType.label) return false;
         }
-
-        // 로봇 선택됨 → 필터 적용
         if (selectedRobot) {
             if (r.id !== selectedRobot.id) return false;
         }
-
         return true;
     });
 
- 
     const hasAnyFilter = !!selectedRobotType || !!selectedRobot;
-    const baseRobots = hasAnyFilter ? filteredRobots : robots;
+    const baseStatistics = hasAnyFilter ? filteredStatistics : statisticsData;
 
-    const robotTypeDonut = buildRobotTypeDonut({ robots: robots   });
-    const taskDonut = buildTaskCountDonut({ robots: baseRobots  });
-    const timeDonut = buildTimeDonut({ robots: baseRobots  });
-    const errorDonut = buildErrorDonut({ robots: baseRobots  });
+    const emptyDonut: DonutCommonInfo = { id: 0, label: "", value: 0, percent: 0, displayValue: "0" };
 
-    const totalRobots = robots.length;
-    const FilterTotalUnits = baseRobots.length;
+    const robotTypeDonut = buildRobotTypeDonut({ robots: statisticsData });
+    const taskDonut = buildTaskCountDonut({ robots: baseStatistics });
+    const timeDonut = buildTimeDonut({ robots: baseStatistics });
+    const errorDonut = buildErrorDonut({ robots: baseStatistics });
+
+    const totalRobots = statisticsData.length;
+    const FilterTotalUnits = baseStatistics.length;
 
     const totalTasks  = taskDonut.reduce((s, i) => s + i.value, 0);
     const totalTimeMinutes = timeDonut.reduce((s, i) => s + i.value, 0);
-    const totalTimeStr = convertMinutesToText(totalTimeMinutes); // 예: "498h 3m"
-    const [hText, mText] = totalTimeStr.split(" "); // ["498h", "3m"]
+    const totalTimeStr = convertMinutesToText(totalTimeMinutes);
+    const parts = totalTimeStr.split(" ");
+    const hText = parts[0] ?? "0h";
+    const mText = parts[1] ?? "0m";
     const totalErrors = errorDonut.reduce((s, i) => s + i.value, 0);
 
-
-    // 로봇 이름 선택 (dt 탭)
-    // Total Robots 클릭
-    const handleRobotTotalClick = () => {
-        setRobotActiveIndex(0);     // 0 = Total
-        setSelectedRobot(null);     // 로봇 선택 해제
-        setIsRobotOpen(false);
-    };
-
-    // 개별 로봇 선택
-    const dtRobotClick = (idx: number, robot: RobotRowData) => {
-        setRobotActiveIndex(idx);
-        setSelectedRobot(robot);
-        setIsRobotOpen(false);
-
-        // ✅ 현재 선택된 로봇 타입 필터와 다른 타입이면 타입 필터 초기화
-        if (selectedRobotType && selectedRobotType.label !== robot.type) {
-            setSelectedRobotType(null);     // 타입 필터 제거
-            setRobotTypeActiveIndex(0);     // 0 = Total Robots 로 되돌림
-        }
-    };
-
-    // Robot Type = Total Robots 선택 시
-    const handleRobotTypeTotalClick = () => {
-        setRobotTypeActiveIndex(0);   // 0 = Total
-        setSelectedRobotType(null);   // 타입 필터 해제
-        setIsRobotTypeOpen(false);
-    };
-
-    // 특정 로봇 타입 선택 시
-    const dtRobotTypeClick = (idx: number, type: RobotType) => {
-        setRobotTypeActiveIndex(idx);   // 인덱스 저장
-        setSelectedRobotType(type);     // 타입 필터 설정
-        setIsRobotTypeOpen(false);
-
-        // ✅ 이미 로봇이 선택돼 있는데, 타입이 다르면 로봇 선택 초기화
-        if (selectedRobot && selectedRobot.type !== type.label) {
-            setSelectedRobot(null);
-            setRobotActiveIndex(0);       // 0 = Total Robots
-        }
-    };
 
     // 영상 다운로드(임시)
     const downloadSample = () => {
@@ -456,172 +368,123 @@ export default function VideoList({
 
   return (
     <>
-    <div className={styles.videoListTab}>
-        <div className={`${activeTab === "video" ? styles.active : ""}`} onClick={() => handleTabClick("video")}>녹화 영상</div>
-        <div className={`${activeTab === "dt" ? styles.active : ""}`} onClick={() => handleTabClick("dt")}>통계 정보</div>
-        <div className={`${activeTab === "log" ? styles.active : ""}`} onClick={() => handleTabClick("log")}>로그 이력</div>
+    <div className="page-header-tab">
+        <h1>데이터 관리</h1>
+        <div className={styles.videoListTab}>
+            <div className={`${activeTab === "video" ? styles.active : ""}`} onClick={() => handleTabClick("video")}>영상 관리</div>
+            <div className={`${activeTab === "dt" ? styles.active : ""}`} onClick={() => handleTabClick("dt")}>통계 관리</div>
+            <div className={`${activeTab === "log" ? styles.active : ""}`} onClick={() => handleTabClick("log")}>로그 관리</div>
+        </div>
     </div>
 
     {/* Recording Video 화면 */}
     {activeTab === "video" && (
         <div className={styles.videoList}>
-            <div>    
                 <div className={styles.videoListTopPosition}>
-                    <h2>영상 목록</h2>
+                    <h2>영상 관리</h2>
                     <div className={styles.videoSearch}>
                         <div className={styles.videoSelect}>
-                            <div ref={videoWrapperRef}>
-                                <div
-                                    className={styles.selete}
-                                    onClick={() => setIsVideoOpen(!isVideoOpen)}
-                                >
-                                    <span>
-                                    {selectedVideo
-                                        ? selectedVideo.label
-                                        : videoActiveIndex === 0
-                                        ? "Total"
-                                        : "녹화 선택"}
-                                    </span>
-                                    {isVideoOpen ? (
-                                    <img src="/icon/arrow_up.png" alt="arrow_up" />
-                                    ) : (
-                                    <img src="/icon/arrow_down.png" alt="arrow_down" />
-                                    )}
-                                </div>
-                                {isVideoOpen && (
-                                    <div className={`${styles.seletboxCommon} ${styles.videoSeletbox}`}>
-
-                                    {/* 맨 위에 Total 추가 */}
-                                    <div
-                                        className={`${videoActiveIndex === 0 ? styles["active"] : ""}`.trim()}
-                                        onClick={() => videoStatusClick(0, { id: 0, label: "Total" })}
-                                    >
-                                        Total
-                                    </div>
-
-                                    {/* 실제 video 옵션은 index + 1 오프셋 */}
-                                    {video.map((item, idx) => (
-                                        <div
-                                        key={item.id}
-                                        className={`${
-                                            videoActiveIndex === idx + 1 ? styles["active"] : ""
-                                        }`.trim()}
-                                        onClick={() => videoStatusClick(idx + 1, item)}
-                                        >
-                                        {item.label}
-                                        </div>
-                                    ))}
-                                    </div>
-                                )}
-                                </div>
-                            <div ref={robotWrapperRef} >
-                                <div className={styles.selete} 
-                                    onClick={() => setIsRobotOpen(!isRobotOpen)}>
-                                    <span>  {selectedRobot ? selectedRobot.no : robotActiveIndex === 0  ? "Total" : "로봇 선택"}</span>
-                                    {isRobotOpen ? (
-                                    <img src="/icon/arrow_up.png" alt="arrow_up" />
-                                    ) : (
-                                    <img src="/icon/arrow_down.png" alt="arrow_down" />
-                                    )}
-                                </div> 
-                                {isRobotOpen && (
-                                    <div className={`${styles.seletboxCommon} ${styles.robotSeletbox}`}>
-
-                                        <div
-                                            className={`${robotActiveIndex === 0 ? styles["active"] : ""}`.trim()}
-                                            onClick={() => robotStatusClick(0)}
-                                        >
-                                            Total
-                                        </div>
-
-                                        {/* 실제 robots 데이터는 index + 1 로 오프셋 처리 */}
-                                        {robots.map((robot, idx) => (
-                                            <div
-                                                key={robot.id}
-                                                className={`${robotActiveIndex === idx + 1 ? styles["active"] : ""}`.trim()}
-                                                onClick={() => robotStatusClick(idx + 1)}
-                                            >
-                                                {robot.no}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                            <FilterSelectBox
+                                items={video.map(v => ({ id: v.id, label: v.label }))}
+                                selectedLabel={selectedVideo?.label ?? null}
+                                placeholder="녹화 타입"
+                                showTotal={true}
+                                onSelect={(item) => {
+                                    if (item) {
+                                        const found = video.find(v => v.label === item.label);
+                                        if (found) setSelectedVideo(found);
+                                    } else {
+                                        setSelectedVideo(null);
+                                    }
+                                }}
+                                width={140}
+                            />
+                            <FilterSelectBox
+                                items={robots.map(r => ({ id: r.id, label: r.no }))}
+                                selectedLabel={selectedRobot?.no ?? null}
+                                placeholder="로봇 명"
+                                showTotal={robots.length > 0}
+                                onSelect={(item) => {
+                                    if (item) {
+                                        const robot = robots.find(r => r.no === item.label);
+                                        if (robot) setSelectedRobot(robot);
+                                    } else {
+                                        setSelectedRobot(null);
+                                    }
+                                }}
+                                width={140}
+                            />
                         </div>
                         <div className={styles.videoPeriod}>
-                        <div
-                            className={`${styles.PeriodItemL} ${ selectedPeriod === "Total" ? styles.active : ""}`}
-                            onClick={() => handlePeriodClick("Total")}
-                        >
-                            전체
+                            {([
+                                { key: "Total", label: "전체" },
+                                { key: "1week", label: "1주" },
+                                { key: "1month", label: "1달" },
+                                { key: "1year", label: "1년" },
+                            ] as const).map(({ key, label }) => (
+                                <div
+                                    key={key}
+                                    className={`${styles.periodItem} ${selectedPeriod === key ? styles.active : ""}`}
+                                    onClick={() => handlePeriodClick(key)}
+                                >
+                                    {label}
+                                </div>
+                            ))}
                         </div>
-                        <div
-                            className={`${styles.PeriodItemLM} ${ selectedPeriod === '1week' ? styles.active : ''}`}
-                            onClick={() => handlePeriodClick('1week')}
-                        >
-                            1주
-                        </div>
-                        <div
-                            className={`${styles.PeriodItemMR} ${ selectedPeriod === '1month' ? styles.active : ''}`}
-                            onClick={() => handlePeriodClick('1month')}
-                        >
-                            1달
-                        </div>
-                        <div
-                            className={`${styles.PeriodItemR} ${selectedPeriod === '1year' ? styles.active : ''}`}
-                            onClick={() => handlePeriodClick('1year')}
-                        >
-                            1년
-                        </div>
-                        </div>
-                        <Calendar videoData={videoData} 
+                        <Calendar videoData={videoData}
                                   selectedVideo={selectedVideo}
-                                  selectedRobot={selectedRobot} 
-                                  onFilteredChange={setSearchFilterData} 
-                                  selectedPeriod={selectedPeriod} 
+                                  selectedRobot={selectedRobot}
+                                  onFilteredChange={setSearchFilterData}
+                                  selectedPeriod={selectedPeriod}
                                   onChangePeriod={setSelectedPeriod}
                                   externalStartDate={externalStartDate}
                                   externalEndDate={externalEndDate}
-                                   />
+                        />
                     </div>
                 </div>
-                <div className={styles.videoViewContainer}>
-                    {videoCurrentItems.map((r, idx) => (
-                        <div key={r.id} className={styles.videoViewItem}>
-                            {videoThumbnail && (
-                                <div className={styles.videoViewBox} onClick={() => { VideoPlayClick(idx, r) }}>
-                                    <div className={styles.videoView}>
-                                        <img src={videoThumbnail} alt="thumbnail" />
-                                    </div>
-                                    <div className={styles.videoViewIcon} onMouseEnter={() => setHoveredIndex(idx)} onMouseLeave={() => setHoveredIndex(null)}>
-                                        <img src={ hoveredIndex === idx ? `/icon/video_hover_icon.png` : `/icon/video_icon.png`} alt="play" />
-                                    </div>
-                                </div>
-                            )}
-                            <div >
-                                <div className={styles.videoViewText}>
-                                    <div className={styles.videoViewTopText}>
-                                        <div className={`${styles.nameBox} ${styles.RobotCamNameBox}`}>{r.robotNo}</div>
-                                        <div className={`${styles.nameBox} ${styles.RobotCamNameBox}`}>{r.cameraNo}</div>
-                                        <div className={`${styles.nameBox} ${styles.videoNameBox}`}>
-                                            <div className={styles.cameratypeIcon}></div>
-                                            <div>{r.cameraType}</div>
+                <div className={styles.contentArea}>
+                    {videoCurrentItems.length === 0 ? (
+                        <div className={styles.emptyState}>
+                            <span>{searchFilterData !== null ? "조건에 맞는 영상이 없습니다" : "녹화된 영상이 없습니다"}</span>
+                        </div>
+                    ) : (
+                        <div className={styles.videoViewContainer}>
+                            {videoCurrentItems.map((r, idx) => (
+                                <div key={r.id} className={styles.videoViewItem}>
+                                    {videoThumbnail && (
+                                        <div className={styles.videoViewBox} onClick={() => { VideoPlayClick(idx, r) }}>
+                                            <div className={styles.videoView}>
+                                                <img src={videoThumbnail} alt="thumbnail" />
+                                            </div>
+                                            <div className={styles.videoViewIcon} onMouseEnter={() => setHoveredIndex(idx)} onMouseLeave={() => setHoveredIndex(null)}>
+                                                <img src={ hoveredIndex === idx ? `/icon/video_hover_icon.png` : `/icon/video_icon.png`} alt="play" />
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className={styles.videoMeta}>
+                                        <div className={styles.metaRow1}>
+                                            <span className={styles.metaPrimary}>{r.robotNo} · {r.cameraNo}</span>
+                                            <div className={styles.videoExport} onClick={downloadSample}>
+                                                <img src="/icon/download.png" alt="download" />
+                                                <span>다운로드</span>
+                                            </div>
+                                        </div>
+                                        <div className={styles.metaRow2}>
+                                            <span className={styles.metaType}>
+                                                <span className={styles.cameratypeIcon}></span>
+                                                {r.cameraType}
+                                            </span>
+                                            <span className={styles.metaDot}>·</span>
+                                            <span>{videoFormatDate(r.date)}</span>
+                                            <span className={styles.metaDot}>·</span>
+                                            <span className={styles.metaAccent}>{formatVideoTime(r.videoTime)}</span>
                                         </div>
                                     </div>
-                                    <div className={styles.videoExport} onClick={downloadSample}>
-                                        <img src="/icon/download.png" alt="download" />
-                                        <div>다운로드</div>
-                                    </div>
                                 </div>
-                                <div className={styles.videoViewBottomText}>
-                                    <div className={styles.videoTopTextColor}>{videoFormatDate(r.date)}</div>
-                                    <div className={styles.videoTextColor}>{formatVideoTime(r.videoTime)}</div>
-                                </div>
-                            </div>
+                            ))}
                         </div>
-                    ))}
+                    )}
                 </div>
-            </div>      
             <div className={styles.pagenationPosition}>
                 <Pagination   totalItems={totalItems}
                 currentPage={currentPage}
@@ -629,163 +492,121 @@ export default function VideoList({
                 pageSize={PAGE_SIZE}
                 blockSize={5} />
             </div>
-            <VideoPlayModal  isOpen={videoPlayModalOpen} onClose={() => setVideoPlayModalOpen(false)} playedVideoId={playedVideoId} playedVideo={playedVideo} />
+            <VideoPlayModal isOpen={videoPlayModalOpen} onClose={() => setVideoPlayModalOpen(false)} playedVideo={playedVideo} />
         </div>
     )}
 
     {/* Statistical Info 화면 */}
     {activeTab === "dt" && (
         <div className={styles.DT}>
+            {statisticsData.length === 0 && (
+                <div className={styles.emptyNotice}>
+                    현재 등록된 로봇이 없어 통계 데이터가 비어 있습니다
+                </div>
+            )}
             <div className={styles.videoListTopPosition}>
-                <h2>로봇 상태 통계</h2>
+                <h2>통계 관리</h2>
                 <div className={styles.dtSearch}>
-                    <div ref={robotTypeWrapperRef}>
-                        <div
-                            className={styles.selete}
-                            onClick={() => setIsRobotTypeOpen(!isRobotTypeOpen)}
-                        >
-                            {/* 선택된 타입이 없으면 Total Robots 로 표시 */}
-                            <span>{selectedRobotType ? selectedRobotType.label : robotTypeActiveIndex === 0  ? "Total" : "로봇 종류 선택"}</span>
-                            {isRobotTypeOpen ? (
-                            <img src="/icon/arrow_up.png" alt="arrow_up" />
-                            ) : (
-                            <img src="/icon/arrow_down.png" alt="arrow_down" />
-                            )}
-                        </div>
-
-                        {isRobotTypeOpen && (
-                            <div className={`${styles.seletboxCommon} ${styles.robotTypeSeletbox}`}>
-                            {/* 맨 위에 Total Robots 추가 */}
-                            <div
-                                className={robotTypeActiveIndex === 0 ? styles.active : ''}
-                                onClick={ () => {handleRobotTypeTotalClick()}}
-                            >
-                                Total
-                            </div>
-
-                            {/* 1 ~ : 각 타입 */}
-                            {robotTypeData.map((type, idx) => (
-                                <div
-                                key={type.id}
-                                className={robotTypeActiveIndex === idx + 1 ? styles.active : ''}
-                                onClick={() => dtRobotTypeClick(idx + 1, type)}
-                                >
-                                {type.label}
-                                </div>
-                            ))}
-                            </div>
-                        )}
-                    </div>
-                    <div ref={robotWrapperRef} >
-                        <div className={styles.selete} 
-                            onClick={() => setIsRobotOpen(!isRobotOpen)}>
-                            <span>{selectedRobot ? selectedRobot.no : robotActiveIndex === 0  ? "Total" : "로봇 이름 선택"}</span>
-                            {isRobotOpen ? (
-                            <img src="/icon/arrow_up.png" alt="arrow_up" />
-                            ) : (
-                            <img src="/icon/arrow_down.png" alt="arrow_down" />
-                            )}
-                        </div> 
-                        {isRobotOpen && (
-                            <div className={`${styles.seletboxCommon} ${styles.robotSeletbox}`}>
-
-                                <div
-                                    className={`${robotActiveIndex === 0 ? styles["active"] : ""}`.trim()}
-                                    onClick={() => handleRobotTotalClick()}
-                                >
-                                    Total
-                                </div>
-
-                                {robots.map((robot, idx) => (
-                                    <div
-                                        key={robot.id}
-                                        className={`${robotActiveIndex === idx + 1 ? styles["active"] : ""}`.trim()}
-                                        onClick={() => { dtRobotClick(idx, robot) }}
-                                    >
-                                        {robot.no}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    <FilterSelectBox
+                        items={robotTypeData.map(t => ({ id: t.id, label: robotTypeKorMap[t.label] ?? t.label }))}
+                        selectedLabel={selectedRobotType ? (robotTypeKorMap[selectedRobotType.label] ?? selectedRobotType.label) : null}
+                        placeholder="로봇 종류"
+                        showTotal={true}
+                        onSelect={(item) => {
+                            if (item) {
+                                const type = robotTypeData.find(t => (robotTypeKorMap[t.label] ?? t.label) === item.label);
+                                if (type) {
+                                    setSelectedRobotType(type);
+                                    if (selectedRobot && selectedRobot.type !== type.label) {
+                                        setSelectedRobot(null);
+                                    }
+                                }
+                            } else {
+                                setSelectedRobotType(null);
+                            }
+                        }}
+                        width={140}
+                    />
+                    <FilterSelectBox
+                        items={robotNameItems}
+                        selectedLabel={selectedRobot?.no ?? null}
+                        placeholder="로봇 명"
+                        showTotal={robots.length > 0}
+                        onSelect={(item) => {
+                            if (item) {
+                                // 통계 데이터에서 매칭 (차트 필터용)
+                                const statRobot = statisticsData.find(r => r.no === item.label);
+                                // robots API에서 매칭 (통계 데이터에 없는 경우 대비)
+                                const apiRobot = robots.find(r => r.no === item.label);
+                                const target = statRobot ?? apiRobot ?? null;
+                                if (target) {
+                                    setSelectedRobot(target);
+                                    if (selectedRobotType && selectedRobotType.label !== target.type) {
+                                        setSelectedRobotType(null);
+                                    }
+                                }
+                            } else {
+                                setSelectedRobot(null);
+                            }
+                        }}
+                        width={140}
+                    />
                 </div>
             </div>
 
             <div className={styles.donutContainerFlex}>
                 <div className={styles.dtDonutLeftBox}>
-                    <div className={styles.totalDonutCount}>
-                        <div>Total Robots</div>
-                        <div className={styles.totalCount}>{totalRobots} <span>units</span></div>
-                    </div>
                     <div className={styles.leftChart}>
-                        {/* 왼쪽 큰 도넛 - Total Robots */}
                         <TotalDonutChart
                             data={robotTypeDonut}
-                            selectedRobotTypeLabel={selectedRobotType?.label ?? null}   // 로봇 종류 필터명
-                            selectedRobotName={selectedRobot?.no ?? null}               // 로봇 이름 (Robot 5 등)
-                            selectedRobotIconIndex={selectedRobot ? robots.findIndex(r => r.id === selectedRobot.id) : null}
+                            selectedRobotTypeLabel={selectedRobotType?.label ?? null}
+                            selectedRobotName={selectedRobot?.no ?? null}
+                            selectedRobotIconIndex={selectedRobot ? statisticsData.findIndex(r => r.id === selectedRobot.id) : null}
                             FilterTotalUnits={FilterTotalUnits}
                         />
                     </div>
                     <div className={styles.robotTypeTotal}>
+                        <div className={styles.legendHeader}>
+                            <span className={styles.legendTitle}>전체</span>
+                            <span className={styles.legendCount}>{totalRobots}<span>units</span></span>
+                        </div>
                     {robotTypeDonut.map((item) => {
-
                         const lower = item.label.toLowerCase();
-                        
-                        const hasTypeSelected = !!selectedRobotType; 
+                        const hasTypeSelected = !!selectedRobotType;
                         const hasRobotSelected = !!selectedRobot;
+                        const color = robotTypeColorMap[item.label] ?? "#5d6174";
 
-                        const isOnlyTypeSelected = hasTypeSelected && !hasRobotSelected;
-
-                        // "활성 아이콘" 조건
                         const isActiveType =
-                        (!hasTypeSelected && !hasRobotSelected) || 
-                        (!hasRobotSelected && hasTypeSelected && selectedRobotType!.label === item.label) ||
-                        (hasRobotSelected && selectedRobot!.type === item.label); 
+                            (!hasTypeSelected && !hasRobotSelected) ||
+                            (!hasRobotSelected && hasTypeSelected && selectedRobotType!.label === item.label) ||
+                            (hasRobotSelected && selectedRobot!.type === item.label);
 
-                        // 타입만 선택된 경우 → 비활성 타입 숨김
                         if (hasTypeSelected && !hasRobotSelected && !isActiveType) {
                             return null;
                         }
-                        
+
                         const iconSrc = isActiveType ? `/icon/${lower}-cg.png` : `/icon/${lower}-cg-w.png`;
-
-                        // 비활성 텍스트 색상
-                        const labelStyle = isActiveType ? undefined : { color: "#464a5d" };
-
+                        const isInactive = !isActiveType;
                         const showCountBox =
-                            (!hasRobotSelected && !hasTypeSelected) ||           // 초기
-                            (!hasRobotSelected && hasTypeSelected && isActiveType); // 타입만 선택된 경우
-                        
-                        return (
-                        <div key={item.id} className={styles.robotTypeOne}>
-                            <div className={styles.robotTypeName}>
-                                {isActiveType ? (
-                                    <img src={iconSrc} alt={item.label} />
-                                ) : (
-                                    <div className={styles.robotTypeIconBox}>
-                                        <img src={iconSrc} alt={item.label} />
-                                    </div>
-                                )}
+                            (!hasRobotSelected && !hasTypeSelected) ||
+                            (!hasRobotSelected && hasTypeSelected && isActiveType);
 
-                                <div className={styles.oneContentFs20} style={labelStyle}>
-                                    {item.label}
+                        return (
+                        <div key={item.id} className={`${styles.robotTypeOne} ${isInactive ? styles.robotTypeInactive : ""}`}>
+                            <div className={styles.robotTypeName}>
+                                <div className={styles.colorDot} style={{ backgroundColor: isActiveType ? color : "#464a5d" }} />
+                                <div className={styles.oneContentFs20} style={isInactive ? { color: "#464a5d" } : undefined}>
+                                    {robotTypeKorMap[item.label] ?? item.label}
                                 </div>
                             </div>
-
-                            {/* 로봇 이름 선택되면 count 박스 숨김 (이 규칙 그대로 유지) */}
                             {showCountBox && (
                             <div className={styles.oneContentCountBox}>
-                                <div
-                                className={styles.oneContentFs25}
-                                style={{ color: robotTypeColorMap[item.label] }}
-                                >
-                                {item.percent.toFixed(1)}
-                                <span>%</span>
+                                <div className={styles.legendPercent} style={{ color }}>
+                                    {item.percent.toFixed(1)}<span>%</span>
                                 </div>
-                                <div className={styles.oneContentBar}>|</div>
-                                <div className={styles.oneContentFs25}>
-                                {item.value} <span className={styles.oneSpanColor}>units</span>
+                                <div className={styles.legendDivider} />
+                                <div className={styles.legendValue}>
+                                    {item.value}<span>units</span>
                                 </div>
                             </div>
                             )}
@@ -805,15 +626,15 @@ export default function VideoList({
                             </div>
                         </div>
                         <div className={styles.useItemDonutBox}>
-                            <ItemDonutChart title={"환자 모니터링"} data={[taskDonut[0]]} color="#77a251" />
-                            <ItemDonutChart title={"순찰/보안"} data={[taskDonut[1]]} color="#77a251" />
-                            <ItemDonutChart title={"물품/약품 운반"} data={[taskDonut[2]]} color="#77a251" />
-                            <ItemDonutChart title={"점검"} data={[taskDonut[3]]} color="#77a251" />
+                            <ItemDonutChart title={"task1"} data={[taskDonut[0] ?? emptyDonut]} color="#77a251" />
+                            <ItemDonutChart title={"task2"} data={[taskDonut[1] ?? emptyDonut]} color="#77a251" />
+                            <ItemDonutChart title={"task3"} data={[taskDonut[2] ?? emptyDonut]} color="#77a251" />
+                            <ItemDonutChart title={"task4"} data={[taskDonut[3] ?? emptyDonut]} color="#77a251" />
                         </div>
                     </div>
                     <div className={styles.itemBoxBg}>
                         <div className={`${styles.itemTitleBox} ${styles.time}`}>
-                            <h2>Time Stats</h2>
+                            <h2>시간 통계</h2>
                             <div className={styles.itemDataTotal}>
                                 <div className={styles.leftText}>Total</div>
                                 <div className={`${styles.middleText} ${styles.timeTextColor}`}>{hText.replace("h", "")}<span>h</span></div>
@@ -821,15 +642,15 @@ export default function VideoList({
                             </div>
                         </div>
                         <div className={styles.useItemDonutBox}>
-                            <ItemDonutChart isTime title={"사용시간"} data={[timeDonut[0]]} color="#0e8ebf" />
-                            <ItemDonutChart isTime title={"대기시간"} data={[timeDonut[1]]} color="#0e8ebf" />
-                            <ItemDonutChart isTime title={"충전시간"} data={[timeDonut[2]]} color="#0e8ebf" />
-                            <ItemDonutChart isTime title={"도킹시간"} data={[timeDonut[3]]} color="#0e8ebf" />
+                            <ItemDonutChart isTime title={"사용시간"} data={[timeDonut[0] ?? emptyDonut]} color="#0e8ebf" />
+                            <ItemDonutChart isTime title={"대기시간"} data={[timeDonut[1] ?? emptyDonut]} color="#0e8ebf" />
+                            <ItemDonutChart isTime title={"충전시간"} data={[timeDonut[2] ?? emptyDonut]} color="#0e8ebf" />
+                            <ItemDonutChart isTime title={"도킹시간"} data={[timeDonut[3] ?? emptyDonut]} color="#0e8ebf" />
                         </div>
                     </div>
                     <div className={styles.itemBoxBg}>
                         <div className={styles.itemTitleBox}>
-                            <h2>Error Stats</h2>
+                            <h2>에러 통계</h2>
                             <div className={styles.itemDataTotal}>
                                 <div className={styles.leftText}>Total</div>
                                 <div className={`${styles.middleText} ${styles.errorTextColor}`}>{totalErrors}</div>
@@ -837,10 +658,10 @@ export default function VideoList({
                             </div>
                         </div>
                         <div className={styles.useItemDonutBox}>
-                            <ItemDonutChart title={"네트워크 에러"} data={[errorDonut[0]]} color="#c2434c" />
-                            <ItemDonutChart title={"장애 에러"} data={[errorDonut[1]]} color="#c2434c" />
-                            <ItemDonutChart title={"위치 에러"} data={[errorDonut[3]]} color="#c2434c" />
-                            <ItemDonutChart title={"기타 에러"} data={[errorDonut[2]]} color="#c2434c" />
+                            <ItemDonutChart title={"네트워크"} data={[errorDonut[0] ?? emptyDonut]} color="#c2434c" />
+                            <ItemDonutChart title={"장애"} data={[errorDonut[1] ?? emptyDonut]} color="#c2434c" />
+                            <ItemDonutChart title={"위치"} data={[errorDonut[3] ?? emptyDonut]} color="#c2434c" />
+                            <ItemDonutChart title={"기타"} data={[errorDonut[2] ?? emptyDonut]} color="#c2434c" />
                         </div>
                     </div>
                 </div>
@@ -856,14 +677,7 @@ export default function VideoList({
     {/* Log History 화면 */}
     {activeTab === "log" && (
         <div className={styles.DT}>
-            <div className={styles.container}>
-                <img src="/icon/coming-soon.png" alt="Coming Soon" />
-                <div className={styles.topTitle}>COMING SOON</div>
-                <div className={styles.contentText}>We Are Preparing This Service</div>
-            </div>
-            <div className={styles.pagenationPosition}>
-                {/* <Pagination totalItems={totalItems} currentPage={currentPage} onPageChange={setCurrentPage} pageSize={PAGE_SIZE} blockSize={5} /> */}
-            </div>
+            <LogList logData={logData} />
         </div>
     )}
     </>

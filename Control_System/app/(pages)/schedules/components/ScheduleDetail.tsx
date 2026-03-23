@@ -2,12 +2,15 @@
 
 import styles from './ScheduleCrud.module.css';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { useRouter } from 'next/navigation';
 import DeleteConfirmModal from '@/app/components/modal/CancelConfirmModal';
-import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import RepeatConfirmModal, { type RepeatConfirmMode, type RepeatConfirmScope } from '@/app/(pages)/schedules/components/RepeatConfirmModals';
 import MiniCalendar from './MiniCalendar';
 import { API_BASE } from "@/app/config";
+import { WORK_TYPES, WORK_STATUS } from '../constants';
+import { getByteLength } from '../utils/validation';
+import SharedCustomSelect, { type SelectOption as SharedSelectOption } from '@/app/components/select/CustomSelect';
 
 
 type ScheduleDetailProps = {
@@ -38,6 +41,7 @@ type ScheduleDetailProps = {
     pathOrder: string;
   }) => void;
   onDelete?: (id: string) => void;
+  onScheduleChanged?: () => void;
 };
 
 type SelectOption = { id: number; label: string; order?: string; };
@@ -173,58 +177,8 @@ function HeadlessSelect({
 }
 
 
-// ✅ 목업 데이터(페이지 안에서 바로 사용)
-const mockPathRows: PathRow[] = [
-  {
-    id: 1,
-    pathName: "병동 → 검사실 이동",
-    details: [
-      { order: 1, label: "1F 병동 A" },
-      { order: 2, label: "엘리베이터 탑승" },
-      { order: 3, label: "2F 검사실" },
-    ],
-  },
-  {
-    id: 2,
-    pathName: "3층 병실 순회",
-    details: [
-      { order: 1, label: "3F 간호스테이션" },
-      { order: 2, label: "3F 병실 301" },
-    ],
-  },
-  {
-    id: 3,
-    pathName: "외래 접수 동선",
-    details: [
-      { order: 1, label: "로비" },
-      { order: 2, label: "접수처" },
-      { order: 3, label: "약국" },
-    ],
-  },
-];
 
-// ✅ 셀렉트 옵션(경로명만 노출)
-const PATH_OPTIONS: SelectOption[] = mockPathRows.map((p) => ({
-  id: p.id,
-  label: p.pathName,
-}));
-
-// 작업유형
-type WorkType = { id: number; label: string };
-const WORK_TYPES: WorkType[] = [
-  { id: 1, label: '환자 모니터링' },
-  { id: 2, label: '순찰 / 보안' },
-  { id: 3, label: '물품 / 약품 운반' },
-];
-
-// 작업상태
-type WorkStatus = { id: number; label: string };
-const WORK_STATUS: WorkStatus[] = [
-  { id: 1, label: '대기' },
-  { id: 2, label: '진행중' },
-  { id: 3, label: '완료' },
-  { id: 4, label: '취소' },
-];
+// WorkType, WorkStatus, WORK_TYPES, WORK_STATUS → ../constants.ts 에서 import
 
 const AMPM_OPTIONS = [
   { id: 1, label: "오전" },
@@ -330,10 +284,10 @@ function buildInitialForm(event: ScheduleDetailProps['event']): FormState {
     robotNo: event.robotNo,
     title: event.title,
     workType: event.robotType,
-    workStatus: '대기',
+    workStatus: '',
 
-    dateText: '2025.12.12',
-    dowText: '월, 화, 수',
+    dateText: '',
+    dowText: '',
 
     startAmpm: startA.ampm as '오전' | '오후',
     startHour: startA.h12,
@@ -343,16 +297,16 @@ function buildInitialForm(event: ScheduleDetailProps['event']): FormState {
     endHour: endA.h12,
     endMin: end.m,
 
-    pathId: 1,
-    pathName: mockPathRows[0]?.pathName ?? "경로명",
-    pathDetails: mockPathRows[0]?.details ?? [],
-    pathOrder: (mockPathRows[0]?.details ?? []).map((d) => d.label).join(" - "),
+    pathId: null,
+    pathName: "",
+    pathDetails: [],
+    pathOrder: "",
 
-    repeatEnabled: true,                   // 초기: 반복으로 (원하면 false로)
-    repeatDays: ['화', '목', '토'],         // 예시(이미지처럼)
+    repeatEnabled: false,
+    repeatDays: [],
     repeatEveryday: false,
     repeatEndType: 'none',
-    repeatEndDate: '2025-12-13',
+    repeatEndDate: '',
   };
 }
 
@@ -368,13 +322,18 @@ export default function ScheduleDetail({
   event,
   onUpdate,
   onDelete,
+  onScheduleChanged,
 }: ScheduleDetailProps) {
   const router = useRouter();
     const [mode, setMode] = useState<Mode>('view');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [repeatConfirmOpen, setRepeatConfirmOpen] = useState(false);
+    const [repeatConfirmMode, setRepeatConfirmMode] = useState<RepeatConfirmMode>("delete");
+    const [repeatScope, setRepeatScope] = useState<RepeatConfirmScope>("this");
+    const [showDirtyConfirm, setShowDirtyConfirm] = useState(false);
+    const [dirtyAction, setDirtyAction] = useState<'cancel' | 'close'>('cancel');
 
-    // (예시) “수정 일시” 목업
-    const modifiedAtText = '2025.12.11 오전 08:35:40';
+    const [modifiedAtText, setModifiedAtText] = useState<string | null>(null);
 
     const initialForm = useMemo(() => buildInitialForm(event), [event]);
     const [form, setForm] = useState<FormState>(initialForm);
@@ -395,23 +354,6 @@ export default function ScheduleDetail({
         setIsRepeatEndDateOpen(false);
     }, [isOpen, initialForm]);
 
-    // ESC 키로 모달 닫기
-    useEffect(() => {
-        const handleEscape = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') onClose();
-        };
-
-        if (isOpen) {
-        document.addEventListener('keydown', handleEscape);
-        document.body.style.overflow = 'hidden';
-        }
-
-        return () => {
-        document.removeEventListener('keydown', handleEscape);
-        document.body.style.overflow = 'unset';
-        };
-    }, [isOpen, onClose]);
-
     if (!isOpen) return null;
 
     const isEditMode = mode === 'edit';
@@ -427,10 +369,6 @@ export default function ScheduleDetail({
       return parsed;
     };
 
-    const [repeatConfirmOpen, setRepeatConfirmOpen] = useState(false);
-    const [repeatConfirmMode, setRepeatConfirmMode] = useState<RepeatConfirmMode>("delete");
-    const [repeatScope, setRepeatScope] = useState<RepeatConfirmScope>("this");
-
     // ===== actions =====
     const openRepeatConfirm = (mode: RepeatConfirmMode) => {
       setRepeatConfirmMode(mode);
@@ -443,7 +381,9 @@ export default function ScheduleDetail({
     };
 
     const handleEditStart = () => {
-      // ✅ 반복 작업이면: 범위 선택 모달 먼저
+      setFieldErrors({});
+      setApiError(null);
+      // 반복 작업이면: 범위 선택 모달 먼저
       if (form.repeatEnabled) {
         openRepeatConfirm("edit");
         return;
@@ -451,35 +391,145 @@ export default function ScheduleDetail({
       setMode('edit');
     };
 
+    const isFormDirty = useMemo(() => {
+        return JSON.stringify(form) !== JSON.stringify(initialForm);
+    }, [form, initialForm]);
+
     const handleEditCancel = () => {
+        if (isFormDirty) {
+            setDirtyAction('cancel');
+            setShowDirtyConfirm(true);
+            return;
+        }
+        setFieldErrors({});
+        setApiError(null);
         setForm(initialForm);
         setMode('view');
     };
 
-    const handleEditSave = () => {
-        const startH24 = fromAmpmHour(form.startAmpm, form.startHour);
-        const endH24 = fromAmpmHour(form.endAmpm, form.endHour);
+    const handleSafeClose = () => {
+        if (isEditMode && isFormDirty) {
+            setDirtyAction('close');
+            setShowDirtyConfirm(true);
+            return;
+        }
+        onClose();
+    };
 
-        const nextStartMin = hmToMin(startH24, form.startMin);
-        const nextEndMin = hmToMin(endH24, form.endMin);
+    useModalBehavior({
+        isOpen,
+        onClose: handleSafeClose,
+        disabled: repeatConfirmOpen || showDeleteConfirm || showDirtyConfirm,
+    });
+
+    const handleDirtyConfirmLeave = () => {
+        setShowDirtyConfirm(false);
+        setFieldErrors({});
+        setApiError(null);
+        if (dirtyAction === 'cancel') {
+            setForm(initialForm);
+            setMode('view');
+        } else {
+            onClose();
+        }
+    };
+
+    const [saving, setSaving] = useState(false);
+    const [apiError, setApiError] = useState<string | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+    const makeDetailDateTime = (dateStr: string, ampm: string, hour: number, minute: number) => {
+        let h = hour;
+        if (ampm === "오후" && h !== 12) h += 12;
+        if (ampm === "오전" && h === 12) h = 0;
+        return `${dateStr} ${pad2(h)}:${pad2(minute)}:00`;
+    };
+
+    const validateForm = (): Record<string, string> => {
+        const errors: Record<string, string> = {};
+        if (!form.title.trim()) errors.title = "작업명을 입력하세요.";
+        if (!form.workType) errors.workType = "작업유형을 선택하세요.";
+        if (!form.workStatus) errors.workStatus = "작업상태를 선택하세요.";
+        if (!form.pathName) errors.pathName = "작업경로를 선택하세요.";
+
+        // 시작/종료 시간 비교
+        const startDT = makeDetailDateTime(startDateText, form.startAmpm, form.startHour, form.startMin);
+        const endDT = makeDetailDateTime(endDateText, form.endAmpm, form.endHour, form.endMin);
+        if (new Date(startDT) >= new Date(endDT)) errors.dateTime = "시작 일시가 종료 일시보다 같거나 늦습니다.";
+
+        // 반복 설정 검증
+        if (form.repeatEnabled) {
+            if (form.repeatDays.length === 0) errors.repeatDays = "반복요일을 최소 1일 선택하세요.";
+            if (form.repeatEndType === "date" && form.repeatEndDate) {
+                const repeatEnd = new Date(form.repeatEndDate);
+                const startD = new Date(startDateText);
+                if (repeatEnd < startD) {
+                    errors.repeatEndDate = "반복 종료일이 시작일보다 빠릅니다.";
+                }
+            }
+        }
+        return errors;
+    };
+
+    const handleEditSave = async () => {
+        setApiError(null);
+        const errors = validateForm();
+        setFieldErrors(errors);
+        if (Object.keys(errors).length > 0) return;
+
+        const startDT = makeDetailDateTime(startDateText, form.startAmpm, form.startHour, form.startMin);
+        const endDT = makeDetailDateTime(endDateText, form.endAmpm, form.endHour, form.endMin);
 
         const payload = {
-        id: event.id,
-        robotNo: form.robotNo,
-        title: form.title,
-        robotType: form.workType,
-        workStatus: form.workStatus,
-        startMin: nextStartMin,
-        endMin: nextEndMin,
-        pathName: form.pathName,
-        pathOrder: form.pathOrder,
+            id: event.id,
+            RobotName: form.robotNo,
+            TaskName: form.title,
+            TaskType: form.workType,
+            TaskStatus: form.workStatus,
+            WayName: form.pathName,
+            StartTime: startDT,
+            EndTime: endDT,
+            Repeat: form.repeatEnabled,
+            RepeatDays: form.repeatDays.length ? form.repeatDays.join(",") : null,
+            RepeatEndDate: form.repeatEndType === "date" ? form.repeatEndDate : null,
+            ...(repeatScope ? { RepeatScope: repeatScope } : {}),
         };
 
-        // TODO: API 연결 시 여기에서 mutation
-        console.log('저장 payload 예시:', payload);
-        onUpdate?.(payload);
-
-        setMode('view');
+        setSaving(true);
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+            const res = await fetch(`${API_BASE}/DB/schedule/${event.id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            if (!res.ok) throw new Error("수정 실패");
+            onUpdate?.({
+                id: event.id,
+                robotNo: form.robotNo,
+                title: form.title,
+                robotType: form.workType,
+                workStatus: form.workStatus,
+                startMin: hmToMin(fromAmpmHour(form.startAmpm, form.startHour), form.startMin),
+                endMin: hmToMin(fromAmpmHour(form.endAmpm, form.endHour), form.endMin),
+                pathName: form.pathName,
+                pathOrder: form.pathOrder,
+            });
+            onScheduleChanged?.();
+            setMode('view');
+        } catch (e: any) {
+            console.error("스케줄 수정 실패", e);
+            if (e?.name === 'AbortError') {
+                setApiError("서버 응답 시간이 초과되었습니다. 다시 시도해주세요.");
+            } else {
+                setApiError("스케줄 수정에 실패했습니다.");
+            }
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleDelete = () => {
@@ -496,14 +546,19 @@ export default function ScheduleDetail({
     useEffect(() => {
       if (!isOpen) return;
 
-      fetch(`${API_BASE}/robots`)
+      fetch(`${API_BASE}/DB/robots`)
         .then((res) => res.json())
-        .then((data) =>
-          setRobots(data.map((r: any, i: number) => ({
+        .then((data) => {
+          const list = Array.isArray(data) ? data : (data?.robots ?? []);
+          setRobots(list.map((r: any, i: number) => ({
             id: i,
-            label: r.no,
-          })))
-        );
+            label: r.RobotName ?? r.no ?? '',
+          })));
+        })
+        .catch((e) => {
+          console.error("로봇 목록 조회 실패", e);
+          setRobots([]);
+        });
     }, [isOpen]);
 
     const [pathOptions, setPathOptions] = useState<SelectOption[]>([]);
@@ -513,18 +568,24 @@ export default function ScheduleDetail({
 
     fetch(`${API_BASE}/DB/getpath`)
       .then((res) => res.json())
-      .then((data) =>
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data?.paths ?? []);
         setPathOptions(
-          data.map((p: any) => ({
+          list.map((p: any) => ({
             id: p.id,
             label: p.WayName,
-            order: p.WayPoints ?? "",   // ⭐ 핵심
+            order: p.WayPoints ?? "",
           }))
-        )
-      );
+        );
+      })
+      .catch((e) => {
+        console.error("경로 목록 조회 실패", e);
+        setPathOptions([]);
+      });
   }, [isOpen]);
 
     const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -580,16 +641,51 @@ export default function ScheduleDetail({
 
         setStartDateText(formatDate(start));
         setEndDateText(formatDate(end));
+
+        // 수정 일시 (API에 필드가 있으면 사용)
+        if (data.UpdatedAt || data.updated_at) {
+          const updatedDate = new Date(data.UpdatedAt ?? data.updated_at);
+          const h = updatedDate.getHours();
+          const ampm = h < 12 ? '오전' : '오후';
+          const h12 = h % 12 === 0 ? 12 : h % 12;
+          setModifiedAtText(
+            `${updatedDate.getFullYear()}.${pad2(updatedDate.getMonth() + 1)}.${pad2(updatedDate.getDate())} ${ampm} ${pad2(h12)}:${pad2(updatedDate.getMinutes())}:${pad2(updatedDate.getSeconds())}`
+          );
+        } else {
+          setModifiedAtText(null);
+        }
+      })
+      .catch((e) => {
+        console.error("스케줄 상세 조회 실패", e);
+        setFetchError("데이터를 불러오지 못했습니다.");
       })
       .finally(() => setLoading(false));
   }, [isOpen, event.id, pathOptions]);
 
     const handleDeleteCancel = () => setShowDeleteConfirm(false);
 
-    const handleDeleteConfirm = () => {
-        onDelete?.(event.id);
-        setShowDeleteConfirm(false);
-        onClose();
+    const handleDeleteConfirm = async () => {
+        try {
+            const deletePayload = repeatScope ? { RepeatScope: repeatScope } : {};
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+            const res = await fetch(`${API_BASE}/DB/schedule/${event.id}`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: Object.keys(deletePayload).length > 0 ? JSON.stringify(deletePayload) : undefined,
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            if (!res.ok) throw new Error("삭제 실패");
+            onDelete?.(event.id);
+            onScheduleChanged?.();
+            setShowDeleteConfirm(false);
+            onClose();
+        } catch (e) {
+            console.error("스케줄 삭제 실패", e);
+            setApiError("스케줄 삭제에 실패했습니다.");
+            setShowDeleteConfirm(false);
+        }
     };
 
     const handleRepeatConfirmCancel = () => {
@@ -598,20 +694,15 @@ export default function ScheduleDetail({
 
     const handleRepeatConfirmOk = (scope: RepeatConfirmScope) => {
       setRepeatConfirmOpen(false);
-
-      // 선택 범위 저장(추후 API payload로 사용)
       setRepeatScope(scope);
 
       if (repeatConfirmMode === "edit") {
-        console.log("[repeat edit scope]", scope);
         setMode("edit");
         return;
       }
 
-      // delete
-      console.log("[repeat delete scope]", scope);
-      onDelete?.(event.id);
-      onClose();
+      // delete: 실제 DELETE API를 호출하도록 확인 모달로 이동
+      setShowDeleteConfirm(true);
     };
 
 
@@ -634,67 +725,14 @@ export default function ScheduleDetail({
 
     const ViewText = ({ value }: { value: string }) => <div className={styles.itemDetail}>{value}</div>;
 
-    // 작업유형
-    const [isWorkTypeOpen, setIsWorkTypeOpen] = useState(false);
-    const workTypeWrapperRef = useRef<HTMLDivElement>(null);
-    const workTypeScrollRef = useRef<HTMLDivElement>(null);
-    const workTypeTrackRef = useRef<HTMLDivElement>(null);
-    const workTypeThumbRef = useRef<HTMLDivElement>(null);
-
-    // 작업상태
-    const [isWorkStatusOpen, setIsWorkStatusOpen] = useState(false);
-    const workStatusWrapperRef = useRef<HTMLDivElement>(null);
-    const workStatusScrollRef = useRef<HTMLDivElement>(null);
-    const workStatusTrackRef = useRef<HTMLDivElement>(null);
-    const workStatusThumbRef = useRef<HTMLDivElement>(null);
-
-    // ===== 시작시간 =====
-    const [isStartAmpmOpen, setIsStartAmpmOpen] = useState(false);
-    const [isStartHourOpen, setIsStartHourOpen] = useState(false);
-    const [isStartMinOpen, setIsStartMinOpen] = useState(false);
-
-    const startAmpmWrapperRef = useRef<HTMLDivElement>(null);
-    const startHourWrapperRef = useRef<HTMLDivElement>(null);
-    const startMinWrapperRef = useRef<HTMLDivElement>(null);
-
-    const startAmpmScrollRef = useRef<HTMLDivElement>(null);
-    const startHourScrollRef = useRef<HTMLDivElement>(null);
-    const startMinScrollRef = useRef<HTMLDivElement>(null);
-
-    const startAmpmTrackRef = useRef<HTMLDivElement>(null);
-    const startHourTrackRef = useRef<HTMLDivElement>(null);
-    const startMinTrackRef = useRef<HTMLDivElement>(null);
-
-    const startAmpmThumbRef = useRef<HTMLDivElement>(null);
-    const startHourThumbRef = useRef<HTMLDivElement>(null);
-    const startMinThumbRef = useRef<HTMLDivElement>(null);
-
-    // ===== 종료시간 =====
-    const [isEndAmpmOpen, setIsEndAmpmOpen] = useState(false);
-    const [isEndHourOpen, setIsEndHourOpen] = useState(false);
-    const [isEndMinOpen, setIsEndMinOpen] = useState(false);
+    // 달력/반복종료 달력 open 상태
     const [isStartDateOpen, setIsStartDateOpen] = useState(false);
     const [isEndDateOpen, setIsEndDateOpen] = useState(false);
     const [isRepeatEndDateOpen, setIsRepeatEndDateOpen] = useState(false);
 
-    const endAmpmWrapperRef = useRef<HTMLDivElement>(null);
-    const endHourWrapperRef = useRef<HTMLDivElement>(null);
-    const endMinWrapperRef = useRef<HTMLDivElement>(null);
     const startDateWrapperRef = useRef<HTMLDivElement>(null);
     const endDateWrapperRef = useRef<HTMLDivElement>(null);
     const repeatEndDateWrapperRef = useRef<HTMLDivElement>(null);
-
-    const endAmpmScrollRef = useRef<HTMLDivElement>(null);
-    const endHourScrollRef = useRef<HTMLDivElement>(null);
-    const endMinScrollRef = useRef<HTMLDivElement>(null);
-
-    const endAmpmTrackRef = useRef<HTMLDivElement>(null);
-    const endHourTrackRef = useRef<HTMLDivElement>(null);
-    const endMinTrackRef = useRef<HTMLDivElement>(null);
-
-    const endAmpmThumbRef = useRef<HTMLDivElement>(null);
-    const endHourThumbRef = useRef<HTMLDivElement>(null);
-    const endMinThumbRef = useRef<HTMLDivElement>(null);
 
     const DOWS: Array<'월'|'화'|'수'|'목'|'금'|'토'|'일'> = ['월','화','수','목','금','토','일'];
 
@@ -735,17 +773,6 @@ export default function ScheduleDetail({
     useEffect(() => {
         const handleOutsideClick = (e: MouseEvent) => {
             const t = e.target as Node;
-
-            if (workTypeWrapperRef.current && !workTypeWrapperRef.current.contains(t)) setIsWorkTypeOpen(false);
-            if (workStatusWrapperRef.current && !workStatusWrapperRef.current.contains(t)) setIsWorkStatusOpen(false);
-
-            if (startAmpmWrapperRef.current && !startAmpmWrapperRef.current.contains(t)) setIsStartAmpmOpen(false);
-            if (startHourWrapperRef.current && !startHourWrapperRef.current.contains(t)) setIsStartHourOpen(false);
-            if (startMinWrapperRef.current && !startMinWrapperRef.current.contains(t)) setIsStartMinOpen(false);
-
-            if (endAmpmWrapperRef.current && !endAmpmWrapperRef.current.contains(t)) setIsEndAmpmOpen(false);
-            if (endHourWrapperRef.current && !endHourWrapperRef.current.contains(t)) setIsEndHourOpen(false);
-            if (endMinWrapperRef.current && !endMinWrapperRef.current.contains(t)) setIsEndMinOpen(false);
             if (startDateWrapperRef.current && !startDateWrapperRef.current.contains(t)) setIsStartDateOpen(false);
             if (endDateWrapperRef.current && !endDateWrapperRef.current.contains(t)) setIsEndDateOpen(false);
             if (repeatEndDateWrapperRef.current && !repeatEndDateWrapperRef.current.contains(t)) setIsRepeatEndDateOpen(false);
@@ -755,171 +782,104 @@ export default function ScheduleDetail({
         return () => document.removeEventListener("mousedown", handleOutsideClick);
     }, []);
 
-    const shouldShowStartAmpmScroll = AMPM_OPTIONS.length >= 5;
-    const shouldShowStartHourScroll = HOUR_OPTIONS.length >= 5;
-    const shouldShowStartMinScroll = MINUTE_OPTIONS.length >= 5;
-    const shouldShowEndAmpmScroll = AMPM_OPTIONS.length >= 5;
-    const shouldShowEndHourScroll = HOUR_OPTIONS.length >= 5;
-    const shouldShowEndMinScroll = MINUTE_OPTIONS.length >= 5;
-
-    useCustomScrollbar({
-    enabled: isWorkTypeOpen,
-    scrollRef: workTypeScrollRef,
-    trackRef: workTypeTrackRef,
-    thumbRef: workTypeThumbRef,
-    minThumbHeight: 50,
-    deps: [WORK_TYPES.length],
-    });
-
-    useCustomScrollbar({
-    enabled: isWorkStatusOpen,
-    scrollRef: workStatusScrollRef,
-    trackRef: workStatusTrackRef,
-    thumbRef: workStatusThumbRef,
-    minThumbHeight: 50,
-    deps: [WORK_STATUS.length],
-    });
-
-    useCustomScrollbar({
-    enabled: isStartAmpmOpen && shouldShowStartAmpmScroll,
-    scrollRef: startAmpmScrollRef,
-    trackRef: startAmpmTrackRef,
-    thumbRef: startAmpmThumbRef,
-    minThumbHeight: 30,
-    deps: [AMPM_OPTIONS.length, isStartAmpmOpen],
-    });
-
-    useCustomScrollbar({
-    enabled: isStartHourOpen && shouldShowStartHourScroll,
-    scrollRef: startHourScrollRef,
-    trackRef: startHourTrackRef,
-    thumbRef: startHourThumbRef,
-    minThumbHeight: 30,
-    deps: [HOUR_OPTIONS.length, isStartHourOpen],
-    });
-
-    useCustomScrollbar({
-    enabled: isStartMinOpen && shouldShowStartMinScroll,
-    scrollRef: startMinScrollRef,
-    trackRef: startMinTrackRef,
-    thumbRef: startMinThumbRef,
-    minThumbHeight: 30,
-    deps: [MINUTE_OPTIONS.length, isStartMinOpen],
-    });
-
-    useCustomScrollbar({
-    enabled: isEndAmpmOpen && shouldShowEndAmpmScroll,
-    scrollRef: endAmpmScrollRef,
-    trackRef: endAmpmTrackRef,
-    thumbRef: endAmpmThumbRef,
-    minThumbHeight: 30,
-    deps: [AMPM_OPTIONS.length, isEndAmpmOpen],
-    });
-
-    useCustomScrollbar({
-    enabled: isEndHourOpen && shouldShowEndHourScroll,
-    scrollRef: endHourScrollRef,
-    trackRef: endHourTrackRef,
-    thumbRef: endHourThumbRef,
-    minThumbHeight: 30,
-    deps: [HOUR_OPTIONS.length, isEndHourOpen],
-    });
-
-    useCustomScrollbar({
-    enabled: isEndMinOpen && shouldShowEndMinScroll,
-    scrollRef: endMinScrollRef,
-    trackRef: endMinTrackRef,
-    thumbRef: endMinThumbRef,
-    minThumbHeight: 30,
-    deps: [MINUTE_OPTIONS.length, isEndMinOpen],
-    });
-
-    // 작업경로
-    const [isPathOpen, setIsPathOpen] = useState(false);
-
-    const pathWrapperRef = useRef<HTMLDivElement>(null);
-    const pathScrollRef = useRef<HTMLDivElement>(null);
-    const pathTrackRef = useRef<HTMLDivElement>(null);
-    const pathThumbRef = useRef<HTMLDivElement>(null);
-
-
-    // (선택) 바깥 클릭 닫기 로직에 추가
-    useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-        const t = e.target as Node;
-        if (pathWrapperRef.current && !pathWrapperRef.current.contains(t)) {
-        setIsPathOpen(false);
-        }
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-    }, []);
-
-    useCustomScrollbar({
-      enabled: isPathOpen,
-      scrollRef: pathScrollRef,
-      trackRef: pathTrackRef,
-      thumbRef: pathThumbRef,
-      minThumbHeight: 50,
-      deps: [pathOptions.length],
-    });
-
   return (
     <>
-      <div className={styles.scheduleModalOverlay} onClick={onClose}>
+      <div className={styles.scheduleModalOverlay} onClick={handleSafeClose}>
         <div className={styles.scheduleModalContainer} onClick={(e) => e.stopPropagation()}>
-          <button className={styles.CloseBtn} onClick={onClose}>
+          <button className={styles.CloseBtn} onClick={handleSafeClose}>
             ✕
           </button>
 
           {/* 타이틀 */}
           <div className={styles.Title}>
             <div className={styles.TitleCircle}></div>
-            <h2>{isEditMode ? '작업일정 수정' : workTypeTitle}</h2>
+            <h2>{isEditMode ? '작업 수정' : '작업 상세'}</h2>
           </div>
 
+          {/* 로딩 상태 */}
+          {loading && (
+            <div className={styles.detailLoading}>
+              <div className={styles.detailSpinner} />
+              <span>데이터를 불러오는 중...</span>
+            </div>
+          )}
+
+          {/* fetch 에러 */}
+          {!loading && fetchError && (
+            <div className={styles.detailLoading}>
+              <span>{fetchError}</span>
+              <button
+                type="button"
+                className={styles.retryBtn}
+                onClick={() => {
+                  setFetchError(null);
+                  setLoading(true);
+                  fetch(`${API_BASE}/DB/schedule/${event.id}`)
+                    .then(res => res.json())
+                    .then(data => {
+                      // 재시도 시 동일한 로직 실행 (간략화)
+                      const start = new Date(data.StartDate);
+                      const end = new Date(data.EndDate);
+                      setStartDateText(formatDate(start));
+                      setEndDateText(formatDate(end));
+                    })
+                    .catch(() => setFetchError("데이터를 불러오지 못했습니다."))
+                    .finally(() => setLoading(false));
+                }}
+              >
+                다시 시도
+              </button>
+            </div>
+          )}
+
           {/* 본문 */}
-          <div className={styles.itemContainer}>
+          {!loading && !fetchError && <div className={styles.itemContainer}>
+            {/* === 기본 정보 섹션 === */}
             <FieldRow label="로봇명">
               <ViewText value={form.robotNo}/>
             </FieldRow>
 
             <FieldRow label="작업명">
               {isEditMode ? (
-                <input
-                className={styles.editInput}
-                  value={form.title}
-                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                  placeholder="25자(50byte) 이내로 작성하세요"
-                />
+                <div className={styles.inputWithByte}>
+                  <input
+                    className={`${styles.editInput} ${fieldErrors.title ? styles.inputError : ''}`}
+                    value={form.title}
+                    onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+                    placeholder="25자(50byte) 이내로 작성하세요"
+                    maxLength={25}
+                  />
+                  <span className={`${styles.byteInline} ${getByteLength(form.title) > 40 ? styles.byteCounterWarn : ''}`}>
+                    {getByteLength(form.title)}/50
+                  </span>
+                  {fieldErrors.title && <span className={styles.fieldError}>{fieldErrors.title}</span>}
+                </div>
               ) : (
                 <ViewText value={form.title} />
               )}
             </FieldRow>
 
-            {/* 보기 모드에서는 '작업유형' 상세항목을 숨김 */}
-            {isEditMode && (
             <FieldRow label="작업유형">
-                <CustomSelect
-                placeholder="작업유형 선택"
-                value={form.workType || null}
-                options={robots}
-                isOpen={isWorkTypeOpen}
-                setIsOpen={setIsWorkTypeOpen}
-                onSelect={(opt) => setForm((p) => ({ ...p, workType: opt.label}))}
-                wrapperRef={workTypeWrapperRef}
-                scrollRef={workTypeScrollRef}
-                trackRef={workTypeTrackRef}
-                thumbRef={workTypeThumbRef}
-                />
-            </FieldRow>
-            )}
             {isEditMode ? (
-            <br />
-            ) : null}
-            <FieldRow label={isEditMode ? "작업일시" : "작업기간"}>
+                <SharedCustomSelect
+                  placeholder="작업유형을 선택하세요"
+                  value={WORK_TYPES.find(t => t.label === form.workType) ?? null}
+                  options={WORK_TYPES}
+                  onChange={(opt) => setForm((p) => ({ ...p, workType: opt.label }))}
+                  error={!!fieldErrors.workType}
+                />
+            ) : (
+                <ViewText value={form.workType} />
+            )}
+            </FieldRow>
+            {isEditMode && fieldErrors.workType && (
+              <span className={styles.fieldError}>{fieldErrors.workType}</span>
+            )}
+
+            {/* === 작업일시 === */}
+            <FieldRow label="작업일시">
                 {isEditMode ? (
-                    <div style={{ width: 373, height: 70  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                     {/* 시작 */}
                     <div className={styles.itemDateBox}>
                         <div className={styles.itemDateLabel}>시작</div>
@@ -944,114 +904,39 @@ export default function ScheduleDetail({
                                     const next = formatDate(date);
                                     setStartDateText(next);
                                     setForm((p) => ({ ...p, dateText: next }));
+                                    // 종료일이 시작일보다 이전이면 동기화
+                                    if (endDateText < next) setEndDateText(next);
                                     setIsStartDateOpen(false);
                                   }}
                                 />
                               </div>
                             )}
                         </div>
-                        <div ref={startAmpmWrapperRef} className={`${styles.selecteWrapper} ${styles.selecteCompact}`}>
-                          <div
-                            className={`${styles.selecte} ${styles.selecteCompact} ${styles.timeSelecte}`}
-                            onClick={() => setIsStartAmpmOpen((v) => !v)}
-                          >
-                            <span>{form.startAmpm}</span>
-                            <img src={isStartAmpmOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                          </div>
-                          {isStartAmpmOpen && (
-                            <div className={`${styles.selectebox} ${styles.selecteboxCompact}`}>
-                              <div ref={startAmpmScrollRef} className={styles.selecteInner} role="listbox">
-                                {AMPM_OPTIONS.map((opt) => (
-                                  <div
-                                    key={opt.id}
-                                    className={`${styles.selecteOption} ${form.startAmpm === opt.label ? styles.selecteOptionActive : ""}`.trim()}
-                                    onClick={() => {
-                                      setForm((p) => ({ ...p, startAmpm: opt.label as FormState["startAmpm"] }));
-                                      setIsStartAmpmOpen(false);
-                                    }}
-                                  >
-                                    {opt.label}
-                                  </div>
-                                ))}
-                              </div>
-                              {shouldShowStartAmpmScroll && (
-                              <div ref={startAmpmTrackRef} className={styles.selecteScrollTrack}>
-                                <div ref={startAmpmThumbRef} className={styles.selecteScrollThumb} />
-                              </div>
-                            )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div ref={startHourWrapperRef} className={`${styles.selecteWrapper} ${styles.selecteCompact}`}>
-                          <div
-                            className={`${styles.selecte} ${styles.selecteCompact} ${styles.timeSelecte}`}
-                            onClick={() => setIsStartHourOpen((v) => !v)}
-                          >
-                            <span>{String(form.startHour).padStart(2, "0")}</span>
-                            <img src={isStartHourOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                          </div>
-                          {isStartHourOpen && (
-                            <div className={`${styles.selectebox} ${styles.selecteboxCompact}`}>
-                              <div ref={startHourScrollRef} className={styles.selecteInner} role="listbox">
-                                {HOUR_OPTIONS.map((opt) => (
-                                  <div
-                                    key={opt.id}
-                                    className={`${styles.selecteOption} ${String(form.startHour).padStart(2, "0") === opt.label ? styles.selecteOptionActive : ""}`.trim()}
-                                    onClick={() => {
-                                      setForm((p) => ({ ...p, startHour: Number(opt.label) }));
-                                      setIsStartHourOpen(false);
-                                    }}
-                                  >
-                                    {opt.label}
-                                  </div>
-                                ))}
-                              </div>
-                              {shouldShowStartHourScroll && (
-                              <div ref={startHourTrackRef} className={styles.selecteScrollTrack}>
-                                <div ref={startHourThumbRef} className={styles.selecteScrollThumb} />
-                              </div>
-                            )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div ref={startMinWrapperRef} className={`${styles.selecteWrapper} ${styles.selecteCompact}`}>
-                          <div
-                            className={`${styles.selecte} ${styles.selecteCompact} ${styles.timeSelecte}`}
-                            onClick={() => setIsStartMinOpen((v) => !v)}
-                          >
-                            <span>{String(form.startMin).padStart(2, "0")}</span>
-                            <img src={isStartMinOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                          </div>
-                          {isStartMinOpen && (
-                            <div className={`${styles.selectebox} ${styles.selecteboxCompact}`}>
-                              <div ref={startMinScrollRef} className={styles.selecteInner} role="listbox">
-                                {MINUTE_OPTIONS.map((opt) => (
-                                  <div
-                                    key={opt.id}
-                                    className={`${styles.selecteOption} ${String(form.startMin).padStart(2, "0") === opt.label ? styles.selecteOptionActive : ""}`.trim()}
-                                    onClick={() => {
-                                      setForm((p) => ({ ...p, startMin: Number(opt.label) }));
-                                      setIsStartMinOpen(false);
-                                    }}
-                                  >
-                                    {opt.label}
-                                  </div>
-                                ))}
-                              </div>
-                              {shouldShowStartMinScroll && (
-                              <div ref={startMinTrackRef} className={styles.selecteScrollTrack}>
-                                <div ref={startMinThumbRef} className={styles.selecteScrollThumb} />
-                              </div>
-                            )}
-                            </div>
-                          )}
-                        </div>
+                        <SharedCustomSelect
+                          options={AMPM_OPTIONS}
+                          value={AMPM_OPTIONS.find(o => o.label === form.startAmpm) ?? null}
+                          onChange={(opt) => setForm((p) => ({ ...p, startAmpm: opt.label as FormState["startAmpm"] }))}
+                          placeholder="오전"
+                          compact
+                        />
+                        <SharedCustomSelect
+                          options={HOUR_OPTIONS}
+                          value={HOUR_OPTIONS.find(o => o.label === String(form.startHour).padStart(2, "0")) ?? null}
+                          onChange={(opt) => setForm((p) => ({ ...p, startHour: Number(opt.label) }))}
+                          placeholder="01"
+                          compact
+                        />
+                        <SharedCustomSelect
+                          options={MINUTE_OPTIONS}
+                          value={MINUTE_OPTIONS.find(o => o.label === String(form.startMin).padStart(2, "0")) ?? null}
+                          onChange={(opt) => setForm((p) => ({ ...p, startMin: Number(opt.label) }))}
+                          placeholder="00"
+                          compact
+                        />
                     </div>
 
                     {/* 종료 */}
-                    <br />
+                    <div style={{ marginTop: 8 }} />
                     <div className={styles.itemDateBox}>
                         <div className={styles.itemDateLabel}>종료</div>
 
@@ -1080,142 +965,71 @@ export default function ScheduleDetail({
                           </div>
                         )}
                         </div>
-                        <div ref={endAmpmWrapperRef} className={`${styles.selecteWrapper} ${styles.selecteCompact}`}>
-                          <div
-                            className={`${styles.selecte} ${styles.selecteCompact} ${styles.timeSelecte}`}
-                            onClick={() => setIsEndAmpmOpen((v) => !v)}
-                          >
-                            <span>{form.endAmpm}</span>
-                            <img src={isEndAmpmOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                          </div>
-                          {isEndAmpmOpen && (
-                            <div className={`${styles.selectebox} ${styles.selecteboxCompact}`}>
-                              <div ref={endAmpmScrollRef} className={styles.selecteInner} role="listbox">
-                                {AMPM_OPTIONS.map((opt) => (
-                                  <div
-                                    key={opt.id}
-                                    className={`${styles.selecteOption} ${form.endAmpm === opt.label ? styles.selecteOptionActive : ""}`.trim()}
-                                    onClick={() => {
-                                      setForm((p) => ({ ...p, endAmpm: opt.label as FormState["endAmpm"] }));
-                                      setIsEndAmpmOpen(false);
-                                    }}
-                                  >
-                                    {opt.label}
-                                  </div>
-                                ))}
-                              </div>
-                              {shouldShowEndAmpmScroll && (
-                              <div ref={endAmpmTrackRef} className={styles.selecteScrollTrack}>
-                                <div ref={endAmpmThumbRef} className={styles.selecteScrollThumb} />
-                              </div>
-                            )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div ref={endHourWrapperRef} className={`${styles.selecteWrapper} ${styles.selecteCompact}`}>
-                          <div
-                            className={`${styles.selecte} ${styles.selecteCompact} ${styles.timeSelecte}`}
-                            onClick={() => setIsEndHourOpen((v) => !v)}
-                          >
-                            <span>{String(form.endHour).padStart(2, "0")}</span>
-                            <img src={isEndHourOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                          </div>
-                          {isEndHourOpen && (
-                            <div className={`${styles.selectebox} ${styles.selecteboxCompact}`}>
-                              <div ref={endHourScrollRef} className={styles.selecteInner} role="listbox">
-                                {HOUR_OPTIONS.map((opt) => (
-                                  <div
-                                    key={opt.id}
-                                    className={`${styles.selecteOption} ${String(form.endHour).padStart(2, "0") === opt.label ? styles.selecteOptionActive : ""}`.trim()}
-                                    onClick={() => {
-                                      setForm((p) => ({ ...p, endHour: Number(opt.label) }));
-                                      setIsEndHourOpen(false);
-                                    }}
-                                  >
-                                    {opt.label}
-                                  </div>
-                                ))}
-                              </div>
-                              {shouldShowEndHourScroll && (
-                              <div ref={endHourTrackRef} className={styles.selecteScrollTrack}>
-                                <div ref={endHourThumbRef} className={styles.selecteScrollThumb} />
-                              </div>
-                            )}
-                            </div>
-                          )}
-                        </div>
-
-                        <div ref={endMinWrapperRef} className={`${styles.selecteWrapper} ${styles.selecteCompact}`}>
-                          <div
-                            className={`${styles.selecte} ${styles.selecteCompact} ${styles.timeSelecte}`}
-                            onClick={() => setIsEndMinOpen((v) => !v)}
-                          >
-                            <span>{String(form.endMin).padStart(2, "0")}</span>
-                            <img src={isEndMinOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                          </div>
-                          {isEndMinOpen && (
-                            <div className={`${styles.selectebox} ${styles.selecteboxCompact}`}>
-                              <div ref={endMinScrollRef} className={styles.selecteInner} role="listbox">
-                                {MINUTE_OPTIONS.map((opt) => (
-                                  <div
-                                    key={opt.id}
-                                    className={`${styles.selecteOption} ${String(form.endMin).padStart(2, "0") === opt.label ? styles.selecteOptionActive : ""}`.trim()}
-                                    onClick={() => {
-                                      setForm((p) => ({ ...p, endMin: Number(opt.label) }));
-                                      setIsEndMinOpen(false);
-                                    }}
-                                  >
-                                    {opt.label}
-                                  </div>
-                                ))}
-                              </div>
-                              {shouldShowEndMinScroll && (
-                              <div ref={endMinTrackRef} className={styles.selecteScrollTrack}>
-                                <div ref={endMinThumbRef} className={styles.selecteScrollThumb} />
-                              </div>
-                            )}
-                            </div>
-                          )}
-                        </div>
+                        <SharedCustomSelect
+                          options={AMPM_OPTIONS}
+                          value={AMPM_OPTIONS.find(o => o.label === form.endAmpm) ?? null}
+                          onChange={(opt) => setForm((p) => ({ ...p, endAmpm: opt.label as FormState["endAmpm"] }))}
+                          placeholder="오전"
+                          compact
+                        />
+                        <SharedCustomSelect
+                          options={HOUR_OPTIONS}
+                          value={HOUR_OPTIONS.find(o => o.label === String(form.endHour).padStart(2, "0")) ?? null}
+                          onChange={(opt) => setForm((p) => ({ ...p, endHour: Number(opt.label) }))}
+                          placeholder="01"
+                          compact
+                        />
+                        <SharedCustomSelect
+                          options={MINUTE_OPTIONS}
+                          value={MINUTE_OPTIONS.find(o => o.label === String(form.endMin).padStart(2, "0")) ?? null}
+                          onChange={(opt) => setForm((p) => ({ ...p, endMin: Number(opt.label) }))}
+                          placeholder="00"
+                          compact
+                        />
                     </div>
                     </div>
                 ) : (
-                    <ViewText value={formatTimeRangeFromForm(form)} />
+                    <ViewText value={`${startDateText} ${form.startAmpm} ${pad2(form.startHour)}:${pad2(form.startMin)} ~ ${endDateText} ${form.endAmpm} ${pad2(form.endHour)}:${pad2(form.endMin)}`} />
                 )}
                 </FieldRow>
-                {isEditMode ? (
-                    <br />
-                ) : null}
+                {isEditMode && fieldErrors.dateTime && (
+                  <div style={{ marginBottom: 8 }}>
+                    <span className={styles.fieldError}>{fieldErrors.dateTime}</span>
+                  </div>
+                )}
 
-              {!isEditMode  &&  (
-                <>
-                    <FieldRow label="작업요일">
-                        <ViewText value={viewDowText} />
-                    </FieldRow>
-                </>
+              {!isEditMode && (
+                <FieldRow label="작업요일">
+                    <ViewText value={viewDowText || "-"} />
+                </FieldRow>
               )}
-
-            
 
             <FieldRow label="작업상태">
             {isEditMode ? (
-                <CustomSelect
-                placeholder="작업상태를 선택하세요"
-                value={form.workStatus || null}
-                options={WORK_STATUS}
-                isOpen={isWorkStatusOpen}
-                setIsOpen={setIsWorkStatusOpen}
-                onSelect={(opt) => setForm((p) => ({ ...p, workStatus: opt.label }))}
-                wrapperRef={workStatusWrapperRef}
-                scrollRef={workStatusScrollRef}
-                trackRef={workStatusTrackRef}
-                thumbRef={workStatusThumbRef}
+                <SharedCustomSelect
+                  placeholder="작업상태를 선택하세요"
+                  value={WORK_STATUS.find(s => s.label === form.workStatus) ?? null}
+                  options={WORK_STATUS}
+                  onChange={(opt) => setForm((p) => ({ ...p, workStatus: opt.label }))}
+                  error={!!fieldErrors.workStatus}
                 />
             ) : (
-                <ViewText value={form.workStatus} />
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span className={`${styles.statusDot} ${
+                    form.workStatus === '대기' ? styles.statusDotWaiting
+                    : form.workStatus === '진행중' || form.workStatus === '진행' ? styles.statusDotWorking
+                    : form.workStatus === '완료' ? styles.statusDotCompleted
+                    : form.workStatus === '오류' ? styles.statusDotError
+                    : form.workStatus === '취소' ? styles.statusDotCancelled
+                    : ''
+                  }`} />
+                  <ViewText value={form.workStatus} />
+                </div>
             )}
             </FieldRow>
+            {isEditMode && fieldErrors.workStatus && (
+              <span className={styles.fieldError}>{fieldErrors.workStatus}</span>
+            )}
 
             {isEditMode && (
                 <>
@@ -1285,6 +1099,9 @@ export default function ScheduleDetail({
                                 </label>
                             </div>
                         </div>
+                        {fieldErrors.repeatDays && (
+                          <span className={styles.fieldError}>{fieldErrors.repeatDays}</span>
+                        )}
 
                         <div className={styles.itemRadioBox}>
                         <div className={styles.itemtitle}>반복종료</div>
@@ -1310,39 +1127,42 @@ export default function ScheduleDetail({
                             className={styles.radioBtnBox}
                             role="button"
                             tabIndex={0}
-                            onClick={() => setForm((p) => ({ ...p, repeatEndType: "date" }))}
-                            style={{ gap: 10 }}
+                            onClick={() => setForm((p) => ({
+                              ...p,
+                              repeatEndType: "date",
+                              repeatEndDate: p.repeatEndDate || formatDate(new Date()),
+                            }))}
                             >
                             <img
                                 src={form.repeatEndType === "date" ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
                                 alt=""
                             />
                             <span>종료 날짜</span>
+                            </div>
 
+                            {form.repeatEndType === "date" && (
                             <div
                                 ref={repeatEndDateWrapperRef}
-                                className={`${styles.repeatEndDateBox} ${
-                                form.repeatEndType !== "date" ? styles.repeatEndDateBoxDisabled : ""
-                                }`}
+                                className={styles.repeatEndDateBox}
                             >
-                                <span className={styles.repeatEndDateText}>{form.repeatEndDate}</span>
+                                <span className={styles.repeatEndDateText}>
+                                  {form.repeatEndDate || formatDate(new Date())}
+                                </span>
                                 <img
                                     src="/icon/search_calendar.png"
                                     alt=""
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        if (form.repeatEndType === "date") {
-                                            setIsRepeatEndDateOpen((v) => !v);
-                                        }
+                                        setIsRepeatEndDateOpen((v) => !v);
                                     }}
                                 />
-                                {form.repeatEndType === "date" && isRepeatEndDateOpen && (
+                                {isRepeatEndDateOpen && (
                                     <div
                                         className={styles.calendarPopover}
                                         onClick={(e) => e.stopPropagation()}
                                     >
                                         <MiniCalendar
-                                            value={parseDateText(form.repeatEndDate)}
+                                            value={parseDateText(form.repeatEndDate || formatDate(new Date()))}
                                             showTodayButton
                                             size="modal"
                                             onPickDate={(date) => {
@@ -1353,7 +1173,7 @@ export default function ScheduleDetail({
                                     </div>
                                 )}
                             </div>
-                            </div>
+                            )}
                         </div>
                         </div>
                     </>
@@ -1361,66 +1181,77 @@ export default function ScheduleDetail({
                 </>
                 )}
 
+                {/* === 작업경로 === */}
                 <FieldRow label="작업경로">
                 {isEditMode ? (
-                    <CustomSelect
-                    placeholder="작업경로 선택"
-                    value={form.pathName || null}
-                    options={pathOptions}
-                    isOpen={isPathOpen}
-                    setIsOpen={setIsPathOpen}
-                    onSelect={(opt) => {
-                      setForm((prev) => ({
-                      ...prev,
-                      pathId: opt.id,
-                      pathName: opt.label,
-                      pathOrder: opt.order ?? "",
-                      }));
-                    }}
-                    wrapperRef={pathWrapperRef}
-                    scrollRef={pathScrollRef}
-                    trackRef={pathTrackRef}
-                    thumbRef={pathThumbRef}
+                    <SharedCustomSelect
+                      placeholder="작업경로를 선택하세요"
+                      value={pathOptions.find(p => p.label === form.pathName) ?? null}
+                      options={pathOptions}
+                      onChange={(opt) => {
+                        const matched = pathOptions.find(p => p.id === opt.id);
+                        setForm((prev) => ({
+                          ...prev,
+                          pathId: opt.id as number,
+                          pathName: opt.label,
+                          pathOrder: (matched as any)?.order ?? "",
+                        }));
+                      }}
+                      emptyMessage="등록된 경로가 없습니다"
+                      error={!!fieldErrors.pathName}
                     />
                 ) : (
                     <ViewText value={form.pathName} />
                 )}
                 </FieldRow>
+                {isEditMode && fieldErrors.pathName && (
+                  <span className={styles.fieldError}>{fieldErrors.pathName}</span>
+                )}
 
-            <div className={`${styles.itemPathBox} ${isEditMode ? styles.itemPathBoxEdit : ""}`}>
+            <div className={styles.itemPathBox}>
               <div className={styles.itemtitle}>경로순서</div>
               <div className={styles.itemPath}>
-                <div className={styles.itemScroll}>{form.pathOrder}</div>
+                <div className={styles.itemScroll}>{form.pathOrder || "-"}</div>
               </div>
-              {isEditMode && (
-                <div className={styles.itemPathAction}>
-                  <button
-                    type="button"
-                    className={styles.itemBoxBtn}
-                    onClick={() => router.push('/robots?tab=path')}
-                  >
-                    작업경로 등록 화면 →
-                  </button>
-                </div>
-              )}
             </div>
+            {isEditMode && (
+              <div className={styles.pathBoxFlex}>
+                <div></div>
+                <button
+                  type="button"
+                  className={styles.itemBoxBtn}
+                  onClick={() => router.push('/robots?tab=path')}
+                >
+                  경로 관리 →
+                </button>
+              </div>
+            )}
 
-
-            {!isEditMode && (
+            {!isEditMode && modifiedAtText && (
               <FieldRow label="수정 일시">
                 <ViewText value={modifiedAtText} />
               </FieldRow>
             )}
-          </div>
+          </div>}
+
+          {/* 에러 배너 */}
+          {apiError && (
+            <div className={styles.errorMessage} style={{ marginTop: 12 }}>
+              {apiError}
+              <button className={styles.retryBtn} onClick={handleEditSave} style={{ marginLeft: 8 }}>
+                다시 시도
+              </button>
+            </div>
+          )}
 
           {/* 하단 버튼 */}
-          <div className={styles.btnTotal}>
+          {!loading && <div className={styles.btnTotal}>
             <div className={styles.btnLeftBox}>
               {mode === 'view' ? (
                 <>
                   <button
                     type="button"
-                    className={`${styles.btnItemCommon} ${styles.btnBgGray} ${styles.mr10}`}
+                    className={`${styles.btnItemCommon} ${styles.btnBgRed} `}
                     onClick={handleDelete}
                   >
                     <img src="/icon/delete_icon.png" alt="delete" />
@@ -1440,7 +1271,7 @@ export default function ScheduleDetail({
                 <>
                   <button
                     type="button"
-                    className={`${styles.btnItemCommon} ${styles.btnBgGray} ${styles.mr10}`}
+                    className={`${styles.btnItemCommon} ${styles.btnBgGray} `}
                     onClick={handleEditCancel}
                   >
                     <img src="/icon/close_btn.png" alt="cancel" />
@@ -1449,20 +1280,20 @@ export default function ScheduleDetail({
 
                   <button
                     type="button"
-                    className={`${styles.btnItemCommon} ${styles.btnBgGray}`}
-                    onClick={handleEditSave}
+                    className={`${styles.btnItemCommon} ${styles.btnBgBlue} ${saving ? styles.btnDisabled : ''}`}
+                    onClick={saving ? undefined : handleEditSave}
                   >
                     <img src="/icon/check.png" alt="save" />
-                    <span>저장</span>
+                    <span>{saving ? '저장 중...' : '저장'}</span>
                   </button>
                 </>
               )}
             </div>
-          </div>
+          </div>}
         </div>
       </div>
 
-      {/* 삭제 확인 (목업) */}
+      {/* 삭제 확인 */}
       {showDeleteConfirm && (
         <DeleteConfirmModal
           message="해당 작업일정을 삭제하시겠습니까?"
@@ -1481,6 +1312,23 @@ export default function ScheduleDetail({
           onCancel={handleRepeatConfirmCancel}
           onConfirm={handleRepeatConfirmOk}
         />
+      )}
+
+      {/* 미저장 변경사항 확인 모달 */}
+      {showDirtyConfirm && (
+        <div className={styles.confirmOverlay} onClick={() => setShowDirtyConfirm(false)}>
+          <div className={styles.confirmBox} onClick={(e) => e.stopPropagation()}>
+            <p>수정 중인 내용이 있습니다.<br />닫으시겠습니까?</p>
+            <div className={styles.confirmBtnGroup}>
+              <button className={styles.confirmBtnStay} onClick={() => setShowDirtyConfirm(false)}>
+                계속 수정
+              </button>
+              <button className={styles.confirmBtnLeave} onClick={handleDirtyConfirmLeave}>
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

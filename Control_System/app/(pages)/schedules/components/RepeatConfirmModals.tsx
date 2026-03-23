@@ -79,6 +79,10 @@ export default function RepeatConfirmModal({
           ✕
         </button>
 
+        <div className={styles.repeatHeader}>
+          <img src="/icon/robot_schedule_w.png" alt="" />
+          <h2>반복 작업</h2>
+        </div>
         <div className={styles.repeatTitle}>{title}</div>
 
         <div className={styles.repeatOptionBox} role="radiogroup" aria-label="repeat-scope">

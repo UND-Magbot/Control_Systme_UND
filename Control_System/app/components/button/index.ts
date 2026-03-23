@@ -17,8 +17,6 @@ export { default as RobotSelectBox } from "./RobotSelectBox";
 // 대시보드 - 층 선택 셀렉트 박스
 export { default as FloorSelectBox } from "./FloorSelectBox";
 
-// 대시보드 - "+" 버튼
-export { default as PlusBtn } from "./PlusBtn";
 
 // 대시보드 - 공지&알림 탭 메뉴
 export { default as TabMenu } from "./TabMenu";

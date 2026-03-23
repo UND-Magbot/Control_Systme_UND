@@ -1,7 +1,7 @@
 "use client";
 
 import styles from './WorkSchedule.module.css';
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import MiniCalendar from './MiniCalendar';
 import ScheduleInsert from './ScheduleInsert';
@@ -204,7 +204,17 @@ const monthColorClass: Record<NonNullable<MonthEvent["color"]>, string> = {
   red: styles.evRed,
 };
 
-const MONTH_MAX_VISIBLE = 3;
+function statusToColor(status: string): WeekEvent["color"] {
+  switch (status) {
+    case "대기": return "blue";
+    case "진행": case "진행중": return "yellow";
+    case "오류": return "red";
+    case "완료": return "green";
+    default: return "green";
+  }
+}
+
+const MONTH_MAX_VISIBLE = 2;
 
 const statusDotClass = (status?: ScheduleStatus) => {
   switch (status) {
@@ -238,19 +248,28 @@ export default function Page({ robots }: RobotScheduleProps) {
     };
 
     const [schedules, setSchedules] = useState<DBSchedule[]>([]);
-    useEffect(() => {
-        const fetchSchedules = async () => {
-            try {
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const fetchSchedules = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
             const res = await fetch(`${API_BASE}/DB/schedule`);
+            if (!res.ok) throw new Error("서버 응답 오류");
             const data = await res.json();
             setSchedules(data);
-            } catch (e) {
+        } catch (e) {
             console.error("스케줄 조회 실패", e);
-            }
-        };
-
-        fetchSchedules();
+            setError("스케줄 데이터를 불러오지 못했습니다.");
+        } finally {
+            setLoading(false);
+        }
     }, []);
+
+    useEffect(() => {
+        fetchSchedules();
+    }, [fetchSchedules]);
     
     // 필터 항목 드롭다운 구현
     const [isRobotTypeSelected, setIsRobotTypeSelected] = useState(true);
@@ -259,7 +278,7 @@ export default function Page({ robots }: RobotScheduleProps) {
     // 필터 항목 다중 선택
     const [selectedRobotTypes, setSelectedRobotTypes] = useState<string[]>([]);
     const [selectedRobotNames, setSelectedRobotNames] = useState<string[]>([]);
-    const robotTypes = ["환자 모니터링", "순찰/보안", "물품/약품 운반"];
+    const robotTypes = ["task1", "task2", "task3"];
 
     const toggleRobotType = (label: string) => {
         setSelectedRobotTypes((prev) =>
@@ -341,13 +360,24 @@ export default function Page({ robots }: RobotScheduleProps) {
             id: String(s.id),
             title: s.WorkName,
             date: ymd(new Date(s.StartDate)),
-            color: "green",          // 상태별로 바꿀 수 있음
+            color: statusToColor(s.TaskStatus),
             status: s.TaskStatus as ScheduleStatus,
             }));
     }, [schedules, viewDate]);
 
+    const filteredMonthEvents: MonthEvent[] = useMemo(() => {
+        if (!isTypeFilterOn && !isNameFilterOn) return monthEvents;
+        return monthEvents.filter((ev) => {
+            const full = schedules.find((s) => String(s.id) === ev.id);
+            if (!full) return false;
+            const typeOk = !isTypeFilterOn || selectedRobotTypes.includes(full.TaskType);
+            const nameOk = !isNameFilterOn || selectedRobotNames.includes(full.RobotName);
+            return typeOk && nameOk;
+        });
+    }, [monthEvents, schedules, isTypeFilterOn, isNameFilterOn, selectedRobotTypes, selectedRobotNames]);
+
     const monthEventsForDay = (dateKey: string) =>
-        monthEvents.filter((ev) => ev.date === dateKey);
+        filteredMonthEvents.filter((ev) => ev.date === dateKey);
 
     /* =========================
         📌 주간 이벤트 계산
@@ -382,7 +412,7 @@ export default function Page({ robots }: RobotScheduleProps) {
                 dayIndex: d.getDay(),
                 startMin,
                 endMin,
-                color: "green",
+                color: statusToColor(s.TaskStatus),
             };
             });
     }, [schedules, weekStart]);
@@ -408,6 +438,97 @@ export default function Page({ robots }: RobotScheduleProps) {
             return typeOk && nameOk;
         });
     }, [weekEvents, isTypeFilterOn, isNameFilterOn, selectedRobotTypes, selectedRobotNames]);
+
+    // 겹치는 이벤트 컬럼 레이아웃 계산
+    type LayoutEvent = WeekEvent & { col: number; totalCols: number };
+    const layoutWeekEvents: LayoutEvent[] = useMemo(() => {
+        // 요일별 그룹핑
+        const byDay = new Map<number, WeekEvent[]>();
+        for (const ev of filteredWeekEvents) {
+            const arr = byDay.get(ev.dayIndex) ?? [];
+            arr.push(ev);
+            byDay.set(ev.dayIndex, arr);
+        }
+
+        const result: LayoutEvent[] = [];
+
+        for (const [, events] of byDay) {
+            // 시작시간 순 정렬
+            const sorted = [...events].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+
+            // 겹침 그룹 분리
+            const groups: WeekEvent[][] = [];
+            let currentGroup: WeekEvent[] = [];
+            let groupEnd = -1;
+
+            for (const ev of sorted) {
+                if (currentGroup.length === 0 || ev.startMin < groupEnd) {
+                    currentGroup.push(ev);
+                    groupEnd = Math.max(groupEnd, ev.endMin);
+                } else {
+                    groups.push(currentGroup);
+                    currentGroup = [ev];
+                    groupEnd = ev.endMin;
+                }
+            }
+            if (currentGroup.length > 0) groups.push(currentGroup);
+
+            // 각 그룹 내 컬럼 배치
+            for (const group of groups) {
+                const columns: WeekEvent[][] = [];
+                for (const ev of group) {
+                    let placed = false;
+                    for (let c = 0; c < columns.length; c++) {
+                        const last = columns[c][columns[c].length - 1];
+                        if (ev.startMin >= last.endMin) {
+                            columns[c].push(ev);
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (!placed) columns.push([ev]);
+                }
+
+                const totalCols = columns.length;
+                for (let c = 0; c < columns.length; c++) {
+                    for (const ev of columns[c]) {
+                        result.push({ ...ev, col: c, totalCols });
+                    }
+                }
+            }
+        }
+
+        return result;
+    }, [filteredWeekEvents]);
+
+    // 드롭다운 상태: 겹침 그룹 키 → 열림 여부
+    const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+    // 겹침 그룹별 이벤트 맵 (col 0 대표 + 나머지)
+    const groupedEvents = useMemo(() => {
+        const map = new Map<string, LayoutEvent[]>();
+        for (const ev of layoutWeekEvents) {
+            const start = Math.max(0, Math.min(24 * 60, ev.startMin));
+            const key = `${ev.dayIndex}-${start}`;
+            const arr = map.get(key) ?? [];
+            arr.push(ev);
+            map.set(key, arr);
+        }
+        return map;
+    }, [layoutWeekEvents]);
+
+    // 드롭다운 외부 클릭 시 닫기
+    useEffect(() => {
+        if (!openDropdown) return;
+        const handle = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (!target.closest(`.${styles.eventDropdown}`) && !target.closest(`.${styles.event}`)) {
+                setOpenDropdown(null);
+            }
+        };
+        document.addEventListener('mousedown', handle);
+        return () => document.removeEventListener('mousedown', handle);
+    }, [openDropdown]);
 
     // Header의 이전/다음 버튼 처리
     const addDays = (base: Date, days: number) => {
@@ -447,14 +568,10 @@ export default function Page({ robots }: RobotScheduleProps) {
     setViewType("week");
     };
 
-    /** 1) 화면 옵션(페이지 안에서 고정값으로 관리) */
-    const heightPx = 630;     // 전체 박스 고정 높이
+    /** 1) 화면 옵션 */
     const hourRowPx = 38;     // 1시간 칸 높이
     const totalMinutes = 24 * 60;
     const gridHeight = 24 * hourRowPx;
-
-    // 월간 헤더 높이
-    const MONTH_HEADER_H = 40;
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const trackRef = useRef<HTMLDivElement>(null);
@@ -500,6 +617,33 @@ export default function Page({ robots }: RobotScheduleProps) {
         setTodayResetKey((k) => k + 1);
     };
 
+    // 현재 시간 (Now line)
+    const [nowMinutes, setNowMinutes] = useState(() => {
+        const n = new Date();
+        return n.getHours() * 60 + n.getMinutes();
+    });
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const n = new Date();
+            setNowMinutes(n.getHours() * 60 + n.getMinutes());
+        }, 60000); // 1분마다 업데이트
+        return () => clearInterval(timer);
+    }, []);
+
+    const todayDayIndex = useMemo(() => {
+        const t = new Date();
+        t.setHours(0, 0, 0, 0);
+        for (let i = 0; i < 7; i++) {
+            const wd = new Date(weekStart);
+            wd.setDate(weekStart.getDate() + i);
+            if (wd.getFullYear() === t.getFullYear() && wd.getMonth() === t.getMonth() && wd.getDate() === t.getDate()) {
+                return i;
+            }
+        }
+        return -1; // 이번 주에 오늘이 없음
+    }, [weekStart]);
+
     const isSameYmd = (a: Date, b: Date) =>
         a.getFullYear() === b.getFullYear() &&
         a.getMonth() === b.getMonth() &&
@@ -512,123 +656,15 @@ export default function Page({ robots }: RobotScheduleProps) {
     }, []);
 
 
-    //  스크롤
-    useEffect(() => {
-    // ✅ 주간이 아닐 때는 커스텀 스크롤 attach 하지 않음
-    if (viewType !== "week") return;
-
-    const el = scrollRef.current;
-    const track = trackRef.current;
-    const thumb = thumbRef.current;
-    if (!el || !track || !thumb) return;
-
-    const MIN_THUMB = 10;
-
-    const syncThumb = () => {
-        const clientHeight = el.clientHeight;
-        const scrollHeight = el.scrollHeight;
-        const trackHeight = track.clientHeight;
-
-        // 스크롤 필요 없으면 숨김
-        if (scrollHeight <= clientHeight || trackHeight <= 0) {
-        thumb.style.opacity = "0";
-        thumb.style.height = `${trackHeight}px`;
-        thumb.style.top = `0px`;
-        return;
-        }
-
-        thumb.style.opacity = "1";
-
-        const FIXED_THUMB_RATIO = 0.3; // 30%
-        const thumbH = Math.max(MIN_THUMB, Math.floor(trackHeight * FIXED_THUMB_RATIO));
-        thumb.style.height = `${thumbH}px`;
-
-        const maxScrollTop = scrollHeight - clientHeight;
-        const maxThumbTop = trackHeight - thumbH;
-
-        const ratio = maxScrollTop > 0 ? el.scrollTop / maxScrollTop : 0;
-        const top = Math.max(0, Math.min(maxThumbTop, ratio * maxThumbTop));
-        thumb.style.top = `${top}px`;
-    };
-
-    syncThumb();
-    requestAnimationFrame(syncThumb);
-    setTimeout(syncThumb, 0);
-
-    const onScroll = () => syncThumb();
-    el.addEventListener("scroll", onScroll, { passive: true });
-
-    let dragging = false;
-    let startY = 0;
-    let startThumbTop = 0;
-
-    const getThumbTop = () => {
-        const v = parseFloat(thumb.style.top || "0");
-        return Number.isFinite(v) ? v : 0;
-    };
-
-    const onPointerDown = (e: PointerEvent) => {
-        dragging = true;
-        startY = e.clientY;
-        startThumbTop = getThumbTop();
-        document.body.style.userSelect = "none";
-        thumb.setPointerCapture?.(e.pointerId);
-        thumb.classList.add(styles.thumbDragging);
-        e.preventDefault();
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-        if (!dragging) return;
-
-        const clientHeight = el.clientHeight;
-        const scrollHeight = el.scrollHeight;
-        const trackHeight = track.clientHeight;
-
-        if (scrollHeight <= clientHeight || trackHeight <= 0) return;
-
-        const thumbH = thumb.getBoundingClientRect().height;
-        const maxThumbTop = trackHeight - thumbH;
-
-        const dy = e.clientY - startY;
-        const nextThumbTop = Math.max(0, Math.min(maxThumbTop, startThumbTop + dy));
-
-        const maxScrollTop = scrollHeight - clientHeight;
-        const ratio = maxThumbTop > 0 ? nextThumbTop / maxThumbTop : 0;
-        el.scrollTop = ratio * maxScrollTop;
-    };
-
-    const onPointerUp = (e: PointerEvent) => {
-        if (!dragging) return;
-        dragging = false;
-
-        document.body.style.userSelect = "";
-        thumb.classList.remove(styles.thumbDragging);
-
-        try {
-        thumb.releasePointerCapture?.(e.pointerId);
-        } catch {}
-    };
-
-    thumb.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-
-    const ro = new ResizeObserver(syncThumb);
-    ro.observe(el);
-    ro.observe(track);
-    window.addEventListener("resize", syncThumb);
-
-    return () => {
-        el.removeEventListener("scroll", onScroll);
-        thumb.removeEventListener("pointerdown", onPointerDown);
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-        window.removeEventListener("resize", syncThumb);
-        ro.disconnect();
-        document.body.style.userSelect = "";
-        thumb.classList.remove(styles.thumbDragging);
-    };
-    }, [viewType, hourRowPx, gridHeight, heightPx]);
+    // 주간 스크롤바
+    useCustomScrollbar({
+        enabled: viewType === "week",
+        scrollRef,
+        trackRef,
+        thumbRef,
+        minThumbHeight: 10,
+        deps: [viewType, gridHeight],
+    });
 
 
     // 작업등록 모달 open/close 상태
@@ -660,9 +696,9 @@ export default function Page({ robots }: RobotScheduleProps) {
     const [monthOverflowDateKey, setMonthOverflowDateKey] = useState<string>("");
     const [monthOverflowDateObj, setMonthOverflowDateObj] = useState<Date | null>(null);
 
-    const toDetailEventFromMonth = (ev: MonthEvent): WeekEvent => {
+    const toDetailEventFromMonth = (ev: MonthEvent): WeekEvent | null => {
     const full = schedules.find((s) => String(s.id) === ev.id);
-    if (!full) throw new Error("Schedule not found");
+    if (!full) return null;
 
     const d = new Date(full.StartDate);
     const end = new Date(full.EndDate);
@@ -675,7 +711,7 @@ export default function Page({ robots }: RobotScheduleProps) {
     dayIndex: d.getDay(),
     startMin: d.getHours() * 60 + d.getMinutes(),
     endMin: end.getHours() * 60 + end.getMinutes(),
-    color: "green",
+    color: statusToColor(full.TaskStatus),
     };
     };
 
@@ -788,7 +824,6 @@ useEffect(() => {
         <div className={styles.ScheduleContainer}>
             <div>
 
-                <h2>작업일정 관리</h2>
                 <div>
                     <MiniCalendar value={selectedDate} onPickDate={handlePickDate} todayResetKey={todayResetKey} />
                 </div>
@@ -797,11 +832,27 @@ useEffect(() => {
                     <div ref={filterScrollRef} className={styles.filterInner}>
                         <div className={styles.selectBoxGap}>
                             <div className={styles.selecteBoxCommon} onClick={() => setIsRobotTypeSelected(prev => !prev)}>
-                                <div>작업유형 선택</div>
+                                <div>작업유형</div>
                                 <img src={isRobotTypeSelected ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
                             </div>
                             {isRobotTypeSelected && (
                                 <div>
+                                    <div
+                                        className={`${styles.robotSelecteItem} ${selectedRobotTypes.length === robotTypes.length ? styles.active : ""}`}
+                                        onClick={() => {
+                                            if (selectedRobotTypes.length === robotTypes.length) {
+                                                setSelectedRobotTypes([]);
+                                            } else {
+                                                setSelectedRobotTypes([...robotTypes]);
+                                            }
+                                        }}
+                                    >
+                                        <img
+                                            src={selectedRobotTypes.length === robotTypes.length ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                                            alt=""
+                                        />
+                                        <span>전체</span>
+                                    </div>
                                     {robotTypes.map((label) => {
                                         const isSelected = selectedRobotTypes.includes(label);
 
@@ -825,11 +876,27 @@ useEffect(() => {
 
                         <div>
                             <div className={styles.selecteBoxCommon} onClick={() => setIsRobotNameSelected(prev => !prev)}>
-                                <div>로봇명 선택</div>
+                                <div>로봇명</div>
                                 <img src={isRobotNameSelected ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
                             </div>
                             {isRobotNameSelected && (
                             <div>
+                                <div
+                                    className={`${styles.robotSelecteItem} ${selectedRobotNames.length === robotNameOptions.length ? styles.active : ""}`}
+                                    onClick={() => {
+                                        if (selectedRobotNames.length === robotNameOptions.length) {
+                                            setSelectedRobotNames([]);
+                                        } else {
+                                            setSelectedRobotNames(robotNameOptions.map(r => r.no));
+                                        }
+                                    }}
+                                >
+                                    <img
+                                        src={selectedRobotNames.length === robotNameOptions.length ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                                        alt=""
+                                    />
+                                    <span>전체</span>
+                                </div>
                                 {robotNameOptions.map((robot) => {
                                 const active = selectedRobotNames.includes(robot.no);
 
@@ -882,7 +949,12 @@ useEffect(() => {
                             </button>
                         </div>
                         <div className={styles.statusUpdate}>
-                            <img src="/icon/data_update.png" alt="" />
+                            <img
+                                src="/icon/data_update.png"
+                                alt="새로고침"
+                                className={`${styles.refreshBtn} ${loading ? styles.refreshing : ""}`}
+                                onClick={fetchSchedules}
+                            />
                         </div>
                     </div>
 
@@ -907,12 +979,39 @@ useEffect(() => {
                         isOpen={isInsertModalOpen}
                         onClose={() => setIsInsertModalOpen(false)}
                         robots={robots}
+                        onScheduleChanged={fetchSchedules}
                     />
                 )}
 
-                {viewType === "week" && (
+                {/* 로딩 / 에러 / 빈 상태 */}
+                {loading && (
+                    <div className={styles.stateOverlay}>
+                        <div className={styles.spinner} />
+                        <span>스케줄 데이터를 불러오는 중...</span>
+                    </div>
+                )}
+
+                {!loading && error && (
+                    <div className={styles.stateOverlay}>
+                        <span>{error}</span>
+                        <button type="button" className={styles.retryBtn} onClick={fetchSchedules}>
+                            다시 시도
+                        </button>
+                    </div>
+                )}
+
+                {!loading && !error && schedules.length === 0 && (
+                    <div className={styles.stateOverlay}>
+                        <span>등록된 작업이 없습니다.</span>
+                        <span style={{ fontSize: '12px', opacity: 0.6 }}>
+                            상단의 &quot;작업등록&quot; 버튼으로 새 일정을 추가하세요.
+                        </span>
+                    </div>
+                )}
+
+                {!loading && !error && schedules.length > 0 && viewType === "week" && (
                 <section className={styles.weekendGrid}>
-                    <div className={styles.scroller} style={{ height: heightPx }}>
+                    <div className={styles.scroller}>
                         <div ref={scrollRef} className={styles.inner} role="listbox">
                             {/* 헤더(요일/날짜) */}
                             <div className={styles.headerRow}>
@@ -930,7 +1029,6 @@ useEffect(() => {
                                             </div>
                                         );
                                     })}
-                                <div className={styles.scrollSpacer} />
                             </div>
 
                             {/* 바디 */}
@@ -976,91 +1074,111 @@ useEffect(() => {
                                         );
                                     })}
 
-                                    {/* 이벤트 */}
-                                    {filteredWeekEvents.map((ev) => {
-                                        const start = Math.max(0, Math.min(totalMinutes, ev.startMin));
-                                        const end = Math.max(0, Math.min(totalMinutes, ev.endMin));
-                                        const dur = Math.max(10, end - start); // 최소 높이(가독성)
+                                    {/* Now 라인 */}
+                                    {todayDayIndex >= 0 && (
+                                        <div
+                                            className={styles.nowLine}
+                                            style={{
+                                                top: (nowMinutes / 60) * hourRowPx,
+                                                left: `${(todayDayIndex / 7) * 100}%`,
+                                                width: `${100 / 7}%`,
+                                            }}
+                                        />
+                                    )}
+
+                                    {/* 이벤트 (겹침 → 대표 1개 + 드롭다운) */}
+                                    {Array.from(groupedEvents.entries()).map(([groupKey, evts]) => {
+                                        const first = evts[0];
+                                        const start = Math.max(0, Math.min(totalMinutes, first.startMin));
+                                        const end = Math.max(0, Math.min(totalMinutes, first.endMin));
+                                        const dur = Math.max(10, end - start);
 
                                         const top = (start / 60) * hourRowPx;
                                         const height = (dur / 60) * hourRowPx;
 
-                                        const leftPct = (ev.dayIndex / 7) * 100;
-                                        const widthPct = 100 / 7;
+                                        const dayLeftPct = (first.dayIndex / 7) * 100;
+                                        const dayWidthPct = 100 / 7;
+                                        const padding = 4;
+
+                                        const fullWidth = `calc(${dayWidthPct}% - ${padding * 2}px)`;
+                                        const fullLeft = `calc(${dayLeftPct}% + ${padding}px)`;
+                                        const isOpen = openDropdown === groupKey;
+                                        const hasMultiple = evts.length > 1;
 
                                         return (
-                                        <div
-                                            key={ev.id}
-                                            className={`${styles.event} ${colorClass(ev.color)}`}
-                                            style={{
-                                            top,
-                                            height,
-                                            left: `calc(${leftPct}% + 6px)`,
-                                            width: `calc(${widthPct}% - 12px)`,
-                                            }}
-                                            title={ev.title}
-                                            onClick={() => handleClickWeekEvent(ev)}
-                                        >
-                                            <span className={styles.eventCircle}></span>
-                                            {ev.title}
-                                        </div>
+                                        <React.Fragment key={groupKey}>
+                                            {/* 대표 이벤트 */}
+                                            <div
+                                                className={`${styles.event} ${colorClass(first.color)}`}
+                                                style={{
+                                                    top,
+                                                    height,
+                                                    left: fullLeft,
+                                                    width: fullWidth,
+                                                }}
+                                                title={first.title}
+                                                onClick={() => {
+                                                    if (hasMultiple) {
+                                                        setOpenDropdown(isOpen ? null : groupKey);
+                                                    } else {
+                                                        handleClickWeekEvent(first);
+                                                    }
+                                                }}
+                                            >
+                                                <span className={styles.eventCircle}></span>
+                                                {first.title}
+                                                {hasMultiple && (
+                                                    <span className={styles.eventBadge}>+{evts.length - 1}</span>
+                                                )}
+                                                {dur >= 30 && (
+                                                    <span className={styles.eventTime}>
+                                                        {hourLabel(Math.floor(first.startMin / 60))} ~ {hourLabel(Math.floor(first.endMin / 60))}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* 드롭다운 */}
+                                            {isOpen && (
+                                                <div
+                                                    className={styles.eventDropdown}
+                                                    style={{
+                                                        position: 'absolute',
+                                                        top: top + height + 2,
+                                                        left: fullLeft,
+                                                        width: fullWidth,
+                                                        zIndex: 20,
+                                                    }}
+                                                >
+                                                    {evts.map((ev) => (
+                                                        <button
+                                                            key={ev.id}
+                                                            type="button"
+                                                            className={styles.eventDropdownItem}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setOpenDropdown(null);
+                                                                handleClickWeekEvent(ev);
+                                                            }}
+                                                        >
+                                                            <span className={`${styles.eventCircle} ${colorClass(ev.color)}`}></span>
+                                                            <span className={styles.eventDropdownText}>{ev.title}</span>
+                                                            <span className={styles.eventDropdownTime}>
+                                                                {hourLabel(Math.floor(ev.startMin / 60))} ~ {hourLabel(Math.floor(ev.endMin / 60))}
+                                                            </span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </React.Fragment>
                                         );
                                     })}
                                     </div>
                                 </div>
-                                {monthOverflowOpen && monthOverflowDateObj && (
-                                    <div
-                                        className={styles.monthOverflowOverlay}
-                                        onClick={() => setMonthOverflowOpen(false)}
-                                    >
-                                        <div
-                                        className={styles.monthOverflowModal}
-                                        onClick={(e) => e.stopPropagation()}
-                                        >
-                                        <div className={styles.monthOverflowHeader}>
-                                            <div className={styles.monthOverflowTitle}>
-                                            {monthOverflowDateObj.getFullYear()}년{" "}
-                                            {monthOverflowDateObj.getMonth() + 1}월{" "}
-                                            {monthOverflowDateObj.getDate()}일 ({DOW_KR[monthOverflowDateObj.getDay()]})
-                                            </div>
-                                            <button
-                                            type="button"
-                                            className={styles.monthOverflowClose}
-                                            onClick={() => setMonthOverflowOpen(false)}
-                                            aria-label="close"
-                                            >
-                                            ✕
-                                            </button>
-                                        </div>
-
-                                        <div className={styles.monthOverflowList}>
-                                            {monthEventsForDay(monthOverflowDateKey)
-                                              .slice(MONTH_MAX_VISIBLE)
-                                              .map((ev) => (
-                                            <button
-                                                key={ev.id}
-                                                type="button"
-                                                className={styles.monthOverflowItem}
-                                                onClick={() => {
-                                                setSelectedWeekEvent(toDetailEventFromMonth(ev));
-                                                setIsDetailModalOpen(true);
-                                                }}
-                                                title={ev.title}
-                                            >
-                                                <span className={`${styles.monthOverflowDot} ${statusDotClass(ev.status)}`.trim()} />
-                                                <span className={styles.monthOverflowText}>{ev.title}</span>
-                                            </button>
-                                            ))}
-                                        </div>
-                                        </div>
-                                    </div>
-                                    )}
-
-                                <div className={styles.scrollGutter}>
-                                    <div ref={trackRef} className={styles.scrollTrack}>
-                                    <div ref={thumbRef} className={styles.scrollThumb} />
-                                    </div>
-                                </div>
+                            </div>
+                        </div>
+                        <div className={styles.scrollGutter}>
+                            <div ref={trackRef} className={styles.scrollTrack}>
+                                <div ref={thumbRef} className={styles.scrollThumb} />
                             </div>
                         </div>
                     </div>
@@ -1072,13 +1190,14 @@ useEffect(() => {
                         isOpen={isDetailModalOpen}
                         onClose={handleCloseDetail}
                         event={selectedWeekEvent}
+                        onScheduleChanged={fetchSchedules}
                     />
                 )}
 
-                {viewType === "month" && (
-                <section className={styles.monthContainer} style={{ height: heightPx }}>
+                {!loading && !error && schedules.length > 0 && viewType === "month" && (
+                <section className={styles.monthContainer}>
                     {/* 요일 헤더 */}
-                    <div className={styles.monthHeaderRow} style={{ height: MONTH_HEADER_H }}>
+                    <div className={styles.monthHeaderRow}>
                     {DOW.map((d, i) => (
                         <div
                         key={d}
@@ -1091,11 +1210,10 @@ useEffect(() => {
                     ))}
                     </div>
 
-                    {/* 바디: 컨테이너(630) - 헤더(40) */}
+                    {/* 바디 */}
                     <div
                     ref={monthBodyRef}
                     className={styles.monthBody}
-                    style={{ height: `calc(${heightPx}px - ${MONTH_HEADER_H}px)` }}
                     >
                         <div
                             className={styles.monthGrid}
@@ -1125,7 +1243,9 @@ useEffect(() => {
                                                     className={`${styles.cellEvent} ${ev.color ? monthColorClass[ev.color] : styles.evGreen}`}
                                                     onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setSelectedWeekEvent(toDetailEventFromMonth(ev));
+                                                    const detail = toDetailEventFromMonth(ev);
+                                                    if (!detail) return;
+                                                    setSelectedWeekEvent(detail);
                                                     setIsDetailModalOpen(true);
                                                     }}
                                                 >
@@ -1145,7 +1265,7 @@ useEffect(() => {
                                                     setMonthOverflowOpen(true);
                                                     }}
                                                 >
-                                                    +{remain}개 일정 더보기
+                                                    +{remain}건
                                                 </button>
                                             )}
                                         </div>
@@ -1198,7 +1318,9 @@ useEffect(() => {
                                                 type="button"
                                 className={styles.monthOverflowItem}
                                 onClick={() => {
-                                setSelectedWeekEvent(toDetailEventFromMonth(ev));
+                                const detail = toDetailEventFromMonth(ev);
+                                if (!detail) return;
+                                setSelectedWeekEvent(detail);
                                 setIsDetailModalOpen(true);
                                 }}
                                 title={ev.title}

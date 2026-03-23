@@ -77,7 +77,7 @@ export default function RobotSelectBox({
         <div className={styles.modalSeletbox}>
           <div ref={scrollRef} className={styles.inner} role="listbox">
             {robots.map((item, idx) => (
-              <div key={item.id} className={`${styles.robotsItem} ${ activeIndex === idx ? styles["active"] : "" }`.trim()}
+              <div key={item.id} className={styles.robotsItem}
               onClick={() => { onSelect(idx, item); setIsOpen(false); }}>{item.no}</div>
             ))}
           </div>

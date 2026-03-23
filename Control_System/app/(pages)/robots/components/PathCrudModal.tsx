@@ -6,8 +6,10 @@ import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import type { RobotRowData, Floor } from "@/app/type";
 import ResetUpdate from "./PathDeleteConfirmModal";
 import PathAlertsModal from "./PathAlertsModal";
+import PathMapView from "./PathMapView";
+import FilterSelectBox, { type FilterOption } from "@/app/components/button/FilterSelectBox";
 
-export type PathWorkType = "환자 모니터링" | "순찰/보안" | "물품/약품 운반";
+export type PathWorkType = "task1" | "task2" | "task3";
 
 export type PlaceRow = {
   id: number;
@@ -43,11 +45,39 @@ type Props = {
   // ✅ 수정 모드일 때 초기값
   initial: PathRow | null;
 
+  // ✅ 기존 경로 목록 (경로명 중복 검증용)
+  existingPaths?: PathRow[];
+
   // ✅ 저장 시 상위로 전달
-  onSubmit: (payload: Omit<PathRow, "id" | "updatedAt"> & { id?: number }) => void;
+  onSubmit: (payload: Omit<PathRow, "id" | "updatedAt"> & { id?: number }) => Promise<void>;
 };
 
-const WORK_TYPES: PathWorkType[] = ["환자 모니터링", "순찰/보안", "물품/약품 운반"];
+const WORK_TYPES: PathWorkType[] = ["task1", "task2", "task3"];
+
+function restorePathOrder(initial: PathRow, placeRows: PlaceRow[]) {
+  const raw = initial.pathOrder ?? "";
+  const names = raw
+    .split(" - ")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  console.log("[restorePathOrder] raw pathOrder:", JSON.stringify(raw));
+  console.log("[restorePathOrder] parsed names:", names);
+  console.log("[restorePathOrder] placeRows count:", placeRows.length);
+  console.log("[restorePathOrder] placeRow names:", placeRows.map(p => p.placeName));
+
+  const valid: PlaceRow[] = [];
+  const missing: string[] = [];
+
+  for (let i = 0; i < names.length; i++) {
+    const found = placeRows.find((p) => p.placeName === names[i]);
+    if (found) valid.push(found);
+    else missing.push(names[i]);
+  }
+
+  console.log("[restorePathOrder] valid:", valid.length, "missing:", missing);
+  return { valid, missing };
+}
 
 function nowKSTString() {
   const d = new Date();
@@ -60,70 +90,6 @@ function nowKSTString() {
   return `${yyyy}.${mm}.${dd} ${hh}:${mi}:${ss}`;
 }
 
-type FixedScrollbarArgs = {
-  enabled: boolean;
-  scrollRef: React.RefObject<HTMLElement | null>;
-  trackRef: React.RefObject<HTMLElement | null>;
-  thumbRef: React.RefObject<HTMLElement | null>;
-  thumbHeight?: number;
-  deps?: any[];
-};
-
-const useFixedSelectScrollbar = ({
-  enabled,
-  scrollRef,
-  trackRef,
-  thumbRef,
-  thumbHeight = 30,
-  deps = [],
-}: FixedScrollbarArgs) => {
-  useEffect(() => {
-    if (!enabled) return;
-
-    const scrollEl = scrollRef.current;
-    const trackEl = trackRef.current;
-    const thumbEl = thumbRef.current;
-    if (!scrollEl || !trackEl || !thumbEl) return;
-
-    const resizeThumb = () => {
-      const h = Math.min(thumbHeight, trackEl.clientHeight);
-      thumbEl.style.height = `${h}px`;
-      thumbEl.style.opacity =
-        scrollEl.scrollHeight > scrollEl.clientHeight ? "1" : "0";
-    };
-
-    const syncThumb = () => {
-      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
-      const maxTop = trackEl.clientHeight - thumbEl.clientHeight;
-      if (maxScroll <= 0) {
-        thumbEl.style.top = "0px";
-        return;
-      }
-      const ratio = scrollEl.scrollTop / maxScroll;
-      thumbEl.style.top = `${ratio * maxTop}px`;
-    };
-
-    resizeThumb();
-    syncThumb();
-
-    scrollEl.addEventListener("scroll", syncThumb);
-    window.addEventListener("resize", resizeThumb);
-
-    const ro = new ResizeObserver(() => {
-      resizeThumb();
-      syncThumb();
-    });
-    ro.observe(scrollEl);
-    ro.observe(trackEl);
-
-    return () => {
-      scrollEl.removeEventListener("scroll", syncThumb);
-      window.removeEventListener("resize", resizeThumb);
-      ro.disconnect();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, thumbHeight, ...deps]);
-};
 
 export default function PathCrudModal({
   isOpen,
@@ -133,26 +99,19 @@ export default function PathCrudModal({
   robots,
   floors,
   initial,
+  existingPaths = [],
   onSubmit,
 }: Props) {
+  // 저장 중 상태 (중복 클릭 방지)
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // 미저장 변경사항 닫기 확인 모달
+  const [isCloseConfirmOpen, setCloseConfirmOpen] = useState(false);
   // ---------- 좌측 필터(로봇/층) ----------
-  const [robotOpen, setRobotOpen] = useState(false);
-  const [floorOpen, setFloorOpen] = useState(false);
-  const robotWrapperRef = useRef<HTMLDivElement>(null);
-  const floorWrapperRef = useRef<HTMLDivElement>(null);
-  const robotSelectScrollRef = useRef<HTMLDivElement>(null);
-  const robotSelectTrackRef = useRef<HTMLDivElement>(null);
-  const robotSelectThumbRef = useRef<HTMLDivElement>(null);
-  const floorSelectScrollRef = useRef<HTMLDivElement>(null);
-  const floorSelectTrackRef = useRef<HTMLDivElement>(null);
-  const floorSelectThumbRef = useRef<HTMLDivElement>(null);
-
   const [selectedRobot, setSelectedRobot] = useState<string | null>(null); // null=Total
   const [selectedFloor, setSelectedFloor] = useState<string | null>(null); // null=Total
+  const [placeSearch, setPlaceSearch] = useState(""); // 장소명 검색
 
   // ---------- 우측 폼 ----------
-  const [workTypeOpen, setWorkTypeOpen] = useState(false);
-  const workTypeWrapperRef = useRef<HTMLDivElement>(null);
 
   const [workType, setWorkType] = useState<PathWorkType | null>(null);
   const [pathName, setPathName] = useState("");
@@ -182,15 +141,18 @@ export default function PathCrudModal({
   // 경로 초기화 확인 모달
   const [isPathResetConfirmOpen, setPathResetConfirmOpen] = useState(false);
 
-  // 초기값(수정 모드)
-  useEffect(() => {
-    if (!isOpen) return;
+  // 편집 모드에서 경로 순서 복원이 완료되었는지 추적
+  const [editRestored, setEditRestored] = useState(false);
 
-    // 필터/드롭다운 닫기
-    setRobotOpen(false);
-    setFloorOpen(false);
-    setWorkTypeOpen(false);
+  // 초기값(수정 모드) — isOpen/mode/initial 변경 시 전체 초기화
+  useEffect(() => {
+    if (!isOpen) {
+      setEditRestored(false);
+      return;
+    }
+
     setActivePlaceId(null);
+    setEditRestored(false);
 
     if (mode === "edit" && initial) {
       const nextWorkType = (initial.workType as PathWorkType) ?? null;
@@ -199,75 +161,90 @@ export default function PathCrudModal({
       setPathName(nextPathName);
       setSelectedRobot(initial.robotNo ?? null);
 
-      // initial.pathOrder 문자열을 placeRows와 매칭해 복원(가능한 만큼)
-      const names = (initial.pathOrder ?? "")
-        .split(" - ")
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      const mapped: PlaceRow[] = names.map((nm, idx) => {
-        const found = placeRows.find((p) => p.placeName === nm);
-        if (found) return found;
-        return {
-          id: -1 * (idx + 1),
-          robotNo: initial.robotNo ?? "",
-          floor: "",
-          placeName: nm,
-          x: 0,
-          y: 0,
-        };
-      });
-
-      setSelectedOrder(mapped);
-      setInitialSnapshot({
-        workType: nextWorkType,
-        pathName: nextPathName,
-        selectedOrder: mapped,
-      });
+      // placeRows가 아직 비어있으면 빈 순서로 시작 (placeRows 로드 후 재복원)
+      if (placeRows.length === 0) {
+        setSelectedOrder([]);
+        setInitialSnapshot({
+          workType: nextWorkType,
+          pathName: nextPathName,
+          selectedOrder: [],
+        });
+      } else {
+        const restored = restorePathOrder(initial, placeRows);
+        setSelectedOrder(restored.valid);
+        setInitialSnapshot({
+          workType: nextWorkType,
+          pathName: nextPathName,
+          selectedOrder: restored.valid,
+        });
+        if (restored.missing.length > 0) {
+          setAlertMessage(`일부 장소가 삭제되어 경로에서 제외되었습니다: ${restored.missing.join(", ")}`);
+        }
+        setEditRestored(true);
+      }
     } else {
       // create
       setWorkType(null);
       setPathName("");
-      // setSelectedOrder([]);
+      setSelectedOrder([]);
       setSelectedRobot(null);
       setSelectedFloor(null);
+      setPlaceSearch("");
       setActivePlaceId(null);
       setInitialSnapshot(null);
     }
     setHadPlaces(placeRows.length > 0);
   }, [isOpen, mode, initial]);
 
-  // 외부 클릭 닫기(기존 select 패턴 동일)
+  // placeRows가 뒤늦게 로드되었을 때 편집 모드 경로 순서 재복원
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || mode !== "edit" || !initial) return;
+    if (editRestored || placeRows.length === 0) return;
 
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
+    const nextWorkType = (initial.workType as PathWorkType) ?? null;
+    const nextPathName = initial.pathName ?? "";
+    const restored = restorePathOrder(initial, placeRows);
 
-      if (robotWrapperRef.current && !robotWrapperRef.current.contains(t)) setRobotOpen(false);
-      if (floorWrapperRef.current && !floorWrapperRef.current.contains(t)) setFloorOpen(false);
-      if (workTypeWrapperRef.current && !workTypeWrapperRef.current.contains(t))
-        setWorkTypeOpen(false);
-    };
+    setWorkType(nextWorkType);
+    setPathName(nextPathName);
+    setSelectedRobot(initial.robotNo ?? null);
+    setSelectedOrder(restored.valid);
+    setInitialSnapshot({
+      workType: nextWorkType,
+      pathName: nextPathName,
+      selectedOrder: restored.valid,
+    });
+    if (restored.missing.length > 0) {
+      setAlertMessage(`일부 장소가 삭제되어 경로에서 제외되었습니다: ${restored.missing.join(", ")}`);
+    }
+    setEditRestored(true);
+  }, [isOpen, mode, initial, placeRows, editRestored]);
 
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [isOpen]);
 
-  const robotOptions = useMemo(() => Array.from(new Set(robots.map((r) => r.no))), [robots]);
-  const floorOptions = useMemo(() => Array.from(new Set(floors.map((f) => f.label))), [floors]);
-  const shouldShowRobotSelectScroll = robotOptions.length + 1 >= 5;
-  const shouldShowFloorSelectScroll = floorOptions.length + 1 >= 5;
+  const robotFilterItems: FilterOption[] = useMemo(
+    () => Array.from(new Set(robots.map((r) => r.no))).map((no) => ({ id: no, label: no })),
+    [robots]
+  );
+  const floorFilterItems: FilterOption[] = useMemo(
+    () => Array.from(new Set(floors.map((f) => f.label))).map((label) => ({ id: label, label })),
+    [floors]
+  );
+  const workTypeFilterItems: FilterOption[] = useMemo(
+    () => WORK_TYPES.map((t) => ({ id: t, label: t })),
+    []
+  );
 
   const filteredPlaceRows = useMemo(() => {
+    const keyword = placeSearch.trim().toLowerCase();
     return placeRows.filter((p) => {
       const robotOk = !selectedRobot || p.robotNo === selectedRobot;
       const floorOk = !selectedFloor || p.floor === selectedFloor;
-      return robotOk && floorOk;
+      const searchOk = !keyword || p.placeName.toLowerCase().includes(keyword);
+      return robotOk && floorOk && searchOk;
     });
-  }, [placeRows, selectedRobot, selectedFloor]);
+  }, [placeRows, selectedRobot, selectedFloor, placeSearch]);
 
-  const shouldShowPlaceScroll = filteredPlaceRows.length > 8;
+  const shouldShowPlaceScroll = filteredPlaceRows.length > 0;
 
   useCustomScrollbar({
     enabled: isOpen && shouldShowPlaceScroll,
@@ -278,23 +255,6 @@ export default function PathCrudModal({
     deps: [filteredPlaceRows.length],
   });
 
-  useFixedSelectScrollbar({
-    enabled: isOpen && robotOpen && shouldShowRobotSelectScroll,
-    scrollRef: robotSelectScrollRef,
-    trackRef: robotSelectTrackRef,
-    thumbRef: robotSelectThumbRef,
-    thumbHeight: 30,
-    deps: [robotOptions.length, robotOpen],
-  });
-
-  useFixedSelectScrollbar({
-    enabled: isOpen && floorOpen && shouldShowFloorSelectScroll,
-    scrollRef: floorSelectScrollRef,
-    trackRef: floorSelectTrackRef,
-    thumbRef: floorSelectThumbRef,
-    thumbHeight: 30,
-    deps: [floorOptions.length, floorOpen],
-  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -336,6 +296,11 @@ export default function PathCrudModal({
   const togglePickPlace = (row: PlaceRow) => {
     setActivePlaceId(row.id);
     setSelectedOrder((prev) => {
+      // 로봇 혼합 방지: 첫 장소의 로봇과 다른 로봇의 장소 선택 차단
+      if (prev.length > 0 && prev[0].robotNo !== row.robotNo) {
+        setAlertMessage("하나의 경로에는 같은 로봇의 장소만 추가할 수 있습니다.");
+        return prev;
+      }
       const last = prev[prev.length - 1];
       if (last && last.id === row.id) {
         setAlertMessage("같은 장소는 연속으로 선택할 수 없습니다.");
@@ -345,12 +310,20 @@ export default function PathCrudModal({
         setAlertMessage("경로 순서는 최대 10개까지 추가할 수 있습니다.");
         return prev;
       }
-      return [...prev, row]; // ✅ 클릭 시 경로 순서에 “추가(append)”
+      // 첫 장소 추가 시 로봇 필터 자동 설정
+      if (prev.length === 0 && mode === "create") {
+        setSelectedRobot(row.robotNo);
+      }
+      return [...prev, row]; // ✅ 클릭 시 경로 순서에 "추가(append)"
     });
   };
 
-  const removeOrderItem = (id: number) => {
-    setSelectedOrder((prev) => prev.filter((p) => p.id !== id));
+  const removeOrderItem = (index: number) => {
+    setSelectedOrder((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length === 0) setActivePlaceId(null);
+      return next;
+    });
   };
 
   const moveUp = (idx: number) => {
@@ -381,16 +354,40 @@ export default function PathCrudModal({
     }
     setWorkType(null);
     setPathName("");
-    // setSelectedOrder([]);
+    setSelectedOrder([]);
     setSelectedRobot(null);
     setSelectedFloor(null);
     setActivePlaceId(null);
   };
 
+  // 미저장 변경사항 감지
+  const hasUnsavedChanges = useMemo(() => {
+    if (mode === "create") {
+      return workType != null || pathName.trim().length > 0 || selectedOrder.length > 0;
+    }
+    if (!initialSnapshot) return false;
+    return (
+      workType !== initialSnapshot.workType ||
+      pathName !== initialSnapshot.pathName ||
+      selectedOrder.length !== initialSnapshot.selectedOrder.length ||
+      selectedOrder.some((p, i) => p.id !== initialSnapshot.selectedOrder[i]?.id)
+    );
+  }, [mode, workType, pathName, selectedOrder, initialSnapshot]);
+
+  const handleClose = () => {
+    if (hasUnsavedChanges) {
+      setCloseConfirmOpen(true);
+      return;
+    }
+    onClose();
+  };
+
   const canSave =
     !!workType && pathName.trim().length > 0 && selectedOrder.length > 0;
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSubmitting) return;
+
     if (!workType) {
       setAlertMessage("작업유형을 선택해 주세요.");
       return;
@@ -399,20 +396,54 @@ export default function PathCrudModal({
       setAlertMessage("경로명을 입력해 주세요.");
       return;
     }
+    // 경로명 특수문자 검증 (한글/영문/숫자/공백/하이픈/언더스코어만 허용)
+    if (!/^[\uAC00-\uD7A3a-zA-Z0-9\s\-_]+$/.test(pathName.trim())) {
+      setAlertMessage("경로명에 특수문자를 사용할 수 없습니다.");
+      return;
+    }
+    if (selectedOrder.length === 0) {
+      setAlertMessage("장소를 1개 이상 선택해 주세요.");
+      return;
+    }
+
+    // 경로명 중복 검증 (수정 시 자기 자신 제외)
+    const isDuplicate = existingPaths.some(
+      (p) => p.pathName === pathName.trim() && p.id !== initial?.id
+    );
+    if (isDuplicate) {
+      setAlertMessage("이미 동일한 경로명이 존재합니다.");
+      return;
+    }
+
+    // 저장 전 장소 존재 여부 재검증
+    const missingPlaces = selectedOrder.filter(
+      (p) => !placeRows.some((pr) => pr.id === p.id)
+    );
+    if (missingPlaces.length > 0) {
+      setAlertMessage("일부 장소가 삭제되었습니다. 경로를 다시 확인해 주세요.");
+      return;
+    }
+
     if (!canSave) return;
 
-    // ✅ robotNo는 “경로 순서 1번” 기준으로 세팅(필요 시 정책 변경 가능)
+    // ✅ robotNo는 "경로 순서 1번" 기준으로 세팅(필요 시 정책 변경 가능)
     const robotNo = selectedOrder[0]?.robotNo ?? "";
 
-    onSubmit({
-      id: mode === "edit" && initial ? initial.id : undefined,
-      robotNo,
-      workType: workType!,
-      pathName: pathName.trim(),
-      pathOrder: selectedOrder.map((p) => p.placeName).join(" - "),
-    });
-
-    onClose();
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        id: mode === "edit" && initial ? initial.id : undefined,
+        robotNo,
+        workType: workType!,
+        pathName: pathName.trim(),
+        pathOrder: selectedOrder.map((p) => p.placeName).join(" - "),
+      });
+      onClose();
+    } catch {
+      setAlertMessage("경로 저장에 실패했습니다. 다시 시도해 주세요.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   useEffect(() => {
@@ -427,7 +458,7 @@ export default function PathCrudModal({
       } else {
         setWorkType(null);
         setPathName("");
-        // setSelectedOrder([]);
+        setSelectedOrder([]);
         setActivePlaceId(null);
       }
     }
@@ -447,8 +478,8 @@ export default function PathCrudModal({
             <img src="/icon/path_w.png" alt="" className={styles.headerIcon} />
             <div className={styles.headerTitle}>{mode === "edit" ? "경로 수정" : "경로 등록"}</div>
           </div>
-          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="close">
-            <img src="/icon/close_btn.png" alt="" />
+          <button type="button" className={styles.closeBtn} onClick={handleClose} aria-label="close">
+            ✕
           </button>
         </div>
 
@@ -460,95 +491,36 @@ export default function PathCrudModal({
 
               <div className={styles.filters}>
                 {/* 로봇명 */}
-                <div ref={robotWrapperRef} className={styles.selecteWrapper}>
-                  {mode === "edit" ? (
-                    <div className={`${styles.selecte} ${styles.selecteDisabled}`}>
-                      <span>{initial?.robotNo ?? selectedRobot ?? "로봇명 선택"}</span>
-                    </div>
-                  ) : (
-                    <>
-                      <div className={styles.selecte} onClick={() => setRobotOpen((v) => !v)}>
-                        <span>{selectedRobot ?? "로봇명 선택"}</span>
-                        <img src={robotOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                      </div>
-                      {robotOpen && (
-                        <div className={styles.selectebox}>
-                          <div ref={robotSelectScrollRef} className={styles.selecteInner} role="listbox">
-                            <div
-                              className={!selectedRobot ? styles.active : ""}
-                              onClick={() => {
-                                setSelectedRobot(null);
-                                setRobotOpen(false);
-                              }}
-                            >
-                              Total
-                            </div>
-                            {robotOptions.map((r) => (
-                              <div
-                                key={r}
-                                className={selectedRobot === r ? styles.active : ""}
-                                onClick={() => {
-                                  setSelectedRobot(r);
-                                  setRobotOpen(false);
-                                }}
-                              >
-                                {r}
-                              </div>
-                            ))}
-                          </div>
-                          {shouldShowRobotSelectScroll && (
-                            <div ref={robotSelectTrackRef} className={styles.selecteScrollTrack}>
-                              <div ref={robotSelectThumbRef} className={styles.selecteScrollThumb} />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
+                <FilterSelectBox
+                  items={robotFilterItems}
+                  selectedLabel={mode === "edit" ? (initial?.robotNo ?? selectedRobot) : selectedRobot}
+                  placeholder="로봇명"
+                  onSelect={(item) => setSelectedRobot(item?.label ?? null)}
+                  width={140}
+                  className={mode === "edit" ? styles.selecteDisabled : undefined}
+                />
 
                 {/* 층별 */}
-                <div ref={floorWrapperRef} className={styles.selecteWrapper}>
-                  <div className={styles.selecte} onClick={() => setFloorOpen((v) => !v)}>
-                    <span>{selectedFloor ?? "층별 선택"}</span>
-                    <img src={floorOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                  </div>
-                  {floorOpen && (
-                    <div className={styles.selectebox}>
-                      <div ref={floorSelectScrollRef} className={styles.selecteInner} role="listbox">
-                        <div
-                          className={!selectedFloor ? styles.active : ""}
-                          onClick={() => {
-                            setSelectedFloor(null);
-                            setFloorOpen(false);
-                          }}
-                        >
-                          Total
-                        </div>
-                        {floorOptions.map((f) => (
-                          <div
-                            key={f}
-                            className={selectedFloor === f ? styles.active : ""}
-                            onClick={() => {
-                              setSelectedFloor(f);
-                              setFloorOpen(false);
-                            }}
-                          >
-                            {f}
-                          </div>
-                        ))}
-                      </div>
-                      {shouldShowFloorSelectScroll && (
-                        <div ref={floorSelectTrackRef} className={styles.selecteScrollTrack}>
-                          <div ref={floorSelectThumbRef} className={styles.selecteScrollThumb} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <FilterSelectBox
+                  items={floorFilterItems}
+                  selectedLabel={selectedFloor}
+                  placeholder="층"
+                  showTotal
+                  onSelect={(item) => setSelectedFloor(item?.label ?? null)}
+                  width={80}
+                  className={mode === "edit" ? styles.selecteDisabled : undefined}
+                />
               </div>
             </div>
 
+
+            {/* 장소명 검색 */}
+            <input
+              className={styles.searchInput}
+              value={placeSearch}
+              onChange={(e) => setPlaceSearch(e.target.value)}
+              placeholder="장소명 검색"
+            />
 
             {/* 테이블 */}
             <div className={styles.placeTableWrap}>
@@ -564,7 +536,7 @@ export default function PathCrudModal({
                   <div className={styles.emptyIcon}>!</div>
                   <div className={styles.emptyTitle}>현재 등록된 장소가 없습니다.</div>
                   <div className={styles.emptyDesc}>
-                    장소 관리 화면에서 “장소 등록”을 먼저 진행해 주세요.
+                    장소 관리 화면에서 "장소 등록"을 먼저 진행해 주세요.
                   </div>
                 </div>
               ) : (
@@ -572,16 +544,27 @@ export default function PathCrudModal({
                   <div ref={placeScrollRef} className={styles.placeBody}>
                     {filteredPlaceRows.map((row) => {
                       const picked = activePlaceId === row.id;
+                      const orderCount = selectedOrder.filter((p) => p.id === row.id).length;
                       return (
                         <div
                           key={row.id}
                           className={`${styles.placeRow} ${picked ? styles.placeRowPicked : ""}`}
                           onClick={() => togglePickPlace(row)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              togglePickPlace(row);
+                            }
+                          }}
                           role="button"
                           tabIndex={0}
                         >
                           <div className={styles.pickDot}>
-                            <span className={`${styles.dot} ${picked ? styles.dotOn : ""}`} />
+                            {orderCount > 0 ? (
+                              <span className={styles.placeCountBadge}>{orderCount}</span>
+                            ) : (
+                              <span className={`${styles.dot} ${picked ? styles.dotOn : ""}`} />
+                            )}
                           </div>
                           <div className={styles.placeCol}>{row.robotNo}</div>
                           <div className={styles.placeCol}>{row.floor}</div>
@@ -606,21 +589,51 @@ export default function PathCrudModal({
             onConfirm={() => setAlertMessage(null)}
           />
 
+          {/* 미저장 변경사항 닫기 확인 */}
+          <ResetUpdate
+            isOpen={isCloseConfirmOpen}
+            message="변경사항이 저장되지 않습니다. 닫으시겠습니까?"
+            onCancel={() => setCloseConfirmOpen(false)}
+            onConfirm={() => {
+              setCloseConfirmOpen(false);
+              onClose();
+            }}
+          />
+
           {/* RIGHT */}
           <div
-            className={`${styles.right} ${isPathOrderDisabled ? styles.rightDisabled : ""}`}
-            style={rightPanelHeight ? { height: rightPanelHeight } : undefined}
+            className={styles.right}
+            style={{ ...(rightPanelHeight ? { height: rightPanelHeight } : {}), position: "relative" }}
           >
+            {isPathOrderDisabled && (
+              <div className={styles.rightDisabledOverlay}>
+                <div className={styles.rightDisabledText}>
+                  좌측에서 장소를 먼저 선택해 주세요
+                </div>
+              </div>
+            )}
             <div className={styles.sectionTitle}>
-              <span>2. 경로 순서</span>
-              <button
-                type="button"
-                className={styles.resetBtn}
-                onClick={() => setPathResetConfirmOpen(true)}
-                aria-label="reset"
-              >
-                <img src="/icon/data_update.png" alt="" />
-              </button>
+              <span>2. 경로 순서{selectedOrder.length > 0 && ` (${selectedOrder.length}/10)`}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {selectedOrder.length > 0 && (
+                  <button
+                    type="button"
+                    className={styles.clearAllBtn}
+                    onClick={() => { setSelectedOrder([]); setActivePlaceId(null); }}
+                  >
+                    전체삭제
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={styles.resetBtn}
+                  onClick={() => setPathResetConfirmOpen(true)}
+                  aria-label="reset"
+                  title="경로 초기화"
+                >
+                  <img src="/icon/data_update.png" alt="" />
+                </button>
+              </div>
             </div>
             <ResetUpdate 
               isOpen={isPathResetConfirmOpen}
@@ -635,28 +648,14 @@ export default function PathCrudModal({
             {/* 작업유형 */}
             <div className={`${styles.formRow} ${styles.mb8}`}>
               <div className={styles.formLabel}>작업유형</div>
-              <div ref={workTypeWrapperRef} className={styles.selecteWrapperWide}>
-                <div className={styles.selecteWide} onClick={() => setWorkTypeOpen((v) => !v)}>
-                  <span>{workType ?? "작업유형을 선택하세요"}</span>
-                  <img src={workTypeOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                </div>
-                {workTypeOpen && (
-                  <div className={styles.selecteboxWide}>
-                    {WORK_TYPES.map((t) => (
-                      <div
-                        key={t}
-                        className={workType === t ? styles.active : ""}
-                        onClick={() => {
-                          setWorkType(t);
-                          setWorkTypeOpen(false);
-                        }}
-                      >
-                        {t}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <FilterSelectBox
+                items={workTypeFilterItems}
+                selectedLabel={workType}
+                placeholder="작업유형을 선택하세요"
+                showTotal={false}
+                onSelect={(item) => setWorkType((item?.label as PathWorkType) ?? null)}
+                width="100%"
+              />
             </div>
 
             {/* 경로명 */}
@@ -675,6 +674,15 @@ export default function PathCrudModal({
 
             {/* 선택된 순서 */}
             <div className={styles.orderListWrap}>
+              {selectedOrder.length === 0 ? (
+                <div className={styles.orderEmptyWrap}>
+                  <div className={styles.orderEmptyIcon}>&#8592;</div>
+                  <div className={styles.orderEmptyText}>
+                    좌측에서 장소를 클릭하여<br />경로를 구성하세요
+                  </div>
+                </div>
+              ) : (
+              <>
               <div ref={orderScrollRef} className={styles.orderList}>
                 {selectedOrder.map((p, idx) => {
                   const isFirst = idx === 0;
@@ -690,7 +698,7 @@ export default function PathCrudModal({
                           <button
                             type="button"
                             className={styles.orderDelete}
-                            onClick={() => removeOrderItem(p.id)}
+                            onClick={() => removeOrderItem(idx)}
                             aria-label="delete"
                           >
                             <img src="/icon/close_btn.png" alt="" />
@@ -738,24 +746,31 @@ export default function PathCrudModal({
                   <div ref={orderThumbRef} className={styles.orderScrollThumb} />
                 </div>
               )}
+              </>
+              )}
             </div>
 
             <div className={styles.divider} />
 
             {/* 하단 버튼 */}
             <div className={styles.insertBtnTotal}>
-              <button type="button" className={`${styles.insertConfrimBtn} ${styles.btnBgRed}`} onClick={onClose}>
+              <button type="button" className={`${styles.insertConfrimBtn} ${styles.btnBgRed}`} onClick={handleClose}>
                 <img src="/icon/close_btn.png" alt="cancel"/>
                 <div>취소</div>
               </button>
 
               <button
                 type="button"
-                className={`${styles.insertConfrimBtn} ${styles.btnBgBlue}`}
+                className={`${styles.insertConfrimBtn} ${styles.btnBgBlue} ${!canSave || isSubmitting ? styles.btnDisabled : ""}`}
                 onClick={handleSave}
+                disabled={isSubmitting}
               >
-                <img src="/icon/check.png" alt="save" />
-                <div>저장</div>
+                {isSubmitting ? (
+                  <span className={styles.btnSpinner} />
+                ) : (
+                  <img src="/icon/check.png" alt="save" />
+                )}
+                <div>{isSubmitting ? "저장 중..." : "저장"}</div>
               </button>
             </div>
           </div>

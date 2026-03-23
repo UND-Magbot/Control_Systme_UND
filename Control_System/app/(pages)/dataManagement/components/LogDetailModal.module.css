@@ -1,0 +1,82 @@
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+  animation: fadeIn 0.2s ease-in;
+  padding: 20px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modalContent {
+  width: 560px;
+  max-height: 80vh;
+  background: var(--surface-0);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 10px 12px 20px rgba(0, 0, 0, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #3a3f55;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #edf3fd;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  color: #9cacca;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.closeButton:hover {
+  color: #edf3fd;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.modalBody {
+  padding: 20px 24px 24px;
+  overflow-y: auto;
+}
+
+.jsonBlock {
+  background: #1a1e30;
+  border: 1px solid #3a4060;
+  border-radius: 10px;
+  padding: 20px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #c8d0e0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

@@ -1,0 +1,191 @@
+/* ===== 공통 캘린더 ===== */
+.calendar {
+  padding: 16px 18px 14px;
+  border-radius: 16px;
+  background: #111827;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  color: #e5e7eb;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* size variants */
+.sizeDefault {
+  width: 250px;
+  min-height: 290px;
+}
+
+.sizeCompact {
+  width: 100%;
+  min-height: 240px;
+}
+
+.sizeModal {
+  width: 100%;
+  min-height: 260px;
+}
+
+/* 헤더 */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: #a4a4a8;
+}
+
+.header button {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 8px;
+  padding: 4px 6px;
+}
+
+.header button img {
+  width: 4px;
+  height: 7px;
+}
+
+.header button div {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.header button div img {
+  width: 3px;
+  height: 6px;
+}
+
+.title {
+  font-weight: 600;
+}
+
+/* 요일 행 */
+.weekRow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.sun {
+  color: #cf5058;
+}
+
+.sat {
+  color: #3084d7;
+}
+
+/* 날짜 그리드 */
+.daysGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.daysGrid button {
+  font-size: 12px;
+}
+
+/* 주간 행 (single mode 주간 하이라이트용) */
+.weekLine {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  border-radius: 4px;
+}
+
+.weekRange {
+  background: #2B2E3E;
+}
+
+/* 날짜 셀 */
+.dayBtn {
+  height: 23px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: #9f9fa6;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.dayBtn:hover {
+  background: #1f2937;
+  color: #9f9fa6;
+}
+
+.daySelected {
+  background: var(--accent, #00B0EE);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.dayToday {
+  background: transparent;
+  color: #e5e7eb;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1.5px #ffffff;
+}
+
+/* 오늘 + 선택 동시 */
+.daySelected.dayToday {
+  background: var(--accent, #00B0EE);
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1.5px #ffffff;
+}
+
+.dayInRange {
+  background: transparent;
+  color: #9f9fa6;
+}
+
+.dayDisabled {
+  color: #6b7280;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.dayMinDisabled {
+  color: #707070;
+  cursor: not-allowed;
+}
+
+.dayOutside {
+  color: #6b7280;
+  opacity: 0.7;
+}
+
+.dayOutside:hover {
+  opacity: 1;
+}
+
+/* 하단 */
+.footer {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+
+.todayBtn {
+  height: 26px;
+  width: 75px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  background: #60687f;
+  color: #d3dee3;
+}
+
+.todayBtn:hover {
+  background: #727b94;
+}

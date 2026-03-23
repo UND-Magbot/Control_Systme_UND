@@ -4,12 +4,24 @@ import React, { useState } from 'react';
 import type { RobotRowData } from '@/app/type';
 import styles from './RobotStatusList.module.css';
 import RobotDetailModal from "@/app/components/modal/RobotDetailModal";
+import { useRobotStatus } from "@/app/hooks/useRobotStatus";
+import {
+  getBatteryIcon,
+  getNetworkIcon,
+  getPowerIcon,
+  getBatteryColor,
+  isCriticalBattery,
+  ROBOT_TYPE_COLOR,
+  ROBOT_TYPE_INDEX,
+} from "@/app/constants/robotIcons";
 
 type RobotStatusListProps =  {
   robotRows: RobotRowData[];
 }
 
 export default function RobotStatusList({robotRows}:RobotStatusListProps) {
+
+  const robots = useRobotStatus(robotRows);
 
   const [robotActiveIndex, setRobotActiveIndex] = useState<number>(0);
 
@@ -32,107 +44,90 @@ export default function RobotStatusList({robotRows}:RobotStatusListProps) {
     "/icon/robot_location(4).png"
   ];
 
-  const BATTERY_ICONS = [
-    { limit: 100, icon: "/icon/battery_full.png" },
-    { limit: 75, icon: "/icon/battery_high.png" },
-    { limit: 50, icon: "/icon/battery_half.png" },
-    { limit: 25, icon: "/icon/battery_low.png" },
-    { limit: 0, icon: "/icon/battery_empty.png" }
-  ];
-
-  const NETWORK_ICON_MAP: Record<string, string> = {
-    Error: "/icon/status(2).png",
-    Offline: "/icon/status(3).png",
-    Online: "/icon/status(1).png"
-  };
-
   const robotInfoIcons = {
     info: (index: number) =>
       ROBOT_ICONS[index] ?? ROBOT_ICONS[0],
 
-    battery: (battery: number, isCharging?: boolean) => {
-      if (isCharging) return "/icon/battery_charging.png";
-
-      const state = BATTERY_ICONS.find(item => battery >= item.limit);
-      return state ? state.icon : "/icon/battery_empty.png";
-    },
-
-    network: (status: string) =>
-      NETWORK_ICON_MAP[status] || NETWORK_ICON_MAP["Online"],
-
-    power: (power: string) =>
-      power === "On" ? "/icon/power_on.png" : "/icon/power_off.png",
+    battery: getBatteryIcon,
+    network: getNetworkIcon,
+    power: getPowerIcon,
 
     mark: (index: number) =>
       LOCATION_ICONS[index] ?? LOCATION_ICONS[0]
   };
 
+  function getRowClassName(r: RobotRowData, idx: number): string {
+    const classes: string[] = [];
+    if (idx === robotActiveIndex) classes.push(styles.activeRow);
+    if (r.power === "Off" || r.network === "Offline") classes.push(styles.offlineRow);
+    return classes.join(' ');
+  }
 
   // viewInfo 클릭 시 실행되는 핸들러
   const ViewInfoClick = (idx: number, robot: RobotRowData) => {
-    setRobotActiveIndex(idx);       // row 하이라이트 줄 때 사용 가능
-    setSelectedRobotId(robot.id);   // 카메라 / 맵에서 쓸 핵심 값
-    setSelectedRobot(robot);        // 필요하면 전체 정보도 내려줌
-    setRobotDetailModalOpen(true)
-    console.log("선택된 로봇 (Location 클릭):", robot.id, robot.no);
+    setRobotActiveIndex(idx);
+    setSelectedRobotId(robot.id);
+    setSelectedRobot(robot);
+    setRobotDetailModalOpen(true);
   };
 
   return (
     <>
+      <div className={styles.tableWrapper}>
+      <div className={styles.tableScroll}>
       <table className={styles.status}>
           <thead>
               <tr>
-                  <th>Robot No</th>
-                  <th>Robot Info</th>
-                  <th>Battery (Return)</th>
-                  <th>Network</th>
-                  <th>Power</th>
-                  <th>Mark</th>
+                  <th>로봇 명</th>
+                  <th>배터리 (복귀)</th>
+                  <th>네트워크</th>
+                  <th>전원</th>
+                  <th>위치</th>
+                  <th>정보</th>
               </tr>
           </thead>
           <tbody>
-          {robotRows.slice(0, 4).map((r, idx) => (
-              <tr key={r.no}>
+          {robots.filter((r) => r.power === "On").map((r, idx) => (
+              <tr
+                key={r.no}
+                className={getRowClassName(r, idx)}
+              >
               <td>
-                  <div>
+                <span className={styles.robotName} style={{ color: ROBOT_TYPE_COLOR[r.type] }}>
                   {r.no}
-                  </div>
+                </span>
               </td>
               <td>
-                  <div className={`${styles.robot_status_icon_div}`}>
-                    <img src={robotInfoIcons.info(idx)} alt={`robot_icon`} />
-                    <div className={styles["info-box"]} onClick={() => ViewInfoClick(idx, r)}>View Info</div>
-                  </div>
-              </td>
-              <td>
-                  <div className={styles["robot_status_icon_div"]}>
-                  <img src={robotInfoIcons.battery(r.battery, r.isCharging)} alt="battery" />
+                <span
+                  className={isCriticalBattery(r) ? styles.criticalBattery : ''}
+                  style={{ color: getBatteryColor(r.battery, r.return) }}
+                >
                   {r.battery}% ({r.return}%)
-                  </div>
+                </span>
               </td>
               <td>
-                  <div className={styles["robot_status_icon_div"]}>
-                  <img src={robotInfoIcons.network(r.network)} alt="network" />
+                <span className={`${styles.statusBadge} ${styles[`status-${r.network.toLowerCase()}`]}`}>
+                  <span className={`${styles.statusDot} ${styles[`dot-${r.network.toLowerCase()}`]}`} />
                   {r.network}
-                  </div>
+                </span>
               </td>
               <td>
-                  <div className={styles["robot_status_icon_div"]}>
-                  <img src={robotInfoIcons.power(r.power)} alt="power" />
+                <span className={`${styles.statusBadge} ${r.power === "On" ? styles["status-online"] : styles["status-offline"]}`}>
+                  <span className={`${styles.statusDot} ${r.power === "On" ? styles["dot-online"] : styles["dot-offline"]}`} />
                   {r.power}
-                  </div>
+                </span>
               </td>
+              <td>{r.mark}</td>
               <td>
-                  <div className={styles["robot_status_icon_div"]}>
-                  <img src={robotInfoIcons.mark(idx)} alt="mark" />
-                  {r.mark}
-                  </div>
+                <div className={styles["info-box"]} onClick={() => ViewInfoClick(idx, r)}>상세보기</div>
               </td>
             </tr>
           ))}
           </tbody>
       </table>
-      <RobotDetailModal isOpen={robotDetailModalOpen} onClose={() => setRobotDetailModalOpen(false)}  selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robotRows}/>
+      </div>
+      </div>
+      <RobotDetailModal isOpen={robotDetailModalOpen} onClose={() => setRobotDetailModalOpen(false)}  selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots}/>
     </>
   );
 }

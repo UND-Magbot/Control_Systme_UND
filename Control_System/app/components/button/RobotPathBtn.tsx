@@ -11,18 +11,19 @@ type RobotPathBtnProps = {
   video: Video[];
   camera: Camera[];
   initialCam?: Camera | null;
-  initialCamIndex?: number; 
-
+  initialCamIndex?: number;
+  variant?: "default" | "modern";
   className?: string;
 }
 
-export default function RobotPathBtn ({ 
+export default function RobotPathBtn ({
   selectedRobots,
   robots,
   video,
   camera,
   initialCam = null,
-  initialCamIndex = 0,  
+  initialCamIndex = 0,
+  variant = "default",
   className
 } : RobotPathBtnProps) {
 
@@ -30,15 +31,14 @@ export default function RobotPathBtn ({
 
   return (
     <>
-      <button type='button' 
-              className={`${styles["path-div"]} ${className ?? ""}`} 
+      <button type='button'
+              className={`${variant === "modern" ? styles["path-div-modern"] : styles["path-div"]} ${className ?? ""}`}
               onClick={() => setRobotPathModalOpen(true)}
       >
         <div className={styles["path-icon"]}>
           <img src="/icon/path_w.png" alt="robot path" />
         </div>
         <div>로봇 경로</div>
-
       </button>
       
       <RemoteMapModal isOpen={robotPathModalOpen} 

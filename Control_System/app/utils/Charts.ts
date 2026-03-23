@@ -37,7 +37,8 @@ export function buildRobotTypeDonut({ robots }: DonutCommonProps) {
   }
 
   robots.forEach(r => {
-    typeCount[r.type] = (typeCount[r.type] || 0) + 1;
+    const type = r.type || "UNKNOWN";
+    typeCount[type] = (typeCount[type] || 0) + 1;
   });
 
   const total = robots.length;
@@ -92,6 +93,7 @@ export function buildErrorDonut({ robots }: DonutCommonProps): DonutCommonInfo[]
     network: 0,
     fail: 0,
     etc: 0,
+    mapping: 0,
   };
 
   // 2) 로봇들의 에러 누적

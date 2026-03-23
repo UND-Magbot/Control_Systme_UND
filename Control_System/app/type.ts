@@ -16,8 +16,6 @@ export type Camera = {
     webrtcUrl: string;
 };
 
-export type PlusButtonType = "camera" | "map";
-
 export type PrimaryViewType = 'camera' | 'map';
 
 export type RobotRowData = {
@@ -93,16 +91,19 @@ export type DtItem = {
     date: DateTime;
 }
 
+export type LogCategory = "convoy" | "robot" | "system" | "user" | "schedule" | "error";
+
 export type LogItem = {
     id: number;
-    robotNo: string;
-    cameraNo: string;
-    cameraType: string;
-    filename: string,
-    contentType: string;
-    data: string;
-    videoTime: string;
-    date: DateTime;
+    category: LogCategory;
+    category_name: string;
+    action: string;
+    message: string;
+    detail: string | null;
+    robot_id: number | null;
+    robot_name: string | null;
+    source: string;
+    created_at: string;
 }
 
 export type Period = 'today' | '1week' | '1month' | '1year' | 'Total' | null;

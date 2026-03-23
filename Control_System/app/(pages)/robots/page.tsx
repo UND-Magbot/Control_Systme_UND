@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import styles from './robots.module.css';
 import RobotList from './components/RobotList';
 import RobotInfo from "@/app/lib/robotInfo";
@@ -59,60 +58,18 @@ export default async function Page() {
     const total = robots.length;
 
     return (
-        <>
         <div className={styles.tabPosition}>
-            <div className={styles.topPosition} >
-                <h1>Robot Management</h1>
-                
-                <div className={styles.countBox}>
-                    <div className={styles.robotCount}>
-                        <div className={styles.countItem}>
-                            <div>Total</div>
-                            <div className={styles.totalNumber}>{total}</div>
-                        </div>
-                        <div>|</div>
-                        <div className={styles.countItem}>
-                            <div>운영</div>
-                            <div className={styles.itemNumber}>{operating}</div>
-                        </div>
-                        <div>|</div>
-                        <div className={styles.countItem}>
-                            <div>대기</div>
-                            <div className={styles.itemNumber}>{standby}</div>
-                        </div>
-                        <div>|</div>
-                        <div className={styles.countItem}>
-                            <div>비운영</div>
-                            <div className={styles.itemNumber}>{discharged}</div>
-                        </div>
-                    </div>
-                    <div className={styles.batteryCount}>
-                        <div>Battery</div>
-                        <div className={styles.countItem}>
-                            <div>방전</div>
-                            <div className={styles.itemNumber}>{charging}</div>
-                        </div>
-                        <div>|</div>
-                        <div className={styles.countItem}>
-                            <div>충전</div>
-                            <div className={styles.itemNumber}>{charging}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <Suspense fallback={null /* 또는 스켈레톤/로딩 */}>
-                <RobotList 
-                    robots={robots} 
-                    cameras={cameras} 
-                    floors={floors} 
-                    video={videoStatus} 
-                    batteryStatus={batteryStatus} 
-                    networkStatus={networkStatus}
-                    powerStatus={powerStatus} 
-                    locationStatus={locationStatus}
-                />
-            </Suspense>
+            <RobotList
+                robots={robots}
+                cameras={cameras}
+                floors={floors}
+                video={videoStatus}
+                batteryStatus={batteryStatus}
+                networkStatus={networkStatus}
+                powerStatus={powerStatus}
+                locationStatus={locationStatus}
+                robotStats={{ total, operating, standby, discharged, charging }}
+            />
         </div>
-        </>
     )
 }

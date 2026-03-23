@@ -10,9 +10,9 @@ export default async function Page() {
   
 
     return (
-      <>
-        <div className={styles.topPosition}>
-            <h1>Schedule Management</h1>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div className="page-header">
+            <h1>작업관리</h1>
             <div className={styles.legendContainer}>
               <div className={styles.statusLegend}>
                 <div className={styles.statusItem}>
@@ -32,14 +32,9 @@ export default async function Page() {
                   <span>작업완료</span>
                 </div>
               </div>
-              <div className={styles.workLegend}>
-                <div>[환] 환자 모니터링</div>
-                <div>[순] 순찰/보안</div>
-                <div>[운] 물품/약품 운반</div>
-              </div>
             </div>
         </div>
         <WorkSchedule robots={robots} />
-      </>
+      </div>
     )
 }

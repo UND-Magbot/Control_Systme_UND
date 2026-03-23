@@ -1,0 +1,264 @@
+.wrapper {
+  display: flex;
+  gap: 20px;
+  height: 100%;
+}
+
+/* ─── 왼쪽 패널: 사용자 선택 ─── */
+.leftPanel {
+  flex: 0 0 35%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 20px;
+  overflow: hidden;
+}
+
+/* ─── 오른쪽 패널: 메뉴 권한 ─── */
+.rightPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.userName {
+  color: var(--color-info);
+}
+
+.rightHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ─── 검색 입력 ─── */
+.searchInput {
+  width: 100%;
+  height: 38px;
+  padding: 0 14px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.searchInput::placeholder {
+  color: var(--text-muted);
+  font-weight: 300;
+}
+
+.searchInput:focus {
+  border-color: var(--color-info);
+}
+
+/* ─── 사용자 목록 ─── */
+.userList {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-elevated) transparent;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.groupHeader:first-child {
+  border-top: none;
+}
+
+.groupHeader:hover {
+  background: var(--surface-1);
+}
+
+.groupArrow {
+  font-size: var(--font-size-2xl);
+  color: var(--text-secondary);
+  width: 22px;
+  flex-shrink: 0;
+}
+
+.groupLabel {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.groupCount {
+  margin-left: auto;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-accent);
+  background: var(--color-info-selected);
+  border-radius: 11px;
+}
+
+.userItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px 7px 36px;
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.userItem:hover {
+  background: var(--surface-4);
+  color: var(--text-primary);
+}
+
+.userCheckbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-info);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.userLabel {
+  user-select: none;
+}
+
+/* ─── 빈 상태 ─── */
+.emptyState {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+}
+
+.emptyStateCenter {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
+}
+
+/* ─── 저장 버튼 ─── */
+.saveBtn {
+  height: 34px;
+  padding: 0 24px;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background: var(--color-info-selected);
+}
+
+.saveBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.saveMessage {
+  font-size: var(--font-size-sm);
+  color: var(--color-success);
+}
+
+/* ─── 메뉴 트리 ─── */
+.menuTree {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-elevated) transparent;
+}
+
+.treeNode {
+  /* 그룹 컨테이너 */
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  border-radius: 4px;
+}
+
+.treeRow:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.treeArrow {
+  width: 14px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.treeArrowSpacer {
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.treeLabel {
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.treeLabelParent {
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* ─── 체크박스 커스텀 ─── */
+.checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-info);
+  cursor: pointer;
+  flex-shrink: 0;
+}

@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useSearchParams } from "next/navigation";
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { usePathname, useRouter } from "next/navigation";
 import styles from './RobotList.module.css';
 import Pagination from "@/app/components/pagination";
 import type { RobotRowData, BatteryItem, Camera, Floor, Video, NetworkItem, PowerItem, LocationItem } from '@/app/type';
-import { RobotCrudBtn, RemoteBtn, RobotPathBtn } from "@/app/components/button";
+import { RobotCrudBtn } from "@/app/components/button";
 import CameraViews from './CameraView';
 import MapView from './MapView';
 import RobotDetailModal from "@/app/components/modal/RobotDetailModal";
@@ -13,14 +13,36 @@ import RobotWorkScheduleModal from "@/app/components/modal/WorkScheduleModal";
 import type { WorkScheduleCase } from "@/app/components/modal/WorkScheduleModal";
 import PlacePathModal from "@/app/components/modal/PlacePathModal";
 import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
-import { mockPlaceRows, type PlaceRow } from "@/app/mock/robotPlace_data";
+import PathMoveModal from "@/app/components/modal/PathMoveModal";
+import type { PlaceRow } from "@/app/mock/robotPlace_data";
 import { mockPathRows } from "@/app/mock/robotPath_data";
 import PlaceCrudModal, { type PlaceRowData } from "./PlaceCrudModal";
 import PlaceDeleteConfirmModal from "./PlaceDeleteConfirmModal";
 import PlaceMapView from "./PlaceMapView";
+import PathMapView from "./PathMapView";
 import PathCrudModal from "@/app/(pages)/robots/components/PathCrudModal";
 import PathDeleteConfirmModal from "@/app/(pages)/robots/components/PathDeleteConfirmModal";
 import { API_BASE } from "@/app/config";
+import PathAlertsModal from "@/app/(pages)/robots/components/PathAlertsModal";
+import FilterSelectBox from "@/app/components/button/FilterSelectBox";
+import {
+  getBatteryIcon,
+  getNetworkIcon,
+  getPowerIcon,
+  ROBOT_COLORS,
+  getRobotIndexFromNo,
+  buildRobotIconPath,
+} from "@/app/constants/robotIcons";
+
+// ── 경로 API 엔드포인트 (차후 백엔드 변경 시 여기만 수정) ──
+const PATH_API = {
+  LIST: `${API_BASE}/DB/getpath`,
+  CREATE: `${API_BASE}/DB/path`,
+  UPDATE: (id: number) => `${API_BASE}/DB/path/${id}`,
+  DELETE: (id: number) => `${API_BASE}/DB/path/${id}`,
+};
+import type { FilterOption } from "@/app/components/button/FilterSelectBox";
+import { useRobotStatus } from "@/app/hooks/useRobotStatus";
 
 type FixedScrollbarArgs = {
   enabled: boolean;
@@ -31,7 +53,7 @@ type FixedScrollbarArgs = {
   deps?: any[];
 };
 
-const robotTypes = ["환자 모니터링", "순찰/보안", "물품/약품 운반"];
+const robotTypes = ["task1", "task2", "task3"];
 
 const parseUpdatedAt = (value: string) => {
   const trimmed = value.trim();
@@ -116,9 +138,17 @@ const useFixedSelectScrollbar = ({
   }, [enabled, thumbHeight, ...deps]);
 };
 
-const ROBOT_PAGE_SIZE  = 10;
-const PLACE_PAGE_SIZE = 10;
-const PATH_PAGE_SIZE  = 10;
+const ROBOT_PAGE_SIZE  = 6;
+const PLACE_PAGE_SIZE = 6;
+const PATH_PAGE_SIZE  = 6;
+
+interface RobotStats {
+  total: number;
+  operating: number;
+  standby: number;
+  discharged: number;
+  charging: number;
+}
 
 interface RobotStatusListProps {
   cameras: Camera[];
@@ -129,6 +159,7 @@ interface RobotStatusListProps {
   networkStatus: NetworkItem[];
   powerStatus: PowerItem[];
   locationStatus: LocationItem[];
+  robotStats: RobotStats;
 }
 
 export type RobotDraft = {
@@ -164,16 +195,20 @@ export type PathRow = {
 };
 
 
-export default function RobotStatusList({ 
+export default function RobotStatusList({
   cameras,
-  robots,
+  robots: initialRobots,
   floors,
   video,
   batteryStatus,
   networkStatus,
   powerStatus,
-  locationStatus
+  locationStatus,
+  robotStats
 }:RobotStatusListProps) {
+
+  const robots = useRobotStatus(initialRobots);
+  const router = useRouter();
 
   const [robotActiveIndex, setRobotActiveIndex] = useState<number>(0);
   
@@ -195,7 +230,13 @@ export default function RobotStatusList({
   
   const isWorkScheduleDisabled = !isSingleChecked; // 0개 or 2개 이상 비활성
   const isPlaceMoveDisabled = !isSingleChecked;    // 0개 or 2개 이상 비활성
+  const isPathMoveDisabled = !isSingleChecked;     // 0개 or 2개 이상 비활성
   const isChargeMoveDisabled = !isAnyChecked;      // 0개만 비활성
+
+  // 경로 이동 모달용: 선택된 로봇명
+  const selectedRobotNameForPathMove = isSingleChecked
+    ? robots.find((r) => r.id === checkedRobotIds[0])?.no ?? ""
+    : "";
 
 
   const [selectedRobots, setSelectedRobots] = useState<RobotRowData | null>(null);
@@ -208,39 +249,13 @@ export default function RobotStatusList({
   const [robotDetailModalOpen, setRobotDetailModalOpen] = useState(false);
   const [robotWorkScheduleModalOpen, setRobotWorkScheduleModalOpen] = useState(false);
   const [placePathModalOpen, setPlacePathModalOpen] = useState(false);
+  const [pathMoveModalOpen, setPathMoveModalOpen] = useState(false);
 
   const [workScheduleCase, setWorkScheduleCase] = useState<WorkScheduleCase>('none');
   const [completedPathText, setCompletedPathText] = useState<string>('');
+  const [workScheduleLoading, setWorkScheduleLoading] = useState(false);
+  const [workScheduleError, setWorkScheduleError] = useState<string | null>(null);
 
-  const [robotsIsOpen, setRobotsIsOpen] = useState(false);
-  const robotsWrapperRef = useRef<HTMLDivElement>(null);
-  const robotsScrollRef = useRef<HTMLDivElement>(null);
-  const robotsTrackRef = useRef<HTMLDivElement>(null);
-  const robotsThumbRef = useRef<HTMLDivElement>(null);
-
-  const [batteryIsOpen, setBatteryIsOpen] = useState(false);
-  const batteryWrapperRef = useRef<HTMLDivElement>(null);
-  const batteryScrollRef = useRef<HTMLDivElement>(null);
-  const batteryTrackRef = useRef<HTMLDivElement>(null);
-  const batteryThumbRef = useRef<HTMLDivElement>(null);
-
-  const [networkIsOpen, setNetworkIsOpen] = useState(false);
-  const networkWrapperRef = useRef<HTMLDivElement>(null);
-  const networkScrollRef = useRef<HTMLDivElement>(null);
-  const networkTrackRef = useRef<HTMLDivElement>(null);
-  const networkThumbRef = useRef<HTMLDivElement>(null);
-
-  const [powerIsOpen, setPowerIsOpen] = useState(false);
-  const powerWrapperRef = useRef<HTMLDivElement>(null);
-  const powerScrollRef = useRef<HTMLDivElement>(null);
-  const powerTrackRef = useRef<HTMLDivElement>(null);
-  const powerThumbRef = useRef<HTMLDivElement>(null);
-
-  const [locationIsOpen, setLocationIsOpen] = useState(false);
-  const locationWrapperRef = useRef<HTMLDivElement>(null);
-  const locationScrollRef = useRef<HTMLDivElement>(null);
-  const locationTrackRef = useRef<HTMLDivElement>(null);
-  const locationThumbRef = useRef<HTMLDivElement>(null);
   
   // 여기 추가: 선택된 로봇 id (또는 전체 데이터)
   const [selectedRobotId, setSelectedRobotId] = useState<number | null>(null);
@@ -295,7 +310,7 @@ export default function RobotStatusList({
 
   // 탭메뉴
   const [activeTab, setActiveTab] = useState<"robots" | "place" | "path">("robots");
-  const searchParams = useSearchParams();
+  const pathname = usePathname();
   
   // 탭별 페이지 상태
   const [robotsPage, setRobotsPage] = useState(1);
@@ -343,19 +358,36 @@ export default function RobotStatusList({
   const handleTabClick = (tab: "robots" | "place" | "path") => {
     setActiveTab(tab);
 
+    // 선택/체크 상태 초기화
+    setSelectedRobotId(null);
+    setSelectedRobot(null);
+    setCheckedRobotIds([]);
+
+    // 삭제 모드 초기화
+    if (placeDeleteMode) {
+      setPlaceDeleteMode(false);
+      setCheckedPlaceIds([]);
+    }
+    if (pathDeleteMode) {
+      setPathDeleteMode(false);
+      setCheckedPathIds([]);
+    }
+
     if (tab === "robots" && activeTab !== "robots") {
         setRobotsPage(1);
-
     } else if (tab === "place" && activeTab !== "place") {
         setPlacePage(1);
-
-      } else if (tab === "path") {
+        setCheckedPlaceIds([]);
+        setSelectedPlaceId(null);
+    } else if (tab === "path") {
         setPathPage(1);
+        setCheckedPathIds([]);
       }
   };
 
   useEffect(() => {
-    const tab = searchParams.get("tab");
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
     if (tab === "robots" || tab === "place" || tab === "path") {
       setActiveTab(tab);
       if (tab === "robots") {
@@ -366,7 +398,26 @@ export default function RobotStatusList({
         setPathPage(1);
       }
     }
-  }, [searchParams]);
+  }, []);
+
+  // 페이지 이탈(새로고침/다른 페이지 이동) 시 장소 삭제 모드 초기화
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      setPlaceDeleteMode(false);
+      setCheckedPlaceIds([]);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
+  // 경로 변경 시 장소 삭제 모드 초기화
+  useEffect(() => {
+    if (placeDeleteMode) {
+      setPlaceDeleteMode(false);
+      setCheckedPlaceIds([]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
 const getPageSetter = () => {
     switch (activeTab) {
@@ -384,56 +435,11 @@ const resetCurrentPage = () => {
   setPage?.(1);
 };
 
-  // 로봇 아이콘 개수
-  const ROBOT_ICON_COUNT = 7;
-
-  const robotColors = [
-    "#ed1c24", "#059fd7", "#92d050", "#f7941d",
-    "#d65bdb", "#0fc6cc", "#51b77c"
-  ];
-
-  function getRobotIndexFromNo(robotNo: string): number {
-    const match = robotNo.match(/\d+/); // "Robot 1" → ["1"]
-    const num = match ? Number(match[0]) : 1; // 못 찾으면 1번 로봇으로 가정
-    const idx = num - 1;
-
-    // 순환시키려면 이렇게:
-    return ((idx % robotColors.length) + robotColors.length) % robotColors.length;
-  }
-
-  function buildRobotIconPath(robotNo: string, kind: "icon" | "location"): string {
-    const idx = getRobotIndexFromNo(robotNo);
-    const iconNo = idx + 1;
-
-    if (kind === "icon") {
-      return `/icon/robot_icon(${iconNo}).png`;
-    }
-    return `/icon/robot_location(${iconNo}).png`;
-  }
-
   const robotInfoIcons = {
-    
     info: (robotNo: string) => buildRobotIconPath(robotNo, "icon"),
-
-    battery: (battery: number, isCharging?: boolean) => {
-      if (isCharging) return "/icon/battery_charging.png";
-      if (battery >= 100) return "/icon/battery_full.png";
-      if (battery > 75) return "/icon/battery_high.png";
-      if (battery > 50) return "/icon/battery_half.png";
-      if (battery > 25) return "/icon/battery_low.png";
-      return "/icon/battery_empty.png";
-    },
-
-    network: (status: string) => {
-      if (status === "Error") return "/icon/status(2).png";
-      if (status === "Offline") return "/icon/status(3).png";
-      return "/icon/status(1).png";
-    },
-
-    power: (power: string) => {
-      return power === "On" ? "/icon/power_on.png" : "/icon/power_off.png";
-    },
-
+    battery: getBatteryIcon,
+    network: getNetworkIcon,
+    power: getPowerIcon,
     mark: (robotNo: string) => buildRobotIconPath(robotNo, "location"),
   };
 
@@ -456,38 +462,6 @@ const resetCurrentPage = () => {
     console.log("선택된 로봇 (Location 클릭):", robot.id, robot.no);
   };
 
-  const robotsClick = (idx: number, option: RobotRowData) => {
-    setRobotsActiveIndex(idx);     // 선택된 로봇명 옵션 저장
-    setSelectedRobots(option);  
-    setRobotsIsOpen(false);       // 드롭다운 닫기
-    resetCurrentPage();
-  };
-
-  const batteryStatusClick = (idx: number, option: BatteryItem) => {
-    setBatteryActiveIndex(idx);     // 선택된 배터리 옵션 저장
-    setSelectedBattery(option);  
-    setBatteryIsOpen(false);       // 드롭다운 닫기
-    resetCurrentPage();
-  };
-
-  const networkStatusClick = (idx: number, option: NetworkItem) => {
-    setNetworkActiveIndex(idx);
-    setSelectedNetwork(option);  
-    setNetworkIsOpen(false);
-    resetCurrentPage();
-  };
-  const powerStatusClick = (idx: number, option: PowerItem) => {
-    setPowerActiveIndex(idx);     // 선택된 전원 옵션 저장
-    setSelectedPower(option);  
-    setPowerIsOpen(false);       // 드롭다운 닫기
-    resetCurrentPage();
-  };
-  const locationStatusClick = (idx: number, option: LocationItem) => {
-    setLocationActiveIndex(idx);     // 선택된 위치 옵션 저장
-    setSelectedLocation(option);  
-    setLocationIsOpen(false);       // 드롭다운 닫기
-    resetCurrentPage();
-  };
 
   const toggleRobotChecked = (robotId: number, checked: boolean) => {
     setCheckedRobotIds((prev) => {
@@ -495,8 +469,15 @@ const resetCurrentPage = () => {
         ? Array.from(new Set([...prev, robotId]))
         : prev.filter((id) => id !== robotId);
 
-      // ✅ 체크 1개면 그 로봇을 "선택 로봇"으로 저장
-      setSelectedRobotId(next.length === 1 ? next[0] : null);
+      // 1개 체크 시 모니터링(카메라/맵) 표시
+      if (next.length === 1) {
+        const robot = robots.find(r => r.id === next[0]);
+        setSelectedRobotId(next[0]);
+        setSelectedRobot(robot ?? null);
+      } else {
+        setSelectedRobotId(null);
+        setSelectedRobot(null);
+      }
 
       return next;
     });
@@ -519,26 +500,89 @@ const resetCurrentPage = () => {
   const isAllCurrentItemsChecked = currentItems.length > 0 && currentItems.every((r) => checkedRobotIds.includes(r.id));
 
   // 작업일정 복귀 시 조건에 따라 분기 처리
-  const openWorkScheduleModal = () => {
+  const scheduleAbortRef = useRef<AbortController | null>(null);
 
-    // 예시(임시): selectedRobotId가 없으면 none
-    if (selectedRobotId == null) {
+  const openWorkScheduleModal = async () => {
+    // 이전 fetch 취소
+    scheduleAbortRef.current?.abort();
+
+    setWorkScheduleError(null);
+
+    const targetRobotId = checkedRobotIds.length === 1 ? checkedRobotIds[0] : selectedRobotId;
+    if (targetRobotId == null) {
       setWorkScheduleCase('none');
       setCompletedPathText('');
       setRobotWorkScheduleModalOpen(true);
       return;
     }
 
-    // 예시(임시 목업): 짝수 id는 ongoing, 홀수 id는 recent
-    if (selectedRobotId % 2 === 0) {
-      setWorkScheduleCase('ongoing');
-      setCompletedPathText('데스크 - 커피로봇 - 맥봇제품 - 교육용로봇 - 부스입구 - 교육용로봇 - 맥봇제품 - 커피로봇 - 데스크 - 부스입구 - 교육용로봇 - 맥봇제품 - 커피로봇 - 데스크 - 부스입구 - 교육용로봇 - 맥봇제품 - 커피로봇 - 데스크 - 부스입구 - 교육용로봇 - 맥봇제품 - 커피로봇 - 데스크');
-    } else {
-      setWorkScheduleCase('recent');
-      setCompletedPathText('데스크 - 안내데스크 - 민원창구 - 부스입구');
-    }
-
+    const robotName = robots.find(r => r.id === targetRobotId)?.no ?? '';
+    setWorkScheduleLoading(true);
     setRobotWorkScheduleModalOpen(true);
+
+    const controller = new AbortController();
+    scheduleAbortRef.current = controller;
+
+    // ── 테스트용 mock 데이터 (백엔드 연결 후 이 블록 삭제) ──
+    // robotName을 직접 사용하여 어떤 로봇이든 매칭되도록 처리
+    const MOCK_SCHEDULES = [
+      { RobotName: robotName, TaskStatus: '진행', WayName: '대기실 - 1층 복도 - A구역 - B구역 - 2층 복도 - C구역 - 대기실' },
+      { RobotName: robotName, TaskStatus: '완료', WayName: '대기실 - 안내데스크 - D구역 - 대기실', EndDate: '2026-03-19T18:00:00' },
+    ];
+    // ── mock 끝 ──
+
+    try {
+      let robotSchedules: any[] = [];
+
+      try {
+        const res = await fetch(`${API_BASE}/DB/schedule`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error('스케줄 조회 실패');
+        const schedules = await res.json();
+        robotSchedules = schedules.filter((s: any) => s.RobotName === robotName);
+      } catch (fetchErr: any) {
+        if (fetchErr?.name === 'AbortError') return;
+        console.warn("API 실패 → mock 데이터 사용", fetchErr);
+      }
+
+      // DB에 해당 로봇 스케줄 없으면 mock으로 보충 (테스트용, 백엔드 연결 후 삭제)
+      if (robotSchedules.length === 0) {
+        robotSchedules = MOCK_SCHEDULES.filter(s => s.RobotName === robotName);
+      }
+
+      // 진행 중인 작업 찾기
+      const ongoing = robotSchedules.find(
+        (s: any) => s.TaskStatus === '진행'
+      );
+      if (ongoing) {
+        setWorkScheduleCase('ongoing');
+        setCompletedPathText(ongoing.WayName ?? '');
+        return;
+      }
+
+      // 최근 완료 작업 찾기
+      const completed = robotSchedules
+        .filter((s: any) => s.TaskStatus === '완료')
+        .sort((a: any, b: any) =>
+          new Date(b.EndDate).getTime() - new Date(a.EndDate).getTime()
+        );
+      if (completed.length > 0) {
+        setWorkScheduleCase('recent');
+        setCompletedPathText(completed[0].WayName ?? '');
+        return;
+      }
+
+      setWorkScheduleCase('none');
+      setCompletedPathText('');
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      console.error(err);
+      setWorkScheduleError('작업일정을 불러오지 못했습니다.');
+      setWorkScheduleCase('none');
+    } finally {
+      setWorkScheduleLoading(false);
+    }
   };
 
   const handleSendLogOk = () => {
@@ -558,17 +602,7 @@ const resetCurrentPage = () => {
   };
 
    // 장소관리
-  const [placeRobotOpen, setPlaceRobotOpen] = useState(false);
-  const [placeFloorOpen, setPlaceFloorOpen] = useState(false);
   const [placeRows, setPlaceRows] = useState<PlaceRow[]>([]);
-  const placeRobotWrapperRef = useRef<HTMLDivElement>(null);
-  const placeFloorWrapperRef = useRef<HTMLDivElement>(null);
-  const placeRobotScrollRef = useRef<HTMLDivElement>(null);
-  const placeRobotTrackRef = useRef<HTMLDivElement>(null);
-  const placeRobotThumbRef = useRef<HTMLDivElement>(null);
-  const placeFloorScrollRef = useRef<HTMLDivElement>(null);
-  const placeFloorTrackRef = useRef<HTMLDivElement>(null);
-  const placeFloorThumbRef = useRef<HTMLDivElement>(null);
 
   const [selectedPlaceRobot, setSelectedPlaceRobot] = useState<string | null>(null); // null=Total
   const [selectedPlaceFloor, setSelectedPlaceFloor] = useState<string | null>(null); // null=Total
@@ -598,6 +632,7 @@ const resetCurrentPage = () => {
       name: "병원대기 2",
       x: "62.2803218070417",
       y: "51.71609980765794",
+      direction: "0",
       desc: "대학병원 대기공간",
       updatedAt: "2025.12.12 오전 10:35:47",
     },
@@ -615,95 +650,34 @@ const resetCurrentPage = () => {
   }, [floors]);
 
 
-  useEffect(() => {
-  if (activeTab !== "place") return;
-
   const fetchPlaces = async () => {
     try {
       const res = await fetch(`${API_BASE}/DB/places`);
       const data = await res.json();
-      console.log(data)
       const mapped: PlaceRow[] = data.map((p: any) => ({
         id: p.id,
-        robotNo: p.RobotName,
-        floor: p.Floor,
-        placeName: p.LacationName,
-        x: p.LocationX,
-        y: p.LocationY,
-        updatedAt: new Date(p.UpdatedAt).toLocaleString("ko-KR"),
+        robotNo: p.RobotName ?? "",
+        floor: p.Floor ?? "",
+        placeName: p.LacationName ?? "",
+        x: p.LocationX ?? 0,
+        y: p.LocationY ?? 0,
+        direction: p.LocationDir ?? 0,
+        updatedAt: p.UpdatedAt
+          ? new Date(p.UpdatedAt).toLocaleString("ko-KR")
+          : "",
       }));
-
       setPlaceRows(mapped);
     } catch (e) {
       console.error("장소 목록 로드 실패", e);
+      setPlaceRows([]);
     }
   };
 
-  fetchPlaces();
-}, [activeTab]);
-  const shouldShowPlaceRobotScroll = placeRobotOptions.length + 1 >= 5;
-  const shouldShowPlaceFloorScroll = placeFloorOptions.length + 1 >= 5;
-  const shouldShowRobotFilterScroll = robots.length + 1 >= 5;
-  const shouldShowBatteryFilterScroll = batteryStatus.length + 1 >= 5;
-  const shouldShowNetworkFilterScroll = networkStatus.length + 1 >= 5;
-  const shouldShowPowerFilterScroll = powerStatus.length + 1 >= 5;
-  const shouldShowLocationFilterScroll = locationStatus.length + 1 >= 5;
+  useEffect(() => {
+    if (activeTab !== "place" && activeTab !== "path") return;
+    fetchPlaces();
+  }, [activeTab]);
 
-  useFixedSelectScrollbar({
-    enabled: placeRobotOpen && shouldShowPlaceRobotScroll,
-    scrollRef: placeRobotScrollRef,
-    trackRef: placeRobotTrackRef,
-    thumbRef: placeRobotThumbRef,
-    deps: [placeRobotOptions.length, placeRobotOpen],
-  });
-
-  useFixedSelectScrollbar({
-    enabled: placeFloorOpen && shouldShowPlaceFloorScroll,
-    scrollRef: placeFloorScrollRef,
-    trackRef: placeFloorTrackRef,
-    thumbRef: placeFloorThumbRef,
-    deps: [placeFloorOptions.length, placeFloorOpen],
-  });
-
-  useFixedSelectScrollbar({
-    enabled: robotsIsOpen && shouldShowRobotFilterScroll,
-    scrollRef: robotsScrollRef,
-    trackRef: robotsTrackRef,
-    thumbRef: robotsThumbRef,
-    deps: [robots.length, robotsIsOpen],
-  });
-
-  useFixedSelectScrollbar({
-    enabled: batteryIsOpen && shouldShowBatteryFilterScroll,
-    scrollRef: batteryScrollRef,
-    trackRef: batteryTrackRef,
-    thumbRef: batteryThumbRef,
-    deps: [batteryStatus.length, batteryIsOpen],
-  });
-
-  useFixedSelectScrollbar({
-    enabled: networkIsOpen && shouldShowNetworkFilterScroll,
-    scrollRef: networkScrollRef,
-    trackRef: networkTrackRef,
-    thumbRef: networkThumbRef,
-    deps: [networkStatus.length, networkIsOpen],
-  });
-
-  useFixedSelectScrollbar({
-    enabled: powerIsOpen && shouldShowPowerFilterScroll,
-    scrollRef: powerScrollRef,
-    trackRef: powerTrackRef,
-    thumbRef: powerThumbRef,
-    deps: [powerStatus.length, powerIsOpen],
-  });
-
-  useFixedSelectScrollbar({
-    enabled: locationIsOpen && shouldShowLocationFilterScroll,
-    scrollRef: locationScrollRef,
-    trackRef: locationTrackRef,
-    thumbRef: locationThumbRef,
-    deps: [locationStatus.length, locationIsOpen],
-  });
 
   const toPlaceRowData = (row: PlaceRow): PlaceRowData => ({
     id: row.id,
@@ -712,6 +686,7 @@ const resetCurrentPage = () => {
     name: row.placeName,
     x: String(row.x),
     y: String(row.y),
+    direction: String(row.direction ?? 0),
     desc: "",
     updatedAt: row.updatedAt,
   });
@@ -738,6 +713,9 @@ const resetCurrentPage = () => {
     () => places.find((p) => p.id === selectedPlaceId) ?? null,
     [places, selectedPlaceId]
   );
+
+  // 삭제 모드
+  const [placeDeleteMode, setPlaceDeleteMode] = useState(false);
 
   // 모달 open/close
   const [placeCreateOpen, setPlaceCreateOpen] = useState(false);
@@ -770,6 +748,7 @@ const resetCurrentPage = () => {
       placeName: payload.name,
       x: Number(payload.x),
       y: Number(payload.y),
+      direction: Number(payload.direction ?? 0),
       updatedAt: payload.updatedAt,
     };
 
@@ -793,6 +772,7 @@ const resetCurrentPage = () => {
     setPlaceRows((prev) => prev.filter((p) => !del.has(p.id)));
     setCheckedPlaceIds([]);
     setPlaceDeleteConfirmOpen(false);
+    setPlaceDeleteMode(false);
   };
 
   const placeTotalItems = filteredPlaceRows.length;
@@ -802,63 +782,71 @@ const resetCurrentPage = () => {
     placeStartIndex + PLACE_PAGE_SIZE
   );
 
-  const togglePlaceChecked = (placeId: number, checked: boolean) => {
-    setCheckedPlaceIds((prev) => {
-      const next = checked
+  const selectPlace = (placeId: number) => {
+    if (selectedPlaceId === placeId) {
+      setSelectedPlaceId(null);
+      setCheckedPlaceIds([]);
+    } else {
+      setSelectedPlaceId(placeId);
+      setCheckedPlaceIds([placeId]);
+    }
+  };
+
+  // 삭제 모드 다중 선택
+  const toggleDeleteCheck = (placeId: number, checked: boolean) => {
+    setCheckedPlaceIds((prev) =>
+      checked
         ? Array.from(new Set([...prev, placeId]))
-        : prev.filter((id) => id !== placeId);
-
-      // 1개만 체크됐을 때만 “선택 장소”로 인정
-      setSelectedPlaceId(next.length === 1 ? next[0] : null);
-
-      return next;
-    });
+        : prev.filter((id) => id !== placeId)
+    );
   };
 
-  const toggleAllCurrentPlaceItems = (checked: boolean) => {
-    const currentPageIds = currentPlaceItems.map((r) => r.id);
-
-    setCheckedPlaceIds((prev) => {
-      const next = checked
-        ? Array.from(new Set([...prev, ...currentPageIds]))
-        : prev.filter((id) => !currentPageIds.includes(id));
-
-      setSelectedPlaceId(next.length === 1 ? next[0] : null);
-      return next;
-    });
+  const toggleDeleteCheckAll = (checked: boolean) => {
+    const ids = currentPlaceItems.map((r) => r.id);
+    setCheckedPlaceIds((prev) =>
+      checked
+        ? Array.from(new Set([...prev, ...ids]))
+        : prev.filter((id) => !ids.includes(id))
+    );
   };
 
-  const isAllCurrentPlaceItemsChecked = currentPlaceItems.length > 0 && currentPlaceItems.every((r) => checkedPlaceIds.includes(r.id));
+  const isAllDeleteChecked =
+    currentPlaceItems.length > 0 &&
+    currentPlaceItems.every((r) => checkedPlaceIds.includes(r.id));
+
+  const enterDeleteMode = () => {
+    setPlaceDeleteMode(true);
+    setCheckedPlaceIds([]);
+    setSelectedPlaceId(null);
+  };
+
+  const exitDeleteMode = () => {
+    setPlaceDeleteMode(false);
+    setCheckedPlaceIds([]);
+  };
 
   // =========================
   // 경로 관리 (Path)
   // =========================
   const [pathRows, setPathRows] = useState<PathRow[]>([]);
-
-  const [pathRobotOpen, setPathRobotOpen] = useState(false);
-  const [pathWorkTypeOpen, setPathWorkTypeOpen] = useState(false);
-  const pathRobotWrapperRef = useRef<HTMLDivElement>(null);
-  const pathWorkTypeWrapperRef = useRef<HTMLDivElement>(null);
-  const pathRobotScrollRef = useRef<HTMLDivElement>(null);
-  const pathRobotTrackRef = useRef<HTMLDivElement>(null);
-  const pathRobotThumbRef = useRef<HTMLDivElement>(null);
-  const pathWorkTypeScrollRef = useRef<HTMLDivElement>(null);
-  const pathWorkTypeTrackRef = useRef<HTMLDivElement>(null);
-  const pathWorkTypeThumbRef = useRef<HTMLDivElement>(null);
+  const [pathLoading, setPathLoading] = useState(false);
+  const [pathAlertMessage, setPathAlertMessage] = useState<string | null>(null);
+  const [selectedPathId, setSelectedPathId] = useState<number | null>(null);
 
   const [selectedPathRobot, setSelectedPathRobot] = useState<string | null>(null);   // null=Total
   const [selectedPathWorkType, setSelectedPathWorkType] = useState<string | null>(null); // null=Total
 
   const [checkedPathIds, setCheckedPathIds] = useState<number[]>([]);
   const pathCheckedCount = checkedPathIds.length;
+  const [pathDeleteMode, setPathDeleteMode] = useState(false);
 
-  // 버튼 정책(이미지 동일)
-  // - 등록: 아무것도 선택 안했을 때만 활성
-  // - 수정: 1개 선택일 때만 활성
-  // - 삭제: 1개 이상 선택일 때 활성
-  const isPathCreateEnabled = pathCheckedCount === 0;
-  const isPathEditEnabled = pathCheckedCount === 1;
-  const isPathDeleteEnabled = pathCheckedCount >= 1;
+  // 버튼 정책 (장소 목록과 동일 패턴)
+  // - 등록: 항상 활성
+  // - 수정: 행 1개 선택(selectedPathId) 시 활성
+  // - 삭제: 삭제 모드 진입 후 체크 1개 이상 시 활성
+  const isPathCreateEnabled = true;
+  const isPathEditEnabled = !!selectedPathId;
+  const isPathDeleteEnabled = pathDeleteMode && pathCheckedCount >= 1;
 
   // 옵션 리스트
   const pathRobotOptions = useMemo(() => {
@@ -871,10 +859,8 @@ const resetCurrentPage = () => {
     return Array.from(set);
   }, [robotTypes]);
 
-  const shouldShowPathRobotScroll = pathRobotOptions.length + 1 >= 5;
-  const shouldShowPathWorkTypeScroll = pathWorkTypeOptions.length + 1 >= 5;
 
-  // 필터 적용
+  // 필터 적용 + 최신순 정렬
   const filteredPathRows = useMemo(() => {
     return pathRows
       .filter((r) => {
@@ -882,15 +868,24 @@ const resetCurrentPage = () => {
         const typeOk = !selectedPathWorkType || r.workType === selectedPathWorkType;
         return robotOk && typeOk;
       })
-      // .sort((a, b) => {
-      //   return parseUpdatedAt(b.updatedAt) - parseUpdatedAt(a.updatedAt);
-      // });
+      .sort((a, b) => {
+        const ta = new Date(a.updatedAt).getTime() || 0;
+        const tb = new Date(b.updatedAt).getTime() || 0;
+        return tb - ta;
+      });
   }, [pathRows, selectedPathRobot, selectedPathWorkType]);
 
   // 페이지 데이터
   const pathTotalItems = filteredPathRows.length;
   const pathStartIndex = (pathPage - 1) * PATH_PAGE_SIZE;
   const currentPathItems = filteredPathRows.slice(pathStartIndex, pathStartIndex + PATH_PAGE_SIZE);
+
+  // 선택된 경로 (행 클릭으로 지도 미리보기용)
+  const selectedPathRow = useMemo(() => {
+    if (selectedPathId == null) return null;
+    return pathRows.find((r) => r.id === selectedPathId) ?? null;
+  }, [selectedPathId, pathRows]);
+
 
   // 체크 토글
   const togglePathChecked = (pathId: number, checked: boolean) => {
@@ -911,12 +906,11 @@ const resetCurrentPage = () => {
         : prev.filter((id) => !currentPageIds.includes(id));
       return next;
     });
-  };  // ✅ 체크 1개일 때만 수정용 단일 row
+  };  // ✅ 행 선택(selectedPathId) 기준 수정용 단일 row
   const singleCheckedPathRow = useMemo(() => {
-    if (checkedPathIds.length !== 1) return null;
-    const id = checkedPathIds[0];
-    return pathRows.find((r) => r.id === id) ?? null;
-  }, [checkedPathIds, pathRows]);
+    if (selectedPathId == null) return null;
+    return pathRows.find((r) => r.id === selectedPathId) ?? null;
+  }, [selectedPathId, pathRows]);
 
   // ✅ 모달 상태
   const [pathCreateOpen, setPathCreateOpen] = useState(false);
@@ -924,13 +918,12 @@ const resetCurrentPage = () => {
   const [pathDeleteConfirmOpen, setPathDeleteConfirmOpen] = useState(false);
 
   const fetchPathsFromDB = async () => {
-    console.log("🚀 fetchPathsFromDB 호출됨");
+    setPathLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/DB/getpath`);
+      const res = await fetch(PATH_API.LIST);
       if (!res.ok) throw new Error("경로 목록 조회 실패");
 
       const data = await res.json();
-      console.log("✅ DB paths data:", data);
 
       const mapped: PathRow[] = data.map((p: any) => ({
         id: p.id,
@@ -940,16 +933,18 @@ const resetCurrentPage = () => {
         pathOrder: p.WayPoints,
         updatedAt: p.UpdateTime
         ? new Date(p.UpdateTime).toLocaleString("ko-KR")
-        : "-",   // 안전 처리
+        : "-",
       }));
 
       setPathRows(mapped);
     } catch (err) {
       console.error("경로 목록 로드 실패", err);
+    } finally {
+      setPathLoading(false);
     }
   };
 
-  // ✅ 등록/수정 저장
+  // ✅ 등록/수정 저장 (차후 PUT 엔드포인트 추가 시 method 분기 자동 적용)
   const savePathToDB = async (payload: {
     id?: number;
     robotNo: string;
@@ -957,12 +952,15 @@ const resetCurrentPage = () => {
     pathName: string;
     pathOrder: string;
   }) => {
+    setPathLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/DB/path`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const isEdit = payload.id != null;
+      const url = isEdit ? PATH_API.UPDATE(payload.id!) : PATH_API.CREATE;
+      const method = isEdit ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           RobotName: payload.robotNo,
           TaskType: payload.workType,
@@ -973,18 +971,17 @@ const resetCurrentPage = () => {
 
       if (!res.ok) throw new Error("경로 저장 실패");
 
-      // ✅ 저장 성공 → DB에서 다시 목록 조회
       await fetchPathsFromDB();
 
-      // UI 정리
       setCheckedPathIds([]);
+      setSelectedPathId(null);
       setPathPage(1);
-      setPathCreateOpen(false);
-      setPathEditOpen(false);
 
     } catch (err) {
       console.error("경로 DB 저장 실패", err);
-      alert("경로 저장에 실패했습니다.");
+      throw err; // 모달에서 에러를 처리하도록 re-throw
+    } finally {
+      setPathLoading(false);
     }
   };
 
@@ -993,23 +990,58 @@ const resetCurrentPage = () => {
     fetchPathsFromDB();
   }, [activeTab]);
 
-  // ✅ 삭제 확정
-  const confirmDeletePath = () => {
+  // 경로 이동 모달 열릴 때 pathRows가 비어있으면 자동 fetch
+  useEffect(() => {
+    if (pathMoveModalOpen && pathRows.length === 0) {
+      fetchPathsFromDB();
+    }
+  }, [pathMoveModalOpen]);
+
+  // ✅ 삭제 확정 (차후 DELETE 엔드포인트 추가 시 API 호출 활성화)
+  const confirmDeletePath = async () => {
     if (checkedPathIds.length === 0) return;
-    const del = new Set(checkedPathIds);
-    setPathRows((prev) => prev.filter((p) => !del.has(p.id)));
-    setCheckedPathIds([]);
-    setPathDeleteConfirmOpen(false);
+    setPathLoading(true);
+    try {
+      // TODO: 백엔드 DELETE API 추가 후 아래 주석 해제
+      // await Promise.all(
+      //   checkedPathIds.map((id) =>
+      //     fetch(PATH_API.DELETE(id), { method: "DELETE" })
+      //   )
+      // );
+
+      // 현재는 로컬 상태에서만 삭제
+      const del = new Set(checkedPathIds);
+      setPathRows((prev) => prev.filter((p) => !del.has(p.id)));
+
+      // 삭제 후 페이지네이션 보정
+      const remaining = filteredPathRows.length - del.size;
+      const maxPage = Math.max(1, Math.ceil(remaining / PATH_PAGE_SIZE));
+      if (pathPage > maxPage) setPathPage(maxPage);
+
+      setCheckedPathIds([]);
+      setSelectedPathId(null);
+      setPathDeleteConfirmOpen(false);
+
+      // TODO: 백엔드 DELETE API 추가 후 재조회 활성화
+      // await fetchPathsFromDB();
+    } catch (err) {
+      console.error("경로 삭제 실패", err);
+      setPathAlertMessage("경로 삭제에 실패했습니다.");
+    } finally {
+      setPathLoading(false);
+    }
   };
 
   // ✅ 버튼 핸들러 교체
   const openPathCreate = () => {
     if (!isPathCreateEnabled) return;
+    if (placeRows.length === 0) fetchPlaces();
     setPathCreateOpen(true);
   };
 
   const openPathEdit = () => {
     if (!isPathEditEnabled) return;
+    if (placeRows.length === 0) fetchPlaces();
     setPathEditOpen(true);
   };
 
@@ -1021,97 +1053,26 @@ const resetCurrentPage = () => {
   const isAllCurrentPathItemsChecked =
     currentPathItems.length > 0 && currentPathItems.every((r) => checkedPathIds.includes(r.id));
 
-  // 필터 변경 시 페이지/체크 초기화
+  // 필터 변경 시 페이지/체크/선택 초기화
   const resetPathSelection = () => {
     setCheckedPathIds([]);
+    setSelectedPathId(null);
     setPathPage(1);
   };
 
-  useFixedSelectScrollbar({
-    enabled: pathRobotOpen && shouldShowPathRobotScroll,
-    scrollRef: pathRobotScrollRef,
-    trackRef: pathRobotTrackRef,
-    thumbRef: pathRobotThumbRef,
-    deps: [pathRobotOptions.length, pathRobotOpen],
-  });
 
-  useFixedSelectScrollbar({
-    enabled: pathWorkTypeOpen && shouldShowPathWorkTypeScroll,
-    scrollRef: pathWorkTypeScrollRef,
-    trackRef: pathWorkTypeTrackRef,
-    thumbRef: pathWorkTypeThumbRef,
-    deps: [pathWorkTypeOptions.length, pathWorkTypeOpen],
-  });
-
-    useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (
-        robotsWrapperRef.current &&
-        !robotsWrapperRef.current.contains(e.target as Node)
-      ) {
-        setRobotsIsOpen(false); // 외부 클릭 → 닫기
-      }
-
-      if (
-        batteryWrapperRef.current &&
-        !batteryWrapperRef.current.contains(e.target as Node)
-      ) {
-        setBatteryIsOpen(false); // 외부 클릭 → 닫기
-      }
-
-      if (
-        networkWrapperRef.current &&
-        !networkWrapperRef.current.contains(e.target as Node)
-      ) {
-        setNetworkIsOpen(false); // 외부 클릭 → 닫기
-      }
-
-      if (
-        powerWrapperRef.current &&
-        !powerWrapperRef.current.contains(e.target as Node)
-      ) {
-        setPowerIsOpen(false); // 외부 클릭 → 닫기
-      }
-
-      if (
-        locationWrapperRef.current &&
-        !locationWrapperRef.current.contains(e.target as Node)
-      ) {
-        setLocationIsOpen(false); // 외부 클릭 → 닫기
-      }
-
-      if (placeRobotWrapperRef.current && !placeRobotWrapperRef.current.contains(e.target as Node)) {
-        setPlaceRobotOpen(false);
-      }
-      
-      if (placeFloorWrapperRef.current && !placeFloorWrapperRef.current.contains(e.target as Node)) {
-        setPlaceFloorOpen(false);
-      }
-
-      if (pathRobotWrapperRef.current && !pathRobotWrapperRef.current.contains(e.target as Node)) {
-        setPathRobotOpen(false);
-      }
-
-      if (pathWorkTypeWrapperRef.current && !pathWorkTypeWrapperRef.current.contains(e.target as Node)) {
-        setPathWorkTypeOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
-  }, []);
 
 
   return (
     <>
 
-    <div className={styles.robotListTab}>
-        <div className={`${activeTab === "robots" ? styles.active : ""}`} onClick={() => handleTabClick("robots")}>로봇 관리</div>
-        <div className={`${activeTab === "place" ? styles.active : ""}`} onClick={() => handleTabClick("place")}>장소 관리</div>
-        <div className={`${activeTab === "path" ? styles.active : ""}`} onClick={() => handleTabClick("path")}>경로 관리</div>
+    <div className="page-header-tab">
+        <h1>로봇 관리</h1>
+        <div className={styles.robotListTab}>
+            <div className={`${activeTab === "robots" ? styles.active : ""}`} onClick={() => handleTabClick("robots")}>로봇 목록</div>
+            <div className={`${activeTab === "place" ? styles.active : ""}`} onClick={() => handleTabClick("place")}>장소 목록</div>
+            <div className={`${activeTab === "path" ? styles.active : ""}`} onClick={() => handleTabClick("path")}>경로 목록</div>
+        </div>
     </div>
 
     {activeTab === "robots" && (
@@ -1121,233 +1082,90 @@ const resetCurrentPage = () => {
             <h2>로봇 목록</h2>
             <div className={styles.RobotSearch}>
               {/* 로봇 검색 필터 */}
-              <div ref={robotsWrapperRef} className={`${styles.selecteWrapper}`} >
-                  <div className={styles.selecte} onClick={() => setRobotsIsOpen(!robotsIsOpen)}>
-                    <span>{robotsActiveIndex === -1 ? "Total" : selectedRobots?.no ?? "로봇명 선택"}</span>
-                    {robotsIsOpen ? (
-                      <img src="/icon/arrow_up.png" alt="arrow_up" />
-                    ) : (
-                      <img src="/icon/arrow_down.png" alt="arrow_down" />
-                    )}
-                  </div> 
-                  {robotsIsOpen && (
-                    <div className={styles.selectebox}>
-                      <div ref={robotsScrollRef} className={styles.selecteInner} role="listbox">
-                        {/* Total을 맨 위에 직접 추가 */}
-                        <div
-                          className={robotsActiveIndex === -1 ? styles.active : ""}
-                          onClick={() => {
-                            setRobotsActiveIndex(-1);
-                            setSelectedRobots(null);   // null → 전체 조건 의미
-                            setRobotsIsOpen(false);
-                          }}
-                        >
-                          Total
-                        </div>
-
-                        {/* 실제 옵션들 */}
-                        {robots.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className={robotsActiveIndex === idx ? styles.active : ""}
-                            onClick={ () => { robotsClick(idx, item); } }
-                          >
-                            {item.no}
-                          </div>
-                        ))}
-                      </div>
-                      {shouldShowRobotFilterScroll && (
-                        <div ref={robotsTrackRef} className={styles.selecteScrollTrack}>
-                          <div ref={robotsThumbRef} className={styles.selecteScrollThumb} />
-                        </div>
-                      )}
-                  </div>
-                  )}
-              </div>
+              <FilterSelectBox
+                items={robots.map(r => ({ id: r.id, label: r.no }))}
+                selectedLabel={selectedRobots?.no ?? null}
+                placeholder="로봇명"
+                showTotal={robots.length > 0}
+                width={170}
+                onSelect={(item) => {
+                  if (item) {
+                    const robot = robots.find(r => r.no === item.label);
+                    if (robot) { setRobotsActiveIndex(robots.indexOf(robot)); setSelectedRobots(robot); }
+                  } else {
+                    setRobotsActiveIndex(-1); setSelectedRobots(null);
+                  }
+                  resetCurrentPage();
+                }}
+              />
 
               {/* 배터리 검색 필터 */}
-              <div ref={batteryWrapperRef} className={`${styles.selecteWrapper}`} >
-                  <div className={styles.selecte} onClick={() => setBatteryIsOpen(!batteryIsOpen)}>
-                    <span>{batteryActiveIndex === -1 ? "Total" : selectedBattery?.label ?? "배터리 상태"}</span>
-                    {batteryIsOpen ? (
-                      <img src="/icon/arrow_up.png" alt="arrow_up" />
-                    ) : (
-                      <img src="/icon/arrow_down.png" alt="arrow_down" />
-                    )}
-                  </div> 
-                  {batteryIsOpen && (
-                    <div className={styles.selectebox}>
-                      <div ref={batteryScrollRef} className={styles.selecteInner} role="listbox">
-                        {/* Total을 맨 위에 직접 추가 */}
-                        <div
-                          className={batteryActiveIndex === -1 ? styles.active : ""}
-                          onClick={() => {
-                            setBatteryActiveIndex(-1);
-                            setSelectedBattery(null);   // null → 전체 조건 의미
-                            setBatteryIsOpen(false);
-                          }}
-                        >
-                          Total
-                        </div>
-
-                        {/* 실제 옵션들 */}
-                        {batteryStatus.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className={batteryActiveIndex === idx ? styles.active : ""}
-                            onClick={ () => { batteryStatusClick(idx, item); } }
-                          >
-                            {item.label}
-                          </div>
-                        ))}
-                      </div>
-                      {shouldShowBatteryFilterScroll && (
-                        <div ref={batteryTrackRef} className={styles.selecteScrollTrack}>
-                          <div ref={batteryThumbRef} className={styles.selecteScrollThumb} />
-                        </div>
-                      )}
-                  </div>
-                  )}
-              </div>
+              <FilterSelectBox
+                items={batteryStatus.map(b => ({ id: b.id, label: b.label }))}
+                selectedLabel={selectedBattery?.label ?? null}
+                placeholder="배터리"
+                width={145}
+                onSelect={(item) => {
+                  if (item) {
+                    const bat = batteryStatus.find(b => b.label === item.label);
+                    if (bat) { setBatteryActiveIndex(batteryStatus.indexOf(bat)); setSelectedBattery(bat); }
+                  } else {
+                    setBatteryActiveIndex(-1); setSelectedBattery(null);
+                  }
+                  resetCurrentPage();
+                }}
+              />
 
               {/* 네트워크 검색 필터 */}
-              <div ref={networkWrapperRef} className={styles.selecteWrapper}>
-                    <div className={styles.selecte} 
-                      onClick={() => setNetworkIsOpen(!networkIsOpen)}>
-                      <span>{networkActiveIndex === -1 ? "Total" : selectedNetwork?.label ?? "네트워크 상태"}</span>
-                      {networkIsOpen ? (
-                        <img src="/icon/arrow_up.png" alt="arrow_up" />
-                      ) : (
-                        <img src="/icon/arrow_down.png" alt="arrow_down" />
-                      )}
-                    </div> 
-                    {networkIsOpen && (
-                      <div className={styles.selectebox}>
-                        <div ref={networkScrollRef} className={styles.selecteInner} role="listbox">
-                          {/* Total */}
-                          <div
-                            className={networkActiveIndex === -1 ? styles.active : ""}
-                            onClick={() => {
-                              setNetworkActiveIndex(-1);
-                              setSelectedNetwork(null); // 전체
-                              setNetworkIsOpen(false);
-                              resetCurrentPage();
-                            }}
-                          >
-                            Total
-                          </div>
+              <FilterSelectBox
+                items={networkStatus.map(n => ({ id: n.id, label: n.label }))}
+                selectedLabel={selectedNetwork?.label ?? null}
+                placeholder="네트워크"
+                width={110}
+                onSelect={(item) => {
+                  if (item) {
+                    const net = networkStatus.find(n => n.label === item.label);
+                    if (net) { setNetworkActiveIndex(networkStatus.indexOf(net)); setSelectedNetwork(net); }
+                  } else {
+                    setNetworkActiveIndex(-1); setSelectedNetwork(null);
+                  }
+                  resetCurrentPage();
+                }}
+              />
 
-                          {/* 실제 네트워크 옵션들 */}
-                          {networkStatus.map((item, idx) => (
-                            <div
-                              key={item.id}
-                              className={networkActiveIndex === idx ? styles.active : ""}
-                              onClick={ () => { networkStatusClick(idx, item); } }
-                            >
-                              {item.label}
-                            </div>
-                          ))}
-                        </div>
-                        {shouldShowNetworkFilterScroll && (
-                          <div ref={networkTrackRef} className={styles.selecteScrollTrack}>
-                            <div ref={networkThumbRef} className={styles.selecteScrollThumb} />
-                          </div>
-                        )}
-                      </div>
-                    )}
-              </div>
-              
-              <div ref={powerWrapperRef} className={styles.selecteWrapper}>
-                  <div className={styles.selecte} 
-                    onClick={() => setPowerIsOpen(!powerIsOpen)}>
-                    <span>{powerActiveIndex === -1 ? "Total" : selectedPower?.label ?? "전원 상태"}</span>
-                    {powerIsOpen ? (
-                      <img src="/icon/arrow_up.png" alt="arrow_up" />
-                    ) : (
-                      <img src="/icon/arrow_down.png" alt="arrow_down" />
-                    )}
-                  </div> 
-                  {powerIsOpen && (
-                    <div className={styles.selectebox}>
-                      <div ref={powerScrollRef} className={styles.selecteInner} role="listbox">
-                        {/* Total */}
-                        <div
-                          className={powerActiveIndex === -1 ? styles.active : ""}
-                          onClick={() => {
-                            setPowerActiveIndex(-1);
-                            setSelectedPower(null);
-                            setPowerIsOpen(false);
-                            resetCurrentPage();
-                          }}
-                        >
-                          Total
-                        </div>
+              {/* 전원 검색 필터 */}
+              <FilterSelectBox
+                items={powerStatus.map(p => ({ id: p.id, label: p.label }))}
+                selectedLabel={selectedPower?.label ?? null}
+                placeholder="전원"
+                width={100}
+                onSelect={(item) => {
+                  if (item) {
+                    const pw = powerStatus.find(p => p.label === item.label);
+                    if (pw) { setPowerActiveIndex(powerStatus.indexOf(pw)); setSelectedPower(pw); }
+                  } else {
+                    setPowerActiveIndex(-1); setSelectedPower(null);
+                  }
+                  resetCurrentPage();
+                }}
+              />
 
-                        {/* 실제 전원 옵션들 */}
-                        {powerStatus.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className={powerActiveIndex === idx ? styles.active : ""}
-                            onClick={ () => { powerStatusClick(idx, item); } }
-                          >
-                            {item.label}
-                          </div>
-                        ))}
-                      </div>
-                      {shouldShowPowerFilterScroll && (
-                        <div ref={powerTrackRef} className={styles.selecteScrollTrack}>
-                          <div ref={powerThumbRef} className={styles.selecteScrollThumb} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-              </div>
-
-              <div ref={locationWrapperRef} className={styles.selecteWrapper}>
-                <div className={styles.selecte} 
-                  onClick={() => setLocationIsOpen(!locationIsOpen)}>
-                  <span>{locationActiveIndex === -1 ? "Total" : selectedLocation?.label ?? "위치 상태"}</span>
-                  {locationIsOpen ? (
-                    <img src="/icon/arrow_up.png" alt="arrow_up" />
-                  ) : (
-                    <img src="/icon/arrow_down.png" alt="arrow_down" />
-                  )}
-                </div> 
-                {locationIsOpen && (
-                  <div className={styles.selectebox}>
-                    <div ref={locationScrollRef} className={styles.selecteInner} role="listbox">
-                      {/* Total */}
-                      <div
-                        className={locationActiveIndex === -1 ? styles.active : ""}
-                        onClick={() => {
-                          setLocationActiveIndex(-1);
-                          setSelectedLocation(null);
-                          setLocationIsOpen(false);
-                          resetCurrentPage();
-                        }}
-                      >
-                        Total
-                      </div>
-
-                      {/* 실제 위치 옵션들 */}
-                      {locationStatus.map((item, idx) => (
-                        <div
-                          key={item.id}
-                          className={locationActiveIndex === idx ? styles.active : ""}
-                          onClick={ () => { locationStatusClick(idx, item);} }
-                        >
-                          {item.label}
-                        </div>
-                      ))}
-                    </div>
-                    {shouldShowLocationFilterScroll && (
-                      <div ref={locationTrackRef} className={styles.selecteScrollTrack}>
-                        <div ref={locationThumbRef} className={styles.selecteScrollThumb} />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              {/* 위치 검색 필터 */}
+              <FilterSelectBox
+                items={locationStatus.map(l => ({ id: l.id, label: l.label }))}
+                selectedLabel={selectedLocation?.label ?? null}
+                placeholder="위치"
+                width={100}
+                onSelect={(item) => {
+                  if (item) {
+                    const loc = locationStatus.find(l => l.label === item.label);
+                    if (loc) { setLocationActiveIndex(locationStatus.indexOf(loc)); setSelectedLocation(loc); }
+                  } else {
+                    setLocationActiveIndex(-1); setSelectedLocation(null);
+                  }
+                  resetCurrentPage();
+                }}
+              />
             </div>
         </div>
 
@@ -1374,19 +1192,23 @@ const resetCurrentPage = () => {
                           }}
                         />
                     </th>
-                    <th>Robot No</th>
-                    <th>Robot Info</th>
-                    <th>Battery (Return)</th>
-                    <th>Network</th>
-                    <th>Power</th>
-                    <th>Mark</th>
-                    <th>Location</th>
+                    <th>로봇명</th>
+                    <th>배터리 (복귀)</th>
+                    <th>네트워크</th>
+                    <th>전원</th>
+                    <th>위치표시</th>
+                    <th>정보</th>
                 </tr>
             </thead>
             <tbody>
+            {currentItems.length === 0 && (
+              <tr>
+                <td colSpan={7} className={styles.emptyState}>표시할 로봇이 없습니다.</td>
+              </tr>
+            )}
             {currentItems.map((r, idx) => {
               const robotIndex = getRobotIndexFromNo(r.no);
-              const robotColor = robotColors[robotIndex];
+              const robotColor = ROBOT_COLORS[robotIndex];
 
               return (
                 <tr
@@ -1426,53 +1248,16 @@ const resetCurrentPage = () => {
                   <td>
                     <div>{r.no}</div>
                   </td>
-                  <td>
-                    <div className={styles.robot_status_icon_div}>
-                      <img src={robotInfoIcons.info(r.no)} alt="robot_icon" />
-                      <div
-                        className={styles["info-box"]}
-                        onClick={() => ViewInfoClick(idx, r)}
-                      >
-                        View Info
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div className={styles.robot_status_icon_div}>
-                      <img
-                        src={robotInfoIcons.battery(r.battery, r.isCharging)}
-                        alt="battery"
-                      />
-                      {r.battery}% ({r.return}%)
-                    </div>
-                  </td>
-                  <td>
-                    <div className={styles.robot_status_icon_div}>
-                      <img src={robotInfoIcons.network(r.network)} alt="network" />
-                      {r.network}
-                    </div>
-                  </td>
-                  <td>
-                    <div className={styles.robot_status_icon_div}>
-                      <img src={robotInfoIcons.power(r.power)} alt="power" />
-                      {r.power}
-                    </div>
-                  </td>
-                  <td>
-                    <div className={styles.robot_status_icon_div}>
-                      <img src={robotInfoIcons.mark(r.no)} alt="mark" />
-                      {r.mark}
-                    </div>
-                  </td>
+                  <td>{r.battery}% ({r.return}%)</td>
+                  <td>{r.network}</td>
+                  <td>{r.power}</td>
+                  <td>{r.mark}</td>
                   <td>
                     <div
-                      className={`${styles.robot_status_icon_div} ${styles.viewMap}`}
-                      onClick={() => {
-                        handleLocationClick(idx, r);
-                      }}
+                      className={styles["info-box"]}
+                      onClick={() => ViewInfoClick(idx, r)}
                     >
-                      <div>View Map</div>
-                      <div>→</div>
+                      상세보기
                     </div>
                   </td>
                 </tr>
@@ -1482,75 +1267,93 @@ const resetCurrentPage = () => {
           </table>
         </div>
         <RobotDetailModal isOpen={robotDetailModalOpen} onClose={() => setRobotDetailModalOpen(false)}  selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} />
-        <div className={styles.pagePosition}>
-          <Pagination totalItems={totalItems} currentPage={currentPage} onPageChange={handleRobotsPageChange} pageSize={ROBOT_PAGE_SIZE} blockSize={5} />
-        </div>
         <div className={styles.bottomPosition}>
-            <div style={{pointerEvents: isCrudDisabled ? "none" : "auto", opacity: isCrudDisabled ? 0.4 : 1, cursor:"pointer" }}
+            <div className={isCrudDisabled ? styles.btnDisabled : ""}
                   aria-disabled={isCrudDisabled}>
               <RobotCrudBtn />
             </div>
             <div className={styles.robotWorkBox}>
-              <div className={styles.robotWorkCommonBtn}
+              <div className={`${styles.robotWorkCommonBtn} ${isWorkScheduleDisabled ? styles.btnDisabled : ""}`}
                 onClick={() => {
                   if (isWorkScheduleDisabled) return;
                   openWorkScheduleModal();
                 }}
-                aria-disabled={isWorkScheduleDisabled}
-                style={{
-                  pointerEvents: isWorkScheduleDisabled ? "none" : "auto",
-                  opacity: isWorkScheduleDisabled ? 0.4 : 1,
-                }}>
+                aria-disabled={isWorkScheduleDisabled}>
                 <img src="/icon/robot_schedule_w.png" alt="" />
                 작업일정 복귀
               </div>
-              <div className={styles.robotWorkCommonBtn}
+              <div className={`${styles.robotWorkCommonBtn} ${isPlaceMoveDisabled ? styles.btnDisabled : ""}`}
                 onClick={() => {
                   if (isPlaceMoveDisabled) return;
                   setPlacePathModalOpen(true);
                 }}
-                aria-disabled={isPlaceMoveDisabled}
-                style={{
-                  pointerEvents: isPlaceMoveDisabled ? "none" : "auto",
-                  opacity: isPlaceMoveDisabled ? 0.4 : 1,
-                }}>
+                aria-disabled={isPlaceMoveDisabled}>
                 <img src="/icon/robot_place_w.png" alt="" />
                 장소 이동
               </div>
-              <div className={styles.robotWorkCommonBtn}
+              <div className={`${styles.robotWorkCommonBtn} ${isPathMoveDisabled ? styles.btnDisabled : ""}`}
+                onClick={() => {
+                  if (isPathMoveDisabled) return;
+                  setPathMoveModalOpen(true);
+                }}
+                aria-disabled={isPathMoveDisabled}>
+                <img src="/icon/path_w.png" alt="" />
+                경로 이동
+              </div>
+              <div className={`${styles.robotWorkCommonBtn} ${isChargeMoveDisabled ? styles.btnDisabled : ""}`}
                 onClick={() => {
                   if (isChargeMoveDisabled) return;
                   setShowConfirm(true);
                   console.log("충전소 이동 robots:", checkedRobotIds);
                 }}
-                aria-disabled={isChargeMoveDisabled}
-                style={{
-                  pointerEvents: isChargeMoveDisabled ? "none" : "auto",
-                  opacity: isChargeMoveDisabled ? 0.4 : 1,
-                }}>
+                aria-disabled={isChargeMoveDisabled}>
                 <img src="/icon/robot_battery_place_w.png" alt="" />
                 충전소 이동
               </div>
             </div>
         </div>
-        <div></div>
+        <div className={styles.pagePosition}>
+          <Pagination totalItems={totalItems} currentPage={currentPage} onPageChange={handleRobotsPageChange} pageSize={ROBOT_PAGE_SIZE} blockSize={5} />
+        </div>
       </div>
       <RobotWorkScheduleModal
         isOpen={robotWorkScheduleModalOpen}
-        onClose={() => setRobotWorkScheduleModalOpen(false)}
+        onClose={() => {
+          setRobotWorkScheduleModalOpen(false);
+          setWorkScheduleError(null);
+        }}
         selectedRobotIds={checkedRobotIds}
         scheduleCase={workScheduleCase}
         completedPathText={completedPathText}
+        loading={workScheduleLoading}
+        error={workScheduleError}
         onConfirmReturn={() => {
-          // TODO: 실제 “작업스케줄 복귀” 명령 API/WS 호출
-          console.log("작업스케줄 복귀 실행:", selectedRobotId);
+          const robotName = robots.find(r => r.id === selectedRobotId)?.no ?? '';
+          console.log("작업스케줄 복귀 실행:", robotName);
+          // TODO: 실제 엔드포인트 확정 후 교체
+          fetch(`${API_BASE}/nav/startmove`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ robotName, action: "schedule_return" }),
+          }).catch((err) => console.error("작업일정 복귀 명령 실패", err));
         }}
         onConfirmWhenNone={() => {
-          // TODO: 작업일정 등록 페이지 이동 등
-          console.log("등록된 작업일정 없음 확인");
-          }}
+          router.push("/schedules");
+        }}
+        onRetry={openWorkScheduleModal}
       />
       <PlacePathModal isOpen={placePathModalOpen} onClose={() => setPlacePathModalOpen(false)} selectedRobotIds={checkedRobotIds}/>
+      <PathMoveModal
+        isOpen={pathMoveModalOpen}
+        onClose={() => setPathMoveModalOpen(false)}
+        robotName={selectedRobotNameForPathMove}
+        pathRows={pathRows}
+        onConfirm={(path) => {
+          console.log("경로 이동 시작 →", path.pathName, path.pathOrder);
+          // TODO: POST http://localhost:8000/nav/startmove (body: { pathId, robotName })
+          setPathMoveModalOpen(false);
+        }}
+      />
       {showConfirm && (
         <BatteryPathModal
           isOpen={showConfirm}
@@ -1562,15 +1365,54 @@ const resetCurrentPage = () => {
         
 
       <div className={styles.cameraMapView}>
-          <h2>위치 맵 & 실시간 카메라</h2>
-          <MapView selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} floors={floors} video={video} cameras={cameras}/>
-          <br />
-          <CameraViews selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} floors={floors} video={video} cameras={cameras}/>
-          <br />
-          <div className={styles.modalOpenBox}>
-              <RemoteBtn className={styles.customRemoteDiv} selectedRobots={selectedRobot} robots={robots} video={video} cameras={cameras}/>
-              <RobotPathBtn  className={styles.customPathDiv} selectedRobots={selectedRobot} robots={robots} video={video} camera={cameras}/>
-          </div>        
+          {/* 범례 */}
+          <div className={styles.countBox}>
+              <div className={styles.robotCount}>
+                  <div className={styles.countItem}>
+                      <div>전체</div>
+                      <div className={styles.totalNumber}>{robotStats.total}</div>
+                  </div>
+                  <div className={styles.divider}>|</div>
+                  <div className={styles.countItem}>
+                      <div>운영</div>
+                      <div className={styles.itemNumber}>{robotStats.operating}</div>
+                  </div>
+                  <div className={styles.divider}>|</div>
+                  <div className={styles.countItem}>
+                      <div>대기</div>
+                      <div className={styles.itemNumber}>{robotStats.standby}</div>
+                  </div>
+                  <div className={styles.divider}>|</div>
+                  <div className={styles.countItem}>
+                      <div>비운영</div>
+                      <div className={styles.itemNumber}>{robotStats.discharged}</div>
+                  </div>
+              </div>
+              <div className={styles.batteryCount}>
+                  <div>배터리</div>
+                  <div className={styles.countItem}>
+                      <div>방전</div>
+                      <div className={styles.itemNumber}>{robotStats.charging}</div>
+                  </div>
+                  <div className={styles.divider}>|</div>
+                  <div className={styles.countItem}>
+                      <div>충전</div>
+                      <div className={styles.itemNumber}>{robotStats.charging}</div>
+                  </div>
+              </div>
+          </div>
+
+          {/* 모니터링 영역 */}
+          {selectedRobotId == null ? (
+            <div className={styles.monitoringPlaceholder}>
+              <span>목록에서 로봇을 선택하면 카메라와 맵이 표시됩니다.</span>
+            </div>
+          ) : (
+            <>
+              <CameraViews selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} floors={floors} video={video} cameras={cameras}/>
+              <MapView selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} floors={floors} video={video} cameras={cameras}/>
+            </>
+          )}
       </div>
     </div>
   )}
@@ -1584,135 +1426,85 @@ const resetCurrentPage = () => {
 
             <div className={styles.placeFilters}>
               {/* 로봇명 선택 */}
-              <div ref={placeRobotWrapperRef} className={styles.selecteWrapper}>
-                <div className={styles.selecte} onClick={() => setPlaceRobotOpen(v => !v)}>
-                  <span>{selectedPlaceRobot ?? "로봇명 선택"}</span>
-                  <img src={placeRobotOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                </div>
-                {placeRobotOpen && (
-                  <div className={styles.selectebox}>
-                    <div ref={placeRobotScrollRef} className={styles.selecteInner} role="listbox">
-                      <div
-                        className={!selectedPlaceRobot ? styles.active : ""}
-                        onClick={() => { setSelectedPlaceRobot(null); setPlaceRobotOpen(false); setSelectedPlaceId(null); }}
-                      >
-                        Total
-                      </div>
-                      {placeRobotOptions.map((no) => (
-                        <div
-                          key={no}
-                          className={selectedPlaceRobot === no ? styles.active : ""}
-                          onClick={() => { setSelectedPlaceRobot(no); setPlaceRobotOpen(false); setSelectedPlaceId(null); }}
-                        >
-                          {no}
-                        </div>
-                      ))}
-                    </div>
-                    {shouldShowPlaceRobotScroll && (
-                      <div ref={placeRobotTrackRef} className={styles.selecteScrollTrack}>
-                        <div ref={placeRobotThumbRef} className={styles.selecteScrollThumb} />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <FilterSelectBox
+                items={placeRobotOptions.map((no, i) => ({ id: i, label: no }))}
+                selectedLabel={selectedPlaceRobot}
+                placeholder="로봇명"
+                showTotal={placeRobotOptions.length > 0}
+                width={170}
+                onSelect={(item) => {
+                  setSelectedPlaceRobot(item?.label ?? null);
+                  setSelectedPlaceId(null);
+                }}
+              />
 
               {/* 층별 선택 */}
-              <div ref={placeFloorWrapperRef} className={styles.selecteWrapper}>
-                <div className={styles.selecte} onClick={() => setPlaceFloorOpen(v => !v)}>
-                  <span>{selectedPlaceFloor ?? "층별 선택"}</span>
-                  <img src={placeFloorOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-                </div>
-                {placeFloorOpen && (
-                  <div className={styles.selectebox}>
-                    <div ref={placeFloorScrollRef} className={styles.selecteInner} role="listbox">
-                      <div
-                        className={!selectedPlaceFloor ? styles.active : ""}
-                        onClick={() => { setSelectedPlaceFloor(null); setPlaceFloorOpen(false); setSelectedPlaceId(null); }}
-                      >
-                        Total
-                      </div>
-                      {placeFloorOptions.map((f) => (
-                        <div
-                          key={f}
-                          className={selectedPlaceFloor === f ? styles.active : ""}
-                          onClick={() => { setSelectedPlaceFloor(f); setPlaceFloorOpen(false); setSelectedPlaceId(null); }}
-                        >
-                          {f}
-                        </div>
-                      ))}
-                    </div>
-                    {shouldShowPlaceFloorScroll && (
-                      <div ref={placeFloorTrackRef} className={styles.selecteScrollTrack}>
-                        <div ref={placeFloorThumbRef} className={styles.selecteScrollThumb} />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <FilterSelectBox
+                items={placeFloorOptions.map((f, i) => ({ id: i, label: f }))}
+                selectedLabel={selectedPlaceFloor}
+                placeholder="층"
+                width={80}
+                onSelect={(item) => {
+                  setSelectedPlaceFloor(item?.label ?? null);
+                  setSelectedPlaceId(null);
+                }}
+              />
             </div>
           </div>
 
           <div className={styles.placeListBox}>
-            <table className={`${styles.status} ${styles.placeTable}`}>
+            <table className={`${styles.status} ${placeDeleteMode ? styles.placeTableDelete : styles.placeTable}`}>
               <thead>
                 <tr>
-                  <th>
+                  {placeDeleteMode && (
+                    <th>
                       <img
-                        src={
-                          isAllCurrentPlaceItemsChecked
-                            ? "/icon/robot_chk.png"
-                            : "/icon/robot_none_chk.png"
-                        }
-                        alt="현재 페이지 장소 전체 선택"
-                        role="button"
-                        tabIndex={0}
+                        src={isAllDeleteChecked ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                        alt=""
                         style={{ cursor: "pointer" }}
-                        onClick={() => toggleAllCurrentPlaceItems(!isAllCurrentPlaceItemsChecked)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            toggleAllCurrentPlaceItems(!isAllCurrentPlaceItemsChecked);
-                          }
-                        }}
+                        onClick={() => toggleDeleteCheckAll(!isAllDeleteChecked)}
                       />
-                  </th>
+                    </th>
+                  )}
                   <th>로봇명</th>
                   <th>층별</th>
                   <th>장소명</th>
-                  <th>좌표(X, Y)</th>
+                  <th>좌표(X, Y, D)</th>
                 </tr>
               </thead>
 
               <tbody>
+                {currentPlaceItems.length === 0 && (
+                  <tr>
+                    <td colSpan={placeDeleteMode ? 5 : 4} className={styles.emptyState}>등록된 장소가 없습니다.</td>
+                  </tr>
+                )}
                 {currentPlaceItems.map((row) => {
-                  const checked = checkedPlaceIds.includes(row.id);
+                  const selected = selectedPlaceId === row.id;
+                  const deleteChecked = checkedPlaceIds.includes(row.id);
 
                   return (
                     <tr
                       key={row.id}
-                      className={checked ? styles.selectedRow : undefined}
+                      className={placeDeleteMode ? (deleteChecked ? styles.selectedRow : undefined) : (selected ? styles.selectedRow : undefined)}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => placeDeleteMode ? toggleDeleteCheck(row.id, !deleteChecked) : selectPlace(row.id)}
                     >
-                      <td>
-                        <img
-                          src={checked ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
-                          alt=""
-                          role="button"
-                          tabIndex={0}
-                          style={{ cursor: "pointer" }}
-                          onClick={() => togglePlaceChecked(row.id, !checked)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              togglePlaceChecked(row.id, !checked);
-                            }
-                          }}
-                        />
-                      </td>
+                      {placeDeleteMode && (
+                        <td>
+                          <img
+                            src={deleteChecked ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                            alt=""
+                          />
+                        </td>
+                      )}
                       <td>{row.robotNo}</td>
                       <td>{row.floor}</td>
                       <td>{row.placeName}</td>
                       <td>
                         X {typeof row.x === "number" ? row.x.toFixed(2) : "-"},
-                        Y {typeof row.y === "number" ? row.y.toFixed(2) : "-"}
+                        Y {typeof row.y === "number" ? row.y.toFixed(2) : "-"},
+                        D {typeof row.direction === "number" ? row.direction.toFixed(0) + "°" : "-"}
                       </td>
                     </tr>
                   );
@@ -1721,53 +1513,51 @@ const resetCurrentPage = () => {
             </table>
           </div>
 
-          {/* pagination(필요 시 Robot 탭과 동일 Pagination 컴포넌트 연결) */}
+          <div className={`${styles.bottomPosition} ${styles.placeBottomPosition}`}>
+            {placeDeleteMode ? (
+              <>
+                <div
+                  className={`${styles.placePrimaryBtn} ${checkedPlaceIds.length === 0 ? styles.btnDisabled : ""}`}
+                  onClick={() => { if (checkedPlaceIds.length > 0) setPlaceDeleteConfirmOpen(true); }}
+                >
+                  <img src="/icon/delete_icon.png" alt="" />
+                  <span>삭제 확인 ({checkedPlaceIds.length})</span>
+                </div>
+                <div className={styles.robotWorkBox}>
+                  <div className={styles.robotWorkCommonBtn} onClick={exitDeleteMode}>
+                    취소
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className={`${styles.placePrimaryBtn} ${!isPlaceCreateEnabled ? styles.btnDisabled : ""}`}
+                  aria-disabled={!isPlaceCreateEnabled}
+                  onClick={openPlaceCreate}
+                >
+                  <img src="/icon/check.png" alt="" />
+                  <span>장소 등록</span>
+                </div>
+                <div className={styles.robotWorkBox}>
+                  <div className={styles.robotWorkCommonBtn} onClick={enterDeleteMode}>
+                    <img src="/icon/delete_icon.png" alt="" />
+                    장소 삭제
+                  </div>
+                  <div
+                    className={`${styles.robotWorkCommonBtn} ${selectedPlaceId == null ? styles.btnDisabled : ""}`}
+                    onClick={openPlaceEdit}
+                    aria-disabled={selectedPlaceId == null}
+                  >
+                    <img src="/icon/edit_icon.png" alt="" />
+                    장소 수정
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           <div className={styles.placePagination}>
             <Pagination totalItems={placeTotalItems} currentPage={placePage} onPageChange={handlePlacePageChange} pageSize={PLACE_PAGE_SIZE} blockSize={5} />
-          </div>
-
-          <div className={`${styles.bottomPosition} ${styles.placeBottomPosition}`}>
-            <div
-              className={styles.placePrimaryBtn}
-              aria-disabled={!isPlaceCreateEnabled}
-              style={{
-                pointerEvents: isPlaceCreateEnabled ? "auto" : "none",
-                opacity: isPlaceCreateEnabled ? 1 : 0.4,
-              }}
-              onClick={openPlaceCreate}
-            >
-              <img src="/icon/check.png" alt="check" />
-              <span>장소 등록</span>
-            </div>
-
-            <div className={styles.robotWorkBox}>
-              <div
-                className={styles.robotWorkCommonBtn}
-                onClick={openPlaceDelete}
-                aria-disabled={!isPlaceDeleteEnabled}
-                style={{
-                  pointerEvents: isPlaceDeleteEnabled ? "auto" : "none",
-                  opacity: isPlaceDeleteEnabled ? 1 : 0.4,
-                }}
-              >
-                {/* 아이콘이 있으면 img로 교체 */}
-                <img src="/icon/delete_icon.png" alt="" />
-                장소 삭제
-              </div>
-
-              <div
-                className={styles.robotWorkCommonBtn}
-                onClick={openPlaceEdit}
-                aria-disabled={selectedPlaceId == null}
-                style={{
-                  pointerEvents: selectedPlaceId == null ? "none" : "auto",
-                  opacity: selectedPlaceId == null ? 0.4 : 1,
-                }}
-              >
-                <img src="/icon/edit_icon.png" alt="" />
-                장소 수정
-              </div>
-            </div>
           </div>
         </div>
         <PlaceCrudModal
@@ -1776,6 +1566,7 @@ const resetCurrentPage = () => {
           robots={robots}
           floors={FLOORS}
           initial={null}
+          existingPlaces={placeRows}
           onClose={() => setPlaceCreateOpen(false)}
           onSubmit={upsertPlace}
         />
@@ -1786,6 +1577,7 @@ const resetCurrentPage = () => {
           robots={robots}
           floors={FLOORS}
           initial={singleCheckedPlaceRow ? toPlaceRowData(singleCheckedPlaceRow) : null}
+          existingPlaces={placeRows}
           onClose={() => setPlaceEditOpen(false)}
           onSubmit={upsertPlace}
         />
@@ -1801,245 +1593,227 @@ const resetCurrentPage = () => {
           onConfirm={confirmDeletePlace}
         />
 
-        {/* RIGHT: 위치 맵 */}
+        {/* RIGHT: 장소 위치 */}
         <div className={styles.placeRight}>
           <div className={styles.robotPlaceBox}>
-            <h2>위치 맵</h2>
+            <h2>장소 위치</h2>
+            <span className={styles.placeHintInline}>해당 장소의 좌표(X, Y, D) 입력은 "장소 등록" 화면에서 작성하실 수 있습니다.</span>
           </div>
 
-          <div className={styles.placeMapCard}>
-            <PlaceMapView
-              selectedPlaceId={selectedPlaceId}
-              selectedPlace={singleCheckedPlaceRow}   // 이미 memo로 계산해둔 값
-              placeRows={placeRows}                   // 전체 장소 목록
-            />
-          </div>
-            <div className={styles.placeHint}>
-              • 해당 장소의 좌표(X, Y) 입력은 “장소 등록” 화면에서 작성하실 수 있습니다.
+          {selectedPlaceId == null ? (
+            <div className={styles.monitoringPlaceholder}>
+              <span>목록에서 장소를 선택하면 지도가 표시됩니다.</span>
             </div>
+          ) : (
+            <div className={styles.placeMapCard}>
+              <PlaceMapView
+                selectedPlaceId={selectedPlaceId}
+                selectedPlace={singleCheckedPlaceRow}
+                placeRows={placeRows}
+              />
+            </div>
+          )}
         </div>
       </div>
     )}
 
     {activeTab === "path" && (
       <div className={styles.pathWrap}>
-        <div className={styles.pathTopBar}>
-          <h2>경로 목록</h2>
+        {/* LEFT: 경로 목록 */}
+        <div className={styles.pathLeft}>
+          <div className={styles.pathTopBar}>
+            <h2>경로 목록</h2>
 
-          <div className={styles.pathFilters}>
-            {/* 로봇명 선택 */}
-            <div ref={pathRobotWrapperRef} className={styles.selecteWrapper}>
-              <div className={styles.selecte} onClick={() => setPathRobotOpen(v => !v)}>
-                <span>{selectedPathRobot ?? "로봇명 선택"}</span>
-                <img src={pathRobotOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-              </div>
+            <div className={styles.pathFilters}>
+              <FilterSelectBox
+                items={pathRobotOptions.map((no, i) => ({ id: i, label: no }))}
+                selectedLabel={selectedPathRobot}
+                placeholder="로봇명"
+                showTotal={pathRobotOptions.length > 0}
+                width={170}
+                onSelect={(item) => {
+                  setSelectedPathRobot(item?.label ?? null);
+                  resetPathSelection();
+                }}
+              />
 
-              {pathRobotOpen && (
-                <div className={styles.selectebox}>
-                  <div ref={pathRobotScrollRef} className={styles.selecteInner} role="listbox">
-                    <div
-                      className={!selectedPathRobot ? styles.active : ""}
-                      onClick={() => {
-                        setSelectedPathRobot(null);
-                        setPathRobotOpen(false);
-                        resetPathSelection();
-                      }}
-                    >
-                      Total
-                    </div>
-
-                    {pathRobotOptions.map((no) => (
-                      <div
-                        key={no}
-                        className={selectedPathRobot === no ? styles.active : ""}
-                        onClick={() => {
-                          setSelectedPathRobot(no);
-                          setPathRobotOpen(false);
-                          resetPathSelection();
-                        }}
-                      >
-                        {no}
-                      </div>
-                    ))}
-                  </div>
-                  {shouldShowPathRobotScroll && (
-                    <div ref={pathRobotTrackRef} className={styles.selecteScrollTrack}>
-                      <div ref={pathRobotThumbRef} className={styles.selecteScrollThumb} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* 작업유형 선택 */}
-            <div ref={pathWorkTypeWrapperRef} className={styles.selecteWrapper}>
-              <div className={styles.selecte} onClick={() => setPathWorkTypeOpen(v => !v)}>
-                <span>{selectedPathWorkType ?? "작업유형 선택"}</span>
-                <img src={pathWorkTypeOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
-              </div>
-
-              {pathWorkTypeOpen && (
-                <div className={styles.selectebox}>
-                  <div ref={pathWorkTypeScrollRef} className={styles.selecteInner} role="listbox">
-                    <div
-                      className={!selectedPathWorkType ? styles.active : ""}
-                      onClick={() => {
-                        setSelectedPathWorkType(null);
-                        setPathWorkTypeOpen(false);
-                        resetPathSelection();
-                      }}
-                    >
-                      Total
-                    </div>
-
-                    {pathWorkTypeOptions.map((t) => (
-                      <div
-                        key={t}
-                        className={selectedPathWorkType === t ? styles.active : ""}
-                        onClick={() => {
-                          setSelectedPathWorkType(t);
-                          setPathWorkTypeOpen(false);
-                          resetPathSelection();
-                        }}
-                      >
-                        {t}
-                      </div>
-                    ))}
-                  </div>
-                  {shouldShowPathWorkTypeScroll && (
-                    <div ref={pathWorkTypeTrackRef} className={styles.selecteScrollTrack}>
-                      <div ref={pathWorkTypeThumbRef} className={styles.selecteScrollThumb} />
-                    </div>
-                  )}
-                </div>
-              )}
+              <FilterSelectBox
+                items={pathWorkTypeOptions.map((t, i) => ({ id: i, label: t }))}
+                selectedLabel={selectedPathWorkType}
+                placeholder="작업유형"
+                width={130}
+                onSelect={(item) => {
+                  setSelectedPathWorkType(item?.label ?? null);
+                  resetPathSelection();
+                }}
+              />
             </div>
           </div>
-        </div>
 
-        {/* table */}
-        <div className={styles.pathListBox}>
-          <table className={`${styles.status} ${styles.pathTable}`}>
-            <thead>
-              <tr>
-                <th>
-                  <img
-                    src={isAllCurrentPathItemsChecked ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
-                    alt="현재 페이지 경로 전체 선택"
-                    role="button"
-                    tabIndex={0}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => toggleAllCurrentPathItems(!isAllCurrentPathItemsChecked)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        toggleAllCurrentPathItems(!isAllCurrentPathItemsChecked);
-                      }
-                    }}
-                  />
-                </th>
-                <th>로봇명</th>
-                <th>작업유형</th>
-                <th>경로명</th>
-                <th>경로순서</th>
-                <th>변경일시</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {currentPathItems.map((row) => {
-                const checked = checkedPathIds.includes(row.id);
-
-                return (
-                  <tr key={row.id} className={checked ? styles.selectedRow : undefined}>
-                    <td>
-                      <img
-                        src={checked ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
-                        alt=""
-                        role="button"
-                        tabIndex={0}
-                        style={{ cursor: "pointer" }}
-                        onClick={() => togglePathChecked(row.id, !checked)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            togglePathChecked(row.id, !checked);
-                          }
-                        }}
-                      />
-                    </td>
-                    <td>{row.robotNo}</td>
-                    <td>{row.workType}</td>
-                    <td>{row.pathName}</td>
-                    <td className={styles.pathOrderCell}>
-                      <div className={styles.pathOrderText}>{row.pathOrder}</div>
-                    </td>
-                    <td>{row.updatedAt}</td>
+          {/* table + 로딩 오버레이 */}
+          <div className={styles.pathListBoxWrap}>
+            {pathLoading && (
+              <div className={styles.pathLoadingOverlay}>
+                <div className={styles.pathSpinner} />
+              </div>
+            )}
+            <div className={styles.pathListBox}>
+              <table className={`${styles.status} ${pathDeleteMode ? styles.pathTableDelete : styles.pathTable}`}>
+                <thead>
+                  <tr>
+                    {pathDeleteMode && (
+                      <th>
+                        <img
+                          src={isAllCurrentPathItemsChecked ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                          alt="현재 페이지 경로 전체 선택"
+                          style={{ cursor: "pointer" }}
+                          onClick={() => toggleAllCurrentPathItems(!isAllCurrentPathItemsChecked)}
+                        />
+                      </th>
+                    )}
+                    <th>로봇명</th>
+                    <th>작업유형</th>
+                    <th>경로명</th>
+                    <th>경로순서</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
 
-        {/* pagination */}
-        <div className={styles.pathPagination}>
-          <Pagination
-            totalItems={pathTotalItems}
-            currentPage={pathPage}
-            onPageChange={handlePathPageChange}
-            pageSize={PATH_PAGE_SIZE}
-            blockSize={5}
-          />
-        </div>
+                <tbody>
+                  {currentPathItems.length === 0 && !pathLoading && (
+                    <tr>
+                      <td colSpan={pathDeleteMode ? 5 : 4}>
+                        <div className={styles.pathEmptyWrap}>
+                          <div className={styles.pathEmptyIcon}>!</div>
+                          <div className={styles.pathEmptyTitle}>등록된 경로가 없습니다.</div>
+                          <div className={styles.pathEmptyDesc}>경로 등록 버튼을 클릭하여 새 경로를 등록해 주세요.</div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {currentPathItems.map((row) => {
+                    const deleteChecked = checkedPathIds.includes(row.id);
+                    const isRowSelected = selectedPathId === row.id;
 
-        {/* bottom buttons */}
-        <div className={styles.pathBottomBar}>
-          <div
-            className={styles.pathPrimaryBtn}
-            aria-disabled={!isPathCreateEnabled}
-            style={{
-              pointerEvents: isPathCreateEnabled ? "auto" : "none",
-              opacity: isPathCreateEnabled ? 1 : 0.4,
-            }}
-            onClick={openPathCreate}
-          >
-            <img src="/icon/check.png" alt="check" />
-            <span>경로 등록</span>
-          </div>
-
-          <div className={styles.robotWorkBox}>
-            <div
-              className={styles.robotWorkCommonBtn}
-              onClick={openPathDelete}
-              aria-disabled={!isPathDeleteEnabled}
-              style={{
-                pointerEvents: isPathDeleteEnabled ? "auto" : "none",
-                opacity: isPathDeleteEnabled ? 1 : 0.4,
-              }}
-            >
-              <img src="/icon/delete_icon.png" alt="" />
-              경로 삭제
-            </div>
-
-            <div
-              className={styles.robotWorkCommonBtn}
-              onClick={openPathEdit}
-              aria-disabled={!isPathEditEnabled}
-              style={{
-                pointerEvents: isPathEditEnabled ? "auto" : "none",
-                opacity: isPathEditEnabled ? 1 : 0.4,
-              }}
-            >
-              <img src="/icon/edit_icon.png" alt="" />
-              경로 수정
+                    return (
+                      <tr
+                        key={row.id}
+                        className={pathDeleteMode ? (deleteChecked ? styles.selectedRow : undefined) : (isRowSelected ? styles.selectedRow : undefined)}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => pathDeleteMode ? togglePathChecked(row.id, !deleteChecked) : setSelectedPathId(isRowSelected ? null : row.id)}
+                      >
+                        {pathDeleteMode && (
+                          <td>
+                            <img
+                              src={deleteChecked ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                              alt=""
+                            />
+                          </td>
+                        )}
+                        <td>{row.robotNo}</td>
+                        <td>{row.workType}</td>
+                        <td>{row.pathName}</td>
+                        <td className={styles.pathOrderCell}>
+                          <div className={styles.pathOrderText} title={row.pathOrder}>{row.pathOrder}</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
+
+          {/* bottom buttons */}
+          <div className={styles.pathBottomBar}>
+            {pathDeleteMode ? (
+              <>
+                <div
+                  className={`${styles.pathPrimaryBtn} ${!isPathDeleteEnabled ? styles.btnDisabled : ""}`}
+                  onClick={() => { if (isPathDeleteEnabled) openPathDelete(); }}
+                >
+                  <img src="/icon/delete_icon.png" alt="" />
+                  <span>삭제 확인 ({pathCheckedCount})</span>
+                </div>
+                <div className={styles.robotWorkBox}>
+                  <div
+                    className={styles.robotWorkCommonBtn}
+                    onClick={() => { setPathDeleteMode(false); setCheckedPathIds([]); }}
+                  >
+                    <img src="/icon/close_btn.png" alt="" />
+                    취소
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className={styles.pathPrimaryBtn}
+                  onClick={openPathCreate}
+                >
+                  <img src="/icon/check.png" alt="check" />
+                  <span>경로 등록</span>
+                </div>
+
+                <div className={styles.robotWorkBox}>
+                  <div
+                    className={styles.robotWorkCommonBtn}
+                    onClick={() => { setPathDeleteMode(true); setCheckedPathIds([]); setSelectedPathId(null); }}
+                  >
+                    <img src="/icon/delete_icon.png" alt="" />
+                    경로 삭제
+                  </div>
+
+                  <div
+                    className={`${styles.robotWorkCommonBtn} ${!isPathEditEnabled ? styles.btnDisabled : ""}`}
+                    onClick={openPathEdit}
+                    aria-disabled={!isPathEditEnabled}
+                  >
+                    <img src="/icon/edit_icon.png" alt="" />
+                    경로 수정
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          <div className={styles.pathPagination}>
+            <Pagination
+              totalItems={pathTotalItems}
+              currentPage={pathPage}
+              onPageChange={handlePathPageChange}
+              pageSize={PATH_PAGE_SIZE}
+              blockSize={5}
+            />
+          </div>
+        </div>
+
+        {/* RIGHT: 경로 미리보기 */}
+        <div className={styles.pathRight}>
+          <div className={styles.robotPlaceBox}>
+            <h2>경로 미리보기</h2>
+            <span className={styles.pathHintInline}>목록에서 경로를 클릭하면 경로가 지도에 표시됩니다.</span>
+          </div>
+
+          {selectedPathRow == null ? (
+            <div className={styles.monitoringPlaceholder}>
+              <span>목록에서 경로를 선택하면 경로가 표시됩니다.</span>
+            </div>
+          ) : (
+            <div className={styles.pathMapCard}>
+              <PathMapView
+                selectedPath={selectedPathRow}
+                placeRows={placeRows}
+              />
+            </div>
+          )}
         </div>
       </div>
     )}
+
     <PathCrudModal
       isOpen={pathCreateOpen}
       mode="create"
       placeRows={placeRows}
+      existingPaths={pathRows}
       initial={null}
       onClose={() => setPathCreateOpen(false)}
       onSubmit={savePathToDB}
@@ -2051,6 +1825,7 @@ const resetCurrentPage = () => {
       isOpen={pathEditOpen}
       mode="edit"
       placeRows={placeRows}
+      existingPaths={pathRows}
       robots={robots}
       floors={floors}
       initial={singleCheckedPathRow}
@@ -2067,6 +1842,14 @@ const resetCurrentPage = () => {
       }
       onCancel={() => setPathDeleteConfirmOpen(false)}
       onConfirm={confirmDeletePath}
+    />
+
+    {/* 경로 관리 알림 모달 */}
+    <PathAlertsModal
+      isOpen={!!pathAlertMessage}
+      message={pathAlertMessage ?? ""}
+      onCancel={() => setPathAlertMessage(null)}
+      onConfirm={() => setPathAlertMessage(null)}
     />
     </>
   );

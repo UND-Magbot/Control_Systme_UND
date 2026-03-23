@@ -3,7 +3,8 @@ export function buildSingleDonutGradient(
   color: string,
   background = "#5d6174"
 ) {
-  const deg = (percent / 100) * 360;
+  const clamped = Math.max(0, Math.min(100, percent));
+  const deg = (clamped / 100) * 360;
 
   return `
     conic-gradient(

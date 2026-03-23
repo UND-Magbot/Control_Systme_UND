@@ -1,0 +1,132 @@
+.selectWrapper {
+  position: relative;
+  width: 373px;
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+}
+
+.selectWrapperCompact {
+  width: 72px;
+  flex: 0 0 72px;
+}
+
+.select {
+  width: 100%;
+  height: 34px;
+  background: var(--surface-5);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  transition: border-color 0.15s ease;
+}
+
+.selectCompact {
+  padding: 0 7px;
+  font-size: 12px;
+}
+
+.select img {
+  width: 14px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.selectCompact img {
+  width: 10px;
+  height: auto;
+}
+
+.selectError {
+  border-color: var(--color-error) !important;
+}
+
+.selectDisabled {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.dropdown {
+  width: 100%;
+  height: auto;
+  padding: 8px 6px;
+  background: var(--surface-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  position: absolute;
+  top: calc(100% + 6px);
+  cursor: pointer;
+  z-index: 20;
+  overflow: hidden;
+}
+
+.dropdownCompact {
+  width: 72px;
+}
+
+.scrollArea {
+  max-height: 175px;
+  overflow-y: scroll;
+  padding-right: 3px;
+  box-sizing: border-box;
+  scrollbar-width: none;
+}
+
+.scrollArea::-webkit-scrollbar {
+  display: none;
+}
+
+.option {
+  width: 100%;
+  line-height: 20px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  transition: background 0.15s ease;
+}
+
+.option:hover {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+.optionActive {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+.scrollTrack {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  right: 3px;
+  width: 2px;
+  border-radius: 50px;
+  background: transparent;
+}
+
+.scrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  border-radius: 50px;
+  background: #EAEAED;
+}
+
+.emptyMessage {
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}

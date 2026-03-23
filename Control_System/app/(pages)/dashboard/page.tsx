@@ -8,17 +8,20 @@ import RobotInfo from "@/app/lib/robotInfo";
 import Floors from '@/app/lib/floorInfo';
 import VideoStatus from '@/app/lib/videoStatus';
 import cameraView from "@/app/lib/cameraView";
+import VideoData from "@/app/lib/videoData";
 import Link from "next/link";
+import SectionHeader from "./components/SectionHeader";
 
 
 export default async function DashboardPage() {
 
 
-  const [robots, cameras, floors, videoStatus] = await Promise.all([
+  const [robots, cameras, floors, videoStatus, videoItems] = await Promise.all([
     RobotInfo(),
     cameraView(),
     Floors(),
     VideoStatus(),
+    VideoData(),
   ]);
   
    return (
@@ -26,7 +29,7 @@ export default async function DashboardPage() {
 
          {/* Robot Real-time Camera */}
          <div className={styles["top-common-div"]}>
-            <CameraSection cameras={cameras} robots={robots} video={videoStatus} />
+            <CameraSection cameras={cameras} robots={robots} video={videoStatus} videoItems={videoItems} />
          </div>
 
          {/* Robot Location */}
@@ -37,30 +40,22 @@ export default async function DashboardPage() {
 
          {/* Robot Status */}
          <div className={`${styles["bottom-common-div"]}`}>
-          <div className={styles["top-div"]}>
-            <div className={styles["title-div"]}>
-                 <div>
-                     <img src="/icon/robot_status_w.png" alt="robot_status" />
-                 </div>
-                 <h2>로봇 상태</h2>
-               </div>
-               <Link href="/robots" className={styles.plusBtn}>+</Link>
-           </div>
-             <RobotStatusList robotRows={robots} />
+          <SectionHeader
+            icon="/icon/robot_status_w.png"
+            title="로봇 상태"
+            rightSlot={<Link href="/robots" className={styles.moreLink}>더보기 ›</Link>}
+          />
+          <RobotStatusList robotRows={robots} />
          </div>
 
 
          {/* Notice & Alert */}
          <div className={`${styles["bottom-common-div"]} ${styles["notice"]}`}>
-          <div className={styles["top-div"]}>
-            <div className={styles["title-div"]}>
-                 <div>
-                   <img src="/icon/notice_w.png" alt="notice&Alert" />
-                 </div>
-                 <h2>알림 & 공지사항</h2>
-               </div>
-               <Link href="#" className={styles.plusBtn}>+</Link>
-           </div>
+          <SectionHeader
+            icon="/icon/notice_w.png"
+            title="공지사항"
+            rightSlot={<Link href="/alerts?tab=notice" className={styles.moreLink}>더보기 ›</Link>}
+          />
           <NoticeList />
        </div>
      </div>

@@ -12,6 +12,7 @@ type FloorSelectBoxProps = {
   selectedFloor: Floor | null;
   onSelect: (index: number, floors: Floor) => void;
   className?: string;
+  selectStyles?: Record<string, string>;
 };
 
 export default function FloorSelectBox({
@@ -19,8 +20,10 @@ export default function FloorSelectBox({
   activeIndex,
   selectedFloor,
   onSelect,
-  className
+  className,
+  selectStyles
 }: FloorSelectBoxProps) {
+  const s = selectStyles ?? styles;
 
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -47,8 +50,10 @@ export default function FloorSelectBox({
   }, []);
 
 
+  const needsScroll = floors.length > 3;
+
   useCustomScrollbar({
-    enabled: isOpen,
+    enabled: isOpen && needsScroll,
     scrollRef,
     trackRef,
     thumbRef,
@@ -58,11 +63,41 @@ export default function FloorSelectBox({
 
   
 
+  const selectRef = useRef<HTMLDivElement>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+
+  const calcPosition = () => {
+    if (!selectRef.current) return;
+    const rect = selectRef.current.getBoundingClientRect();
+    setDropdownStyle({
+      position: "fixed",
+      top: rect.bottom + 6,
+      left: rect.left,
+      width: rect.width,
+    });
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    window.addEventListener("scroll", calcPosition, true);
+    window.addEventListener("resize", calcPosition);
+    return () => {
+      window.removeEventListener("scroll", calcPosition, true);
+      window.removeEventListener("resize", calcPosition);
+    };
+  }, [isOpen]);
+
+  const handleToggle = () => {
+    if (!isOpen) calcPosition();
+    setIsOpen(!isOpen);
+  };
+
   return (
 
-    <div ref={wrapperRef} className={`${styles.seletWrapper} ${className ?? ""}`}>
-      
-      <div className={styles.selete} onClick={() => setIsOpen(!isOpen)}>
+    <div ref={wrapperRef} className={`${s.seletWrapper} ${className ?? ""}`}>
+
+      <div ref={selectRef} className={s.selete} onClick={handleToggle}>
         <span>{ selectedFloor?.label ?? "층별 선택" }</span>
         {isOpen ? (
           <img src="/icon/arrow_up.png" alt="arrow_up" />
@@ -72,19 +107,21 @@ export default function FloorSelectBox({
       </div>
 
       {isOpen && (
-        <div className={styles.seletbox}>
-          <div ref={scrollRef} className={styles.inner} role="listbox">
+        <div className={s.seletbox} style={dropdownStyle}>
+          <div ref={scrollRef} className={s.inner} style={{ maxHeight: needsScroll ? 112 : "none", overflowY: needsScroll ? "scroll" : "visible" }} role="listbox">
           {floors.map((item, idx) => (
-            <div key={item.id} className={`${styles.floorLabel} ${ activeIndex === idx ? styles["active"] : "" }`.trim()}
+            <div key={item.id} className={`${s.floorLabel} ${ activeIndex === idx ? s["active"] : "" }`.trim()}
                  onClick={() => { onSelect(idx, item); setIsOpen(false); }}>
                  {item.label}
             </div>
           ))}
           </div>
 
-          <div ref={trackRef} className={styles.scrollTrack}>
-            <div ref={thumbRef} className={styles.scrollThumb} />
-          </div>
+          {needsScroll && (
+            <div ref={trackRef} className={s.scrollTrack}>
+              <div ref={thumbRef} className={s.scrollThumb} />
+            </div>
+          )}
         </div>
       )}
 

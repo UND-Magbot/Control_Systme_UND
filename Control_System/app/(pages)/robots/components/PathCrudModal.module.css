@@ -9,80 +9,86 @@
 }
 
 .modal {
-  width: 1100px;
-  height: 700px;
-  
+  width: 880px;
+  height: 560px;
+
   background: #292D43;
-  
-  border-radius: 17px;
+
+  border-radius: 14px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 
-  padding: 22px 18px;
+  padding: 18px 16px;
+
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
-  height: 50px;
-
   display: flex;
   align-items: center;
   justify-content: space-between;
-
-  margin-bottom: 18px;
+  flex-shrink: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .headerLeft {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 .headerIcon {
-  width: 34px;
-  height: 34px;
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .headerTitle {
-  font-size: 26px;
-  font-weight: 700;
-  color: #ffffff;
-  letter-spacing: -0.2px;
+  margin: 0;
+  font-weight: 500;
+  font-size: var(--font-size-xl);
+  color: var(--text-primary);
 }
 
 .closeBtn {
-  width: 44px;
-  height: 44px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
 }
 
-.closeBtn img {
-  width: 18px;
-  height: 18px;
+.closeBtn:hover {
+  opacity: 0.7;
 }
 
 .body {
-  height: calc(100% - 82px);
+  flex: 1;
+  min-height: 0;
+  margin-top: 10px;
 
   display: flex;
-  gap: 18px;
+  gap: 14px;
 }
 
 .left,
 .right {
   background: #303652;
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid rgba(255,255,255,0.08);
-  padding: 18px;
+  padding: 14px;
 }
 
 .left {
-  width: 520px;
+  width: 430px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .right {
@@ -97,20 +103,20 @@
 }
 
 .sectionTitle {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
   color: #7fd0ff;
 
   display: flex;
   align-items: center;
   justify-content: space-between;
-  
-  gap: 8px;
-  
-  margin-bottom: 14px;
-  
+
+  gap: 6px;
+
+  margin-bottom: 10px;
+
   width: 100%;
-  height: 33px;
+  height: 28px;
 }
 
 .sectionTitleRight {
@@ -162,8 +168,8 @@
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  font-size: 13px;
-  height: 33px;
+  font-size: 12px;
+  height: 30px;
   color: #fff;
 }
 
@@ -177,14 +183,14 @@
   width: 100%;
   background: #33384c;
   border: 1px solid rgba(255,255,255,0.18);
-  padding: 8px 14px;
-  border-radius: 8px;
+  padding: 6px 12px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  font-size: 13px;
-  height: 38px;
+  font-size: 12px;
+  height: 32px;
   color: #cfd6e6;
 }
 
@@ -209,14 +215,16 @@
 .selecteboxWide {
   width: 100%;
   height: auto;
-  padding: 10px;
+  padding: 6px;
   background: #202334;
-  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
   position: absolute;
-  top: 48px;
+  top: 36px;
   cursor: pointer;
   z-index: 50;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .selecteInner {
@@ -230,21 +238,31 @@
   display: none;
 }
 
-.selecteInner div,
+.selecteInner div {
+  width: 100%;
+  height: 30px;
+  line-height: 30px;
+  padding: 0 8px;
+  color: #fff;
+  font-size: 12px;
+  border-radius: 5px;
+}
+
 .selecteboxWide div {
   width: 100%;
-  height: 35px;
-  line-height: 35px;
+  height: 28px;
+  line-height: 28px;
   padding: 0 10px;
-  color: #fff;
-  font-size: 13px;
-  border-radius: 6px;
+  color: #cfd6e6;
+  font-size: 12px;
+  border-radius: 5px;
+  transition: background 0.12s ease;
 }
 
 .selecteInner div:hover,
 .selecteboxWide div:hover {
-  background: #d2d3d7;
-  color: #16192c;
+  background: rgba(14, 133, 183, 0.25);
+  color: #fff;
 }
 
 .selecteScrollTrack {
@@ -268,8 +286,8 @@
 }
 
 .active {
-  background: #d2d3d7;
-  color: #16192c !important;
+  background: rgba(14, 133, 183, 0.3) !important;
+  color: #fff !important;
 }
 
 /* ====== left ====== */
@@ -284,25 +302,31 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .placeHead {
-  height: 44px;
+  height: 40px;
   background: #202334;
   display: grid;
-  grid-template-columns: 54px 1fr 90px 1.2fr;
+  grid-template-columns: 42px 1fr 70px 1.2fr;
   align-items: center;
-  font-size: 13px;
+  text-align: center;
+  font-size: 11px;
   font-weight: 700;
   color: #9dadcb;
 }
 
 .placeBodyWrap {
   position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .placeBody {
-  max-height: 440px;
+  height: 100%;
   overflow-y: scroll;
   scrollbar-width: none;
 }
@@ -331,12 +355,17 @@
 }
 
 .placeRow {
-  height: 54px;
+  height: 40px;
   display: grid;
-  grid-template-columns: 54px 1fr 90px 1.2fr;
+  grid-template-columns: 42px 1fr 70px 1.2fr;
   align-items: center;
   color: #cfd6e6;
   cursor: pointer;
+  transition: background 0.15s;
+}
+
+.placeRow:hover {
+  background: rgba(42, 168, 255, 0.08);
 }
 
 .placeRow:nth-child(2n) {
@@ -354,8 +383,8 @@
 }
 
 .dot {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
   border: 2px solid rgba(255,255,255,0.35);
 }
@@ -366,7 +395,8 @@
 }
 
 .placeCol {
-  font-size: 14px;
+  font-size: 12px;
+  text-align: center;
 }
 
 /* empty */
@@ -381,57 +411,57 @@
 }
 
 .emptyIcon {
-  width: 76px;
-  height: 76px;
+  width: 48px;
+  height: 48px;
   border-radius: 999px;
-  border: 4px solid rgba(255,255,255,0.25);
+  border: 3px solid rgba(255,255,255,0.2);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 34px;
+  font-size: 22px;
   font-weight: 800;
   opacity: 0.8;
 }
 
 .emptyTitle {
-  font-size: 16px;
-  font-weight: 800;
+  font-size: 13px;
+  font-weight: 700;
   opacity: 0.9;
 }
 
 .emptyDesc {
-  font-size: 12px;
+  font-size: 11px;
   opacity: 0.75;
 }
 
 /* ====== right ====== */
 .formRow {
   display: grid;
-  grid-template-columns: 90px 1fr;
+  grid-template-columns: 70px 1fr;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .mb8 {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .formLabel {
   color: #cfd6e6;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   opacity: 0.9;
 }
 
 .textInput {
-  height: 38px;
-  border-radius: 8px;
+  height: 32px;
+  border-radius: 6px;
   border: 1px solid rgba(255,255,255,0.18);
   background: #2d3147;
-  padding: 0 14px;
+  padding: 0 12px;
   color: #fff;
   outline: none;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .textInput::placeholder {
@@ -439,7 +469,7 @@
 }
 
 .divider {
-  margin: 14px 0;
+  margin: 10px 0;
   height: 1px;
   background: rgba(255,255,255,0.10);
 }
@@ -453,7 +483,7 @@
 .orderList {
   height: 100%;
   overflow-y: scroll;
-  padding: 0 12px 0 0;
+  padding: 0 18px 0 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -463,11 +493,12 @@
 .orderWay {
   display: flex;
   justify-content: center;
-  margin: 6px 0;
+  margin: 3px 0;
 }
 
 .orderWay img {
-  height: 10px;
+  height: 12px;
+  filter: brightness(0) saturate(100%) invert(76%) sepia(30%) saturate(600%) hue-rotate(170deg) brightness(105%);
 }
 
 .orderList::-webkit-scrollbar {
@@ -496,39 +527,40 @@
 
 .orderCard {
   background: #4a516e;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.10);
-  padding: 10px 14px 10px;
+  padding: 8px 10px;
 }
 
 .orderTop {
   display: grid;
-  grid-template-columns: 34px 1fr 34px;
+  grid-template-columns: 24px 1fr 20px;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .orderIndex {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.10);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #dbe3f5;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .orderTitle {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: #ffffff;
 }
 
 .orderDelete {
-  width: 30px;
-  height: 30px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -538,8 +570,8 @@
 }
 
 .orderDelete img {
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
 }
 
 .orderBottom {
@@ -551,9 +583,9 @@
 .orderMeta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: rgba(255, 255, 255, 0.85);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 400;
 }
 
@@ -568,8 +600,8 @@
 }
 
 .moveBtn {
-  width: 34px;
-  height: 34px;
+  width: 22px;
+  height: 22px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -579,8 +611,8 @@
 }
 
 .moveBtn img {
-  width: 18px;
-  height: 18px;
+  width: 12px;
+  height: 12px;
 }
 
 .moveDisabled {
@@ -595,12 +627,13 @@
 }
 
 .insertConfrimBtn {
-  width: 154px;
-  height: 44px;
+  width: 110px;
+  height: 34px;
 
-  border-radius: 10px;
+  border-radius: 7px;
 
   color: #ffffff;
+  font-size: 13px;
 
   display: flex;
   align-items: center;
@@ -608,16 +641,16 @@
 }
 
 .insertConfrimBtn img {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
 
-  margin-right: 29px;
+  margin-right: 20px;
 }
 
 .btnBgRed {
   border: 1px solid #BF0E14;
   background: #941621;
-  margin-right: 20px;
+  margin-right: 14px;
 }
 
 .btnBgBlue {
@@ -633,11 +666,169 @@
 }
 
 .helperText {
-  font-size: 12px;
+  font-size: 11px;
   color: rgba(255,255,255,0.55);
 }
 
 .helperTextOk {
-  font-size: 12px;
+  font-size: 11px;
   color: rgba(146, 208, 80, 0.85);
+}
+
+/* ─── 경로 미리보기 지도 (모달 내) ─── */
+.pathPreviewMap {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 180px;
+  border-radius: 10px;
+  background: var(--surface-2, #1e2236);
+  overflow: hidden;
+  position: relative;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+/* ─── 저장 버튼 비활성 상태 ─── */
+.btnDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ─── 저장 중 스피너 ─── */
+.btnSpinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: 29px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── 장소 선택 카운트 배지 ─── */
+.placeCountBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #2aa8ff;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ─── 경로 순서 카드 추가 애니메이션 ─── */
+@keyframes cardHighlight {
+  0% { background: #5d6485; }
+  100% { background: #4a516e; }
+}
+
+.orderCardNew {
+  animation: cardHighlight 0.6s ease-out;
+}
+
+/* ─── 경로 순서 빈 상태 안내 ─── */
+.orderEmptyWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.orderEmptyIcon {
+  font-size: 28px;
+  opacity: 0.5;
+}
+
+.orderEmptyText {
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ─── 우측 패널 비활성 오버레이 ─── */
+.rightDisabledOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 16px;
+  z-index: 10;
+}
+
+.rightDisabledText {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+  padding: 16px 24px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+}
+
+/* ─── 글자 수 카운터 ─── */
+.charCounter {
+  font-size: 11px;
+  color: rgba(207, 214, 230, 0.5);
+  text-align: right;
+  margin-top: 4px;
+  grid-column: 2;
+}
+
+/* ─── 장소명 검색 입력 ─── */
+.searchInput {
+  width: 100%;
+  height: 30px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: #2d3147;
+  padding: 0 10px;
+  color: #fff;
+  outline: none;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.searchInput::placeholder {
+  color: rgba(207, 214, 230, 0.4);
+}
+
+/* ─── 전체삭제 버튼 ─── */
+.clearAllBtn {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.clearAllBtn:hover {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.1);
+}
+
+/* ─── 포커스 스타일 ─── */
+.placeRow:focus-visible,
+.insertConfrimBtn:focus-visible,
+.moveBtn:focus-visible,
+.resetBtn:focus-visible,
+.clearAllBtn:focus-visible {
+  outline: 2px solid #7fd0ff;
+  outline-offset: -2px;
 }

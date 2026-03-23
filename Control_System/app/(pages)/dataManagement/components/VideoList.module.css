@@ -1,193 +1,128 @@
 
 .videoListTab {
-    position: absolute;
-    top: 12px;
-    right: 0px;
     display: flex;
-    gap: 15px;
-    z-index: 0;
+    gap: 6px;
 }
 
 .videoListTab div {
-    background: #1f2232;
-    border-radius: 20px 20px 0 0;
+    background: var(--surface-tab-inactive);
+    border-radius: 8px 8px 0 0;
 
-    width: 156px;
-    height: 64px;
+    width: 120px;
+    height: var(--tab-height);
 
-    font-size: 18px;
+    font-size: var(--font-size-md);
     font-weight: 600;
-    
-    color: #656f87;
+
+    color: var(--text-muted);
     cursor: pointer;
 
     display: flex;
     align-items: center;
     justify-content: center;
+
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.videoListTab div:hover {
+    color: var(--text-tertiary);
 }
 
 .videoListTab div.active {
-    background: #282d43;
-    color: #9cacca;
+    background: var(--surface-3);
+    color: var(--text-primary);
 }
 
-.videoList,
-.DT {
-  background: #282d43;
-  border-radius: 10px;
+.videoList {
+  background: var(--surface-3);
+  border-radius: 10px 0 10px 10px;
   width: 100%;
-  height: 730px;
+  flex: 1;
+  min-height: var(--page-body-min-height);
   padding: 20px;
-  z-index: 1;
-  position: absolute;
-  top: 73px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.DT {
+  background: var(--surface-3);
+  border-radius: 10px 0 10px 10px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 필터바 아래 콘텐츠 영역 */
+.contentArea {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .videoListTopPosition {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
+    margin-bottom: 14px;
     height: 40px;
+    flex-shrink: 0;
 }
 
 .videoListTopPosition h2 {
     font-weight: 500;
     margin: 0 ;
-    color: #92d4f4;
+    color: var(--text-accent);
 }
 
 .videoSearch {
     display: flex;
     gap: 25px;
-    color: #edf3fd;
+    color: var(--text-secondary);
 }
 
 .videoSelect,
 .dtSearch {
     display: flex;
     gap: 10px;
-    position: relative;
-}
-
-.videoSelect .selete,
-.dtSearch .selete {
-    width: 140px;
-    background: #34384d;
-    border: 2px solid #4c586e;
-    color: #dedee0;
-    padding: 5px 14px;
-    border-radius: 5px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-    font-size: 13px;
-    height: 33px;
-}
-
-.videoSelect .selete img,
-.dtSearch .selete img {
-    height: 40%;
-}
-
-.seletboxCommon {
-    width: 140px;
-    padding: 10px;
-    background: #202334;
-    border-radius: 5px;
-    cursor: pointer;
-    z-index: 30;
-    font-size: 13px;
-}
-
-.videoSeletbox,
-.robotTypeSeletbox {
-    position: absolute;
-    top: 45px;
-    height: auto;
-}
-
-.robotSeletbox {
-    position: absolute;
-    top: 45px;
-    height: 200px;
-    overflow-y: auto;
-}
-
-.robotSeletbox::-webkit-scrollbar {
-  width: 4px;
-}
-.robotSeletbox::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 3px;
-}
-.robotSeletbox::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.videoSeletbox div,
-.robotSeletbox div,
-.robotTypeSeletbox div {
-    width: 100%;
-    height: 35px;
-    line-height: 35px;
-    padding: 0 10px;
-    font-size: 14px;
-    color: #dedee0;
-}
-
-.videoSeletbox div:hover,
-.robotSeletbox div:hover,
-.robotTypeSeletbox div:hover {
-    background: #d2d3d7;
-    border-radius: 4px;
-    width: 100%;
-    height: 35px;
-    padding: 0 10px;
-    line-height: 35px;
-    color: #16192c;
 }
 
 .videoPeriod {
     display: flex;
     width: 280px;
     line-height: 30px;
-    font-size: 14px;
-    color: #dedee0;
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
 }
 
-.videoPeriod div {
-    width: calc(100% / 4);
+.periodItem {
+    flex: 1;
     text-align: center;
     height: 33px;
     cursor: pointer;
+    border: 1px solid var(--border-default);
+    border-right: none;
+    transition: background 0.15s ease;
 }
 
-.videoPeriod .PeriodItemL {
+.periodItem:first-child {
     border-radius: 6px 0 0 6px;
-    border: 2px solid #4c586e;
 }
 
-.videoPeriod .PeriodItemLM {
-    border-top: 2px solid #4c586e;
-    border-right: 2px solid #4c586e;
-    border-bottom: 2px solid #4c586e;
-}
-
-.videoPeriod .PeriodItemMR {
-    border-top: 2px solid #4c586e;
-    border-bottom: 2px solid #4c586e;
-}
-
-.videoPeriod .PeriodItemR {
+.periodItem:last-child {
     border-radius: 0 6px 6px 0;
-    border: 2px solid #4c586e;
+    border-right: 1px solid var(--border-default);
 }
 
-.videoPeriod div:hover,
-.videoPeriod div.active {
-    background: #204766;
+.periodItem:hover,
+.periodItem.active {
+    background: var(--color-info-selected);
 }
 
 .videoDate {
@@ -199,8 +134,8 @@
 .startDate,
 .endDate {
     width: 130px;
-    background: #494c5f;
-    border: 1px solid #8a96ac;
+    background: var(--surface-input);
+    border: 1px solid var(--border-default);
     padding: 5px 14px;
     border-radius: 5px;
     display: flex;
@@ -219,283 +154,345 @@
 .videoViewContainer {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
-    margin-top: 10px;
+    grid-template-rows: 1fr 1fr;
+    gap: 14px;
+    height: 100%;
 }
 
 .videoViewItem {
     width: 100%;
-    background: #3b425f;
-    padding: 11px;
+    background: var(--surface-5);
+    padding: 10px;
     border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .videoViewBox {
-    border-radius: 20px;
+    border-radius: 10px;
     position: relative;
     cursor: pointer;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .videoView {
     width: 100%;
-    aspect-ratio: 16 / 9;
+    height: 100%;
     border-radius: 10px;
     overflow: hidden;
 }
 
 .videoView img {
     width: 100%;
+    height: 100%;
     object-fit: cover;
 }
 
 .videoViewIcon {
     position: absolute;
-    top: 40%;
+    top: 50%;
     left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .videoViewIcon img {
-    width: 20%;
+    width: 32px;
+    height: 32px;
+    opacity: 0.8;
+    transition: opacity 0.15s ease;
 }
 
-.videoViewText {
+.videoViewBox:hover .videoViewIcon img {
+    opacity: 1;
+}
+
+/* ─── 카드 메타 영역 ─── */
+.videoMeta {
+    flex-shrink: 0;
+    padding-top: 8px;
     display: flex;
-    justify-content: space-between;
-    margin-top: 15px;
-    font-size: 11px;
-    height: 25px;
+    flex-direction: column;
+    gap: 4px;
 }
 
-.videoViewTopText {
+/* 1행: 로봇명·카메라명 + 다운로드 */
+.metaRow1 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 5px;
-    width: 55%;
+}
+
+.metaPrimary {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
 }
 
 .videoExport {
-    width: 100px;
-    line-height: 30px;
+    height: 22px;
+    padding: 0 10px;
     border-radius: 4px;
-    background: #656e86;
-    text-align: center;
-    font-size: 12px;
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
     cursor: pointer;
-    display: flex;
-    justify-content: center;
+    display: inline-flex;
     align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+}
+
+.videoExport:hover {
+    background: var(--color-info-bg);
+    border-color: transparent;
+    color: var(--text-primary);
 }
 
 .videoExport img {
-    margin-right: 5px;
-    width: 12px;
+    width: 10px;
+    height: 10px;
 }
 
-.videoViewTopText .nameBox {
-    text-align: center;
-    border: 1px solid #808395;
-    color: #ececed;
-}
-
-.videoViewTopText .RobotCamNameBox {
-    width: 70px;
-    border-radius: 6px;
-    padding: 3px;
-}
-
-.videoViewTopText .videoNameBox {
-    width: 50px;
-    border-radius: 17px;
+/* 2행: 녹화타입 · 날짜 · 재생시간 */
+.metaRow2 {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 3px 9px;
+    gap: 5px;
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+}
+
+.metaType {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .cameratypeIcon {
-    width: 10px;
-    height: 10px;
-    background: #fff;
-    border-radius: 50px;
+    width: 6px;
+    height: 6px;
+    background: var(--color-success);
+    border-radius: 50%;
+    flex-shrink: 0;
 }
 
-.videoViewBottomText {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 15px;
-    font-size: 10px;
+.metaDot {
+    color: var(--text-muted);
+    opacity: 0.4;
 }
 
-.videoTopTextColor {
-    color: #ececed;
-}
-
-.videoTextColor {
-    color: #93cbf5;
-    margin-bottom: 2px;
+.metaAccent {
+    color: var(--text-accent);
 }
 
 .pagenationPosition {
-    position: absolute;
-    left: 50%;
-    bottom: 12px;
+    display: flex;
+    justify-content: center;
+    padding-top: 10px;
+    flex-shrink: 0;
 }
 
 /* donut */
-.donutContainerFlex{
+.donutContainerFlex {
     display: flex;
-    gap: 2%;
-}
-
-.totalDonutCount {
-    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
 }
 
 .dtDonutLeftBox {
-    width: 33%;
+    width: 42%;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 3%;
-    position: relative;
-}
-
-.totalDonutCount {
-    display: flex;
-    width: 170px;
-    border-radius: 50px;
-    border: 1px solid #b6b9c8;
-    padding: 6px 10px;
-    align-items: center;
-    justify-content: space-around;
-    color: #dcd9de;
-    position: absolute;
-    top: 15px;
-    left: 0;
-}
-
-.totalDonutCount .totalCount {
-    color: #b7c1ce;
-}
-
-.totalCount span {
-    color: #928b8b;
+    gap: 12px;
 }
 
 .leftChart {
-    margin-top: 25px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 
+/* ── 범례 영역 ── */
 .robotTypeTotal {
-    width: 75%;
+    width: 80%;
     display: flex;
-    justify-content: center;
     flex-direction: column;
-    gap: 20px;
-    align-items: stretch;
+    gap: 0;
+}
+
+.legendHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 2px;
+}
+
+.legendTitle {
+    font-size: clamp(11px, 0.85vw, 14px);
+    font-weight: 600;
+    color: #b6b9c8;
+    letter-spacing: 0.5px;
+}
+
+.legendCount {
+    font-size: clamp(14px, 1.2vw, 20px);
+    font-weight: 700;
+    color: #e5e7eb;
+    font-family: 'Gmarket Sans';
+}
+
+.legendCount span {
+    font-size: clamp(9px, 0.7vw, 12px);
+    font-weight: 500;
+    color: #928b8b;
+    margin-left: 4px;
 }
 
 .robotTypeOne {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: clamp(4px, 0.35vw, 8px) 4px;
+}
+
+.robotTypeInactive {
+    opacity: 0.45;
+}
+
+.colorDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-right: 10px;
 }
 
 .robotTypeName {
     display: flex;
+    align-items: center;
 }
 
 .robotTypeOne img {
-    width: 35px;
-    margin-right: 15px;
+    width: 24px;
+    margin-right: 8px;
 }
 
 .robotTypeIconBox {
-  width: 35px;
-  height: 35px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background-color: #3f4256;
-  display: flex;            
+  background-color: var(--surface-button);
+  display: flex;
   justify-content: center;
   align-items: center;
-  margin-right: 15px;
+  margin-right: 8px;
 }
 
 .robotTypeIconBox img {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   margin: 0;
   object-fit: contain;
 }
 
 .oneContentFs20 {
-    font-size: 20px;
+    font-size: clamp(12px, 1vw, 16px);
+    font-weight: 500;
+    color: #c8cad6;
 }
 
 .oneContentCountBox {
     display: flex;
-    gap: 2%;
-    width: 180px;
-    justify-content: flex-end;
+    align-items: center;
+    gap: clamp(6px, 0.5vw, 10px);
+    margin-left: auto;
 }
 
-.oneContentFs25 {
-    font-size: 25px;
+.legendPercent {
+    font-size: clamp(13px, 1.05vw, 18px);
     font-family: 'Gmarket Sans';
     font-weight: 700;
 }
 
-.oneContentFs25 span {
-    font-size: 18px;
-    font-family: 'Gmarket Sans';
+.legendPercent span {
+    font-size: clamp(10px, 0.8vw, 13px);
     font-weight: 500;
 }
 
-.oneContentBar {
-    font-size: 20px;
-    color: #98a7c4;
+.legendDivider {
+    width: 1px;
+    height: clamp(10px, 0.9vw, 16px);
+    background: rgba(255,255,255,0.15);
 }
 
-.oneSpanColor {
-    color: #bfbdbe;
+.legendValue {
+    font-size: clamp(13px, 1.05vw, 18px);
+    font-family: 'Gmarket Sans';
+    font-weight: 700;
+    color: #e5e7eb;
+}
+
+.legendValue span {
+    font-size: clamp(10px, 0.8vw, 13px);
+    font-weight: 500;
+    color: #928b8b;
+    margin-left: 3px;
 }
 
 .dtDonutRightBox {
-    width: 67%;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(6px, 0.5vw, 10px);
 }
 
 .useItemDonutBox {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
+    column-gap: 1px;
     border: 1px solid #949bb7;
     border-radius: 10px;
     position: relative;
+    flex: 1;
+    min-height: 0;
     background:
         linear-gradient(
         to right,
         transparent 0,
         /* 1번째 선 */
-        transparent calc(25% - 10px),
-        rgba(255, 255, 255, 0.3) calc(25% - 10px),
-        rgba(255, 255, 255, 0.3) calc(25% - 9px),
-        transparent calc(25% - 9px),
+        transparent calc(25% - 0.5px),
+        rgba(255, 255, 255, 0.2) 25%,
+        transparent calc(25% + 0.5px),
 
         /* 2번째 선 */
-        transparent calc(50% - 10px),
-        rgba(255, 255, 255, 0.3) calc(50% - 10px),
-        rgba(255, 255, 255, 0.3) calc(50% - 9px),
-        transparent calc(50% - 9px),
+        transparent calc(50% - 0.5px),
+        rgba(255, 255, 255, 0.2) 50%,
+        transparent calc(50% + 0.5px),
 
         /* 3번째 선 */
-        transparent calc(75% - 10px),
-        rgba(255, 255, 255, 0.3) calc(75% - 10px),
-        rgba(255, 255, 255, 0.3) calc(75% - 9px),
-        transparent calc(75% - 9px)
+        transparent calc(75% - 0.5px),
+        rgba(255, 255, 255, 0.2) 75%,
+        transparent calc(75% + 0.5px)
         );
 
-    /* ✅ 핵심: 세로 길이를 80%로 줄임 */
-    background-size: 100% 70%;
+    background-size: 100% 65%;
     background-repeat: no-repeat;
     background-position: center;
 }
@@ -503,41 +500,45 @@
 
 .itemBoxBg {
     width: 100%;
+    flex: 1;
+    min-height: 0;
     border-radius: 10px;
-    background: #333855;
-    padding: 10px 15px;
-    margin-top: 13px;
+    background: var(--surface-4);
+    padding: clamp(8px, 0.7vw, 14px) clamp(10px, 0.9vw, 16px);
+    display: flex;
+    flex-direction: column;
 }
 
 .itemTitleBox {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 10px;
+    margin-bottom: clamp(6px, 0.6vw, 12px);
+    flex-shrink: 0;
 }
 
 .itemDataTotal {
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 130px;
-    height: 30px;
-    background: #282d43;
+    padding: 0 clamp(8px, 0.7vw, 14px);
+    height: clamp(22px, 1.8vw, 30px);
+    background: var(--surface-3);
     border-radius: 50px;
-    font-size: 14px;
+    font-size: clamp(10px, 0.8vw, 14px);
     color: #dbd3ce;
 }
 
 .leftText {
-    margin-right: 10px;
+    margin-right: 8px;
 }
 
 .middleText {
-    margin-right: 5px;
+    margin-right: 4px;
 }
 
 .rightText {
-    font-size: 12px;
+    font-size: 11px;
     color: #8f8da1;
 }
 
@@ -559,7 +560,34 @@
 
 .dtDonutRightBox h2 {
     margin: 0;
-    font-weight: 500;
+    font-size: clamp(14px, 1.2vw, 20px);
+    font-weight: 600;
+}
+
+/* Empty Notice (통계 탭 빈 데이터 안내) */
+.emptyNotice {
+    width: 100%;
+    padding: 12px 16px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    background: var(--bg-secondary, rgba(255,255,255,0.05));
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+
+/* Empty State */
+.emptyState {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    flex: 1;
+    min-height: 200px;
+    color: var(--text-muted);
+    font-size: var(--font-size-lg);
 }
 
 /* Log History */
@@ -578,14 +606,14 @@
 
 .container .topTitle {
     margin-top: 15px;
-    font-size: 35px;
+    font-size: var(--font-size-hero);
     font-weight: 600;
-    color: #b0b5bc;
+    color: var(--text-tertiary);
 }
 
 .container .contentText {
     margin-top: 15px;
-    font-size: 15px;
+    font-size: var(--font-size-lg);
     font-weight: 400;
-    color: #aaadbf;
+    color: var(--text-tertiary);
 }
