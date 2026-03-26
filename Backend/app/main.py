@@ -9,8 +9,17 @@ from app.remote.rtsp_stream import router as rtsp_router
 from app.navigation.save_point import point as nav_point
 from app.navigation.send_move import move as nav_move
 from app.Database.DatabaseFunction import database as database_function
+from app.map.map_manage import map_manage as map_manage_router
+from app.map.mapping_control import mapping_ctrl as mapping_ctrl_router
+from app.map.ws_mapping import ws_mapping as ws_mapping_router, start_udp_server
+from app.Database.database import engine, Base
+from app.Database.models import BusinessInfo, AreaInfo, RobotMapInfo
 from app.robot_sender import send_to_robot
-from app.navigation.send_move import navigation_send_next, is_nav_active, get_current_target, get_nav_sent_time
+from app.navigation.send_move import (
+    navigation_send_next, navigation_resend_current,
+    is_nav_active, get_current_target, get_nav_sent_time, check_and_clear_reset_flag,
+    current_wp_index, waypoints_list, nav_loop_remaining
+)
 
 import os
 import time
@@ -41,6 +50,9 @@ app.include_router(rtsp_router, prefix="/camera")
 app.include_router(nav_point)
 app.include_router(nav_move)
 app.include_router(database_function)
+app.include_router(map_manage_router)
+app.include_router(mapping_ctrl_router)
+app.include_router(ws_mapping_router)
 
 
 # ======================================================
@@ -164,7 +176,7 @@ def get_robot_position_once(timeout=1.0):
 # ======================================================
 # 초기 Pose 설정
 # ======================================================
-INIT_POSE = {"PosX": -0.902, "PosY": 0.082, "PosZ": 0.0, "Yaw": 2.99}
+INIT_POSE = {"PosX": 3.635, "PosY": 0.144, "PosZ": 0.0, "Yaw": -0.042}
 
 def send_init_pose():
     asdu = {
@@ -185,6 +197,10 @@ def send_init_pose():
 
 @app.on_event("startup")
 def startup_event():
+    # 테이블 자동 생성
+    Base.metadata.create_all(bind=engine)
+    # 맵핑 TCP 수신 서버 시작
+    start_udp_server()
     time.sleep(2)
     #send_init_pose()  
 
@@ -298,22 +314,36 @@ def request_navigation(sock):
     sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
 
 
-ARRIVAL_DIST_THRESHOLD = 0.5
-ARRIVAL_MIN_WAIT = 5.0
+ARRIVAL_COOLDOWN = 1.5
+NAV_POLL_INTERVAL = 1.0
+NAV_RETRY_TIMEOUT = 30.0   # 전송 후 N초 내 이동 시작 안 하면 재전송
+NAV_MAX_RETRIES = 3        # 최대 재전송 횟수
+ARRIVAL_CONFIRM_COUNT = 3  # status==0 연속 N회 확인 후 도착 판정 (오판 방지)
 
 def nav_thread():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(2.0)
+    sock.settimeout(1.5)
 
     global robot_nav
     last_status = None
+    ever_moved = False      # 현재 WP에서 이동(!=0)을 한 번이라도 감지했는지
+    zero_count = 0          # status==0 연속 카운트
+    retry_count = 0
 
     print(f"📡 네비 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
     while True:
         arrived = False
 
-        # ── 방법1: 상태 기반 도착 감지 ──
+        # ── 리셋 신호 감지 (새 주행 시작 / 정지 / 다음 WP 전송 시) ──
+        if check_and_clear_reset_flag():
+            last_status = None
+            ever_moved = False
+            zero_count = 0
+            retry_count = 0
+            print("[NAV] 상태 리셋 (last_status=None)")
+
+        # ── 상태 기반 도착 감지 ──
         try:
             msg = json.dumps({"action": "NAV_STATUS"}).encode("utf-8")
             sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
@@ -322,22 +352,52 @@ def nav_thread():
             nav = json.loads(data.decode("utf-8"))
 
             status = nav.get("status")
+            nav_ts = nav.get("timestamp", 0)
+
+            # stale 데이터 무시 (5초 이상 오래된 데이터)
+            if nav_ts > 0 and (time.time() - nav_ts) > 5.0:
+                if is_nav_active():
+                    print(f"[NAV DEBUG] stale 데이터 무시 (age={time.time() - nav_ts:.1f}s)")
+                time.sleep(NAV_POLL_INTERVAL)
+                continue
 
             if is_nav_active():
                 sent_time = get_nav_sent_time()
-                cooldown_ok = sent_time > 0 and (time.time() - sent_time) > 3.0
-                print(f"[NAV DEBUG] status={status}, last={last_status}, cooldown={cooldown_ok}, active={is_nav_active()}")
+                cooldown_ok = sent_time > 0 and (time.time() - sent_time) > ARRIVAL_COOLDOWN
+                elapsed = time.time() - sent_time if sent_time > 0 else 0
+                print(f"[NAV DEBUG] status={status}, last={last_status}, cooldown={cooldown_ok}, moved={ever_moved}, zero={zero_count}/{ARRIVAL_CONFIRM_COUNT}, elapsed={elapsed:.1f}s")
 
             if status is not None:
                 if last_status != status:
                     print(f"🔄 NAV 상태 변화: {last_status} → {status}")
 
-                sent_time = get_nav_sent_time()
-                cooldown_ok = sent_time > 0 and (time.time() - sent_time) > 3.0
+                # 이동 감지 (한 번이라도 non-zero면 기록)
+                if status != 0:
+                    ever_moved = True
+                    zero_count = 0
+                else:
+                    zero_count += 1
 
-                if last_status is not None and last_status != 0 and status == 0 and is_nav_active() and cooldown_ok:
+                sent_time = get_nav_sent_time()
+                cooldown_ok = sent_time > 0 and (time.time() - sent_time) > ARRIVAL_COOLDOWN
+
+                # 도착 판정: 이동한 적 있고, 연속 N회 status==0 확인
+                if (ever_moved and zero_count >= ARRIVAL_CONFIRM_COUNT
+                        and is_nav_active() and cooldown_ok):
                     arrived = True
-                    print(f"🎉 NAV 도착! (상태 기반: {last_status} → {status})")
+                    print(f"🎉 NAV 도착! (상태 기반: 연속 {zero_count}회 status==0 확인)")
+
+                # 재전송: 전송 후 N초 지났는데 이동을 한 번도 안 했으면 명령 재전송
+                if (is_nav_active() and not ever_moved
+                        and sent_time > 0
+                        and (time.time() - sent_time) > NAV_RETRY_TIMEOUT
+                        and retry_count < NAV_MAX_RETRIES):
+                    retry_count += 1
+                    print(f"⚠️ NAV 재전송 시도 ({retry_count}/{NAV_MAX_RETRIES}) — {NAV_RETRY_TIMEOUT}초 내 이동 미감지")
+                    try:
+                        navigation_resend_current()
+                    except Exception as e:
+                        print(f"[ERR] 재전송 실패: {e}")
 
                 robot_nav["last_state"] = status
                 robot_nav["timestamp"] = time.time()
@@ -349,20 +409,6 @@ def nav_thread():
         except Exception as e:
             print("[ERR NAV]", e)
 
-        # ── 방법2: 위치 기반 도착 감지 (비활성화 — 상태 기반만 사용) ──
-        # if not arrived and is_nav_active():
-        #     target = get_current_target()
-        #     sent_time = get_nav_sent_time()
-        #
-        #     if target and sent_time > 0 and (time.time() - sent_time) > ARRIVAL_MIN_WAIT:
-        #         dx = robot_position["x"] - target["x"]
-        #         dy = robot_position["y"] - target["y"]
-        #         dist = (dx ** 2 + dy ** 2) ** 0.5
-        #
-        #         if dist < ARRIVAL_DIST_THRESHOLD:
-        #             arrived = True
-        #             print(f"🎉 NAV 도착! (위치 기반: dist={dist:.3f}m)")
-
         if arrived and is_nav_active():
             robot_nav["arrived"] = True
             try:
@@ -370,7 +416,7 @@ def nav_thread():
             except Exception as e:
                 print(f"[ERR] navigation_send_next 실패: {e}")
 
-        time.sleep(REQ_INTERVAL_POS)
+        time.sleep(NAV_POLL_INTERVAL)
 
 
 # ======================================================
@@ -388,15 +434,34 @@ threading.Thread(target=nav_thread, daemon=True).start()
 def get_pos():
     return robot_position
 
+@app.post("/robot/initpose")
+def init_pose():
+    send_init_pose()
+    return {"status": "ok", "msg": f"초기 위치 설정 완료: {INIT_POSE}"}
+
 @app.get("/robot/status")
 def get_status():
     return robot_status
+
+@app.get("/robot/nav")
+def get_nav():
+    from app.navigation.send_move import is_navigating, current_wp_index, waypoints_list, nav_loop_remaining
+    return {
+        "is_navigating": is_navigating,
+        "current_wp": current_wp_index,
+        "total_wp": len(waypoints_list),
+        "loop_remaining": nav_loop_remaining,
+    }
 
 
 # ======================================================
 # Static (React UI)
 # ======================================================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 OUT_DIR = os.path.join(BASE_DIR, "out")
 if os.path.isdir(OUT_DIR):
     app.mount("/", StaticFiles(directory=OUT_DIR, html=True), name="ui")

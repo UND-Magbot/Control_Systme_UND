@@ -224,10 +224,8 @@ export default function RemoteModal({
     setTranslate(prev => clampTranslate(prev.x, prev.y));
   }, [scale]);
 
-  const batteryPercentage =
-    robotStatus.battery?.BatteryLevelRight ??
-    robotStatus.battery?.BatteryLevelLeft ??
-    0;
+  // TODO: 임시 하드코딩 — 실제 배터리 연동 시 제거
+  const batteryPercentage = 70;
 
   /* --- robot selector --- */
   useEffect(() => {
@@ -268,7 +266,61 @@ export default function RemoteModal({
   const slowHandle = () => fetch(`${API_BASE}/robot/slow`, { method: "POST" });
   const normalHandle = () => fetch(`${API_BASE}/robot/normal`, { method: "POST" });
   const fastHandle = () => fetch(`${API_BASE}/robot/fast`, { method: "POST" });
-  const handleWorkStart = () => fetch(`${API_BASE}/nav/startmove`, { method: "POST" });
+  const [isWorking, setIsWorking] = useState(false);
+  const [showWorkMenu, setShowWorkMenu] = useState(false);
+  const [loopCount, setLoopCount] = useState<number | string>(10);
+  const navPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const workMenuRef = useRef<HTMLDivElement>(null);
+
+  // 작업 중일 때 nav 상태 폴링 → 완료 시 버튼 전환
+  useEffect(() => {
+    if (isWorking) {
+      navPollRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/robot/nav`);
+          const data = await res.json();
+          if (!data.is_navigating) {
+            setIsWorking(false);
+          }
+        } catch {}
+      }, 2000);
+    } else {
+      if (navPollRef.current) {
+        clearInterval(navPollRef.current);
+        navPollRef.current = null;
+      }
+    }
+    return () => {
+      if (navPollRef.current) clearInterval(navPollRef.current);
+    };
+  }, [isWorking]);
+
+  // 팝오버 외부 클릭 시 닫기
+  useEffect(() => {
+    if (!showWorkMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (workMenuRef.current && !workMenuRef.current.contains(e.target as Node)) {
+        setShowWorkMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showWorkMenu]);
+
+  const handleWorkBtnClick = () => {
+    if (isWorking) {
+      fetch(`${API_BASE}/nav/stopmove`, { method: "POST" }).then(() => setIsWorking(false));
+    } else {
+      setShowWorkMenu((prev) => !prev);
+    }
+  };
+
+  const handleInitPose = () => fetch(`${API_BASE}/robot/initpose`, { method: "POST" });
+
+  const startWork = (loop: number) => {
+    setShowWorkMenu(false);
+    fetch(`${API_BASE}/nav/startmove?loop=${loop}`, { method: "POST" }).then(() => setIsWorking(true));
+  };
   const handlesavePoint = () => fetch(`${API_BASE}/nav/savepoint`, { method: "POST" });
   const handleClearPoints = () => {
     if (confirm("웨이포인트를 초기화하시겠습니까?")) {
@@ -371,9 +423,49 @@ export default function RemoteModal({
             <div>원격 제어 <span>(실시간 카메라 및 위치 맵)</span></div>
           </div>
           <div className={styles.modalTopRight}>
+            <button type='button' className={styles.workStart} onClick={handleInitPose}>위치 재조정</button>
             <button type='button' className={styles.workStart} onClick={handleClearPoints}>위치 초기화</button>
             <button type='button' className={styles.workStart} onClick={handlesavePoint}>위치 저장</button>
-            <button type='button' className={styles.workStart} onClick={handleWorkStart}>작업 시작</button>
+            <div style={{ position: 'relative' }} ref={workMenuRef}>
+              <button type='button' className={isWorking ? styles.workStop : styles.workStart} onClick={handleWorkBtnClick}>
+                {isWorking ? '작업 중지' : '작업 시작'}
+              </button>
+              {showWorkMenu && (
+                <div className={styles.workPopover}>
+                  <div className={styles.workPopoverItem}>
+                    <span>단일 실행</span>
+                    <button type='button' className={styles.loopStartBtn} onClick={() => startWork(1)}>
+                      시작
+                    </button>
+                  </div>
+                  <div className={styles.workPopoverDivider} />
+                  <div className={styles.workPopoverItem}>
+                    <span>반복 실행</span>
+                    <div className={styles.loopInputRow}>
+                      <input
+                        type="number"
+                        min={2}
+                        max={999}
+                        value={loopCount}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setLoopCount(v === '' ? '' : parseInt(v) || '');
+                        }}
+                        onBlur={() => {
+                          if (loopCount === '' || Number(loopCount) < 2) setLoopCount(2);
+                        }}
+                        className={styles.loopInput}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <span>회</span>
+                      <button type='button' className={styles.loopStartBtn} onClick={() => startWork(Number(loopCount) || 2)}>
+                        시작
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             <button type='button' className={styles.closeBtn} onClick={handleClose}>✕</button>
           </div>
         </div>

@@ -78,7 +78,7 @@ def save_current_waypoint(db: Session = Depends(get_db)):
     # DB 장소 저장 (CUR-XXX)
     cur_name = _next_cur_name(db)
     place = LocationInfo(
-        Adminid="noah",
+        UserId=1,
         RobotName="TestRobot-01",
         LacationName=cur_name,
         Floor="1F",

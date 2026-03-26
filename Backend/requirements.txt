@@ -5,3 +5,4 @@ pydantic-settings>=2
 opencv-python
 sqlalchemy
 pymysql
+paramiko

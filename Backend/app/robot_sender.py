@@ -32,6 +32,21 @@ def send_nav_to_robot(idx, x, y, yaw):
 
     data = json.dumps(msg).encode("utf-8")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(2.0)
     sock.sendto(data, (ROBOT_IP, ROBOT_PORT))
-    sock.close()
     print(f"[FASTAPI → ROBOT NAV] {msg}")
+
+    # receiver ACK 대기
+    try:
+        ack_data, _ = sock.recvfrom(4096)
+        ack = json.loads(ack_data.decode("utf-8"))
+        if ack.get("ack") and ack.get("idx") == idx:
+            print(f"[NAV ACK] receiver 수신 확인 (WP{idx})")
+        else:
+            print(f"[NAV ACK] 예상치 못한 응답: {ack}")
+    except socket.timeout:
+        print(f"[NAV ACK] ⚠️ receiver 응답 없음 (WP{idx}) — 명령 유실 가능")
+    except Exception as e:
+        print(f"[NAV ACK] 오류: {e}")
+    finally:
+        sock.close()

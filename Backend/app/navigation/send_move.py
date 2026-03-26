@@ -25,6 +25,9 @@ nav_sent_time = 0
 nav_loop_remaining = 0
 WAYPOINT_FILE = "./data/waypoints.json"
 
+# nav_thread 상태 리셋 신호 (새 주행/정지 시 nav_thread가 감지)
+_nav_reset_flag = False
+
 def is_nav_active():
     return is_navigating
 
@@ -39,8 +42,20 @@ def get_current_target():
 def get_nav_sent_time():
     return nav_sent_time
 
+def check_and_clear_reset_flag():
+    """nav_thread에서 호출: 리셋 신호가 있으면 True 반환 후 클리어"""
+    global _nav_reset_flag
+    if _nav_reset_flag:
+        _nav_reset_flag = False
+        return True
+    return False
+
+def _signal_nav_reset():
+    global _nav_reset_flag
+    _nav_reset_flag = True
+
 @move.post("/startmove")
-def start_navigation(loop: int = 1):
+def start_navigation(loop: int = 3):
 
     waypoints = load_waypoints()
 
@@ -51,10 +66,40 @@ def start_navigation(loop: int = 1):
     is_navigating = True
     nav_loop_remaining = loop - 1
 
+    # nav_thread 상태 리셋 (last_status, zero_count 초기화)
+    _signal_nav_reset()
+
     print(f"🚗 NAV START — 총 {len(waypoints_list)}개 웨이포인트, 반복: {loop}회")
 
     navigation_send_next()
     return {"status": "ok", "msg": f"네비게이션 명령 전송 완료 ({loop}회)"}
+
+@move.post("/stopmove")
+def stop_navigation():
+    global is_navigating, current_wp_index, nav_loop_remaining
+    was_active = is_navigating
+    is_navigating = False
+    current_wp_index = 0
+    nav_loop_remaining = 0
+    _signal_nav_reset()
+    print(f"🛑 NAV STOP (was_active={was_active})")
+    return {"status": "ok", "msg": "네비게이션 정지 완료"}
+
+def navigation_resend_current():
+    """현재 웨이포인트를 재전송 (로봇이 명령을 무시했을 때)"""
+    global nav_sent_time
+
+    if not is_navigating or current_wp_index <= 0:
+        return
+
+    idx = current_wp_index  # 이미 +1 된 상태
+    wp = waypoints_list[idx - 1]
+
+    print(f"🔁 NAV 재전송: {idx} / {len(waypoints_list)}")
+    _signal_nav_reset()
+    from app.robot_sender import send_nav_to_robot
+    send_nav_to_robot(idx, wp["x"], wp["y"], wp["yaw"])
+    nav_sent_time = time.time()
 
 def navigation_send_next():
     global current_wp_index, waypoints_list, is_navigating, nav_sent_time, nav_loop_remaining
@@ -79,7 +124,12 @@ def navigation_send_next():
     y = wp["y"]
     yaw = wp["yaw"]
 
+    # 다음 웨이포인트 전송 전 nav_thread 상태 리셋
+    # → last_status=None으로 초기화되어 새 상태 전환을 감지할 수 있음
+    _signal_nav_reset()
+
     print(f"➡ NAV 이동 시작: {idx} / {len(waypoints_list)}")
+    time.sleep(1)  # 로봇 네비게이션 준비 대기
     from app.robot_sender import send_nav_to_robot
     send_nav_to_robot(idx, x, y, yaw)
 
@@ -149,6 +199,7 @@ def move_along_path(path_id: int, db: Session = Depends(get_db)):
     waypoints_list = waypoints
     current_wp_index = 0
     is_navigating = True
+    _signal_nav_reset()
 
     print(f"🛤 경로 이동 시작: {path.WayName} — 총 {len(waypoints)}개 포인트")
     for i, wp in enumerate(waypoints):

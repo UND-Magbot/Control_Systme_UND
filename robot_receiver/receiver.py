@@ -13,6 +13,11 @@ ROBOT_PORT = 30000
 # PC가 UDP 명령 받을 포트
 SERVER_UDP_PORT = 40000
 
+# relay_map.py 로컬 통신 포트
+MAPPING_LOCAL_PORT = 50000
+mapping_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+mapping_sock.settimeout(1.0)
+
 # 로봇이 PC에서 오는 명령 수신용 소켓
 server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_sock.bind(("0.0.0.0", SERVER_UDP_PORT))
@@ -77,7 +82,7 @@ def nav_poll_loop():
         except Exception as e:
             print("[NAV POLL ERR]", e)
 
-        time.sleep(2)
+        time.sleep(1)
 
 
 def position_poll_loop():
@@ -253,7 +258,18 @@ def set_fast():
 def set_wake():
     send_asdu(1101, 6, {"Sleep": False, "Auto": False, "Time": 30})
 
+def cancel_nav():
+    """현재 네비게이션 취소 (Type=1004, Command=1)"""
+    send_asdu(1004, 1, {})
+    print("[NAV] 네비게이션 취소 전송")
+
 def send_nav_command(idx, x, y, yaw):
+    # 이전 네비게이션 취소 → 모드 리셋 → 새 명령 전송
+    cancel_nav()
+    time.sleep(0.3)
+    set_control_mode(0)
+    time.sleep(0.3)
+
     asdu = {
         "PatrolDevice": {
             "Type": 1003,
@@ -292,6 +308,22 @@ def send_nav_command(idx, x, y, yaw):
     sock.sendto(packet, (ROBOT_IP, ROBOT_PORT))
 
     print(f"[NAV] Send WP{idx} → X:{x}, Y:{y}, Yaw:{yaw}")
+
+
+def get_mapping_data(action):
+    """relay_map.py에 로컬 UDP로 매핑 데이터 요청"""
+    try:
+        mapping_sock.sendto(
+            json.dumps({"action": action}).encode("utf-8"),
+            ("127.0.0.1", MAPPING_LOCAL_PORT)
+        )
+        data, _ = mapping_sock.recvfrom(65535)
+        return data
+    except socket.timeout:
+        return b'{}'
+    except Exception as e:
+        print(f"[MAPPING ERR] {e}")
+        return b'{}'
 
 
 hold_move = True
@@ -350,6 +382,13 @@ def udp_receiver_loop():
             elif action == "NAV_STATUS":
                 server_sock.sendto(json.dumps(latest_nav_status).encode("utf-8"), addr)
 
+            elif action == "MAPPING_ODOM":
+                server_sock.sendto(get_mapping_data("MAPPING_ODOM"), addr)
+            elif action == "MAPPING_CLOUD":
+                server_sock.sendto(get_mapping_data("MAPPING_CLOUD"), addr)
+            elif action == "MAPPING_ALIGNED":
+                server_sock.sendto(get_mapping_data("MAPPING_ALIGNED"), addr)
+
             elif action == "UP": hold_motion(move_forward, duration=1.0)
             elif action == "DOWN": hold_motion(move_backward, duration=1.0)
             elif action == "LEFT": hold_motion(move_left, duration = 1.5, interval = 0.0001)
@@ -380,6 +419,10 @@ def udp_receiver_loop():
                 i_idx = int(idx)
 
                 send_nav_command(i_idx, f_x, f_y, f_yaw)
+
+                # ACK 응답 → Backend
+                ack = json.dumps({"ack": True, "idx": i_idx}).encode("utf-8")
+                server_sock.sendto(ack, addr)
 
         except socket.timeout:
             continue

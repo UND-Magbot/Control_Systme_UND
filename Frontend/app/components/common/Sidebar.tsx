@@ -11,6 +11,7 @@ export default function Sidebar() {
     const menuItems = [
       { path: "/dashboard", icon: "main", label: "대시보드" },
       { path: "/robots", icon: "robot", label: "로봇관리" },
+      { path: "/mapManagement", icon: "map", label: "맵 관리" },
       { path: "/dataManagement", icon: "data", label: "데이터관리" },
       { path: "/schedules", icon: "schedule", label: "작업관리" },
       { path: "/alerts", icon: "alerts", label: "알림" },

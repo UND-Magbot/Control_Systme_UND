@@ -16,7 +16,7 @@ from app.Database.database import Base
 class RobotInfo(Base):
     __tablename__ = "robot_info"
     id = Column(Integer, primary_key=True, index=True) 
-    Adminid = Column(String(50))
+    UserId = Column(Integer)
     RobotName = Column(String(100))
     ProductCompany = Column(String(100))
     SerialNumber = Column(String(100))
@@ -33,7 +33,7 @@ class RobotInfo(Base):
 class LocationInfo(Base):
     __tablename__ = "location_info"
     id = Column(Integer, primary_key=True, index=True) 
-    Adminid = Column(String(50))
+    UserId = Column(Integer)
     RobotName = Column(String(100))
     LacationName = Column(String(100))
     Floor = Column(String(50))
@@ -64,7 +64,7 @@ class WayInfo(Base):
     __tablename__ = "way_info"
 
     id = Column(Integer, primary_key=True)
-    Adminid = Column(String(50))
+    UserId = Column(Integer)
     RobotName = Column(String(50))
     TaskType = Column(String(50))
     WayName = Column(String(50))
@@ -72,11 +72,49 @@ class WayInfo(Base):
     UpdateTime= Column(DateTime)
 
 
+# =========================
+# 사업장 정보
+# =========================
+class BusinessInfo(Base):
+    __tablename__ = "business_info"
+    id = Column(Integer, primary_key=True, index=True)
+    BusinessName = Column(String(100), nullable=False)
+    Address = Column(String(200))
+    Adddate = Column(DateTime, server_default=func.now())
+
+# =========================
+# 영역(층) 정보
+# =========================
+class AreaInfo(Base):
+    __tablename__ = "area_info"
+    id = Column(Integer, primary_key=True, index=True)
+    BusinessId = Column(Integer, nullable=False)
+    FloorName = Column(String(50), nullable=False)  # B1, 1F, 2F 등
+    Adddate = Column(DateTime, server_default=func.now())
+
+# =========================
+# 로봇 맵 정보
+# =========================
+class RobotMapInfo(Base):
+    __tablename__ = "robot_map_info"
+    id = Column(Integer, primary_key=True, index=True)
+    BusinessId = Column(Integer, nullable=False)
+    AreaId = Column(Integer, nullable=False)
+    AreaName = Column(String(100), nullable=False)   # 영역 이름 (사용자 입력)
+    PgmFilePath = Column(String(300))
+    YamlFilePath = Column(String(300))
+    ImgFilePath = Column(String(300))
+    InitPosX = Column(Float)
+    InitPosY = Column(Float)
+    InitYaw = Column(Float)
+    Adddate = Column(DateTime, server_default=func.now())
+
+
 class ScheduleInfo(Base):
     __tablename__ = "schedule_info"
 
     id = Column(Integer, primary_key=True)
-    Adminid = Column(String(50))
+    UserId = Column(Integer)
     RobotName = Column(String(50))
     WorkName  = Column(String(100))
     TaskType = Column(String(50))

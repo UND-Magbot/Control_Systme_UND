@@ -134,6 +134,111 @@
   transform: scale(0.97);
 }
 
+.workStop {
+  height: 32px;
+  padding: 0 14px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: 1px solid #e53935;
+  color: #fff;
+  border-radius: 6px;
+  background: #e53935;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.workStop:hover {
+  background: #c62828;
+  border-color: #c62828;
+}
+
+.workStop:active {
+  transform: scale(0.97);
+}
+
+/* ── 작업 시작 팝오버 ── */
+.workPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--surface-2, #1e1e2e);
+  border: 1px solid var(--border-subtle, #333);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  padding: 6px 0;
+}
+
+.workPopoverItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 14px;
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-primary, #e0e0e0);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+button.workPopoverItem:hover {
+  background: var(--surface-5, rgba(255, 255, 255, 0.08));
+}
+
+.workPopoverDivider {
+  height: 1px;
+  background: var(--border-subtle, #333);
+  margin: 4px 0;
+}
+
+.loopInputRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.loopInput {
+  width: 52px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 12px;
+  text-align: center;
+  border: 1px solid var(--border-subtle, #444);
+  border-radius: 4px;
+  background: var(--surface-1, #161622);
+  color: var(--text-primary, #e0e0e0);
+  outline: none;
+}
+
+.loopInput:focus {
+  border-color: var(--accent, #5b8def);
+}
+
+.loopStartBtn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent, #5b8def);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.loopStartBtn:hover {
+  background: #4a7cde;
+}
+
 .closeBtn {
     width: 32px;
     height: 32px;

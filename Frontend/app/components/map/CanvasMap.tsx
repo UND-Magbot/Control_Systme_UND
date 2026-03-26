@@ -152,7 +152,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
         />
 
         {showRobot && robotScreen && (
-          <RobotMarker screenX={robotScreen.x} screenY={robotScreen.y} size={robotMarkerSize} scale={scale} />
+          <RobotMarker screenX={robotScreen.x} screenY={robotScreen.y} yaw={robotPos?.yaw} size={robotMarkerSize} scale={scale} />
         )}
 
         {showPois && poiScreenItems && (

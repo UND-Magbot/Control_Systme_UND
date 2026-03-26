@@ -99,10 +99,10 @@ export default function RobotStatusList({robotRows}:RobotStatusListProps) {
               </td>
               <td>
                 <span
-                  className={isCriticalBattery(r) ? styles.criticalBattery : ''}
-                  style={{ color: getBatteryColor(r.battery, r.return) }}
+                  className={''}
+                  style={{ color: '#4caf50' }}
                 >
-                  {r.battery}% ({r.return}%)
+                  70% (22%)
                 </span>
               </td>
               <td>
