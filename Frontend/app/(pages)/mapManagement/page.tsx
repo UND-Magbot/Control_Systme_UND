@@ -5,8 +5,8 @@ import styles from "./mapManagement.module.css";
 
 const API_BASE =
   typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? `http://${window.location.hostname}:8000`
-    : "http://localhost:8000";
+    ? `http://${window.location.hostname}:8001`
+    : "http://localhost:8001";
 
 type Business = { id: number; BusinessName: string };
 type Area = { id: number; BusinessId: number; FloorName: string };
@@ -275,8 +275,8 @@ export default function MapManagementPage() {
 
     const wsUrl =
       typeof window !== "undefined" && window.location.hostname !== "localhost"
-        ? `ws://${window.location.hostname}:8000/ws/mapping/view`
-        : "ws://localhost:8000/ws/mapping/view";
+        ? `ws://${window.location.hostname}:8001/ws/mapping/view`
+        : "ws://localhost:8001/ws/mapping/view";
 
     const connect = () => {
       const ws = new WebSocket(wsUrl);
