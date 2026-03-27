@@ -1,1 +1,4 @@
-export const API_BASE = process.env.API_BASE ?? "http://localhost:8001";
+export const API_BASE =
+  typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? `http://${window.location.hostname}:8001`
+    : "http://localhost:8001";
