@@ -1236,6 +1236,83 @@ button.workPopoverItem:hover {
   margin-top: 4px;
 }
 
+/* ── 커스텀 Select (로봇 등록 모달) ── */
+.customSelectWrap {
+  position: relative;
+}
+
+.customSelectTrigger {
+  width: 100%;
+  height: 36px;
+  border-radius: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-input);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+
+.customSelectTrigger:hover {
+  border-color: var(--text-tertiary);
+}
+
+.customSelectTrigger:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+.customSelectTrigger.inputError {
+  border-color: var(--color-error-soft);
+}
+
+.customSelectArrow {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-left: 8px;
+}
+
+.customSelectDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--surface-3);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.customSelectItem {
+  padding: 8px 12px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.customSelectItem:hover {
+  background: var(--surface-elevated);
+}
+
+.customSelectItemActive {
+  background: var(--color-info-bg);
+  color: var(--text-primary);
+}
+
+.customSelectItemDisabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* 필수 마크 */
 .requiredMark {
   color: var(--color-error-soft);
@@ -1377,46 +1454,110 @@ button.workPopoverItem:hover {
 }
 
 .detailModalContent {
-  width: 907px;
-  height: auto;
+  width: min(720px, 95vw);
 
   background: var(--surface-3);
-
-  border-radius: 27px;
-
+  border-radius: 16px;
   position: relative;
-
   overflow: hidden;
-  padding: 28px;
+
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 모달 Header ── */
+.detailHeader {
+  padding: 14px 24px 10px;
+  flex-shrink: 0;
+}
+
+.detailHeaderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detailHeaderTop h2 {
+  font-weight: 600;
+  font-size: var(--font-size-xl);
+  color: var(--text-primary);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detailHeaderTop h2 img {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
 }
 
 .detailCloseBtn {
-  width: 32px;
-  height: 32px;
-
+  width: 30px;
+  height: 30px;
   border: none;
-  color: white;
-
+  color: var(--text-secondary);
   background: transparent;
-  border-radius: 50%;
+  border-radius: 6px;
   font-size: var(--font-size-lg);
-
   display: flex;
   align-items: center;
   justify-content: center;
-
-  position: absolute;
-  top: 28px;
-  right: 28px;
-
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .detailCloseBtn:hover {
   background: var(--surface-elevated);
+  color: var(--text-primary);
 }
 
+/* 조회/수정 모드 탭 */
+.detailModeTabs {
+  display: flex;
+  gap: 4px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 3px;
+  width: fit-content;
+}
+
+.detailModeTab {
+  padding: 5px 16px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.detailModeTab:hover {
+  color: var(--text-tertiary);
+}
+
+.detailModeTabActive {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── 모달 Body ── */
+.detailBody {
+  padding: 10px 24px 14px;
+}
+
+/* ── 모달 Footer ── */
+.detailFooter {
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+/* 하위 호환: 기존 detailTitle 사용처 대비 */
 .detailTitle {
   display: flex;
   align-items: center;
@@ -1425,7 +1566,6 @@ button.workPopoverItem:hover {
 .detailTitle img {
   width: var(--icon-xl);
   height: var(--icon-xl);
-
   margin-right: 10px;
 }
 
@@ -1433,7 +1573,6 @@ button.workPopoverItem:hover {
   font-weight: 600;
   font-size: var(--font-size-2xl);
   color: var(--text-primary);
-
   margin: 0;
 }
 
@@ -1443,7 +1582,7 @@ button.workPopoverItem:hover {
   border-radius: 10px;
   overflow: hidden;
 
-  margin-top: 20px;
+  margin-top: 0;
 }
 
 .detailBoxFs {
@@ -1816,7 +1955,7 @@ button.workPopoverItem:hover {
 }
 
 .btnBgRed:hover {
-  background: var(--color-error-bg);
+  background: var(--surface-elevated);
 }
 
 .btnBgBlue {
@@ -3064,4 +3203,406 @@ button.workPopoverItem:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 로봇 상세 모달 - 액션 버튼 바 */
+/* ── 실시간 현황 섹션 ── */
+
+/* 상태 배지 */
+.detailStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.detailBadgeOperating { color: #22c55e; }
+.detailBadgeStandby   { color: #93bbfc; }
+.detailBadgeCharging  { color: #eab308; }
+.detailBadgeOffline   { color: #6b7280; }
+
+/* 네트워크 dot */
+.detailNetDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.detailNetDotOnline  { background: #22c55e; }
+.detailNetDotError   { background: #f59e0b; }
+.detailNetDotOffline { background: #ef4444; }
+
+/* 배터리 미니바 */
+.detailBatBar {
+  display: inline-block;
+  width: 40px;
+  height: 6px;
+  background: var(--surface-5);
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+  overflow: hidden;
+}
+
+.detailBatFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.detailBatSuccess.detailStatusValue { color: #22c55e; }
+.detailBatWarning.detailStatusValue { color: #f59e0b; }
+.detailBatDanger.detailStatusValue  { color: #ef4444; }
+
+/* 전원 dot */
+.detailPowerDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.detailPowerOn  { background: #22c55e; }
+.detailPowerOff { background: #6b7280; }
+
+/* 오프라인 상태 현황 */
+.detailStatusOffline {
+  opacity: 0.6;
+}
+
+/* 네트워크 끊김 경고 */
+.detailNetworkWarning {
+  font-size: var(--font-size-xs);
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  padding: 4px 10px;
+  margin-bottom: 10px;
+}
+
+.detailSectionTitle {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-accent);
+  margin: 0 0 8px 0;
+}
+
+.detailStatusSection {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+}
+
+.detailStatusGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 20px;
+}
+
+.detailStatusItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.detailStatusLabel {
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.detailStatusValue {
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── 현재 작업 섹션 ── */
+.detailTaskSection {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  min-height: 120px;
+}
+
+.detailTaskEmpty {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: 20px 0;
+}
+
+.detailTaskList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.detailTaskCard {
+  background: var(--surface-3);
+  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+}
+
+.detailTaskHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.detailTaskName {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.detailTaskType {
+  font-size: var(--font-size-xs);
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.2);
+  color: #93bbfc;
+}
+
+.detailTaskTime {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* 경로 진행 트랙 */
+.detailWaypointTrack {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.detailWaypointPlaceholder {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 8px 0;
+  text-align: center;
+  width: 100%;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 6px;
+}
+
+/* 경로 스텝 (API 연동 시 사용) */
+.waypointStep {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.waypointDot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.waypointDot.completed { background: #22c55e; color: #fff; }
+.waypointDot.current   { background: #3b82f6; color: #fff; animation: pulse 1.5s ease infinite; }
+.waypointDot.pending   { background: var(--surface-5); color: var(--text-muted); }
+.waypointDot.error     { background: #ef4444; color: #fff; }
+
+.waypointLine {
+  width: 24px;
+  height: 2px;
+  flex-shrink: 0;
+}
+
+.waypointLine.completed { background: #22c55e; }
+.waypointLine.pending   { background: var(--border-subtle); }
+.waypointLine.error     { background: #ef4444; }
+
+.waypointLabel {
+  font-size: var(--font-size-2xs);
+  color: var(--text-tertiary);
+  text-align: center;
+  max-width: 60px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+}
+
+/* ── 기본 정보 (2열 그리드) ── */
+.detailInfoSection {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+}
+
+.detailInfoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 16px;
+}
+
+.detailInfoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  min-width: 0;
+}
+
+.detailInfoRow:nth-last-child(1),
+.detailInfoRow:nth-last-child(2) {
+  border-bottom: none;
+}
+
+.detailInfoFull {
+  grid-column: 1 / -1;
+}
+
+.detailInfoLabel {
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  font-weight: 500;
+  flex-shrink: 0;
+  min-width: 110px;
+  white-space: nowrap;
+}
+
+.detailInfoValue {
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  text-align: right;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailInfoInput {
+  width: 100%;
+  text-align: right;
+  background: var(--surface-3);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  box-sizing: border-box;
+}
+
+.detailInfoInput:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+/* 배터리 수정 영역 */
+.detailBatteryEdit {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  width: 100%;
+}
+
+.detailBatteryPercent {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.detailBatterySlider {
+  flex: 1;
+  height: 4px;
+  appearance: none;
+  background: var(--surface-5);
+  border-radius: 2px;
+  outline: none;
+}
+
+.detailBatterySlider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-info);
+  cursor: pointer;
+}
+
+.detailBatteryRange {
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* 조회 모드 배터리 표시 (프로그레스바 + 수치) */
+.detailBatteryView {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+}
+
+.detailBatteryBar {
+  display: inline-block;
+  width: 80px;
+  height: 6px;
+  background: var(--surface-5);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.detailBatteryFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--color-info);
+  transition: width 0.3s ease;
+}
+
+/* ── 액션 바 (기본정보 섹션 내부) ── */
+.detailActionBar {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 10px;
+}
+
+.detailActionBar button {
+  flex: 1;
 }

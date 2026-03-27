@@ -8,6 +8,14 @@ import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { API_BASE } from "@/app/config";
 import { useBatterySlider } from '@/app/hooks/useBatterySlider';
 import { useAlertModal } from '@/app/hooks/useAlertModal';
+import RobotWorkScheduleModal from "@/app/components/modal/WorkScheduleModal";
+import type { WorkScheduleCase } from "@/app/components/modal/WorkScheduleModal";
+import PlacePathModal from "@/app/components/modal/PlacePathModal";
+import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
+import PathMoveModal from "@/app/components/modal/PathMoveModal";
+import { MapPin, Route } from "lucide-react";
+import WaypointProgress from "@/app/components/common/WaypointProgress";
+import type { WaypointStep } from "@/app/components/common/WaypointProgress";
 
 type DetailModalProps = {
     isOpen: boolean;
@@ -15,6 +23,7 @@ type DetailModalProps = {
     selectedRobotId: number | null;
     selectedRobot: RobotRowData | null;
     robots: RobotRowData[];
+    initialEditMode?: boolean;
 
     persistedDraft?: RobotDraft;
     onPersistDraft?: (robotId: number, next: RobotDraft) => void;
@@ -25,7 +34,8 @@ export default function RobotDetailModal({
     onClose,
     selectedRobotId,
     selectedRobot,
-    robots
+    robots,
+    initialEditMode = false,
 }:DetailModalProps ){
 
     const [robotDetail, setRobotDetail] = useState<RobotRowData | null>(null);
@@ -39,6 +49,7 @@ export default function RobotDetailModal({
         if (selectedRobotId == null) return;
         if (!selectedRobot) return;
 
+        setIsEditMode(initialEditMode);
         setIsLoading(true);
         setFetchError(null);
 
@@ -68,6 +79,7 @@ export default function RobotDetailModal({
                 setRobotDetail(detail);
 
                 setDraft({
+                    robotName: detail.no,
                     operator: detail.operator,
                     serialNumber: detail.serialNumber,
                     model: detail.model,
@@ -97,7 +109,7 @@ export default function RobotDetailModal({
     // B-3: API 에러 알림창 (alert 대체)
     const apiAlert = useAlertModal();
 
-    const [isEditMode, setIsEditMode] = useState(false);
+    const [isEditMode, setIsEditMode] = useState(initialEditMode);
 
     // B-4: 저장/삭제 중복 제출 방지
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -105,6 +117,7 @@ export default function RobotDetailModal({
     const DEFAULT_RETURN_BATTERY = 30;
 
     type RobotDraft = {
+    robotName: string;
     operator: string;
     serialNumber: string;
     model: string;
@@ -112,11 +125,11 @@ export default function RobotDetailModal({
     softwareVersion: string;
     site: string;
     registrationDateTime: string;
-    // 복귀 배터리(현재 RobotRowData에 없어서 안전 처리)
     returnBattery: number;
     };
 
     const [draft, setDraft] = useState<RobotDraft>({
+    robotName: "",
     operator: "",
     serialNumber: "",
     model: "",
@@ -128,6 +141,21 @@ export default function RobotDetailModal({
     });
 
     const battery = useBatterySlider({ min: 15, max: 30, defaultValue: DEFAULT_RETURN_BATTERY });
+
+    // Action modal states
+    const [workScheduleModalOpen, setWorkScheduleModalOpen] = useState(false);
+    const [placePathModalOpen, setPlacePathModalOpen] = useState(false);
+    const [pathMoveModalOpen, setPathMoveModalOpen] = useState(false);
+    const [batteryConfirmOpen, setBatteryConfirmOpen] = useState(false);
+
+    // Work schedule states
+    const [workScheduleCase, setWorkScheduleCase] = useState<WorkScheduleCase>('none');
+    const [completedPathText, setCompletedPathText] = useState<string>('');
+    const [workScheduleLoading, setWorkScheduleLoading] = useState(false);
+    const [workScheduleError, setWorkScheduleError] = useState<string | null>(null);
+
+    // Path data (lazy loaded)
+    const [pathRows, setPathRows] = useState<any[]>([]);
 
 
     // B-9: ESC 키 동작 - 수정 모드에서는 보기 모드로 전환, 보기 모드에서는 모달 닫기
@@ -234,6 +262,7 @@ export default function RobotDetailModal({
         const rb = battery.value;
 
         const payload = {
+            robotName: draft.robotName,
             operator: draft.operator,
             serialNumber: draft.serialNumber,
             model: draft.model,
@@ -261,6 +290,7 @@ export default function RobotDetailModal({
             prev
                 ? {
                     ...prev,
+                    no: payload.robotName,
                     operator: payload.operator,
                     serialNumber: payload.serialNumber,
                     model: payload.model,
@@ -288,6 +318,83 @@ export default function RobotDetailModal({
         }
     };
 
+    // 작업일정 복귀 핸들러
+    const openWorkScheduleModal = async () => {
+      if (!selectedRobotId) return;
+      const robotName = (robotDetail ?? selectedRobot)?.no ?? '';
+      setWorkScheduleLoading(true);
+      setWorkScheduleModalOpen(true);
+      setWorkScheduleError(null);
+
+      try {
+        const res = await fetch(`${API_BASE}/DB/schedule`);
+        if (!res.ok) throw new Error('스케줄 조회 실패');
+        const schedules = await res.json();
+        const robotSchedules = schedules.filter((s: any) => s.RobotName === robotName);
+
+        const ongoing = robotSchedules.find((s: any) => s.TaskStatus === '진행');
+        if (ongoing) {
+          setWorkScheduleCase('ongoing');
+          setCompletedPathText(ongoing.WayName ?? '');
+          return;
+        }
+
+        const completed = robotSchedules
+          .filter((s: any) => s.TaskStatus === '완료')
+          .sort((a: any, b: any) => new Date(b.EndDate).getTime() - new Date(a.EndDate).getTime());
+        if (completed.length > 0) {
+          setWorkScheduleCase('recent');
+          setCompletedPathText(completed[0].WayName ?? '');
+          return;
+        }
+
+        setWorkScheduleCase('none');
+        setCompletedPathText('');
+      } catch (err) {
+        console.error(err);
+        setWorkScheduleError('작업일정을 불러오지 못했습니다.');
+        setWorkScheduleCase('none');
+      } finally {
+        setWorkScheduleLoading(false);
+      }
+    };
+
+    // 경로 이동용 path 데이터 lazy fetch
+    const fetchPathRows = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/DB/getpath`);
+        if (!res.ok) throw new Error("경로 목록 조회 실패");
+        const data = await res.json();
+        setPathRows(data.map((p: any) => ({
+          id: p.id,
+          robotNo: p.RobotName,
+          workType: p.TaskType,
+          pathName: p.WayName,
+          pathOrder: p.WayPoints,
+          updatedAt: p.UpdateTime ? new Date(p.UpdateTime).toLocaleString("ko-KR") : "-",
+        })));
+      } catch (err) {
+        console.error("경로 목록 로드 실패", err);
+      }
+    };
+
+    const openPathMoveModal = () => {
+      if (pathRows.length === 0) fetchPathRows();
+      setPathMoveModalOpen(true);
+    };
+
+    // 충전소 이동 핸들러
+    const handleChargeMove = () => {
+      setBatteryConfirmOpen(true);
+    };
+
+    const handleChargeMoveConfirm = () => {
+      if (!selectedRobotId) return;
+      console.log("충전소 이동:", selectedRobotId);
+      // TODO: API call
+      setBatteryConfirmOpen(false);
+    };
+
     // B-5: 수정 불가 필드 식별용 클래스
     const readonlyContentClass = `${styles.itemContentBox} ${isEditMode ? styles.readonlyField : ""}`;
 
@@ -295,11 +402,17 @@ export default function RobotDetailModal({
         <>
         <div className={styles.modalOverlay} onClick={isSubmitting ? undefined : onClose}>
             <div className={styles.detailModalContent} onClick={(e) => e.stopPropagation()}>
-                <button className={styles.detailCloseBtn} onClick={onClose} disabled={isSubmitting} aria-label="닫기">✕</button>
-                <div className={styles.detailTitle}>
-                    <img src="/icon/robot_status_w.png" alt="로봇 정보" />
-                    <h2>로봇 정보</h2>
+
+                {/* ── Header ── */}
+                <div className={styles.detailHeader}>
+                  <div className={styles.detailHeaderTop}>
+                    <h2>{(robotDetail ?? selectedRobot)?.no ?? "로봇"} {isEditMode ? "수정" : "상세정보"}</h2>
+                    <button className={styles.detailCloseBtn} onClick={onClose} disabled={isSubmitting} aria-label="닫기">✕</button>
+                  </div>
                 </div>
+
+                {/* ── Body ── */}
+                <div className={styles.detailBody}>
 
                 {/* B-1: 로딩 상태 */}
                 {isLoading && (
@@ -338,6 +451,7 @@ export default function RobotDetailModal({
                                         };
                                         setRobotDetail(detail);
                                         setDraft({
+                                            robotName: detail.no,
                                             operator: detail.operator, serialNumber: detail.serialNumber,
                                             model: detail.model, group: detail.group,
                                             softwareVersion: detail.softwareVersion, site: detail.site,
@@ -358,265 +472,242 @@ export default function RobotDetailModal({
                 {/* 데이터 로드 완료 시 표시 */}
                 {!isLoading && !fetchError && (
                 <>
-                <div className={`${styles.detailItemBoxContainer} ${styles.detailBoxFs} ${isEditMode ? styles.editMode : ""}`}>
+                {/* ── 실시간 현황 섹션 ── */}
+                {!isEditMode && (() => {
+                  const r = robotDetail ?? selectedRobot;
+                  if (!r) return null;
+                  const isOffline = r.power === "Off";
+                  const isNetworkDown = r.network === "Offline" && !isOffline;
 
-                {/* 1. Robot Type(Name) / Operator */}
-                <div className={`${styles.detailRowItemBox} ${styles.btnBline}`}>
-                    <div className={`${styles.detailItemBox} ${styles.detailItemBoxBorderRight}`}>
-                        <div className={styles.itemTitleBox}>
-                            로봇명
+                  // 상태 계산
+                  let statusLabel = "대기";
+                  let statusClass = styles.detailBadgeStandby;
+                  if (isOffline) { statusLabel = "오프라인"; statusClass = styles.detailBadgeOffline; }
+                  else if (r.isCharging) { statusLabel = "충전"; statusClass = styles.detailBadgeCharging; }
+                  else if (r.tasks.length > 0 && r.waitingTime === 0) { statusLabel = "운영"; statusClass = styles.detailBadgeOperating; }
+
+                  // 네트워크 dot
+                  const netDotClass = r.network === "Online" ? styles.detailNetDotOnline
+                    : r.network === "Error" ? styles.detailNetDotError
+                    : styles.detailNetDotOffline;
+
+                  // 배터리 색상
+                  const bat = r.battery ?? 0;
+                  const batClass = bat > 25 ? styles.detailBatSuccess
+                    : bat > 10 ? styles.detailBatWarning
+                    : styles.detailBatDanger;
+
+                  return (
+                    <div className={`${styles.detailStatusSection} ${isOffline ? styles.detailStatusOffline : ""}`}>
+                      <h3 className={styles.detailSectionTitle}>실시간 현황</h3>
+                      {isNetworkDown && (
+                        <div className={styles.detailNetworkWarning}>통신 끊김 — 마지막 수신 데이터 기준</div>
+                      )}
+                      <div className={styles.detailStatusGrid}>
+                        <div className={styles.detailStatusItem}>
+                          <span className={styles.detailStatusLabel}>상태</span>
+                          <span className={`${styles.detailStatusValue} ${statusClass}`}>{statusLabel}</span>
                         </div>
-                        <div className={readonlyContentClass}>
-                            {selectedRobot
-                            ? `${(robotDetail ?? selectedRobot).group} (${(robotDetail ?? selectedRobot).no})`
-                            : "-"}
+                        <div className={styles.detailStatusItem}>
+                          <span className={styles.detailStatusLabel}>전원</span>
+                          <span className={styles.detailStatusValue}>{r.power ?? "-"}</span>
                         </div>
-                    </div>
-
-                    <div className={styles.detailItemBox}>
-                    <div className={styles.itemTitleBox}>운영사</div>
-                    <div className={styles.itemContentBox}>
-                        {isEditMode ? (
-                            <input
-                            className={styles.editInput}
-                            type="text"
-                            maxLength={20}
-                            value={draft.operator}
-                            placeholder='20글자 이내로 작성 (40byte 이내)'
-                            onChange={(e) => setDraft((p) => ({ ...p, operator: e.target.value }))}
-                            />
-                        ) : (
-                            ((robotDetail ?? selectedRobot)?.operator ?? "-")
-                        )}
-                    </div>
-                    </div>
-                </div>
-
-                {/* 2. Serial Number / Model */}
-                <div className={`${styles.detailRowItemBox} ${styles.btnBline}`}>
-                    <div className={`${styles.detailItemBox} ${styles.detailItemBoxBorderRight}`}>
-                    <div className={styles.itemTitleBox}>시리얼 번호(SN)</div>
-                    <div className={`${styles.itemContentBox}`}>
-                        {isEditMode ? (
-                            <input
-                            className={styles.editInput}
-                            type="text"
-                            maxLength={20}
-                            value={draft.serialNumber}
-                            placeholder='20글자 이내로 작성 (40byte 이내)'
-                            onChange={(e) => setDraft((p) => ({ ...p, serialNumber: e.target.value }))}
-                            />
-                        ) : (
-                            ((robotDetail ?? selectedRobot)?.serialNumber ?? "-")
-                        )}
-                    </div>
-                    </div>
-
-                    <div className={styles.detailItemBox}>
-                    <div className={styles.itemTitleBox}>모델</div>
-                    <div className={`${styles.itemContentBox}`}>
-                        {isEditMode ? (
-                            <input
-                            className={styles.editInput}
-                            type="text"
-                            maxLength={20}
-                            value={draft.model}
-                            placeholder='20글자 이내로 작성 (40byte 이내)'
-                            onChange={(e) => setDraft((p) => ({ ...p, model: e.target.value }))}
-                            />
-                        ) : (
-                            ((robotDetail ?? selectedRobot)?.model ?? "-")
-                        )}
-                    </div>
-                    </div>
-                </div>
-
-                {/* 3. Group / Software Version */}
-                <div className={`${styles.detailRowItemBox} ${styles.btnBline}`}>
-                    <div className={`${styles.detailItemBox} ${styles.detailItemBoxBorderRight}`}>
-                    <div className={styles.itemTitleBox}>그룹</div>
-                    <div className={`${styles.itemContentBox}`}>
-                        {isEditMode ? (
-                            <input
-                            className={styles.editInput}
-                            type="text"
-                            maxLength={20}
-                            value={draft.group}
-                            placeholder='20글자 이내로 작성 (40byte 이내)'
-                            onChange={(e) => setDraft((p) => ({ ...p, group: e.target.value }))}
-                            />
-                        ) : (
-                            ((robotDetail ?? selectedRobot)?.group ?? "-")
-                        )}
-                    </div>
-                    </div>
-
-                    <div className={styles.detailItemBox}>
-                    <div className={styles.itemTitleBox}>소프트웨어 버전</div>
-                    <div className={`${styles.itemContentBox}`}>
-                        {isEditMode ? (
-                            <input
-                            className={styles.editInput}
-                            type="text"
-                            maxLength={20}
-                            value={draft.softwareVersion}
-                            placeholder='20글자 이내로 작성 (40byte 이내)'
-                            onChange={(e) => setDraft((p) => ({ ...p, softwareVersion: e.target.value }))}
-                            />
-                        ) : (
-                            ((robotDetail ?? selectedRobot)?.softwareVersion ?? "-")
-                        )}
-                    </div>
-                    </div>
-                </div>
-
-                {/* 4. Site / Robot Registration Date/Time */}
-                <div className={`${styles.detailRowItemBox} ${styles.btnBline}`}>
-                    <div className={`${styles.detailItemBox} ${styles.detailItemBoxBorderRight}`}>
-                        <div className={`${styles.itemTitleBox}`}>
-                            사이트
+                        <div className={styles.detailStatusItem}>
+                          <span className={styles.detailStatusLabel}>네트워크</span>
+                          <span className={styles.detailStatusValue}>{r.network ?? "-"}</span>
                         </div>
-                        <div className={`${styles.itemContentBox}`}>
-                            {isEditMode ? (
-                                <input
-                                className={styles.editInput}
-                                type="text"
-                                maxLength={20}
-                                value={draft.site}
-                                placeholder='20글자 이내로 작성 (40byte 이내)'
-                                onChange={(e) => setDraft((p) => ({ ...p, site: e.target.value }))}
-                                />
-                            ) : (
-                                ((robotDetail ?? selectedRobot)?.site ?? "-")
+                        <div className={styles.detailStatusItem}>
+                          <span className={styles.detailStatusLabel}>배터리</span>
+                          <span className={styles.detailStatusValue}>
+                            {isOffline ? "-" : (
+                              r.type === "QUADRUPED" && r.batteryLeft != null && r.batteryRight != null ? (
+                                <>
+                                  <span className={r.batteryLeft > 25 ? styles.detailBatSuccess : r.batteryLeft > 10 ? styles.detailBatWarning : styles.detailBatDanger}>L {r.batteryLeft}%</span>
+                                  <span style={{ color: "var(--text-muted)" }}> / </span>
+                                  <span className={r.batteryRight > 25 ? styles.detailBatSuccess : r.batteryRight > 10 ? styles.detailBatWarning : styles.detailBatDanger}>R {r.batteryRight}%</span>
+                                </>
+                              ) : (
+                                <span className={batClass}>{bat}%</span>
+                              )
                             )}
+                          </span>
                         </div>
-                    </div>
-
-                    <div className={styles.detailItemBox}>
-                    <div className={styles.itemTitleBox}>
-                        로봇 등록 일시
-                    </div>
-                    <div className={readonlyContentClass}>
-                        {(robotDetail ?? selectedRobot)?.registrationDateTime ?? "-"}
-                    </div>
-                    </div>
-                </div>
-
-                {/* 5. Battery */}
-                <div className={styles.detailRowBattery}>
-                    <div className={`${styles.detailItemBox} ${styles.detailItemBoxBorderRight}`}>
-                        <div className={styles.itemTitleBox}>
-                            복귀 배터리양
+                        <div className={styles.detailStatusItem}>
+                          <span className={styles.detailStatusLabel}>현재 위치</span>
+                          <span className={styles.detailStatusValue}>
+                            {isOffline ? "-" : (r.site || "-")}
+                          </span>
                         </div>
-                        <div className={`${styles.itemContentBox} ${styles.batteryBar}`}>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ── 기본 정보 (2열 그리드) ── */}
+                {(() => {
+                  const r = robotDetail ?? selectedRobot;
+                  const isRobotOffline = r?.power === "Off";
+
+                  const infoField = (label: string, field: keyof typeof draft | null, value: string, readonly?: boolean) => (
+                    <div className={styles.detailInfoRow}>
+                      <span className={styles.detailInfoLabel}>{label}</span>
+                      <span className={styles.detailInfoValue}>
+                        {isEditMode && field && !readonly ? (
+                          <input
+                            className={styles.detailInfoInput}
+                            type="text"
+                            maxLength={20}
+                            value={draft[field] as string}
+                            placeholder="입력"
+                            onChange={(e) => setDraft((p) => ({ ...p, [field]: e.target.value }))}
+                          />
+                        ) : value}
+                      </span>
+                    </div>
+                  );
+
+                  return (
+                    <div className={styles.detailInfoSection}>
+                      <h3 className={styles.detailSectionTitle}>기본 정보</h3>
+                      <div className={styles.detailInfoGrid}>
+                        {infoField("로봇명", "robotName",
+                          r?.no ?? "-")}
+                        {infoField("모델", "model",
+                          r?.model ?? "-", true)}
+                        {infoField("시리얼 번호", "serialNumber",
+                          r?.serialNumber ?? "-", true)}
+                        {infoField("운영사", "operator",
+                          r?.operator ?? "-", true)}
+                        {infoField("사이트", "site",
+                          r?.site ?? "-")}
+                        {infoField("S/W 버전", "softwareVersion",
+                          r?.softwareVersion ?? "-", true)}
+
+                        {/* 복귀 배터리 (좌) / 등록일시 (우) */}
+                        <div className={styles.detailInfoRow}>
+                          <span className={styles.detailInfoLabel}>복귀 배터리</span>
+                          <span className={styles.detailInfoValue}>
                             {isEditMode ? (
+                              <div className={styles.detailBatteryEdit}>
                                 <input
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={2}
-                                value={battery.text}
-                                onChange={battery.handleInputChange}
-                                onBlur={battery.validateAndFix}
-                                onKeyDown={battery.handleInputKeyDown}
+                                  className={styles.detailBatterySlider}
+                                  type="range"
+                                  min={battery.min}
+                                  max={battery.max}
+                                  step={1}
+                                  value={battery.value}
+                                  onChange={battery.handleSliderChange}
+                                  style={{ ["--percent" as any]: `${battery.sliderPercent}%` }}
                                 />
+                                <span>{battery.value}%</span>
+                              </div>
                             ) : (
-                                <div>{draft.returnBattery}%</div>
+                              <div className={styles.detailBatteryView}>
+                                <span className={styles.detailBatteryBar}>
+                                  <span className={styles.detailBatteryFill} style={{ width: `${Math.min(draft.returnBattery, 100)}%` }} />
+                                </span>
+                                <span>{draft.returnBattery}%</span>
+                              </div>
                             )}
+                          </span>
                         </div>
-                    </div>
+                        {infoField("등록일시", null,
+                          r?.registrationDateTime ?? "-", true)}
+                      </div>
 
-                    <div className={`${styles.slidebarinsert} ${styles.detailBattery}`}>
-                        <div className={styles.batterySliderWrap}>
-                            <div className={styles.batterySliderTrackArea}>
-                                <input
-                                className={`
-                                    ${styles.batterySlider}
-                                    ${styles.batteryBarInputBg}
-                                    ${!isEditMode ? styles.sliderDisabled : ""}
-                                `}
-                                type="range"
-                                min={battery.min}
-                                max={battery.max}
-                                step={1}
-                                value={battery.value}
-                                onChange={isEditMode ? battery.handleSliderChange : undefined}
-                                aria-label="복귀 배터리양 조정"
-                                disabled={!isEditMode}
-                                style={{ ["--percent" as any]: `${battery.sliderPercent}%` }}
-                                />
-                            </div>
-
-                            <div
-                                className={`
-                                ${styles.batterySliderLabels}
-                                ${styles.batteryBarFc}
-                                ${!isEditMode ? styles.sliderLabelDisabled : ""}
-                                `}
-                            >
-                                <span>{battery.min}%</span>
-                                <span>{battery.max}%</span>
-                            </div>
+                      {/* 액션 버튼 (기본정보 섹션 내부) */}
+                      {!isEditMode && (
+                        <div className={styles.detailActionBar}>
+                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
+                            onClick={isRobotOffline ? undefined : openWorkScheduleModal} disabled={!!isRobotOffline}>
+                            <img src="/icon/robot_schedule_w.png" alt="" style={{ height: 13 }} />
+                            <span>작업 복귀</span>
+                          </button>
+                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
+                            onClick={isRobotOffline ? undefined : () => setPlacePathModalOpen(true)} disabled={!!isRobotOffline}>
+                            <MapPin size={14} />
+                            <span>장소 이동</span>
+                          </button>
+                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
+                            onClick={isRobotOffline ? undefined : openPathMoveModal} disabled={!!isRobotOffline}>
+                            <Route size={14} />
+                            <span>경로 이동</span>
+                          </button>
+                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
+                            onClick={isRobotOffline ? undefined : handleChargeMove} disabled={!!isRobotOffline}>
+                            <img src="/icon/robot_battery_place_w.png" alt="" style={{ height: 13 }} />
+                            <span>충전소 이동</span>
+                          </button>
                         </div>
+                      )}
+                      {isEditMode && (
+                        <div className={styles.detailActionBar}>
+                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgRed}`}
+                            onClick={handleCancel} disabled={isSubmitting}>
+                            <span>취소</span>
+                          </button>
+                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgBlue} ${isSubmitting ? styles.btnDisabled : ""}`}
+                            onClick={handleSave} disabled={isSubmitting}>
+                            <span>{isSubmitting ? "저장 중..." : "저장"}</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
-                </div>
+                  );
+                })()}
 
-                </div>
-                <div className={styles.btnTotal}>
-                {/* 왼쪽: 삭제/수정 (보기모드에서만) */}
-                {!isEditMode && (
-                    <div className={styles.btnLeftBox}>
-                    <button
-                        type="button"
-                        className={`${styles.btnItemCommon} ${styles.btnBgGray} ${styles.mr10}`}
-                        onClick={handleDelete}
-                        disabled={isSubmitting}
-                    >
-                        <span className={styles.btnIcon}><img src="/icon/delete_icon.png" alt="삭제" /></span>
-                        <span>삭제</span>
-                    </button>
+                {/* ── 현재 작업 & 경로 진행 섹션 ── */}
+                {!isEditMode && (() => {
+                  const r = robotDetail ?? selectedRobot;
+                  if (!r) return null;
+                  const isOffline = r.power === "Off";
 
-                    <button
-                        type="button"
-                        className={`${styles.btnItemCommon} ${styles.btnBgGray}`}
-                        onClick={() => { handleUdate?.(); }}
-                    >
-                        <span className={styles.btnIcon}><img src="/icon/edit_icon.png" alt="edit" /></span>
-                        <span>수정</span>
-                    </button>
+                  if (isOffline) {
+                    return (
+                      <div className={styles.detailTaskSection}>
+                        <h3 className={styles.detailSectionTitle}>현재 작업</h3>
+                        <div className={styles.detailTaskEmpty}>오프라인 — 작업 할당 불가</div>
+                      </div>
+                    );
+                  }
+
+                  if (r.tasks.length === 0) {
+                    return (
+                      <div className={styles.detailTaskSection}>
+                        <h3 className={styles.detailSectionTitle}>현재 작업</h3>
+                        <div className={styles.detailTaskEmpty}>할당된 작업 없음</div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className={styles.detailTaskSection}>
+                      <h3 className={styles.detailSectionTitle}>현재 작업</h3>
+                      <div className={styles.detailTaskList}>
+                        {r.tasks.map((task, i) => {
+                          // TODO: 백엔드 API (GET /robot/{id}/task-progress) 연동 시 교체
+                          const mockWaypoints: WaypointStep[] = [];
+                          return (
+                            <div key={i} className={styles.detailTaskCard}>
+                              <div className={styles.detailTaskHeader}>
+                                <span className={styles.detailTaskName}>{task.taskName}</span>
+                                <span className={styles.detailTaskType}>{task.taskType}</span>
+                                <span className={styles.detailTaskTime}>{task.taskTime}분</span>
+                              </div>
+                              <WaypointProgress waypoints={mockWaypoints} />
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                )}
+                  );
+                })()}
 
-                {/* 오른쪽: 취소/저장 (수정모드에서만) */}
-                {isEditMode && (
-                    <div className={styles.btnRightBox}>
-                    <button
-                        type="button"
-                        className={`${styles.btnItemCommon} ${styles.btnBgRed}`}
-                        onClick={handleCancel}
-                        disabled={isSubmitting}
-                    >
-                        <span className={styles.btnIcon}><img src="/icon/close_btn.png" alt="cancel" /></span>
-                        <span>취소</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        className={`${styles.btnItemCommon} ${styles.btnBgBlue} ${isSubmitting ? styles.btnDisabled : ""}`}
-                        onClick={handleSave}
-                        disabled={isSubmitting}
-                    >
-                        {isSubmitting ? (
-                            <span className={styles.btnSpinner} />
-                        ) : (
-                            <span className={styles.btnIcon}><img src="/icon/check.png" alt="save" /></span>
-                        )}
-                        <span>{isSubmitting ? "저장 중..." : "저장"}</span>
-                    </button>
-                    </div>
-                )}
-                </div>
                 </>
                 )}
+                </div>
+                {/* ── Body 끝 ── */}
+
             </div>
         </div>
         {showConfirm && (
@@ -646,6 +737,62 @@ export default function RobotDetailModal({
                 onConfirm={apiAlert.close}
                 onCancel={apiAlert.close}
             />
+        )}
+        {workScheduleModalOpen && (
+          <RobotWorkScheduleModal
+            isOpen={workScheduleModalOpen}
+            onClose={() => { setWorkScheduleModalOpen(false); setWorkScheduleError(null); }}
+            selectedRobotIds={selectedRobotId ? [selectedRobotId] : []}
+            scheduleCase={workScheduleCase}
+            completedPathText={completedPathText}
+            loading={workScheduleLoading}
+            error={workScheduleError}
+            onConfirmReturn={() => {
+              const robotName = (robotDetail ?? selectedRobot)?.no ?? '';
+              fetch(`${API_BASE}/nav/startmove`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ robotName, action: "schedule_return" }),
+              }).catch((err) => console.error("작업일정 복귀 명령 실패", err));
+            }}
+            onConfirmWhenNone={() => {
+              window.location.href = "/schedules";
+            }}
+            onRetry={openWorkScheduleModal}
+          />
+        )}
+        {placePathModalOpen && (
+          <PlacePathModal
+            isOpen={placePathModalOpen}
+            onClose={() => setPlacePathModalOpen(false)}
+            selectedRobotIds={selectedRobotId ? [selectedRobotId] : []}
+          />
+        )}
+        {pathMoveModalOpen && (
+          <PathMoveModal
+            isOpen={pathMoveModalOpen}
+            onClose={() => setPathMoveModalOpen(false)}
+            robotName={(robotDetail ?? selectedRobot)?.no ?? ''}
+            pathRows={pathRows}
+            onConfirm={async (path) => {
+              try {
+                const res = await fetch(`${API_BASE}/nav/pathmove/${path.id}`, { method: "POST" });
+                const data = await res.json();
+                console.log("경로 이동 명령 전송:", data.msg ?? data.status);
+              } catch (err) {
+                console.error("경로 이동 실패:", err);
+              }
+              setPathMoveModalOpen(false);
+            }}
+          />
+        )}
+        {batteryConfirmOpen && (
+          <BatteryPathModal
+            isOpen={batteryConfirmOpen}
+            message="배터리 충전소로 이동하시겠습니까?"
+            onConfirm={handleChargeMoveConfirm}
+            onCancel={() => setBatteryConfirmOpen(false)}
+          />
         )}
         </>
     );

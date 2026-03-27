@@ -1,30 +1,22 @@
 "use client"
 
 import styles from './common.module.css';
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { useSidebar } from "@/app/context/SidebarContext";
 
 export default function Sidebar() {
-    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-    const [retryKey, setRetryKey] = useState(0);
     const { isOpen, close } = useSidebar();
 
     const menuItems = [
       { path: "/dashboard", icon: "main", label: "대시보드" },
-      { path: "/robots", icon: "robot", label: "로봇관리" },
+      { path: "/schedules", icon: "schedule", label: "작업관리" },
+      { path: "/robots", icon: "robot", label: "운영관리" },
       { path: "/mapManagement", icon: "map", label: "맵 관리" },
       { path: "/dataManagement", icon: "data", label: "데이터관리" },
-      { path: "/schedules", icon: "schedule", label: "작업관리" },
       { path: "/alerts", icon: "alerts", label: "알림" },
       { path: "/settings", icon: "setting", label: "설정" }
     ];
-
-    const handleImgError = () => {
-        setTimeout(() => {
-            setRetryKey(prev => prev + 1);
-        }, 1000);
-    };
 
     return(
         <>
@@ -44,10 +36,10 @@ export default function Sidebar() {
                                         e.preventDefault();
                                         window.location.reload();
                                     }
-                                }}
-                                onMouseEnter={() => setHoveredIndex(idx)} onMouseLeave={() => setHoveredIndex(null)}>
-                            <div className={`${item.icon}-icon`}>
-                                <img src={ hoveredIndex === idx ? `/icon/${item.icon}_d.png` : `/icon/${item.icon}_w.png`} alt={item.label} key={retryKey} onError={handleImgError} />
+                                }}>
+                            <div className={`${item.icon}-icon ${styles.iconWrap}`}>
+                                <img className={styles.iconDefault} src={`/icon/${item.icon}_w.png`} alt={item.label} />
+                                <img className={styles.iconHover} src={`/icon/${item.icon}_d.png`} alt="" />
                             </div>
                             {item.label}
                         </Link>

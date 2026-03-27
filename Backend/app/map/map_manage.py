@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func as sql_func
 from pydantic import BaseModel
 from typing import Optional
 import os
@@ -28,7 +29,23 @@ class BusinessReq(BaseModel):
 
 @map_manage.get("/businesses")
 def get_businesses(db: Session = Depends(get_db)):
-    return db.query(BusinessInfo).order_by(BusinessInfo.id.asc()).all()
+    rows = db.query(BusinessInfo).order_by(BusinessInfo.id.asc()).all()
+    # 영역 수 / 로봇 수를 한 번에 조회
+    area_counts = dict(
+        db.query(AreaInfo.BusinessId, sql_func.count(AreaInfo.id))
+        .group_by(AreaInfo.BusinessId)
+        .all()
+    )
+    return [
+        {
+            "id": b.id,
+            "BusinessName": b.BusinessName,
+            "Address": b.Address,
+            "Adddate": b.Adddate,
+            "AreaCount": area_counts.get(b.id, 0),
+        }
+        for b in rows
+    ]
 
 @map_manage.post("/businesses")
 def create_business(req: BusinessReq, db: Session = Depends(get_db)):
@@ -37,6 +54,29 @@ def create_business(req: BusinessReq, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(biz)
     return biz
+
+@map_manage.put("/businesses/{biz_id}")
+def update_business(biz_id: int, req: BusinessReq, db: Session = Depends(get_db)):
+    biz = db.query(BusinessInfo).filter(BusinessInfo.id == biz_id).first()
+    if not biz:
+        raise HTTPException(status_code=404, detail="Business not found")
+    biz.BusinessName = req.BusinessName
+    if req.Address is not None:
+        biz.Address = req.Address
+    db.commit()
+    db.refresh(biz)
+    return biz
+
+@map_manage.delete("/businesses/{biz_id}")
+def delete_business(biz_id: int, db: Session = Depends(get_db)):
+    biz = db.query(BusinessInfo).filter(BusinessInfo.id == biz_id).first()
+    if not biz:
+        raise HTTPException(status_code=404, detail="Business not found")
+    # 하위 영역도 함께 삭제
+    db.query(AreaInfo).filter(AreaInfo.BusinessId == biz_id).delete()
+    db.delete(biz)
+    db.commit()
+    return {"status": "deleted"}
 
 # =========================
 # 영역(층) CRUD
@@ -59,6 +99,15 @@ def create_area(req: AreaReq, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(area)
     return area
+
+@map_manage.delete("/areas/{area_id}")
+def delete_area(area_id: int, db: Session = Depends(get_db)):
+    area = db.query(AreaInfo).filter(AreaInfo.id == area_id).first()
+    if not area:
+        raise HTTPException(status_code=404, detail="Area not found")
+    db.delete(area)
+    db.commit()
+    return {"status": "deleted"}
 
 # =========================
 # 로봇 맵 CRUD

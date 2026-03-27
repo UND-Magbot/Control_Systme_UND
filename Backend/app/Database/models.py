@@ -3,6 +3,7 @@ from sqlalchemy import (
     Integer,
     String,
     Double,
+    Float,
     DateTime,
     Text,
     ForeignKey,
@@ -25,6 +26,7 @@ class RobotInfo(Base):
     Group = Column(String(100))
     SWversion = Column(String(100))
     Site = Column(String(100))
+    BusinessId = Column(Integer, nullable=True)
     Adddate = Column(DateTime, server_default=func.now())
     LimitBattery = Column(Integer)
 
@@ -153,7 +155,12 @@ class BusinessInfo(Base):
     __tablename__ = "business_info"
     id = Column(Integer, primary_key=True, index=True)
     BusinessName = Column(String(100), nullable=False)
-    Address = Column(String(200))
+    ZipCode = Column(String(10), nullable=True)
+    Address = Column(String(200), nullable=True)
+    AddressDetail = Column(String(200), nullable=True)
+    RepresentName = Column(String(50), nullable=True)
+    Contact = Column(String(30), nullable=True)
+    Description = Column(String(500), nullable=True)
     Adddate = Column(DateTime, server_default=func.now())
 
 # =========================

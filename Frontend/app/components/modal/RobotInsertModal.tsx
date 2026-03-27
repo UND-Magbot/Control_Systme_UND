@@ -1,7 +1,7 @@
 'use client';
 
 import styles from './Modal.module.css';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { API_BASE } from "@/app/config";
 import { useBatterySlider } from '@/app/hooks/useBatterySlider';
@@ -31,8 +31,23 @@ export default function RobotInsertModal({
     const [robotName, setRobotName] = useState("");
     const [robotModel, setRobotModel] = useState("");
     const [robotSN, setRobotSN] = useState("");
+    const [businessId, setBusinessId] = useState<number | null>(null);
+    const [businessList, setBusinessList] = useState<{ id: number; name: string }[]>([]);
+    const [bizDropdownOpen, setBizDropdownOpen] = useState(false);
+    const bizDropdownRef = useRef<HTMLDivElement>(null);
 
     const battery = useBatterySlider({ min: 15, max: 30, defaultValue: 30 });
+
+    // 드롭다운 외부 클릭 닫기
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (bizDropdownRef.current && !bizDropdownRef.current.contains(e.target as Node)) {
+                setBizDropdownOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     const handleCancel = () => {
         if (isSubmitting) return;
@@ -47,6 +62,7 @@ export default function RobotInsertModal({
         if (!robotName.trim()) newErrors.robotName = true;
         if (!robotModel.trim()) newErrors.robotModel = true;
         if (!robotSN.trim()) newErrors.robotSN = true;
+        if (businessId == null) newErrors.businessId = true;
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
             return;
@@ -59,7 +75,8 @@ export default function RobotInsertModal({
             robot_id: robotSN,
             robot_name: robotName,
             robot_model: robotModel,
-            limit_battery: battery.value
+            limit_battery: battery.value,
+            business_id: businessId,
         };
         try {
             const res = await fetch(`${API_BASE}/DB/RobotInsert`, {
@@ -96,15 +113,26 @@ export default function RobotInsertModal({
         setRobotName("");
         setRobotModel("");
         setRobotSN("");
+        setBusinessId(null);
         setErrors({});
         setSnDuplicateMsg("");
         setIsSubmitting(false);
         battery.reset();
+
+        // 사업장 목록 조회
+        fetch(`${API_BASE}/DB/businesses?size=10000`)
+            .then(res => res.json())
+            .then(data => {
+                const items = (data.items ?? []).map((b: any) => ({ id: b.id, name: b.BusinessName }));
+                setBusinessList(items);
+            })
+            .catch(() => setBusinessList([]));
     }, [isOpen]);
 
     if (!isOpen) return null;
 
-    const isFormEmpty = !robotName.trim() || !robotModel.trim() || !robotSN.trim();
+    const isFormEmpty = !robotName.trim() || !robotModel.trim() || !robotSN.trim() || businessId == null;
+    const selectedBizName = businessList.find(b => b.id === businessId)?.name ?? "";
 
     return (
         <>
@@ -166,6 +194,50 @@ export default function RobotInsertModal({
                                         {snDuplicateMsg || "필수 입력 항목입니다."}
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                        <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>운영사 <span className={styles.requiredMark}>*</span></div>
+                            <div className={styles.insertInputWrap}>
+                                <div
+                                    ref={bizDropdownRef}
+                                    className={styles.customSelectWrap}
+                                    style={{ width: 320 }}
+                                >
+                                    <button
+                                        type="button"
+                                        className={`${styles.customSelectTrigger} ${errors.businessId ? styles.inputError : ""}`}
+                                        onClick={() => setBizDropdownOpen(prev => !prev)}
+                                        aria-label="운영사"
+                                    >
+                                        <span style={{ color: selectedBizName ? "var(--text-primary)" : "var(--text-tertiary)" }}>
+                                            {selectedBizName || "운영사를 선택하세요"}
+                                        </span>
+                                        <span className={styles.customSelectArrow}>&#9662;</span>
+                                    </button>
+                                    {bizDropdownOpen && (
+                                        <div className={styles.customSelectDropdown}>
+                                            {businessList.length === 0 ? (
+                                                <div className={styles.customSelectItem} style={{ color: "var(--text-muted)" }}>등록된 사업자가 없습니다</div>
+                                            ) : (
+                                                businessList.map((b) => (
+                                                    <div
+                                                        key={b.id}
+                                                        className={`${styles.customSelectItem} ${businessId === b.id ? styles.customSelectItemActive : ""}`}
+                                                        onClick={() => {
+                                                            setBusinessId(b.id);
+                                                            setBizDropdownOpen(false);
+                                                            setErrors(p => ({ ...p, businessId: false }));
+                                                        }}
+                                                    >
+                                                        {b.name}
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                {errors.businessId && <div className={styles.errorMessage}>필수 선택 항목입니다.</div>}
                             </div>
                         </div>
                         <div className={styles.insertItemBox}>

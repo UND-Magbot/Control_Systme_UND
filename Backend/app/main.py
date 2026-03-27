@@ -17,6 +17,7 @@ from app.Database.models import BusinessInfo, AreaInfo, RobotMapInfo
 from app.logs.routes import router as log_router
 from app.alerts.routes import router as alert_router
 from app.notices.routes import router as notice_router
+from app.businesses.routes import router as business_router
 from app.logs.service import log_event
 from app.robot_sender import send_to_robot
 from app.navigation.send_move import (
@@ -60,6 +61,7 @@ app.include_router(ws_mapping_router)
 app.include_router(log_router)
 app.include_router(alert_router)
 app.include_router(notice_router)
+app.include_router(business_router)
 
 
 # ======================================================

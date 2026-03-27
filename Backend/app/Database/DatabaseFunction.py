@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from typing import Optional
 
 from app.Database.database import SessionLocal
 from app.Database.models import RobotInfo
@@ -29,6 +30,7 @@ class RobotInsertReq(BaseModel):
     robot_name: str
     robot_model: str
     limit_battery: int
+    business_id: Optional[int] = None
 
 @database.post("/RobotInsert")
 def insert_Robot(req: RobotInsertReq, db: Session = Depends(get_db)):
@@ -51,7 +53,8 @@ def insert_Robot(req: RobotInsertReq, db: Session = Depends(get_db)):
         RobotName=req.robot_name,
         ModelName=req.robot_model,
         LimitBattery=req.limit_battery,
-        SerialNumber=req.robot_id
+        SerialNumber=req.robot_id,
+        BusinessId=req.business_id,
     )
 
     db.add(robot)
@@ -313,7 +316,8 @@ def update_robot(
 
     return {"status": "ok"}
 
-class RobotUpdateReq(BaseModel):
+class RobotUpdateReq2(BaseModel):
+    robotName: str | None = None
     Operator: str | None = None
     SerialNumber: str | None = None
     ModelName: str | None = None
@@ -323,9 +327,9 @@ class RobotUpdateReq(BaseModel):
     LimitBattery: int | None = None
 
 @database.put("/robots/{robot_id}")
-def update_robot(
+def update_robot2(
     robot_id: int,
-    req: RobotUpdateReq,
+    req: RobotUpdateReq2,
     db: Session = Depends(get_db)
 ):
     robot = db.query(RobotInfo).filter(RobotInfo.id == robot_id).first()
@@ -333,6 +337,8 @@ def update_robot(
     if not robot:
         raise HTTPException(status_code=404, detail="Robot not found")
 
+    if req.robotName is not None:
+        robot.RobotName = req.robotName
     if req.Operator is not None:
         robot.ProductCompany = req.Operator
     if req.SerialNumber is not None:

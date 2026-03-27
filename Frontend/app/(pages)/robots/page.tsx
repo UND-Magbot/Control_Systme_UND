@@ -24,14 +24,14 @@ export default async function Page() {
 
     let operating = 0;
     let standby = 0;
-    let discharged = 0;
+    let offline = 0;
     let charging = 0;
 
     robots.forEach(r => {
 
         // 전원 OFF → 무조건 Discharged
         if (r.power === "Off") {
-            discharged++;
+            offline++;
             return;
         }
 
@@ -68,7 +68,7 @@ export default async function Page() {
                 networkStatus={networkStatus}
                 powerStatus={powerStatus}
                 locationStatus={locationStatus}
-                robotStats={{ total, operating, standby, discharged, charging }}
+                robotStats={{ total, operating, standby, offline, charging }}
             />
         </div>
     )

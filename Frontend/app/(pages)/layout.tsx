@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Header from "@/app/components/common/Header";
 import Sidebar from "@/app/components/common/Sidebar";
 import AlertsConfirmModal from "@/app/components/modal/AlertsConfirmModal";
+import GlobalErrorAlert from "@/app/components/common/GlobalErrorAlert";
 import GlobalLoading from "@/app/components/common/GlobalLoading";
 import { ToastProvider } from "@/app/components/common/Toast";
 import { SidebarProvider } from "@/app/context/SidebarContext";
@@ -42,6 +43,8 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
           isOpen={alertsOpen}
           onClose={() => setAlertsOpen(false)}
         />
+
+        <GlobalErrorAlert />
       </ToastProvider>
     </SidebarProvider>
   );
