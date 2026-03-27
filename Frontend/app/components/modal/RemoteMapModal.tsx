@@ -599,18 +599,6 @@ export default function RemoteModal({
           </div>
           <div className={`${styles.zoomBtnBox} ${isOverlayReady ? styles.overlayVisible : styles.overlayHidden}`}>
             <div className={styles.zoomBtn} onClick={() => {
-              if (isMainMap) mainMapRef.current?.handleZoom("in");
-              else setScale(s => Math.min(s + 0.2, 3));
-            }}>
-              <img src="/icon/zoom_in_w.png" />
-            </div>
-            <div className={styles.zoomBtn} onClick={() => {
-              if (isMainMap) mainMapRef.current?.handleZoom("out");
-              else setScale(s => Math.max(s - 0.2, 0.5));
-            }}>
-              <img src="/icon/zoom_out_w.png" />
-            </div>
-            <div className={styles.zoomBtn} onClick={() => {
               if (isMainMap) mainMapRef.current?.handleZoom("reset");
               else { setScale(1); setTranslate({ x: 0, y: 0 }); }
             }} title="되돌리기">

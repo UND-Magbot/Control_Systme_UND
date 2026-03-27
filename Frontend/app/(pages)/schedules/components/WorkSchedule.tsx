@@ -9,6 +9,65 @@ import ScheduleDetail from './ScheduleDetail';
 import type { RobotRowData } from '@/app/type';
 import { mockScheduleRows, type ScheduleStatus } from "@/app/mock/schedule_data";
 import { API_BASE } from "@/app/config";
+import { expandRepeatSchedules, extractOriginalId, type DBSchedule } from "../utils/expandRepeatSchedules";
+
+// ===== 반복 스케줄 테스트용 Mock 데이터 =====
+const MOCK_SCHEDULES: DBSchedule[] = [
+    {
+        id: 901,
+        RobotName: "Robot 1",
+        WorkName: "월수금 순찰",
+        TaskType: "task1",
+        StartDate: "2026-03-23T09:00:00",
+        EndDate: "2026-03-23T10:30:00",
+        TaskStatus: "대기",
+        WayName: "A구역",
+        Repeat: "Y",
+        Repeat_Day: "월,수,금",
+        Repeat_End: "2026-04-30",
+    },
+    {
+        id: 902,
+        RobotName: "Robot 2",
+        WorkName: "화목 배송",
+        TaskType: "task2",
+        StartDate: "2026-03-24T14:00:00",
+        EndDate: "2026-03-24T15:30:00",
+        TaskStatus: "대기",
+        WayName: "B구역",
+        Repeat: "Y",
+        Repeat_Day: "화,목",
+        Repeat_End: "2026-04-30",
+    },
+    {
+        id: 903,
+        RobotName: "Robot 3",
+        WorkName: "매일 점검",
+        TaskType: "task3",
+        StartDate: "2026-03-24T08:00:00",
+        EndDate: "2026-03-24T08:30:00",
+        TaskStatus: "진행중",
+        WayName: "C구역",
+        Repeat: "Y",
+        Repeat_Day: "월,화,수,목,금,토,일",
+        Repeat_End: null,
+    },
+    {
+        id: 904,
+        RobotName: "Robot 1",
+        WorkName: "단일 작업 (비반복)",
+        TaskType: "task1",
+        StartDate: "2026-03-25T11:00:00",
+        EndDate: "2026-03-25T12:00:00",
+        TaskStatus: "완료",
+        WayName: "D구역",
+        Repeat: "N",
+        Repeat_Day: null,
+        Repeat_End: null,
+    },
+];
+const USE_MOCK = true; // false로 바꾸면 실제 API 사용
+// ===== Mock 데이터 끝 =====
 
 
 // 주간
@@ -236,16 +295,7 @@ interface RobotScheduleProps {
 }
 
 export default function Page({ robots }: RobotScheduleProps) {
-    type DBSchedule = {
-        id: number;
-        RobotName: string;
-        WorkName: string;
-        TaskType: string;
-        StartDate: string;
-        EndDate: string;
-        TaskStatus: string;
-        WayName: string;
-    };
+    // DBSchedule 타입은 ../utils/expandRepeatSchedules 에서 import
 
     const [schedules, setSchedules] = useState<DBSchedule[]>([]);
     const [loading, setLoading] = useState(true);
@@ -255,10 +305,14 @@ export default function Page({ robots }: RobotScheduleProps) {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE}/DB/schedule`);
-            if (!res.ok) throw new Error("서버 응답 오류");
-            const data = await res.json();
-            setSchedules(data);
+            if (USE_MOCK) {
+                setSchedules(MOCK_SCHEDULES);
+            } else {
+                const res = await fetch(`${API_BASE}/DB/schedule`);
+                if (!res.ok) throw new Error("서버 응답 오류");
+                const data = await res.json();
+                setSchedules(data);
+            }
         } catch (e) {
             console.error("스케줄 조회 실패", e);
             setError("스케줄 데이터를 불러오지 못했습니다.");
@@ -347,28 +401,31 @@ export default function Page({ robots }: RobotScheduleProps) {
       /* =========================
         📌 월간 이벤트 계산
     ========================= */
-    const monthEvents: MonthEvent[] = useMemo(() => {
+    const monthExpanded = useMemo(() => {
         const y = viewDate.getFullYear();
         const m = viewDate.getMonth();
+        const rangeStart = new Date(y, m, 1);
+        rangeStart.setHours(0, 0, 0, 0);
+        const rangeEnd = new Date(y, m + 1, 0);
+        rangeEnd.setHours(23, 59, 59, 999);
+        return expandRepeatSchedules(schedules, rangeStart, rangeEnd);
+    }, [schedules, viewDate]);
 
-        return schedules
-            .filter((s) => {
-            const d = new Date(s.StartDate);
-            return d.getFullYear() === y && d.getMonth() === m;
-            })
-            .map((s) => ({
-            id: String(s.id),
+    const monthEvents: MonthEvent[] = useMemo(() => {
+        return monthExpanded.map((s) => ({
+            id: s._isVirtual ? `${s._originalId}_${ymd(s._virtualDate)}` : String(s._originalId),
             title: s.WorkName,
-            date: ymd(new Date(s.StartDate)),
+            date: ymd(s._virtualDate),
             color: statusToColor(s.TaskStatus),
             status: s.TaskStatus as ScheduleStatus,
-            }));
-    }, [schedules, viewDate]);
+        }));
+    }, [monthExpanded]);
 
     const filteredMonthEvents: MonthEvent[] = useMemo(() => {
         if (!isTypeFilterOn && !isNameFilterOn) return monthEvents;
         return monthEvents.filter((ev) => {
-            const full = schedules.find((s) => String(s.id) === ev.id);
+            const origId = extractOriginalId(ev.id);
+            const full = schedules.find((s) => String(s.id) === origId);
             if (!full) return false;
             const typeOk = !isTypeFilterOn || selectedRobotTypes.includes(full.TaskType);
             const nameOk = !isNameFilterOn || selectedRobotNames.includes(full.RobotName);
@@ -387,34 +444,27 @@ export default function Page({ robots }: RobotScheduleProps) {
         start.setHours(0, 0, 0, 0);
 
         const end = new Date(start);
-        end.setDate(start.getDate() + 7);
+        end.setDate(start.getDate() + 6);
+        end.setHours(23, 59, 59, 999);
 
-        return schedules
-            .filter((s) => {
-            const d = new Date(s.StartDate);
-            return d >= start && d < end;
-            })
-            .map((s) => {
-            const d = new Date(s.StartDate);
+        const expanded = expandRepeatSchedules(schedules, start, end);
 
-            const startMin =
-                d.getHours() * 60 + d.getMinutes();
-
-            const endDate = new Date(s.EndDate);
-            const endMin =
-                endDate.getHours() * 60 + endDate.getMinutes();
+        return expanded.map((s) => {
+            const d = s._virtualDate;
+            const origStart = new Date(s.StartDate);
+            const origEnd = new Date(s.EndDate);
 
             return {
-                id: String(s.id),
+                id: s._isVirtual ? `${s._originalId}_${ymd(d)}` : String(s._originalId),
                 title: s.WorkName,
                 robotNo: s.RobotName,
                 robotType: s.TaskType,
                 dayIndex: d.getDay(),
-                startMin,
-                endMin,
+                startMin: origStart.getHours() * 60 + origStart.getMinutes(),
+                endMin: origEnd.getHours() * 60 + origEnd.getMinutes(),
                 color: statusToColor(s.TaskStatus),
             };
-            });
+        });
     }, [schedules, weekStart]);
 
     const weekDates = useMemo(() => {
@@ -677,7 +727,9 @@ export default function Page({ robots }: RobotScheduleProps) {
     const [selectedWeekEvent, setSelectedWeekEvent] = useState<WeekEvent | null>(null);
 
     const handleClickWeekEvent = (event: WeekEvent) => {
-        setSelectedWeekEvent(event);
+        // 가상 이벤트인 경우 원본 DB ID로 교체하여 API 호출 시 정상 동작하도록 함
+        const realId = extractOriginalId(event.id);
+        setSelectedWeekEvent({ ...event, id: realId });
         setIsDetailModalOpen(true);
     };
 
@@ -697,14 +749,19 @@ export default function Page({ robots }: RobotScheduleProps) {
     const [monthOverflowDateObj, setMonthOverflowDateObj] = useState<Date | null>(null);
 
     const toDetailEventFromMonth = (ev: MonthEvent): WeekEvent | null => {
-    const full = schedules.find((s) => String(s.id) === ev.id);
+    const origId = extractOriginalId(ev.id);
+    // 먼저 확장된 배열에서 찾기 (가상 인스턴스의 날짜/시간 반영)
+    const expanded = monthExpanded.find(
+        (s) => (s._isVirtual ? `${s._originalId}_${ymd(s._virtualDate)}` : String(s._originalId)) === ev.id
+    );
+    const full = expanded ?? schedules.find((s) => String(s.id) === origId);
     if (!full) return null;
 
     const d = new Date(full.StartDate);
     const end = new Date(full.EndDate);
 
     return {
-    id: String(full.id),
+    id: origId,
     title: full.WorkName,
     robotNo: full.RobotName,
     robotType: full.TaskType,
@@ -1190,6 +1247,22 @@ useEffect(() => {
                         isOpen={isDetailModalOpen}
                         onClose={handleCloseDetail}
                         event={selectedWeekEvent}
+                        mockData={USE_MOCK ? (() => {
+                            const found = schedules.find((s) => String(s.id) === selectedWeekEvent.id);
+                            if (!found) return null;
+                            return {
+                                RobotName: found.RobotName,
+                                TaskName: found.WorkName,
+                                TaskType: found.TaskType,
+                                TaskStatus: found.TaskStatus,
+                                StartDate: found.StartDate,
+                                EndDate: found.EndDate,
+                                WayName: found.WayName,
+                                Repeat: found.Repeat,
+                                Repeat_Day: found.Repeat_Day ?? null,
+                                Repeat_End: found.Repeat_End ?? null,
+                            };
+                        })() : undefined}
                         onScheduleChanged={fetchSchedules}
                     />
                 )}

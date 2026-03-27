@@ -1,0 +1,322 @@
+/* ── 검색 ── */
+.searchWrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.searchIcon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.searchInput {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: var(--text-muted);
+}
+
+.searchClear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-5);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.searchClear:hover {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+.moreLink {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.15s;
+  white-space: nowrap;
+}
+
+.moreLink:hover {
+  color: var(--text-primary);
+}
+
+.scrollArea {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.scrollArea::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollArea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollArea::-webkit-scrollbar-thumb {
+  background: var(--surface-5);
+  border-radius: 4px;
+}
+
+/* ── 로봇 카드 ── */
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.card:not(.cardSelected):hover {
+  background: var(--surface-4);
+}
+
+.cardSelected {
+  border-color: var(--color-info);
+  background: var(--color-info-selected);
+}
+
+.robotIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--surface-5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.robotIcon img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.cardInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.robotName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.networkBadge {
+  font-size: 9px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dotOnline { background: var(--color-success); }
+.dotError { background: var(--color-warning); }
+.dotOffline { background: var(--color-error); }
+
+.badgeOnline {
+  background: rgba(146, 208, 80, 0.15);
+  color: var(--color-success);
+}
+
+.badgeError {
+  background: rgba(255, 198, 53, 0.15);
+  color: var(--color-warning);
+}
+
+.badgeOffline {
+  background: rgba(255, 0, 0, 0.15);
+  color: var(--color-error-soft);
+}
+
+.cardBottom {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+/* ── 배터리 프로그레스바 ── */
+.batteryRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.batteryBar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.batteryFill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.batteryText {
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 24px;
+  text-align: right;
+}
+
+.criticalBattery {
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ── 층 표시 ── */
+.floorLabel {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-accent);
+}
+
+/* ── 작업 상태 뱃지 ── */
+.taskBadge {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.taskWorking {
+  background: rgba(0, 176, 238, 0.15);
+  color: var(--color-info);
+}
+
+.taskCharging {
+  background: rgba(146, 208, 80, 0.15);
+  color: var(--color-success);
+}
+
+.taskDocking {
+  background: rgba(146, 208, 80, 0.15);
+  color: var(--color-success);
+}
+
+.taskIdle {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+.taskError {
+  background: rgba(255, 0, 0, 0.12);
+  color: var(--color-error-soft);
+}
+
+/* ── 액션 버튼 (선택된 카드) ── */
+.actionRow {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.actionBtn {
+  flex: 1;
+  padding: 5px 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-5);
+  color: var(--text-primary);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.actionBtn:hover {
+  background: var(--surface-elevated);
+}
+
+.actionBtnDanger {
+  background: var(--color-error-bg);
+  border-color: var(--color-error-border);
+  color: var(--text-primary);
+}
+
+.actionBtnDanger:hover {
+  background: var(--color-error-hover);
+}
+
+/* ── 빈 상태 ── */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 16px;
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  text-align: center;
+}

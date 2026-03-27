@@ -12,11 +12,129 @@ function processMapImage(img: HTMLImageElement, src: string): HTMLCanvasElement 
   const cached = processedCache.get(src);
   if (cached) return cached;
 
+  const W = img.naturalWidth;
+  const H = img.naturalHeight;
+
+  // 원본 픽셀 읽기
+  const rawCanvas = document.createElement("canvas");
+  rawCanvas.width = W;
+  rawCanvas.height = H;
+  const rawCtx = rawCanvas.getContext("2d")!;
+  rawCtx.drawImage(img, 0, 0);
+  const srcData = rawCtx.getImageData(0, 0, W, H);
+  const src8 = srcData.data;
+
+  // OccupancyGrid 임계값
+  const WALL_THRESH = 89;
+  const FREE_THRESH = 205;
+
+  // 색상 팔레트 (다크 테마 조화 + 가독성)
+  const WALL_COLOR   = [130, 190, 255];    // 밝은 하늘색 벽
+  const FREE_COLOR   = [90, 105, 140];     // 바닥 — 배경과 뚜렷한 대비
+  const UNKNOWN_COLOR = [26, 29, 46];      // #1a1d2e — wrapper 배경과 동일
+
+  // 1단계: 분류 맵 (0=unknown, 1=wall, 2=free)
+  const classMap = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    const gray = src8[i * 4];
+    if (gray <= WALL_THRESH) classMap[i] = 1;
+    else if (gray >= FREE_THRESH) classMap[i] = 2;
+    else classMap[i] = 0;
+  }
+
+  // 2단계: 노이즈 제거 — 주변에 같은 종류가 적은 고립 픽셀 제거
+  const cleaned = new Uint8Array(classMap);
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const idx = y * W + x;
+      const cls = classMap[idx];
+      if (cls === 0) continue;
+      let sameCount = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          if (classMap[(y + dy) * W + (x + dx)] === cls) sameCount++;
+        }
+      }
+      // 주변 8칸 중 같은 타입이 2개 이하면 노이즈로 판단
+      if (sameCount <= 2) {
+        // 주변에서 가장 많은 타입으로 교체
+        const counts = [0, 0, 0];
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            counts[classMap[(y + dy) * W + (x + dx)]]++;
+          }
+        }
+        cleaned[idx] = counts[0] >= counts[1] && counts[0] >= counts[2] ? 0
+                      : counts[1] >= counts[2] ? 1 : 2;
+      }
+    }
+  }
+
+  // 3단계: 벽 팽창(dilate) 2회 — 끊어진 벽을 연결하고 두껍게
+  let prev = cleaned;
+  for (let pass = 0; pass < 2; pass++) {
+    const next = new Uint8Array(prev);
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        if (prev[y * W + x] === 1) continue;
+        if (
+          prev[(y - 1) * W + x] === 1 ||
+          prev[(y + 1) * W + x] === 1 ||
+          prev[y * W + (x - 1)] === 1 ||
+          prev[y * W + (x + 1)] === 1
+        ) {
+          next[y * W + x] = 1;
+        }
+      }
+    }
+    prev = next;
+  }
+  const dilated = prev;
+
+  // 4단계: 색상 매핑 (glow 없이 깔끔하게)
+  const outData = rawCtx.createImageData(W, H);
+  const out8 = outData.data;
+
+  for (let i = 0; i < W * H; i++) {
+    const cls = dilated[i];
+    let r: number, g: number, b: number;
+    if (cls === 1) {
+      [r, g, b] = WALL_COLOR;
+    } else if (cls === 2) {
+      [r, g, b] = FREE_COLOR;
+    } else {
+      [r, g, b] = UNKNOWN_COLOR;
+    }
+    const o = i * 4;
+    out8[o] = r;
+    out8[o + 1] = g;
+    out8[o + 2] = b;
+    out8[o + 3] = cls === 0 ? 0 : 255;  // 미탐색은 투명 → wrapper 배경이 비침
+  }
+
+  // 5단계: 안티앨리어싱 — 원본을 2배로 업스케일 후 다시 원래 크기로 (bilinear smoothing)
+  const tmpCanvas = document.createElement("canvas");
+  tmpCanvas.width = W;
+  tmpCanvas.height = H;
+  const tmpCtx = tmpCanvas.getContext("2d")!;
+  tmpCtx.putImageData(outData, 0, 0);
+
+  const UP = 2;
+  const upCanvas = document.createElement("canvas");
+  upCanvas.width = W * UP;
+  upCanvas.height = H * UP;
+  const upCtx = upCanvas.getContext("2d")!;
+  upCtx.imageSmoothingEnabled = true;
+  upCtx.imageSmoothingQuality = "high";
+  upCtx.drawImage(tmpCanvas, 0, 0, W * UP, H * UP);
+
   const offscreen = document.createElement("canvas");
-  offscreen.width = img.naturalWidth;
-  offscreen.height = img.naturalHeight;
+  offscreen.width = W * UP;
+  offscreen.height = H * UP;
   const ctx = offscreen.getContext("2d")!;
-  ctx.drawImage(img, 0, 0);
+  ctx.drawImage(upCanvas, 0, 0);
 
   processedCache.set(src, offscreen);
   return offscreen;
@@ -90,6 +208,7 @@ export type UseMapCanvasReturn = {
   hasMapError: boolean;
   onMouseDown: (e: React.MouseEvent) => void;
   onMouseMove: (e: React.MouseEvent) => void;
+  onWheel: (e: React.WheelEvent) => void;
   endPan: () => void;
   handleZoom: (action: ZoomAction) => void;
   worldToPixelScreen: (wx: number, wy: number) => { x: number; y: number };
@@ -161,8 +280,9 @@ export function useMapCanvas(
     const ctx = canvas.getContext("2d")!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // 1. 배경 채우기 (맵 영역 외부와 동일 색상)
-    ctx.clearRect(0, 0, mapSize.w, mapSize.h);
+    // 1. 배경을 미탐색 색상과 동일하게 채워서 이음새 제거
+    ctx.fillStyle = "#1a1d2e";
+    ctx.fillRect(0, 0, mapSize.w, mapSize.h);
 
     // 2. contain-fit 이미지 그리기
     const rect = computeContainRect(
@@ -293,6 +413,16 @@ export function useMapCanvas(
     panStartRef.current = null;
   }, []);
 
+  // wheel zoom
+  const onWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (!interactive) return;
+      e.preventDefault();
+      handleZoom(e.deltaY < 0 ? "in" : "out");
+    },
+    [interactive, handleZoom]
+  );
+
   // 스케일 변경 시 translate 보정
   useEffect(() => {
     setTranslate((prev) => clampTranslate(prev.x, prev.y));
@@ -310,6 +440,7 @@ export function useMapCanvas(
     hasMapError,
     onMouseDown,
     onMouseMove,
+    onWheel,
     endPan,
     handleZoom,
     worldToPixelScreen,

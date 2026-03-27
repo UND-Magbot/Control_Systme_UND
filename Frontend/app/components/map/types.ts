@@ -13,12 +13,15 @@ export type RobotPosition = {
   yaw: number;
 };
 
+export type POICategory = "work" | "charge" | "standby" | "waypoint" | "danger";
+
 export type POIItem = {
   id: number;
   name: string;
   x: number;
   y: number;
   floor: string;
+  category?: POICategory;
   isSelected?: boolean;
   icon?: string;
 };

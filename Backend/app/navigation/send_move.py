@@ -7,6 +7,8 @@ import app.main
 from app.robot_sender import send_nav_to_robot
 from app.Database.database import SessionLocal
 from app.Database.models import LocationInfo, WayInfo
+from app.logs.service import log_event
+from app.current_user import get_robot_id, get_robot_name
 
 
 move = APIRouter(prefix="/nav")
@@ -70,6 +72,9 @@ def start_navigation(loop: int = 3):
     _signal_nav_reset()
 
     print(f"🚗 NAV START — 총 {len(waypoints_list)}개 웨이포인트, 반복: {loop}회")
+    log_event("schedule", "nav_start",
+              f"네비게이션 시작 ({len(waypoints_list)}개 웨이포인트, {loop}회 반복)",
+              robot_id=get_robot_id(), robot_name=get_robot_name())
 
     navigation_send_next()
     return {"status": "ok", "msg": f"네비게이션 명령 전송 완료 ({loop}회)"}
@@ -112,8 +117,13 @@ def navigation_send_next():
             nav_loop_remaining -= 1
             current_wp_index = 0
             print(f"🔄 반복 시작 (남은 횟수: {nav_loop_remaining + 1})")
+            log_event("schedule", "nav_loop",
+                      f"반복 시작 (남은 횟수: {nav_loop_remaining + 1})",
+                      robot_id=get_robot_id(), robot_name=get_robot_name())
         else:
             print("🎉 모든 웨이포인트 이동 완료!")
+            log_event("schedule", "nav_complete", "모든 웨이포인트 이동 완료",
+                      robot_id=get_robot_id(), robot_name=get_robot_name())
             is_navigating = False
             return
 
@@ -153,6 +163,8 @@ def move_to_place(place_id: int, db: Session = Depends(get_db)):
     yaw = place.Yaw or 0.0
 
     print(f"🚗 장소 이동: {place.LacationName} → x={x}, y={y}, yaw={yaw}")
+    log_event("schedule", "place_move_start", f"장소 이동: {place.LacationName}",
+              robot_id=get_robot_id(), robot_name=get_robot_name())
     send_nav_to_robot(1, x, y, yaw)
 
     return {"status": "ok", "msg": f"{place.LacationName}(으)로 이동 명령 전송 완료"}
@@ -204,6 +216,9 @@ def move_along_path(path_id: int, db: Session = Depends(get_db)):
     print(f"🛤 경로 이동 시작: {path.WayName} — 총 {len(waypoints)}개 포인트")
     for i, wp in enumerate(waypoints):
         print(f"  [{i+1}] {place_names[i]} → x={wp['x']}, y={wp['y']}, yaw={wp['yaw']}")
+    log_event("schedule", "path_move_start",
+              f"경로 이동 시작: {path.WayName} ({len(waypoints)}개 포인트)",
+              robot_id=get_robot_id(), robot_name=get_robot_name())
 
     navigation_send_next()
     return {"status": "ok", "msg": f"경로 '{path.WayName}' 이동 시작 ({len(waypoints)}개 포인트)"}

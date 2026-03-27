@@ -45,7 +45,12 @@ export function useRobotPosition(enabled = true): UseRobotPositionReturn {
         .then((data: RobotPosition) => {
           targetRef.current = data;
           setHasError(false);
-          if (!isReady) setIsReady(true);
+          if (!isReady) {
+            // 첫 응답: LERP 없이 즉시 위치 설정
+            currentRef.current = data;
+            setCurrentPos(data);
+            setIsReady(true);
+          }
         })
         .catch(() => {
           setHasError(true);

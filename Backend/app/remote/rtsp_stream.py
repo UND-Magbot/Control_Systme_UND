@@ -1,6 +1,8 @@
 # app/rtsp_stream.py
 import cv2
 from fastapi import APIRouter, Response
+from app.logs.service import log_event
+from app.current_user import get_robot_id, get_robot_name
 
 router = APIRouter()
 
@@ -14,6 +16,8 @@ def stream_generator(rtsp_url):
 
     if not cap.isOpened():
         print("⚠️ RTSP 연결 실패:", rtsp_url)
+        log_event("error", "rtsp_error", f"카메라 스트림 연결 실패: {rtsp_url}",
+                  robot_id=get_robot_id(), robot_name=get_robot_name())
         return
 
     while True:

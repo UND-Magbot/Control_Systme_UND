@@ -3,8 +3,8 @@ import type { VideoItem } from "@/app/type";
 export const videoRows: VideoItem[] = [
   {
     "id": 1,
-    "robotNo": "Robot 1",
-    "cameraNo": "CAM 1",
+    "robotNo": "TestRobot-01",
+    "cameraNo": "전방",
     "cameraType": "AR",
     "filename": "robot1_cam1_2024-11-10_10-01-20.mp4",
     "contentType": "video/mp4",
@@ -13,26 +13,37 @@ export const videoRows: VideoItem[] = [
     "date": "2024-11-19T10:01:20"
   },
   {
+    "id": 25,
+    "robotNo": "TestRobot-01",
+    "cameraNo": "TEST-CAM3",
+    "cameraType": "AR",
+    "filename": "test_cam3.mp4",
+    "contentType": "video/mp4",
+    "data": "",
+    "videoTime": "00:00:00",
+    "date": "2026-03-26T00:00:00"
+  },
+  {
+    "id": 26,
+    "robotNo": "TestRobot-01",
+    "cameraNo": "TEST-CAM4",
+    "cameraType": "AR",
+    "filename": "test_cam4.mp4",
+    "contentType": "video/mp4",
+    "data": "",
+    "videoTime": "00:00:00",
+    "date": "2026-03-26T00:00:00"
+  },
+  {
     "id": 2,
-    "robotNo": "Robot 2",
-    "cameraNo": "CAM 2",
+    "robotNo": "TestRobot-01",
+    "cameraNo": "후방",
     "cameraType": "MR",
     "filename": "robot2_cam2_2025-12-02_10-03-18.mp4",
     "contentType": "video/mp4",
     "data": "data:video/mp4;base64,FAKE_BASE64_VIDEO_DATA_2",
     "videoTime": "00:45:02",
     "date": "2025-12-02T10:03:18"
-  },
-  {
-    "id": 3,
-    "robotNo": "Robot 3",
-    "cameraNo": "CAM 3",
-    "cameraType": "AR",
-    "filename": "robot3_cam3_2025-12-02_10-05-43.mp4",
-    "contentType": "video/mp4",
-    "data": "data:video/mp4;base64,FAKE_BASE64_VIDEO_DATA_3",
-    "videoTime": "01:02:55",
-    "date": "2025-12-02T10:05:43"
   },
   {
     "id": 4,

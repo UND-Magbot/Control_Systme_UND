@@ -2,6 +2,7 @@
     /* Layout */
     --header-height: 80px;
     --sidebar-width: 200px;
+    --sidebar-width-collapsed: 64px;
     --layout-gap: 16px;
     --content-top: calc(var(--header-height) + var(--layout-gap));
     --page-padding-x: 30px;
@@ -107,13 +108,12 @@ html, body {
 
 .page-container {
     margin-top: var(--content-top);
-    margin-left: calc(var(--sidebar-width) + var(--layout-gap));
 
     height: var(--content-height);
     overflow-y: hidden;
     overflow-x: hidden;
 
-    padding: 0 var(--page-padding-x) var(--page-padding-bottom) 0;
+    padding: 0 var(--page-padding-x) var(--page-padding-bottom) var(--page-padding-x);
 
     display: flex;
     flex-direction: column;

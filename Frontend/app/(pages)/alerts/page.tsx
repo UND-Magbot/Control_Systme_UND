@@ -3,9 +3,13 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import styles from './Alerts.module.css';
-import { alertMockData, type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
+import { type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
+import { getAlerts, markAlertRead, markAllAlertsRead, createNotice, updateNotice, deleteNotice, uploadNoticeFile } from '@/app/lib/alertData';
+import { API_BASE } from '@/app/config';
 import Pagination from '@/app/components/pagination';
 import FilterSelectBox, { type FilterOption } from '@/app/components/button/FilterSelectBox';
+import NoticeForm, { type NoticeFormData } from './components/NoticeCrudModal';
+import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 
 type TabKey = 'total' | 'schedule' | 'robot' | 'notice';
 type StatusFilter = '' | 'all' | 'read' | 'unread';
@@ -35,7 +39,7 @@ const badgeClass: Record<AlertType, string> = {
 };
 
 function getDisplayStatus(item: AlertMockData): 'error' | 'info' | 'event' | null {
-  if (item.type !== 'Robot') return null;
+  if (item.type === 'Notice') return null;
   if (item.status === 'error') return 'error';
   if (item.status === 'info') return 'info';
   if (item.status === 'event') return 'event';
@@ -54,8 +58,50 @@ export default function AlertsPage() {
   const paramTab = searchParams.get('tab') as TabKey | null;
   const paramId = searchParams.get('id');
 
-  const [alerts, setAlerts] = useState<AlertMockData[]>(() => [...alertMockData]);
+  const isAdmin = true;
+  const [currentUserId, setCurrentUserId] = useState<number>(0);
+  const [currentUserName, setCurrentUserName] = useState<string>('');
+
+  const [alerts, setAlerts] = useState<AlertMockData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // 현재 사용자 + 알림 목록 로드
+  const fetchAlerts = useCallback(async () => {
+    const data = await getAlerts({ size: 10000 });
+    setAlerts(data.items);
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/user/current`)
+      .then(res => res.json())
+      .then(user => {
+        setCurrentUserId(user.id ?? 0);
+        setCurrentUserName(user.UserName ?? '');
+      })
+      .catch(() => {});
+    fetchAlerts();
+
+    const handleExternalRead = () => fetchAlerts();
+    window.addEventListener('alert-read-changed', handleExternalRead);
+    return () => window.removeEventListener('alert-read-changed', handleExternalRead);
+  }, [fetchAlerts]);
+
+  // URL 파라미터 id로 상세 패널 열기 (데이터 로드 후 적용)
+  useEffect(() => {
+    if (paramId && alerts.length > 0) {
+      const id = Number(paramId);
+      if (alerts.some(a => a.id === id)) {
+        setSelectedAlertId(id);
+      }
+    }
+  }, [paramId, alerts]);
   const [activeTab, setActiveTab] = useState<TabKey>(paramTab && ['total', 'schedule', 'robot', 'notice'].includes(paramTab) ? paramTab : 'total');
+  const [noticeFormOpen, setNoticeFormOpen] = useState(false);
+  const [noticeFormMode, setNoticeFormMode] = useState<'create' | 'edit'>('create');
+  const [noticeFormDirty, setNoticeFormDirty] = useState(false);
+  const [showTabConfirm, setShowTabConfirm] = useState<TabKey | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
   const [appliedSearch, setAppliedSearch] = useState('');
@@ -153,18 +199,115 @@ export default function AlertsPage() {
     setSelectedAlertId(id);
   };
 
-  const handleMarkRead = (id: number) => {
+  const handleMarkRead = async (id: number) => {
+    await markAlertRead(id);
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
+    window.dispatchEvent(new Event('alert-read-changed'));
   };
 
-  const handleMarkAllRead = () => {
+  const handleMarkAllRead = async () => {
+    await markAllAlertsRead();
     setAlerts(prev => prev.map(a => ({ ...a, isRead: true })));
+    window.dispatchEvent(new Event('alert-read-changed'));
   };
 
   const handleSearch = () => {
     setAppliedSearch(searchQuery);
     setAppliedStatus(statusFilter);
     setCurrentPage(1);
+  };
+
+  const handleOpenCreateNotice = () => {
+    setNoticeFormMode('create');
+    setNoticeFormOpen(true);
+  };
+
+  const handleOpenEditNotice = () => {
+    setNoticeFormMode('edit');
+    setNoticeFormOpen(true);
+  };
+
+  const handleNoticeSubmit = async (data: NoticeFormData) => {
+    let attachmentName = data.attachment?.name;
+    let attachmentUrl: string | undefined;
+
+    if (data.attachment) {
+      const uploaded = await uploadNoticeFile(data.attachment);
+      attachmentName = uploaded.original_name;
+      attachmentUrl = uploaded.url;
+    }
+
+    if (noticeFormMode === 'create') {
+      await createNotice({
+        Title: data.title,
+        Content: data.content,
+        Importance: data.importance,
+        UserId: currentUserId,
+        AttachmentName: attachmentName,
+        AttachmentUrl: attachmentUrl,
+      });
+    } else if (selectedAlertId !== null) {
+      const alert = alerts.find(a => a.id === selectedAlertId);
+      if (alert?.noticeId) {
+        await updateNotice(alert.noticeId, {
+          Title: data.title,
+          Content: data.content,
+          Importance: data.importance,
+          AttachmentName: attachmentName,
+          AttachmentUrl: attachmentUrl,
+        });
+      }
+    }
+    // API 호출 후 목록 새로고침 + 배지 갱신
+    await fetchAlerts();
+    window.dispatchEvent(new Event('alert-read-changed'));
+  };
+
+  const handleDeleteNotice = async () => {
+    if (!selectedAlert?.noticeId) return;
+    try {
+      await deleteNotice(selectedAlert.noticeId);
+      setShowDeleteConfirm(false);
+      setSelectedAlertId(null);
+      await fetchAlerts();
+      window.dispatchEvent(new Event('alert-read-changed'));
+    } catch (e) {
+      console.error('공지사항 삭제 실패:', e);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  // 중복 제목 목록 (폼에 전달)
+  const noticeTitles = useMemo(() =>
+    alerts.filter(a => a.type === 'Notice' && a.id !== selectedAlertId).map(a => a.title ?? a.content),
+    [alerts, selectedAlertId]
+  );
+
+  // 수정 중 원본 삭제 방어
+  useEffect(() => {
+    if (noticeFormOpen && noticeFormMode === 'edit' && selectedAlert === null) {
+      setNoticeFormOpen(false);
+    }
+  }, [noticeFormOpen, noticeFormMode, selectedAlert]);
+
+  // 탭 전환 핸들러
+  const handleTabChange = (tabId: TabKey) => {
+    if (noticeFormOpen && noticeFormDirty && tabId !== 'notice') {
+      setShowTabConfirm(tabId);
+      return;
+    }
+    if (tabId !== 'notice' && noticeFormOpen) setNoticeFormOpen(false);
+    setActiveTab(tabId);
+    setCurrentPage(1);
+  };
+
+  const handleTabConfirm = () => {
+    if (showTabConfirm) {
+      setNoticeFormOpen(false);
+      setActiveTab(showTabConfirm);
+      setCurrentPage(1);
+      setShowTabConfirm(null);
+    }
   };
 
   return (
@@ -183,7 +326,7 @@ export default function AlertsPage() {
                   key={tab.id}
                   type="button"
                   className={`${styles.pillTab} ${activeTab === tab.id ? styles.pillTabActive : ''}`}
-                  onClick={() => { setActiveTab(tab.id as TabKey); setCurrentPage(1); }}
+                  onClick={() => handleTabChange(tab.id as TabKey)}
                 >
                   {tab.label}
                 </button>
@@ -229,6 +372,11 @@ export default function AlertsPage() {
             <button className={styles.markAllReadBtn} onClick={handleMarkAllRead}>
               전체 읽음
             </button>
+            {isAdmin && activeTab === 'notice' && (
+              <button className={styles.noticeCreateBtn} onClick={handleOpenCreateNotice}>
+                공지 등록
+              </button>
+            )}
           </div>
 
           <div ref={listRef} className={`${styles.alertList} ${styles.fadeIn}`} key={`${activeTab}-${currentPage}`}>
@@ -269,7 +417,12 @@ export default function AlertsPage() {
                           {displayStatus}
                         </span>
                       )}
-                      <p className={styles.alertContent}>{item.content}</p>
+                      <p className={styles.alertContent}>
+                        {item.title && item.title !== item.content && (
+                          <span className={styles.alertTitle}>{item.title}</span>
+                        )}
+                        <span>{item.content}</span>
+                      </p>
                       <span className={styles.alertDate}>{formatAlertDate(item.date)}</span>
                     </div>
                   </div>
@@ -287,9 +440,18 @@ export default function AlertsPage() {
           </div>
         </div>
 
-        {/* 우측 패널 - 알림 상세 */}
+        {/* 우측 패널 - 알림 상세 / 공지 등록·수정 */}
         <div className={styles.rightPanel}>
-          {selectedAlert ? (
+          {noticeFormOpen ? (
+            <NoticeForm
+              mode={noticeFormMode}
+              initial={noticeFormMode === 'edit' ? selectedAlert : null}
+              existingTitles={noticeTitles}
+              onClose={() => setNoticeFormOpen(false)}
+              onSubmit={handleNoticeSubmit}
+              onDirtyChange={setNoticeFormDirty}
+            />
+          ) : selectedAlert ? (
             <div className={`${styles.fadeIn} ${styles.detailInner}`} key={selectedAlert.id}>
               <div className={styles.detailHeader}>
                 <div className={styles.detailHeaderLeft}>
@@ -309,13 +471,25 @@ export default function AlertsPage() {
                     ) : null;
                   })()}
                 </div>
-                <button
-                  className={`${styles.markReadBtn} ${selectedAlert.isRead ? styles.markReadBtnDone : ''}`}
-                  onClick={() => !selectedAlert.isRead && handleMarkRead(selectedAlert.id)}
-                  disabled={selectedAlert.isRead}
-                >
-                  {selectedAlert.isRead ? '읽음 완료' : '읽음 처리'}
-                </button>
+                <div className={styles.detailHeaderBtns}>
+                  {isAdmin && selectedAlert.type === 'Notice' && (
+                    <>
+                      <button className={styles.noticeEditBtn} onClick={handleOpenEditNotice}>
+                        수정
+                      </button>
+                      <button className={styles.noticeDeleteBtn} onClick={() => setShowDeleteConfirm(true)}>
+                        삭제
+                      </button>
+                    </>
+                  )}
+                  <button
+                    className={`${styles.markReadBtn} ${selectedAlert.isRead ? styles.markReadBtnDone : ''}`}
+                    onClick={() => !selectedAlert.isRead && handleMarkRead(selectedAlert.id)}
+                    disabled={selectedAlert.isRead}
+                  >
+                    {selectedAlert.isRead ? '읽음 완료' : '읽음 처리'}
+                  </button>
+                </div>
               </div>
 
               <div className={styles.detailMetaInline}>
@@ -323,15 +497,78 @@ export default function AlertsPage() {
                   <span className={styles.detailMetaLabel}>날짜</span>
                   <span className={styles.detailMetaValue}>{selectedAlert.date}</span>
                 </span>
+                {selectedAlert.robotName && (
+                  <>
+                    <span className={styles.detailMetaDivider}>|</span>
+                    <span className={styles.detailMetaItem}>
+                      <span className={styles.detailMetaLabel}>로봇</span>
+                      <span className={styles.detailMetaValue}>{selectedAlert.robotName}</span>
+                    </span>
+                  </>
+                )}
+                {selectedAlert.author && (
+                  <>
+                    <span className={styles.detailMetaDivider}>|</span>
+                    <span className={styles.detailMetaItem}>
+                      <span className={styles.detailMetaLabel}>작성자</span>
+                      <span className={styles.detailMetaValue}>{selectedAlert.author}</span>
+                    </span>
+                  </>
+                )}
+                {selectedAlert.importance && (
+                  <>
+                    <span className={styles.detailMetaDivider}>|</span>
+                    <span className={`${styles.importanceBadge} ${
+                      selectedAlert.importance === 'high' ? styles.importanceHigh
+                      : selectedAlert.importance === 'normal' ? styles.importanceNormal
+                      : styles.importanceLow
+                    }`}>
+                      {selectedAlert.importance === 'high' ? '높음' : selectedAlert.importance === 'normal' ? '일반' : '낮음'}
+                    </span>
+                  </>
+                )}
               </div>
 
               <div className={styles.detailBody}>
+                {selectedAlert.title && (
+                  <div className={styles.detailTitleText}>
+                    {selectedAlert.title}
+                  </div>
+                )}
                 <div className={styles.detailContentText}>
                   {selectedAlert.content}
-                  {selectedAlert.robotName && (
-                    <span className={styles.detailRobotName}> — {selectedAlert.robotName}</span>
-                  )}
                 </div>
+
+                {selectedAlert.attachmentName && (
+                  <div className={styles.detailAttachment}>
+                    <span className={styles.detailAttachmentIcon}>📎</span>
+                    {selectedAlert.attachmentUrl ? (
+                      <a
+                        href={`${API_BASE}${selectedAlert.attachmentUrl}`}
+                        className={styles.detailAttachmentLink}
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const res = await fetch(`${API_BASE}${selectedAlert.attachmentUrl}`);
+                          const blob = await res.blob();
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = selectedAlert.attachmentName || 'download';
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                      >
+                        {selectedAlert.attachmentName}
+                      </a>
+                    ) : (
+                      <span className={styles.detailAttachmentName}>
+                        {selectedAlert.attachmentName}
+                        <span className={styles.attachmentNoFile}> (파일 없음)</span>
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {selectedAlert.detail && (
                   <div className={styles.detailNoticeBody}>
@@ -358,6 +595,21 @@ export default function AlertsPage() {
           )}
         </div>
       </div>
+
+      {showTabConfirm && (
+        <CancelConfirmModal
+          message="작성 중인 내용이 있습니다. 탭을 이동하시겠습니까?"
+          onConfirm={handleTabConfirm}
+          onCancel={() => setShowTabConfirm(null)}
+        />
+      )}
+      {showDeleteConfirm && (
+        <CancelConfirmModal
+          message="해당 공지사항을 삭제하시겠습니까?"
+          onConfirm={handleDeleteNotice}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </div>
   );
 }

@@ -26,7 +26,8 @@ export default function MapViewComponent({
 }: CombinedProps) {
   const mapRef = useRef<CanvasMapHandle>(null);
   const [pathModalOpen, setPathModalOpen] = useState(false);
-  const { position: robotPos } = useRobotPosition(!!selectedRobot);
+  const { position: robotPos, hasError, isReady } = useRobotPosition(!!selectedRobot);
+  const showRobot = !!selectedRobot && isReady && !hasError;
 
   const handleZoom = (action: string) => {
     mapRef.current?.handleZoom(action as "in" | "out" | "reset");
@@ -38,8 +39,8 @@ export default function MapViewComponent({
         ref={mapRef}
         config={OCC_GRID_CONFIG}
         className={styles.mapCanvas}
-        showRobot={!!selectedRobot}
-        robotPos={selectedRobot ? robotPos : undefined}
+        showRobot={showRobot}
+        robotPos={showRobot ? robotPos : undefined}
         robotMarkerSize={14}
       />
 

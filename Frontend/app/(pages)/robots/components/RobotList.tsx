@@ -33,6 +33,7 @@ import {
   getRobotIndexFromNo,
   buildRobotIconPath,
 } from "@/app/constants/robotIcons";
+import { MapPin, Route } from "lucide-react";
 
 // ── 경로 API 엔드포인트 (차후 백엔드 변경 시 여기만 수정) ──
 const PATH_API = {
@@ -1294,7 +1295,7 @@ const resetCurrentPage = () => {
                   setPlacePathModalOpen(true);
                 }}
                 aria-disabled={isPlaceMoveDisabled}>
-                <img src="/icon/robot_place_w.png" alt="" />
+                <MapPin size={18} />
                 장소 이동
               </div>
               <div className={`${styles.robotWorkCommonBtn} ${isPathMoveDisabled ? styles.btnDisabled : ""}`}
@@ -1303,7 +1304,7 @@ const resetCurrentPage = () => {
                   setPathMoveModalOpen(true);
                 }}
                 aria-disabled={isPathMoveDisabled}>
-                <img src="/icon/path_w.png" alt="" />
+                <Route size={18} />
                 경로 이동
               </div>
               <div className={`${styles.robotWorkCommonBtn} ${isChargeMoveDisabled ? styles.btnDisabled : ""}`}

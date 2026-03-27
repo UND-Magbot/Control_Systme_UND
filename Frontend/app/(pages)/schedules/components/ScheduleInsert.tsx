@@ -186,26 +186,18 @@ export default function InsertModal({
         }
     }, [selectedRobot, allWorkPaths]);
 
-    // 시작일 변경 시 종료일 자동 동기화
+    // 시작일 변경 시 종료일을 같은 날로 동기화 (당일 일정만 허용)
     const handleStartDateChange = (date: Date) => {
         setStartDate(date);
-        if (endDate < date) setEndDate(date);
+        setEndDate(date); // 종료일은 항상 시작일과 동일
         const repeatEnd = new Date(repeatEndDate);
         if (repeatEnd < date) setRepeatEndDate(formatDate(date));
     };
 
-    // 종료일 변경 시 시작일보다 이전이면 방지
-    const handleEndDateChange = (date: Date) => {
-        if (date < startDate) {
-            setFieldErrors((prev) => ({ ...prev, dateTime: '종료일은 시작일 이후여야 합니다.' }));
-            return;
-        }
-        setEndDate(date);
-        setFieldErrors((prev) => {
-            const next = { ...prev };
-            delete next.dateTime;
-            return next;
-        });
+    // 종료일은 시작일과 동일해야 하므로 변경 시 시작일로 강제
+    const handleEndDateChange = (_date: Date) => {
+        // 당일 일정만 허용: 종료일은 시작일과 동일하게 유지
+        setEndDate(startDate);
     };
 
     // 반복 설정 핸들러
@@ -388,6 +380,8 @@ export default function InsertModal({
                                 minute={startMin}
                                 onMinuteChange={setStartMin}
                                 formatDate={formatDate}
+                                minDate={formatDate(today)}
+                                maxDate={formatDate(today)}
                                 errors={{
                                     ampm: fieldErrors.startAmpm,
                                     hour: fieldErrors.startHour,
@@ -405,6 +399,8 @@ export default function InsertModal({
                                 minute={endMin}
                                 onMinuteChange={setEndMin}
                                 formatDate={formatDate}
+                                minDate={formatDate(startDate)}
+                                maxDate={formatDate(startDate)}
                                 errors={{
                                     ampm: fieldErrors.endAmpm,
                                     hour: fieldErrors.endHour,
@@ -449,6 +445,7 @@ export default function InsertModal({
                                             onChange={setSelectedWorkPath}
                                             placeholder="경로명을 선택하세요"
                                             error={!!fieldErrors.workPath}
+                                            overlay
                                             emptyMessage={
                                                 selectedRobot
                                                     ? '선택된 로봇의 경로가 없습니다'
@@ -472,13 +469,7 @@ export default function InsertModal({
                         </div>
                     </div>
 
-                    {/* API / 네트워크 에러 */}
-                    {apiError && (
-                        <div className={styles.errorMessage}>
-                            {apiError}
-                            <button className={styles.retryBtn} onClick={handleSave}>다시 시도</button>
-                        </div>
-                    )}
+                    {/* API / 네트워크 에러 확인창 */}
 
 
                     {/* 하단 버튼 */}
@@ -523,6 +514,20 @@ export default function InsertModal({
                                 }}
                             >
                                 닫기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* API 에러 확인창 */}
+            {apiError && (
+                <div className={styles.confirmOverlay} onClick={() => setApiError(null)}>
+                    <div className={styles.confirmBox} onClick={(e) => e.stopPropagation()}>
+                        <p>{apiError}</p>
+                        <div className={styles.confirmBtnGroup}>
+                            <button className={styles.confirmBtnStay} onClick={() => setApiError(null)}>
+                                확인
                             </button>
                         </div>
                     </div>

@@ -294,6 +294,13 @@
     margin: 0;
 }
 
+/* 리스트 타이틀 (볼드) */
+.alertTitle {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-right: 8px;
+}
+
 
 /* 날짜 */
 .alertDate {
@@ -409,9 +416,16 @@
     opacity: 0.4;
 }
 
+.detailTitleText {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
 .detailContentText {
     font-size: var(--font-size-lg, 16px);
-    color: var(--text-primary);
+    color: var(--text-secondary);
     line-height: 1.7;
     word-wrap: break-word;
     white-space: pre-wrap;
@@ -515,6 +529,193 @@
     color: var(--text-muted);
     font-size: var(--font-size-md);
     text-align: center;
+}
+
+/* 공지 등록 버튼 (topActions) */
+.noticeCreateBtn {
+  height: 34px;
+  padding: 0 16px;
+  background: var(--color-success-bg);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.noticeCreateBtn:hover {
+  background: rgba(74, 222, 128, 0.2);
+  border-color: rgba(74, 222, 128, 0.6);
+}
+
+/* 공지 수정 버튼 (detailHeader) */
+.noticeEditBtn {
+  height: 28px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.noticeEditBtn:hover {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.6);
+}
+
+/* 공지 삭제 버튼 (detailHeader) */
+.noticeDeleteBtn {
+  height: 28px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.noticeDeleteBtn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #f87171;
+}
+
+.detailHeaderBtns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 상세 - 중요도 뱃지 */
+.importanceBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.importanceHigh {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.importanceNormal {
+  background: rgba(56, 189, 248, 0.1);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.importanceLow {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 상세 - 첨부파일 */
+.detailAttachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface-3);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+}
+
+.detailAttachmentIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.detailAttachmentName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailAttachmentLink {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-accent);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.detailAttachmentLink:hover {
+  text-decoration: underline;
+  color: var(--color-info);
+}
+
+.attachmentThumbnail {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.attachmentThumbnail:hover {
+  opacity: 0.8;
+}
+
+.attachmentNoFile {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.imagePreviewOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.imagePreviewImg {
+  max-width: 90vw;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.imagePreviewClose {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.imagePreviewClose:hover {
+  opacity: 0.7;
 }
 
 /* === 애니메이션 === */

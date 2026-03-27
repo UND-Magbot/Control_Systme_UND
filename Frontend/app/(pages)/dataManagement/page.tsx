@@ -5,7 +5,7 @@ import VideoStatus from '@/app/lib/videoStatus';
 import cameraView from "@/app/lib/cameraView";
 import VideoData from "@/app/lib/videoData";
 import RobotTypeData from "@/app/lib/robotTypeData";
-import getLogData from "@/app/lib/logData";
+import { getLogData } from "@/app/lib/logData";
 import getStatisticsData from "@/app/lib/statisticsData";
 import VideoList from "./components/VideoList";
 
@@ -18,7 +18,7 @@ export default async function DataPage() {
         VideoStatus(),
         VideoData(),
         RobotTypeData(),
-        getLogData(),
+        getLogData({ size: 10000 }),
         getStatisticsData()
     ]);
 
@@ -31,7 +31,7 @@ export default async function DataPage() {
                     video={videoStatus}
                     videoData={videoData}
                     robotTypeData={robotTypeData}
-                    logData={logData}
+                    logData={logData.items}
                     statisticsData={statisticsData}/>
             </Suspense>
         </div>

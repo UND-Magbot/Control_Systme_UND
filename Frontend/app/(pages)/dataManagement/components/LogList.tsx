@@ -10,6 +10,7 @@ import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import type { FilterOption } from "@/app/components/button/FilterSelectBox";
 import { BaseCalendar, getTodayStr, parseYMD } from "@/app/components/calendar/index";
 import type { LogItem, LogCategory } from "@/app/type";
+import { LOG_CATEGORY_LABELS } from "@/app/type";
 import * as XLSX from "xlsx";
 
 const THEAD_HEIGHT = 44;
@@ -17,18 +18,14 @@ const ROW_HEIGHT = 48;
 
 const LOG_TYPE_ITEMS: (FilterOption & { value: LogCategory })[] = [
   { id: "system", label: "시스템", value: "system" },
-  { id: "user", label: "사용자", value: "user" },
   { id: "robot", label: "로봇", value: "robot" },
-  { id: "convoy", label: "대열", value: "convoy" },
   { id: "schedule", label: "스케줄", value: "schedule" },
   { id: "error", label: "에러", value: "error" },
 ];
 
 const BADGE_CLASS_MAP: Record<string, string> = {
-  convoy: styles.badgeConvoy,
   robot: styles.badgeRobot,
   system: styles.badgeSystem,
-  user: styles.badgeUser,
   schedule: styles.badgeSchedule,
   error: styles.badgeError,
 };
@@ -96,7 +93,7 @@ export default function LogList({ logData }: LogListProps) {
     const start = new Date(`${today}T00:00:00`);
     const end = new Date(`${today}T23:59:59`);
     return logData.filter((log) => {
-      const d = new Date(log.created_at);
+      const d = new Date(log.CreatedAt);
       return d >= start && d <= end;
     });
   });
@@ -143,11 +140,11 @@ export default function LogList({ logData }: LogListProps) {
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter((log) => log.message.toLowerCase().includes(q));
+      filtered = filtered.filter((log) => log.Message.toLowerCase().includes(q));
     }
 
     if (selectedLogType) {
-      filtered = filtered.filter((log) => log.category === selectedLogType);
+      filtered = filtered.filter((log) => log.Category === selectedLogType);
     }
 
     const start = new Date(`${startDate}T${startTime}:00`);
@@ -159,7 +156,7 @@ export default function LogList({ logData }: LogListProps) {
     }
 
     filtered = filtered.filter((log) => {
-      const d = new Date(log.created_at);
+      const d = new Date(log.CreatedAt);
       return d >= start && d <= end;
     });
 
@@ -181,7 +178,7 @@ export default function LogList({ logData }: LogListProps) {
     setEndTime("23:59");
     setFilteredData(
       logData.filter((log) => {
-        const d = new Date(log.created_at);
+        const d = new Date(log.CreatedAt);
         return d >= start && d <= end;
       })
     );
@@ -211,20 +208,18 @@ export default function LogList({ logData }: LogListProps) {
   // Excel 내보내기
   const exportToExcel = () => {
     const rows = filteredData.map((log) => ({
-      "발생 일시": formatDateTime(log.created_at),
-      "로그 타입": log.category_name,
-      "메시지": log.message,
+      "발생 일시": formatDateTime(log.CreatedAt),
+      "로그 타입": LOG_CATEGORY_LABELS[log.Category] ?? log.Category,
+      "메시지": log.Message,
       "데이터": JSON.stringify({
         id: log.id,
-        category: log.category,
-        category_name: log.category_name,
-        action: log.action,
-        message: log.message,
-        detail: log.detail,
-        robot_id: log.robot_id,
-        robot_name: log.robot_name,
-        source: log.source,
-        created_at: log.created_at,
+        Category: log.Category,
+        Action: log.Action,
+        Message: log.Message,
+        Detail: log.Detail,
+        RobotId: log.RobotId,
+        RobotName: log.RobotName,
+        CreatedAt: log.CreatedAt,
       }),
     }));
 
@@ -359,13 +354,13 @@ export default function LogList({ logData }: LogListProps) {
             ) : (
               pagedData.map((log) => (
                 <tr key={log.id}>
-                  <td>{formatDateTime(log.created_at)}</td>
+                  <td>{formatDateTime(log.CreatedAt)}</td>
                   <td>
-                    <span className={`${styles.badge} ${BADGE_CLASS_MAP[log.category] ?? ""}`}>
-                      {log.category_name}
+                    <span className={`${styles.badge} ${BADGE_CLASS_MAP[log.Category] ?? ""}`}>
+                      {LOG_CATEGORY_LABELS[log.Category] ?? log.Category}
                     </span>
                   </td>
-                  <td className={styles.messageCell}>{log.message}</td>
+                  <td className={styles.messageCell}>{log.Message}</td>
                   <td>
                     <button className={styles.detailButton} onClick={() => openDetail(log)}>
                       상세보기

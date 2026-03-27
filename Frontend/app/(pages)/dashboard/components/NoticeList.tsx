@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import styles from './NoticeList.module.css';
 import { alertMockData } from '@/app/mock/alerts_data';
 
-const VISIBLE_COUNT = 4;
+const VISIBLE_COUNT = 3;
 
 function formatDate(date: string): string {
   const datePart = date.slice(2, 10);   // YY-MM-DD

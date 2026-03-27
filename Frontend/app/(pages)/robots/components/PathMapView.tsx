@@ -4,7 +4,8 @@ import React, { useRef, useMemo } from "react";
 import { CanvasMap } from "@/app/components/map";
 import type { CanvasMapHandle, POIItem, NavPath, NavPathSegment } from "@/app/components/map";
 import { TEST_MAP_CONFIG } from "@/app/components/map/mapConfigs";
-import type { ZoomAction } from "@/app/utils/zoom";
+import { useRobotPosition } from "@/app/hooks/useRobotPosition";
+import ZoomControl from "@/app/components/button/ZoomControl";
 import styles from "./RobotList.module.css";
 
 type PlaceRow = {
@@ -43,11 +44,8 @@ export default function PathMapView({
   compact = false,
 }: Props) {
   const mapRef = useRef<CanvasMapHandle>(null);
-
-  const optionItems = [
-    { icon: "zoom-in", label: "Zoom In", action: "in" as ZoomAction },
-    { icon: "zoom-out", label: "Zoom Out", action: "out" as ZoomAction },
-  ];
+  const { position: robotPos, hasError, isReady } = useRobotPosition(true);
+  const showRobotOnMap = isReady && !hasError;
 
   // 경로에 포함된 장소들 (순서대로)
   const routePlaces: PlaceRow[] = useMemo(() => {
@@ -108,26 +106,17 @@ export default function PathMapView({
         ref={mapRef}
         config={TEST_MAP_CONFIG}
         pois={routePois}
-        navPath={navPath}
         showPois
-        showPath
         showLabels
+        showRobot={showRobotOnMap}
+        robotPos={showRobotOnMap ? robotPos : undefined}
+        robotMarkerSize={14}
       />
 
       {/* Zoom Buttons */}
       {!compact && (
         <div className={styles.zoomPosition}>
-          <div className={styles.zoomFlex}>
-            {optionItems.map((item, idx) => (
-              <div
-                key={idx}
-                className={styles.zoomBox}
-                onClick={() => mapRef.current?.handleZoom(item.action)}
-              >
-                <img src={`/icon/${item.icon}-w.png`} alt={item.label} />
-              </div>
-            ))}
-          </div>
+          <ZoomControl onClick={(action) => mapRef.current?.handleZoom(action)} />
         </div>
       )}
     </>

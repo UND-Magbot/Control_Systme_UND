@@ -1,5 +1,7 @@
 "use client";
 
+import styles from "./RobotMarker.module.css";
+
 type RobotMarkerProps = {
   screenX: number;
   screenY: number;
@@ -16,7 +18,7 @@ export default function RobotMarker({
   scale = 1,
 }: RobotMarkerProps) {
   const compensated = size / Math.sqrt(scale);
-  const clampedSize = Math.max(10, Math.min(23, compensated));
+  const clampedSize = Math.max(18, Math.min(36, compensated));
 
   // yaw(rad)→degree 변환. 화면좌표 Y축 반전으로 부호 반전 필요
   const rotationDeg = -(yaw * 180) / Math.PI;
@@ -27,7 +29,6 @@ export default function RobotMarker({
       height={clampedSize}
       viewBox="0 0 24 24"
       style={{
-        position: "absolute",
         left: screenX,
         top: screenY,
         transform: `translate(-50%, -50%) rotate(${rotationDeg}deg)`,

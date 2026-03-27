@@ -8,6 +8,7 @@ import time
 import app.main
 from app.Database.database import SessionLocal
 from app.Database.models import LocationInfo
+from app.current_user import get_user_id
 
 point = APIRouter(prefix="/nav")
 
@@ -78,7 +79,7 @@ def save_current_waypoint(db: Session = Depends(get_db)):
     # DB 장소 저장 (CUR-XXX)
     cur_name = _next_cur_name(db)
     place = LocationInfo(
-        UserId=1,
+        UserId=get_user_id(),
         RobotName="TestRobot-01",
         LacationName=cur_name,
         Floor="1F",

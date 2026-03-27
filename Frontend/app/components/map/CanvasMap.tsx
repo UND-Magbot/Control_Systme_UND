@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useState, forwardRef, useImperativeHandle } from "react";
-import type { CanvasMapProps } from "./types";
+import type { CanvasMapProps, POIItem } from "./types";
 import { useMapCanvas } from "@/app/hooks/useMapCanvas";
 import type { ZoomAction } from "@/app/utils/zoom";
 import RobotMarker from "./RobotMarker";
 import POIOverlay from "./POIOverlay";
+import POIDetailCard from "./POIDetailCard";
 import DebugTestMarker from "./DebugTestMarker";
 import { useDebugMap } from "./DebugMapContext";
 import styles from "./CanvasMap.module.css";
@@ -43,6 +44,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
   const [hoverCoord, setHoverCoord] = useState<{ x: number; y: number } | null>(
     null
   );
+  const [detailPoi, setDetailPoi] = useState<POIItem | null>(null);
 
   const {
     canvasRef,
@@ -52,6 +54,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
     isPanning,
     onMouseDown,
     onMouseMove,
+    onWheel,
     endPan,
     handleZoom,
     worldToPixelScreen,
@@ -64,10 +67,17 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
     pixelToWorldScreen,
   }));
 
-  // 맵 클릭 → world 좌표 전달
+  // 맵 클릭 → world 좌표 전달 + 상세카드 닫기
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      if (!onMapClick || isPanning) return;
+      if (isPanning) return;
+
+      // 상세카드 열려있으면 닫기
+      if (detailPoi) {
+        setDetailPoi(null);
+      }
+
+      if (!onMapClick) return;
       const wrapper = wrapperRef.current;
       if (!wrapper) return;
 
@@ -80,7 +90,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
       const world = pixelToWorldScreen(rawX, rawY);
       onMapClick(world);
     },
-    [onMapClick, isPanning, scale, translate, pixelToWorldScreen, wrapperRef]
+    [onMapClick, isPanning, scale, translate, pixelToWorldScreen, wrapperRef, detailPoi]
   );
 
   // 맵 위 마우스 이동 → world 좌표 전달
@@ -134,6 +144,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
       onMouseMove={handleMouseMove}
       onMouseUp={endPan}
       onMouseLeave={endPan}
+      onWheel={onWheel}
       onClick={handleClick}
     >
       <div
@@ -155,13 +166,22 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
           <RobotMarker screenX={robotScreen.x} screenY={robotScreen.y} yaw={robotPos?.yaw} size={robotMarkerSize} scale={scale} />
         )}
 
+
         {showPois && poiScreenItems && (
           <POIOverlay
             items={poiScreenItems}
             showLabels={showLabels}
             selectedId={selectedPoiId}
-            onItemClick={onPoiClick}
+            onItemClick={(poi) => {
+              setDetailPoi((prev) => (prev?.id === poi.id ? null : poi));
+              onPoiClick?.(poi);
+            }}
+            scale={scale}
           />
+        )}
+
+        {showRobot && robotScreen && (
+          <RobotMarker screenX={robotScreen.x} screenY={robotScreen.y} size={robotMarkerSize} scale={scale} />
         )}
 
         {/* Debug test markers */}
@@ -180,6 +200,24 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
 
         {children}
       </div>
+
+      {/* POI 상세 카드 (zoom 바깥 — 항상 고정 크기) */}
+      {detailPoi && (() => {
+        const sp = worldToPixelScreen(detailPoi.x, detailPoi.y);
+        const wrapper = wrapperRef.current;
+        const cx = wrapper ? wrapper.clientWidth / 2 : 0;
+        const cy = wrapper ? wrapper.clientHeight / 2 : 0;
+        const screenX = (sp.x - cx) * scale + cx + translate.x;
+        const screenY = (sp.y - cy) * scale + cy + translate.y;
+        return (
+          <POIDetailCard
+            poi={detailPoi}
+            screenX={screenX}
+            screenY={screenY}
+            onClose={() => setDetailPoi(null)}
+          />
+        );
+      })()}
 
       {/* Debug coordinate readout */}
       {debugEnabled && hoverCoord && (

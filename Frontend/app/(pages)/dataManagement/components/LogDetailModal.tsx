@@ -18,15 +18,13 @@ export default function LogDetailModal({ isOpen, onClose, logItem }: LogDetailMo
 
   const jsonData = {
     id: logItem.id,
-    category: logItem.category,
-    category_name: logItem.category_name,
-    action: logItem.action,
-    message: logItem.message,
-    detail: logItem.detail,
-    robot_id: logItem.robot_id,
-    robot_name: logItem.robot_name,
-    source: logItem.source,
-    created_at: logItem.created_at,
+    Category: logItem.Category,
+    Action: logItem.Action,
+    Message: logItem.Message,
+    Detail: logItem.Detail,
+    RobotId: logItem.RobotId,
+    RobotName: logItem.RobotName,
+    CreatedAt: logItem.CreatedAt,
   };
 
   return (

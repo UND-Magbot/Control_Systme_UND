@@ -61,6 +61,25 @@
   height: 6px;
 }
 
+/* 모달 내 달력: 아이콘 축소 */
+.sizeModal .header button img {
+  width: 4px;
+  height: 7px;
+}
+
+.sizeModal .header button div img {
+  width: 3px;
+  height: 6px;
+}
+
+.sizeModal .header button {
+  padding: 3px 4px;
+}
+
+.sizeModal .header {
+  margin-bottom: 6px;
+}
+
 .title {
   font-weight: 600;
 }

@@ -14,6 +14,10 @@ from app.map.mapping_control import mapping_ctrl as mapping_ctrl_router
 from app.map.ws_mapping import ws_mapping as ws_mapping_router, start_udp_server
 from app.Database.database import engine, Base
 from app.Database.models import BusinessInfo, AreaInfo, RobotMapInfo
+from app.logs.routes import router as log_router
+from app.alerts.routes import router as alert_router
+from app.notices.routes import router as notice_router
+from app.logs.service import log_event
 from app.robot_sender import send_to_robot
 from app.navigation.send_move import (
     navigation_send_next, navigation_resend_current,
@@ -53,6 +57,9 @@ app.include_router(database_function)
 app.include_router(map_manage_router)
 app.include_router(mapping_ctrl_router)
 app.include_router(ws_mapping_router)
+app.include_router(log_router)
+app.include_router(alert_router)
+app.include_router(notice_router)
 
 
 # ======================================================
@@ -94,6 +101,12 @@ def stream_camera(cam_id: int):
 robot_position = {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
 robot_status = {"battery": {}}
 robot_nav = {"arrived": False, "last_state": None, "timestamp": 0}
+
+from app.current_user import cached_user, cached_robot, get_robot_id, get_robot_name
+from app.robot_error_codes import ROBOT_ERROR_CODES
+
+# 중복 로그 방지: 마지막으로 기록한 에러 코드
+_last_logged_error_code = 0
 
 
 # ======================================================
@@ -201,8 +214,30 @@ def startup_event():
     Base.metadata.create_all(bind=engine)
     # 맵핑 TCP 수신 서버 시작
     start_udp_server()
+
+    # user_info에서 첫 번째 사용자 캐싱
+    from app.Database.database import SessionLocal
+    from app.Database.models import UserInfo, RobotInfo
+    db = SessionLocal()
+    try:
+        user = db.query(UserInfo).order_by(UserInfo.id.asc()).first()
+        if user:
+            cached_user["id"] = user.id
+            cached_user["UserName"] = user.UserName
+            print(f"✅ 현재 사용자: {cached_user['UserName']} (id={cached_user['id']})")
+
+        # robot_info에서 첫 번째 로봇 캐싱
+        robot = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+        if robot:
+            cached_robot["id"] = robot.id
+            cached_robot["RobotName"] = robot.RobotName
+            print(f"✅ 현재 로봇: {cached_robot['RobotName']} (id={cached_robot['id']})")
+    finally:
+        db.close()
+
     time.sleep(2)
-    #send_init_pose()  
+    send_init_pose()
+    log_event("system", "system_startup", "서버 시작")
 
 
 # ======================================================
@@ -247,6 +282,8 @@ def position_thread():
             pass
         except Exception as e:
             print("[ERR POS]", e)
+            log_event("error", "position_recv_error", f"로봇 위치 수신 오류: {e}",
+                      robot_id=get_robot_id(), robot_name=get_robot_name())
 
         time.sleep(REQ_INTERVAL_POS)
 
@@ -267,6 +304,8 @@ def send_heartbeat(sock):
 
 
 def status_thread():
+    global _last_logged_error_code
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", PC_PORT_STATUS))
     sock.settimeout(0.5)
@@ -293,10 +332,26 @@ def status_thread():
                 robot_status["battery"] = pd["Items"].get("BatteryStatus", {})
                 robot_status["timestamp"] = time.time()
 
+            # 에러 코드 감지
+            error_code = pd.get("Items", {}).get("ErrorCode", 0)
+            if error_code and error_code != _last_logged_error_code:
+                _last_logged_error_code = error_code
+                error_hex = f"0x{error_code:04X}" if isinstance(error_code, int) else str(error_code)
+                error_msg = ROBOT_ERROR_CODES.get(error_code, f"알 수 없는 에러 ({error_hex})")
+                print(f"[ROBOT ERROR] {error_hex}: {error_msg}")
+                log_event("error", "robot_error_code",
+                          f"로봇 에러 발생 [{error_hex}]: {error_msg}",
+                          detail=json.dumps({"error_code": error_hex, "raw_items": pd.get("Items", {})}, ensure_ascii=False),
+                          robot_id=get_robot_id(), robot_name=get_robot_name())
+            elif error_code == 0 and _last_logged_error_code != 0:
+                _last_logged_error_code = 0
+
         except socket.timeout:
             pass
         except Exception as e:
             print("[ERR STATUS]", e)
+            log_event("error", "robot_connection_error", f"로봇 상태 수신 오류: {e}",
+                      robot_id=get_robot_id(), robot_name=get_robot_name())
 
 
 # ======================================================
@@ -386,6 +441,10 @@ def nav_thread():
                         and is_nav_active() and cooldown_ok):
                     arrived = True
                     print(f"🎉 NAV 도착! (상태 기반: 연속 {zero_count}회 status==0 확인)")
+                    from app.navigation.send_move import current_wp_index, waypoints_list
+                    log_event("schedule", "nav_arrival",
+                              f"웨이포인트 {current_wp_index}/{len(waypoints_list)} 도착",
+                              robot_id=get_robot_id(), robot_name=get_robot_name())
 
                 # 재전송: 전송 후 N초 지났는데 이동을 한 번도 안 했으면 명령 재전송
                 if (is_nav_active() and not ever_moved
@@ -408,6 +467,8 @@ def nav_thread():
                 print("[NAV DEBUG] NAV_STATUS 응답 타임아웃")
         except Exception as e:
             print("[ERR NAV]", e)
+            log_event("error", "nav_error", f"네비게이션 오류: {e}",
+                      robot_id=get_robot_id(), robot_name=get_robot_name())
 
         if arrived and is_nav_active():
             robot_nav["arrived"] = True
@@ -415,6 +476,8 @@ def nav_thread():
                 navigation_send_next()
             except Exception as e:
                 print(f"[ERR] navigation_send_next 실패: {e}")
+                log_event("error", "nav_error", f"네비게이션 다음 웨이포인트 전송 실패: {e}",
+                          robot_id=get_robot_id(), robot_name=get_robot_name())
 
         time.sleep(NAV_POLL_INTERVAL)
 
@@ -452,6 +515,31 @@ def get_nav():
         "total_wp": len(waypoints_list),
         "loop_remaining": nav_loop_remaining,
     }
+
+
+@app.post("/robot/test-error/{error_code}")
+def test_robot_error(error_code: str):
+    """로봇 에러 코드 알림 테스트 (예: /robot/test-error/0xA302)"""
+    global _last_logged_error_code
+
+    code = int(error_code, 16) if error_code.startswith("0x") else int(error_code)
+    error_hex = f"0x{code:04X}"
+    error_msg = ROBOT_ERROR_CODES.get(code, f"알 수 없는 에러 ({error_hex})")
+
+    if error_msg is None:
+        return {"status": "skip", "msg": "정상 코드 (0x0000)"}
+
+    _last_logged_error_code = code
+    log_event("error", "robot_error_code",
+              f"로봇 에러 발생 [{error_hex}]: {error_msg}",
+              detail=json.dumps({"error_code": error_hex, "test": True}, ensure_ascii=False),
+              robot_id=get_robot_id(), robot_name=get_robot_name())
+
+    return {"status": "ok", "error_code": error_hex, "message": error_msg}
+
+@app.get("/user/current")
+def get_current_user():
+    return cached_user
 
 
 # ======================================================

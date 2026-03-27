@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import { useOutsideClick } from "@/app/hooks/useOutsideClick";
 import styles from "./CustomSelect.module.css";
@@ -21,6 +22,7 @@ type CustomSelectProps<T extends SelectOption = SelectOption> = {
   disabled?: boolean;
   emptyMessage?: string;
   className?: string;
+  overlay?: boolean;
 };
 
 export default function CustomSelect<T extends SelectOption = SelectOption>({
@@ -34,18 +36,36 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
   disabled = false,
   emptyMessage,
   className,
+  overlay = false,
 }: CustomSelectProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const portalRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement>(null);
 
   const handleClose = useCallback(() => setIsOpen(false), []);
-  useOutsideClick(wrapperRef, handleClose, isOpen);
 
-  const needsScroll = options.length >= 5;
+  // overlay 모드에서는 portal 영역도 "내부"로 취급
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (wrapperRef.current?.contains(target)) return;
+      if (portalRef.current?.contains(target)) return;
+      handleClose();
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [isOpen, handleClose]);
+
+  // overlay가 아닌 경우에만 기존 useOutsideClick 사용
+  useOutsideClick(wrapperRef, handleClose, isOpen && !overlay);
+
+  const needsScroll = (compact || overlay) ? options.length >= 3 : options.length >= 5;
 
   useCustomScrollbar({
     enabled: isOpen && needsScroll,
@@ -55,6 +75,21 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
     minThumbHeight: 30,
     deps: [options.length, isOpen],
   });
+
+  useEffect(() => {
+    if (!overlay || !isOpen || !wrapperRef.current) return;
+    const updatePos = () => {
+      const rect = wrapperRef.current!.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+    };
+    updatePos();
+    window.addEventListener("scroll", updatePos, true);
+    window.addEventListener("resize", updatePos);
+    return () => {
+      window.removeEventListener("scroll", updatePos, true);
+      window.removeEventListener("resize", updatePos);
+    };
+  }, [overlay, isOpen]);
 
   const handleToggle = () => {
     if (!disabled) setIsOpen((v) => !v);
@@ -90,9 +125,47 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
   const dropdownClasses = [
     styles.dropdown,
     compact ? styles.dropdownCompact : "",
+    overlay ? styles.dropdownOverlay : "",
   ]
     .filter(Boolean)
     .join(" ");
+
+  const dropdownContent = (
+    <div
+      className={dropdownClasses}
+      style={
+        overlay && dropdownPos
+          ? { position: "fixed", top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }
+          : undefined
+      }
+    >
+      {options.length === 0 ? (
+        <div className={styles.emptyMessage}>
+          {emptyMessage ?? "항목이 없습니다"}
+        </div>
+      ) : (
+        <>
+          <div ref={scrollRef} className={`${styles.scrollArea} ${(compact || overlay) && needsScroll ? styles.scrollAreaCompact : ""}`} role="listbox">
+            {options.map((option) => (
+              <div
+                key={option.id}
+                className={styles.option}
+                onClick={() => handleSelect(option)}
+              >
+                {option.label}
+              </div>
+            ))}
+          </div>
+
+          {needsScroll && (
+            <div ref={trackRef} className={styles.scrollTrack}>
+              <div ref={thumbRef} className={styles.scrollThumb} />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
 
   return (
     <div ref={wrapperRef} className={wrapperClasses} style={wrapperStyle}>
@@ -104,37 +177,7 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
         />
       </div>
 
-      {isOpen && (
-        <div className={dropdownClasses}>
-          {options.length === 0 ? (
-            <div className={styles.emptyMessage}>
-              {emptyMessage ?? "항목이 없습니다"}
-            </div>
-          ) : (
-            <>
-              <div ref={scrollRef} className={styles.scrollArea} role="listbox">
-                {options.map((option) => (
-                  <div
-                    key={option.id}
-                    className={`${styles.option} ${
-                      value?.id === option.id ? styles.optionActive : ""
-                    }`.trim()}
-                    onClick={() => handleSelect(option)}
-                  >
-                    {option.label}
-                  </div>
-                ))}
-              </div>
-
-              {needsScroll && (
-                <div ref={trackRef} className={styles.scrollTrack}>
-                  <div ref={thumbRef} className={styles.scrollThumb} />
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+      {isOpen && (overlay ? createPortal(<div ref={portalRef}>{dropdownContent}</div>, document.body) : dropdownContent)}
     </div>
   );
 }

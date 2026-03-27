@@ -31,8 +31,11 @@ type TimePickerProps = {
     date?: string;
     dateTime?: string;
   };
-  minDate?: Date;
+  minDate?: string;
+  maxDate?: string;
   formatDate: (d: Date) => string;
+  /** true이면 날짜 선택 영역을 비활성화 (당일 일정 전용) */
+  dateDisabled?: boolean;
 };
 
 export default function TimePicker({
@@ -47,7 +50,9 @@ export default function TimePicker({
   onMinuteChange,
   errors,
   minDate,
+  maxDate,
   formatDate,
+  dateDisabled,
 }: TimePickerProps) {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const calendarWrapperRef = useRef<HTMLDivElement>(null);
@@ -71,19 +76,22 @@ export default function TimePicker({
           <div
             ref={calendarWrapperRef}
             className={`${styles.itemDate} ${errors?.date ? styles.inputError : ""}`}
+            style={dateDisabled ? { opacity: 0.5, pointerEvents: "none" } : undefined}
           >
             {formatDate(date)}
             <img
               src="/icon/search_calendar.png"
               alt=""
-              onClick={() => setIsCalendarOpen((v) => !v)}
+              onClick={() => !dateDisabled && setIsCalendarOpen((v) => !v)}
             />
-            {isCalendarOpen && (
+            {isCalendarOpen && !dateDisabled && (
               <div className={styles.calendarPopover}>
                 <MiniCalendar
                   value={date}
                   showTodayButton
                   size="modal"
+                  minDate={minDate}
+                  maxDate={maxDate}
                   onPickDate={(d) => {
                     onDateChange(d);
                     setIsCalendarOpen(false);

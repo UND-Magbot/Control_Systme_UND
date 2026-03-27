@@ -13,6 +13,19 @@ import { getByteLength } from '../utils/validation';
 import SharedCustomSelect, { type SelectOption as SharedSelectOption } from '@/app/components/select/CustomSelect';
 
 
+type MockScheduleData = {
+  RobotName: string;
+  TaskName: string;
+  TaskType: string;
+  TaskStatus: string;
+  StartDate: string;
+  EndDate: string;
+  WayName: string;
+  Repeat: string;
+  Repeat_Day: string | null;
+  Repeat_End: string | null;
+};
+
 type ScheduleDetailProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -26,6 +39,8 @@ type ScheduleDetailProps = {
     endMin: number;
     color?: 'green' | 'yellow' | 'blue' | 'red';
   };
+  /** Mock 모드에서 API 대신 사용할 데이터 */
+  mockData?: MockScheduleData | null;
   /**
    * (선택) 저장/삭제를 부모 상태(목업 데이터/서버)로 반영할 때 사용
    */
@@ -320,6 +335,7 @@ export default function ScheduleDetail({
   isOpen,
   onClose,
   event,
+  mockData,
   onUpdate,
   onDelete,
   onScheduleChanged,
@@ -457,6 +473,15 @@ export default function ScheduleDetail({
         const endDT = makeDetailDateTime(endDateText, form.endAmpm, form.endHour, form.endMin);
         if (new Date(startDT) >= new Date(endDT)) errors.dateTime = "시작 일시가 종료 일시보다 같거나 늦습니다.";
 
+        // 과거 날짜 방지 (반복 일정 제외)
+        if (!form.repeatEnabled) {
+            const now = new Date();
+            const startDate = new Date(startDT.replace(" ", "T"));
+            if (startDate < now) {
+                errors.pastDate = "시작 일시가 현재 시각보다 이전입니다.";
+            }
+        }
+
         // 반복 설정 검증
         if (form.repeatEnabled) {
             if (form.repeatDays.length === 0) errors.repeatDays = "반복요일을 최소 1일 선택하세요.";
@@ -587,60 +612,72 @@ export default function ScheduleDetail({
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
+  const applyDetailData = (data: MockScheduleData) => {
+    const start = new Date(data.StartDate);
+    const end = new Date(data.EndDate);
+
+    const startH24 = start.getHours();
+    const endH24 = end.getHours();
+
+    const matchedPath = pathOptions.find(
+      (p) => p.label === data.WayName
+    );
+
+    const startAmpm = startH24 < 12 ? '오전' : '오후';
+    const endAmpm = endH24 < 12 ? '오전' : '오후';
+
+    setForm({
+      robotNo: data.RobotName,
+      title: data.TaskName,
+      workType: data.TaskType,
+      workStatus: data.TaskStatus,
+
+      dateText: formatDate(start),
+      dowText: data.Repeat_Day ?? '',
+
+      startAmpm,
+      startHour: startH24 % 12 === 0 ? 12 : startH24 % 12,
+      startMin: start.getMinutes(),
+
+      endAmpm,
+      endHour: endH24 % 12 === 0 ? 12 : endH24 % 12,
+      endMin: end.getMinutes(),
+
+      pathId: null,
+      pathName: data.WayName,
+      pathDetails: [],
+      pathOrder: matchedPath?.order ?? "",
+
+      repeatEnabled: data.Repeat === "Y",
+      repeatDays: data.Repeat_Day
+        ? data.Repeat_Day.split(",") as Array<'월'|'화'|'수'|'목'|'금'|'토'|'일'>
+        : [],
+      repeatEveryday: data.Repeat_Day === '월,화,수,목,금,토,일',
+      repeatEndType: data.Repeat_End ? 'date' : 'none',
+      repeatEndDate: data.Repeat_End ?? '',
+    });
+
+    setStartDateText(formatDate(start));
+    setEndDateText(formatDate(end));
+    setModifiedAtText(null);
+  };
+
   useEffect(() => {
     if (!isOpen) return;
 
     setLoading(true);
 
+    // Mock 데이터가 있으면 API 호출 없이 바로 적용
+    if (mockData) {
+      applyDetailData(mockData);
+      setLoading(false);
+      return;
+    }
+
     fetch(`${API_BASE}/DB/schedule/${event.id}`)
       .then(res => res.json())
       .then(data => {
-        const start = new Date(data.StartDate);
-        const end = new Date(data.EndDate);
-
-        const startH24 = start.getHours();
-        const endH24 = end.getHours();
-
-        const matchedPath = pathOptions.find(
-          (p) => p.label === data.WayName
-        );
-
-        const startAmpm = startH24 < 12 ? '오전' : '오후';
-        const endAmpm = endH24 < 12 ? '오전' : '오후';
-
-        setForm({
-          robotNo: data.RobotName,
-          title: data.TaskName,
-          workType: data.TaskType,
-          workStatus: data.TaskStatus,
-
-          dateText: formatDate(start),
-          dowText: data.Repeat_Day ?? '',
-
-          startAmpm,
-          startHour: startH24 % 12 === 0 ? 12 : startH24 % 12,
-          startMin: start.getMinutes(),
-
-          endAmpm,
-          endHour: endH24 % 12 === 0 ? 12 : endH24 % 12,
-          endMin: end.getMinutes(),
-
-          pathId: null,
-          pathName: data.WayName,
-          pathDetails: [],
-          pathOrder: matchedPath?.order ?? "",  
-
-          repeatEnabled: Boolean(data.Repeat),
-          repeatDays: data.Repeat_Day
-            ? data.Repeat_Day.split(",")
-            : [],
-          repeatEveryday: data.Repeat_Day === '월,화,수,목,금,토,일',
-          repeatEndType: data.Repeat_End ? 'date' : 'none',
-          repeatEndDate: data.Repeat_End ?? '',
-        });
-
-        setStartDateText(formatDate(start));
-        setEndDateText(formatDate(end));
+        applyDetailData(data);
 
         // 수정 일시 (API에 필드가 있으면 사용)
         if (data.UpdatedAt || data.updated_at) {
@@ -660,7 +697,7 @@ export default function ScheduleDetail({
         setFetchError("데이터를 불러오지 못했습니다.");
       })
       .finally(() => setLoading(false));
-  }, [isOpen, event.id, pathOptions]);
+  }, [isOpen, event.id, mockData, pathOptions]);
 
     const handleDeleteCancel = () => setShowDeleteConfirm(false);
 
@@ -708,7 +745,7 @@ export default function ScheduleDetail({
 
 
     // ===== view helpers =====
-    const workTypeTitle = useMemo(() => form.workType.replace(' / ', '/'), [form.workType]);
+    const workTypeTitle = useMemo(() => (form.workType ?? '').replace(' / ', '/'), [form.workType]);
 
     // 상세(보기)에서 보여줄 텍스트는 “form” 기반으로 통일(수정 후 즉시 반영)
     const viewWorkPeriodText = `${form.dateText} - 반복`;
@@ -903,9 +940,8 @@ export default function ScheduleDetail({
                                   onPickDate={(date) => {
                                     const next = formatDate(date);
                                     setStartDateText(next);
+                                    setEndDateText(next); // 당일 일정만 허용: 종료일도 동기화
                                     setForm((p) => ({ ...p, dateText: next }));
-                                    // 종료일이 시작일보다 이전이면 동기화
-                                    if (endDateText < next) setEndDateText(next);
                                     setIsStartDateOpen(false);
                                   }}
                                 />
@@ -956,9 +992,10 @@ export default function ScheduleDetail({
                               value={parseDateText(endDateText)}
                               showTodayButton
                               size="modal"
+                              minDate={startDateText}
+                              maxDate={startDateText}
                               onPickDate={(date) => {
-                                const next = formatDate(date);
-                                setEndDateText(next);
+                                setEndDateText(formatDate(date));
                                 setIsEndDateOpen(false);
                               }}
                             />
@@ -992,9 +1029,9 @@ export default function ScheduleDetail({
                     <ViewText value={`${startDateText} ${form.startAmpm} ${pad2(form.startHour)}:${pad2(form.startMin)} ~ ${endDateText} ${form.endAmpm} ${pad2(form.endHour)}:${pad2(form.endMin)}`} />
                 )}
                 </FieldRow>
-                {isEditMode && fieldErrors.dateTime && (
+                {isEditMode && (fieldErrors.dateTime || fieldErrors.pastDate) && (
                   <div style={{ marginBottom: 8 }}>
-                    <span className={styles.fieldError}>{fieldErrors.dateTime}</span>
+                    <span className={styles.fieldError}>{fieldErrors.dateTime || fieldErrors.pastDate}</span>
                   </div>
                 )}
 
@@ -1033,8 +1070,9 @@ export default function ScheduleDetail({
 
             {isEditMode && (
                 <>
-                    {/* 반복설정 */}
-                    <div className={styles.itemRadioBox}>
+                    {/* 반복설정 — "전체 일정 수정"이 아니면 비활성화 */}
+                    {(() => { const repeatLocked = repeatScope !== "all"; return (<>
+                    <div className={styles.itemRadioBox} style={repeatLocked ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
                     <div className={styles.itemtitle}>반복설정</div>
 
                     <div className={`${styles.radioBtnFlex} ${styles.itemLeftMg}`}>
@@ -1042,8 +1080,8 @@ export default function ScheduleDetail({
                         <div
                         className={styles.radioBtnBox}
                         role="button"
-                        tabIndex={0}
-                        onClick={() => setRepeatEnabled(true)}
+                        tabIndex={repeatLocked ? -1 : 0}
+                        onClick={() => !repeatLocked && setRepeatEnabled(true)}
                         >
                         <img
                             src={form.repeatEnabled ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
@@ -1056,8 +1094,8 @@ export default function ScheduleDetail({
                         <div
                         className={styles.radioBtnBox}
                         role="button"
-                        tabIndex={0}
-                        onClick={() => setRepeatEnabled(false)}
+                        tabIndex={repeatLocked ? -1 : 0}
+                        onClick={() => !repeatLocked && setRepeatEnabled(false)}
                         >
                         <img
                             src={!form.repeatEnabled ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
@@ -1071,7 +1109,7 @@ export default function ScheduleDetail({
                     {/* ✅ 조건: 반복 선택된 경우에만 표시 */}
                     {form.repeatEnabled && (
                     <>
-                        <div className={styles.itemRadioBox}>
+                        <div className={styles.itemRadioBox} style={repeatLocked ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
                             <div className={styles.itemtitle}>반복요일</div>
 
                             <div className={`${styles.radioBtnFlex} ${styles.itemLeftMg}`} style={{ gap: 10 }}>
@@ -1081,6 +1119,7 @@ export default function ScheduleDetail({
                                     <button
                                     key={d}
                                     type="button"
+                                    disabled={repeatLocked}
                                     onClick={() => toggleRepeatDay(d)}
                                     className={`${styles.repeatDayBtn} ${active ? styles.repeatDayBtnActive : ""}`}
                                     >
@@ -1092,6 +1131,7 @@ export default function ScheduleDetail({
                                 <label className={styles.everydayBox}>
                                 <input
                                     type="checkbox"
+                                    disabled={repeatLocked}
                                     checked={form.repeatEveryday}
                                     onChange={(e) => toggleEveryday(e.target.checked)}
                                 />
@@ -1103,15 +1143,16 @@ export default function ScheduleDetail({
                           <span className={styles.fieldError}>{fieldErrors.repeatDays}</span>
                         )}
 
-                        <div className={styles.itemRadioBox}>
+                        <div className={styles.itemRadioBox} style={repeatLocked ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
                         <div className={styles.itemtitle}>반복종료</div>
 
                         <div className={`${styles.radioBtnFlex} ${styles.itemLeftMg}`}>
                             <div
                             className={styles.radioBtnBox}
                             role="button"
-                            tabIndex={0}
+                            tabIndex={repeatLocked ? -1 : 0}
                             onClick={() => {
+                              if (repeatLocked) return;
                               setForm((p) => ({ ...p, repeatEndType: "none" }));
                               setIsRepeatEndDateOpen(false);
                             }}
@@ -1126,12 +1167,15 @@ export default function ScheduleDetail({
                             <div
                             className={styles.radioBtnBox}
                             role="button"
-                            tabIndex={0}
-                            onClick={() => setForm((p) => ({
-                              ...p,
-                              repeatEndType: "date",
-                              repeatEndDate: p.repeatEndDate || formatDate(new Date()),
-                            }))}
+                            tabIndex={repeatLocked ? -1 : 0}
+                            onClick={() => {
+                              if (repeatLocked) return;
+                              setForm((p) => ({
+                                ...p,
+                                repeatEndType: "date",
+                                repeatEndDate: p.repeatEndDate || formatDate(new Date()),
+                              }));
+                            }}
                             >
                             <img
                                 src={form.repeatEndType === "date" ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
@@ -1152,11 +1196,12 @@ export default function ScheduleDetail({
                                     src="/icon/search_calendar.png"
                                     alt=""
                                     onClick={(e) => {
+                                        if (repeatLocked) return;
                                         e.stopPropagation();
                                         setIsRepeatEndDateOpen((v) => !v);
                                     }}
                                 />
-                                {isRepeatEndDateOpen && (
+                                {isRepeatEndDateOpen && !repeatLocked && (
                                     <div
                                         className={styles.calendarPopover}
                                         onClick={(e) => e.stopPropagation()}
@@ -1178,6 +1223,7 @@ export default function ScheduleDetail({
                         </div>
                     </>
                     )}
+                </>); })()}
                 </>
                 )}
 
@@ -1199,6 +1245,7 @@ export default function ScheduleDetail({
                       }}
                       emptyMessage="등록된 경로가 없습니다"
                       error={!!fieldErrors.pathName}
+                      overlay
                     />
                 ) : (
                     <ViewText value={form.pathName} />
@@ -1234,15 +1281,7 @@ export default function ScheduleDetail({
             )}
           </div>}
 
-          {/* 에러 배너 */}
-          {apiError && (
-            <div className={styles.errorMessage} style={{ marginTop: 12 }}>
-              {apiError}
-              <button className={styles.retryBtn} onClick={handleEditSave} style={{ marginLeft: 8 }}>
-                다시 시도
-              </button>
-            </div>
-          )}
+          {/* 에러 확인창 */}
 
           {/* 하단 버튼 */}
           {!loading && <div className={styles.btnTotal}>
@@ -1325,6 +1364,20 @@ export default function ScheduleDetail({
               </button>
               <button className={styles.confirmBtnLeave} onClick={handleDirtyConfirmLeave}>
                 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* API 에러 확인창 */}
+      {apiError && (
+        <div className={styles.confirmOverlay} onClick={() => setApiError(null)}>
+          <div className={styles.confirmBox} onClick={(e) => e.stopPropagation()}>
+            <p>{apiError}</p>
+            <div className={styles.confirmBtnGroup}>
+              <button className={styles.confirmBtnStay} onClick={() => setApiError(null)}>
+                확인
               </button>
             </div>
           </div>

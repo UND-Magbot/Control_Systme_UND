@@ -91,19 +91,24 @@ export type DtItem = {
     date: DateTime;
 }
 
-export type LogCategory = "convoy" | "robot" | "system" | "user" | "schedule" | "error";
+export type LogCategory = "robot" | "system" | "schedule" | "error";
+
+export const LOG_CATEGORY_LABELS: Record<LogCategory, string> = {
+    robot: "로봇",
+    system: "시스템",
+    schedule: "스케줄",
+    error: "에러",
+};
 
 export type LogItem = {
     id: number;
-    category: LogCategory;
-    category_name: string;
-    action: string;
-    message: string;
-    detail: string | null;
-    robot_id: number | null;
-    robot_name: string | null;
-    source: string;
-    created_at: string;
+    Category: LogCategory;
+    Action: string;
+    Message: string;
+    Detail: string | null;
+    RobotId: number | null;
+    RobotName: string | null;
+    CreatedAt: string;
 }
 
 export type Period = 'today' | '1week' | '1month' | '1year' | 'Total' | null;

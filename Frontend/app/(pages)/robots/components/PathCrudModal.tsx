@@ -8,6 +8,7 @@ import ResetUpdate from "./PathDeleteConfirmModal";
 import PathAlertsModal from "./PathAlertsModal";
 import PathMapView from "./PathMapView";
 import FilterSelectBox, { type FilterOption } from "@/app/components/button/FilterSelectBox";
+import { Route, Waypoints } from "lucide-react";
 
 export type PathWorkType = "task1" | "task2" | "task3";
 
@@ -475,7 +476,7 @@ export default function PathCrudModal({
         {/* 헤더 */}
         <div className={styles.header}>
           <div className={styles.headerLeft}>
-            <img src="/icon/path_w.png" alt="" className={styles.headerIcon} />
+            <Route size={20} className={styles.headerIcon} />
             <div className={styles.headerTitle}>{mode === "edit" ? "경로 수정" : "경로 등록"}</div>
           </div>
           <button type="button" className={styles.closeBtn} onClick={handleClose} aria-label="close">
@@ -734,7 +735,7 @@ export default function PathCrudModal({
                       </div>
                       {!isLast && (
                         <div className={styles.orderWay}>
-                          <img src="/icon/path_way.png" alt="" />
+                          <Waypoints size={12} />
                         </div>
                       )}
                     </React.Fragment>

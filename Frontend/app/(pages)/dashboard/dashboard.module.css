@@ -1,47 +1,97 @@
-.container-grid {
+/* ── 대시보드 3컬럼 그리드 ── */
+.dashboardGrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: minmax(320px, 4fr) minmax(220px, 2fr);
-  gap: 16px;
+  grid-template-columns: 1fr 3fr auto;
+  grid-template-rows: 1fr;
+  gap: 12px;
   flex: 1;
-  min-height: var(--page-body-min-height);
+  min-height: 0;
 }
 
-.top-common-div {
-  width: 100%;
-  min-height: 280px;
-  border-radius: 13px;
-  padding: 16px 20px;
+/* ── 공통 패널 스타일 ── */
+.panel {
+  border-radius: 12px;
   background-color: var(--surface-3);
-  overflow: hidden;
-
-  display: flex;
-  flex-direction: column;
   border: 1px solid rgba(146, 212, 244, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   transition: border-color 0.2s ease;
 }
 
-.top-common-div:hover,
-.bottom-common-div:hover {
-  border-color: rgba(146, 212, 244, 0.15);
+.panel:hover {
+  border-color: rgba(146, 212, 244, 0.12);
 }
 
-.bottom-common-div {
-  width: 100%;
-  min-height: 220px;
-  border-radius: 13px;
-  padding: 16px 20px;
-  background-color: var(--surface-3);
-  overflow: hidden;
-
+/* ── 좌측: 로봇 리스트 + 공지사항 ── */
+.leftColumn {
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(146, 212, 244, 0.08);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  transition: border-color 0.2s ease;
+  gap: 12px;
+  min-height: 0;
+  min-width: 180px;
 }
 
+.robotListPanel {
+  composes: panel;
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.noticePanel {
+  composes: panel;
+  min-height: 130px;
+  max-height: 190px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── 중앙: 통계+스케줄 + 맵 ── */
+.centerColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.infoRow {
+  display: flex;
+  gap: 10px;
+  overflow: visible;
+  height: 90px;
+  flex-shrink: 0;
+}
+
+/* ── 우측: 카메라 세로 스택 ── */
+.cameraColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  width: 280px;
+}
+
+.cameraRobotName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-accent);
+  padding: 0 2px;
+}
+
+.cameraPanel {
+  composes: panel;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  position: relative;
+  padding: 0;
+}
+
+/* ── 공통 링크 ── */
 .moreLink {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
@@ -53,15 +103,25 @@
   color: var(--text-primary);
 }
 
+/* ── 반응형 ── */
 @media (max-width: 1200px) {
-  .container-grid {
+  .dashboardGrid {
     grid-template-columns: 1fr;
     grid-template-rows: auto;
     min-height: unset;
     height: auto;
   }
-  .top-common-div,
-  .bottom-common-div {
-    min-height: 200px;
+
+  .cameraColumn {
+    width: 100%;
+    flex-direction: row;
+  }
+
+  .cameraColumn .cameraPanel {
+    flex: 1;
+  }
+
+  .robotListPanel {
+    max-height: 300px;
   }
 }

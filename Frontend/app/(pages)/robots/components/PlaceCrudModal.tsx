@@ -15,6 +15,16 @@ import type { POIItem } from "@/app/components/map/types";
 import DropdownSelect from "@/app/components/button/DropdownSelect";
 import ZoomControl from "@/app/components/button/ZoomControl";
 import { API_BASE } from "@/app/config";
+import { MapPin, MapPinned } from "lucide-react";
+import type { POICategory } from "@/app/components/map/types";
+
+const CATEGORY_OPTIONS: { value: POICategory; label: string }[] = [
+  { value: "work", label: "작업지" },
+  { value: "charge", label: "충전소" },
+  { value: "standby", label: "대기소" },
+  { value: "waypoint", label: "경유지" },
+  { value: "danger", label: "위험구역" },
+];
 
 export type PlaceRowData = {
   id: number;
@@ -73,6 +83,7 @@ export default function PlaceCrudModal({
   const [y, setY] = useState<string>("");
   const [direction, setDirection] = useState<string>("");
   const [desc, setDesc] = useState<string>("");
+  const [category, setCategory] = useState<POICategory>("work");
   const [isPinMode, setIsPinMode] = useState(false);
   const [pinPlaced, setPinPlaced] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
@@ -149,6 +160,7 @@ export default function PlaceCrudModal({
       setY(initial.y ?? "");
       setDirection(initial.direction ?? "");
       setDesc(initial.desc ?? "");
+      setCategory((initial as any).category ?? "work");
       setPinPlaced(!!(initial.x && initial.y));
     } else {
       setRobotNo("");
@@ -158,6 +170,7 @@ export default function PlaceCrudModal({
       setY("");
       setDirection("");
       setDesc("");
+      setCategory("work");
       setPinPlaced(false);
     }
     setIsPinMode(false);
@@ -424,7 +437,7 @@ export default function PlaceCrudModal({
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <div className={styles.headerLeft}>
-            <img src="/icon/robot_place_w.png" alt="" />
+            <MapPin size={20} />
             <h2>{title}</h2>
           </div>
           <button className={styles.closeBtn} onClick={handleClose} aria-label="close">
@@ -511,6 +524,22 @@ export default function PlaceCrudModal({
                   </div>
                   {fieldErrors.name && <div className={styles.fieldError}>{fieldErrors.name}</div>}
                   {!fieldErrors.name && nameDuplicateMsg && <div className={styles.fieldError}>{nameDuplicateMsg}</div>}
+                </div>
+              </div>
+
+              {/* 카테고리 */}
+              <div className={styles.row}>
+                <div className={styles.label}>카테고리</div>
+                <div className={styles.selectWrap}>
+                  <DropdownSelect<{ value: POICategory; label: string }>
+                    placeholder="카테고리를 선택하세요"
+                    value={CATEGORY_OPTIONS.find((o) => o.value === category) ?? CATEGORY_OPTIONS[0]}
+                    options={CATEGORY_OPTIONS}
+                    getLabel={(o) => o.label}
+                    getKey={(o) => o.value}
+                    onChange={(o) => setCategory(o.value)}
+                    className={styles.modalSelect}
+                  />
                 </div>
               </div>
             </div>
@@ -646,7 +675,7 @@ export default function PlaceCrudModal({
                   role="button"
                   aria-pressed={isPinMode}
                 >
-                  <img src="/icon/place_point.png" alt="" />
+                  <MapPinned size={16} />
                 </div>
               </div>
             </div>
@@ -673,7 +702,7 @@ export default function PlaceCrudModal({
                   {pinPlaced && pinScreenPos && (
                     <img
                       src="/icon/place_point.png"
-                      alt=""
+                      alt="pin"
                       className={styles.pinMarker}
                       style={{
                         ...pinScreenPos,

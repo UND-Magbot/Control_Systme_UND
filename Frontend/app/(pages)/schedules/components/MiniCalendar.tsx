@@ -9,6 +9,8 @@ type MiniCalendarProps = {
   todayResetKey?: number;
   showTodayButton?: boolean;
   size?: "page" | "modal";
+  minDate?: string;
+  maxDate?: string;
 };
 
 export default function MiniCalendar({
@@ -17,6 +19,8 @@ export default function MiniCalendar({
   todayResetKey = 0,
   showTodayButton = false,
   size = "page",
+  minDate,
+  maxDate,
 }: MiniCalendarProps) {
   const [hasPicked, setHasPicked] = useState(false);
   const [internalDate, setInternalDate] = useState<string | null>(null);
@@ -50,6 +54,8 @@ export default function MiniCalendar({
       showYearNav
       showWeekHighlight
       size={calendarSize}
+      minDate={minDate}
+      maxDate={maxDate}
     />
   );
 }

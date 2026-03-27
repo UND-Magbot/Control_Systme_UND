@@ -1,11 +1,12 @@
 "use client"
 
-import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import styles from './common.module.css';
 import { getFormattedDateTime } from "@/app/utils/headerDateFomat";
 import Link from "next/link";
-import { alertMockData } from "@/app/mock/alerts_data";
+import { getUnreadCount } from "@/app/lib/alertData";
 import { useRouter } from "next/navigation";
+import { useSidebar } from "@/app/context/SidebarContext";
 
 type HeaderProps = {
   onAlertClick?: () => void;
@@ -13,6 +14,7 @@ type HeaderProps = {
 
 export default function Header({ onAlertClick }: HeaderProps) {
 
+    const { toggle } = useSidebar();
     const [date, setDate] = useState("");
     const [time, setTime] = useState("");
     const router = useRouter();
@@ -32,26 +34,30 @@ export default function Header({ onAlertClick }: HeaderProps) {
         return () => clearInterval(id);
     }, []);
 
-    // 당일 날짜 (YYYY-MM-DD)
-    const today = useMemo(() => {
-        const d = new Date();
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
+    // API 기반 미읽음 카운트
+    const [unreadAlarmCount, setUnreadAlarmCount] = useState(0);
+    const [unreadScheduleCount, setUnreadScheduleCount] = useState(0);
+
+    const fetchUnreadCounts = useCallback(async () => {
+        try {
+            const counts = await getUnreadCount();
+            setUnreadAlarmCount(counts.robot + counts.notice);
+            setUnreadScheduleCount(counts.schedule);
+        } catch {
+            // 실패 시 무시
+        }
     }, []);
 
-    // 목업데이터 기반 미읽음 카운트 (당일 기준)
-    const { unreadAlarmCount, unreadScheduleCount } = useMemo(() => {
-        const unread = alertMockData.filter((a) => !a.isRead && a.date.startsWith(today));
-
-        return {
-        // 벨: Notice/Schedule 제외 (Robot만) 당일 미읽음
-        unreadAlarmCount: unread.filter((a) => a.type !== "Schedule" && a.type !== "Notice").length,
-        // 캘린더: Schedule 당일 미읽음
-        unreadScheduleCount: unread.filter((a) => a.type === "Schedule").length,
+    useEffect(() => {
+        fetchUnreadCounts();
+        const id = setInterval(fetchUnreadCounts, 30000);
+        const handleRefresh = () => fetchUnreadCounts();
+        window.addEventListener('alert-read-changed', handleRefresh);
+        return () => {
+            clearInterval(id);
+            window.removeEventListener('alert-read-changed', handleRefresh);
         };
-    }, [today]);
+    }, [fetchUnreadCounts]);
 
     // outside-click 닫기
     useEffect(() => {
@@ -86,6 +92,18 @@ export default function Header({ onAlertClick }: HeaderProps) {
         <header className={styles.header}>
             <div className={styles["container-flex"]}>
                 <div className={styles.lrDivFlex}>
+                    <button
+                        type="button"
+                        className={styles.hamburgerBtn}
+                        onClick={toggle}
+                        aria-label="메뉴 토글"
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="3" y1="6" x2="21" y2="6" />
+                            <line x1="3" y1="12" x2="21" y2="12" />
+                            <line x1="3" y1="18" x2="21" y2="18" />
+                        </svg>
+                    </button>
                     <div className={styles["logo-img"]}>
                         <img src="/images/und_logo.png" alt="로고" />
                     </div>

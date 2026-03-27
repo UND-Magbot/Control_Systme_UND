@@ -2,9 +2,10 @@
 
 import React, { useRef, useMemo } from "react";
 import { CanvasMap } from "@/app/components/map";
-import type { CanvasMapHandle, POIItem } from "@/app/components/map";
+import type { CanvasMapHandle, POIItem, POICategory } from "@/app/components/map";
 import { TEST_MAP_CONFIG } from "@/app/components/map/mapConfigs";
-import type { ZoomAction } from "@/app/utils/zoom";
+import { useRobotPosition } from "@/app/hooks/useRobotPosition";
+import ZoomControl from "@/app/components/button/ZoomControl";
 import styles from "./RobotList.module.css";
 
 type PlaceRow = {
@@ -14,6 +15,7 @@ type PlaceRow = {
   placeName: string;
   x: number;
   y: number;
+  category?: POICategory;
 };
 
 type Props = {
@@ -30,11 +32,8 @@ export default function CameraView({
   defaultFloor = "1F",
 }: Props) {
   const mapRef = useRef<CanvasMapHandle>(null);
-
-  const optionItems = [
-    { icon: "zoom-in", label: "Zoom In", action: "in" as ZoomAction },
-    { icon: "zoom-out", label: "Zoom Out", action: "out" as ZoomAction },
-  ];
+  const { position: robotPos, hasError, isReady } = useRobotPosition(true);
+  const showRobotOnMap = isReady && !hasError;
 
   // 선택 장소 확정
   const effectiveSelected = useMemo(() => {
@@ -56,6 +55,7 @@ export default function CameraView({
           x: p.x,
           y: p.y,
           floor: p.floor,
+          category: p.category,
           isSelected: p.id === selectedPlaceId,
         })),
     [placeRows, activeFloor, selectedPlaceId]
@@ -71,21 +71,14 @@ export default function CameraView({
         showPois
         showLabels
         selectedPoiId={selectedPlaceId}
+        showRobot={showRobotOnMap}
+        robotPos={showRobotOnMap ? robotPos : undefined}
+        robotMarkerSize={14}
       />
 
       {/* Zoom Buttons */}
       <div className={styles.zoomPosition}>
-        <div className={styles.zoomFlex}>
-          {optionItems.map((item, idx) => (
-            <div
-              key={idx}
-              className={styles.zoomBox}
-              onClick={() => mapRef.current?.handleZoom(item.action)}
-            >
-              <img src={`/icon/${item.icon}-w.png`} alt={item.label} />
-            </div>
-          ))}
-        </div>
+        <ZoomControl onClick={(action) => mapRef.current?.handleZoom(action)} />
       </div>
     </>
   );

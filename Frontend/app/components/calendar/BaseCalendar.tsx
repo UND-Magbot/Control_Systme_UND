@@ -20,6 +20,7 @@ type BaseCalendarProps = {
 
   // 공통 옵션
   minDate?: string | null;
+  maxDate?: string | null;
   showTodayButton?: boolean;
   showYearNav?: boolean;
   showWeekHighlight?: boolean;
@@ -40,6 +41,7 @@ export default function BaseCalendar({
   activeField,
   onRangeSelect,
   minDate,
+  maxDate,
   showTodayButton = false,
   showYearNav = false,
   showWeekHighlight = false,
@@ -94,11 +96,13 @@ export default function BaseCalendar({
     : -1;
   const selectedWeekRow = selectedIdx >= 0 ? Math.floor(selectedIdx / 7) : -1;
 
-  // minDate 파싱
+  // minDate / maxDate 파싱
   const minParsed = minDate ? parseYMD(minDate) : null;
+  const maxParsed = maxDate ? parseYMD(maxDate) : null;
 
   const handleDayClick = (cell: DayCell) => {
     if (minParsed && cell.date < minParsed) return;
+    if (maxParsed && cell.date > maxParsed) return;
 
     if (mode === "single") {
       onDateSelect?.(cell.dateStr);
@@ -120,6 +124,7 @@ export default function BaseCalendar({
 
   const renderDayButton = (cell: DayCell, key: string | number) => {
     const isMinDisabled = minParsed ? cell.date < minParsed : false;
+    const isMaxDisabled = maxParsed ? cell.date > maxParsed : false;
     const isSelectedSingle = mode === "single" && selectedParsed && isSameDay(selectedParsed, cell.date);
     const isRangeStart = mode === "range" && rangeStart && isSameDay(rangeStart, cell.date);
     const isRangeEnd = mode === "range" && rangeEnd && isSameDay(rangeEnd, cell.date);
@@ -127,21 +132,23 @@ export default function BaseCalendar({
     const isDay = isSameDay(today, cell.date);
     const inRange = isInRange(cell);
 
+    const isDateDisabled = isMinDisabled || isMaxDisabled;
+
     const classNames = [
       styles.dayBtn,
-      isMinDisabled ? styles.dayMinDisabled
+      isDateDisabled ? styles.dayMinDisabled
         : isSelected ? styles.daySelected
           : inRange ? styles.dayInRange
             : !cell.inMonth ? styles.dayOutside
               : "",
-      !isMinDisabled && isDay ? styles.dayToday : "",
+      !isDateDisabled && isDay ? styles.dayToday : "",
     ].filter(Boolean).join(" ");
 
     return (
       <button
         key={key}
         type="button"
-        disabled={isMinDisabled}
+        disabled={isDateDisabled}
         className={classNames}
         onClick={() => handleDayClick(cell)}
       >

@@ -10,6 +10,7 @@ from app.Database.models import ScheduleInfo
 from fastapi.encoders import jsonable_encoder
 
 from datetime import datetime
+from app.current_user import get_user_id
 
 database = APIRouter(prefix="/DB")
 
@@ -46,7 +47,7 @@ def insert_Robot(req: RobotInsertReq, db: Session = Depends(get_db)):
 
     # 2️⃣ INSERT
     robot = RobotInfo(
-        UserId=1,
+        UserId=get_user_id(),
         RobotName=req.robot_name,
         ModelName=req.robot_model,
         LimitBattery=req.limit_battery,
@@ -97,7 +98,7 @@ def insert_robot_place(
     db: Session = Depends(get_db)
 ):
     place = LocationInfo(
-        UserId=1,              # 🔹 임시 (로그인 연동 전)
+        UserId=get_user_id(),              # 🔹 임시 (로그인 연동 전)
         RobotName=req.RobotName,
         LacationName = req.LacationName,
         Floor=req.Floor,
@@ -127,7 +128,7 @@ class PathInsertReq(BaseModel):
 @database.post("/path")
 def insert_path(req: PathInsertReq, db: Session = Depends(get_db)):
     path = WayInfo(
-        UserId=1,
+        UserId=get_user_id(),
         RobotName=req.RobotName,
         TaskType=req.TaskType,
         WayName=req.WayName,
@@ -153,7 +154,7 @@ def get_paths(db: Session = Depends(get_db)):
 
 class PathRes(BaseModel):
     id: int
-    UserId: int | None
+    UserId: str | None
     RobotName: str | None
     TaskType: str | None
     WayName: str | None
@@ -211,7 +212,7 @@ def insert_schedule(
     db: Session = Depends(get_db)
 ):
     schedule = ScheduleInfo(
-        UserId=1,
+        UserId=get_user_id(),
         RobotName=req.RobotName,
         WorkName=req.TaskName,            
         TaskType=req.TaskType,
