@@ -6,7 +6,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import {RobotSelectBox} from '@/app/components/button';
 import RemoteMapModal from "@/app/components/modal/RemoteMapModal";
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 import SectionHeader from "./SectionHeader";
 import selectModernStyles from "@/app/components/button/SelectModern.module.css";
 
@@ -194,7 +194,7 @@ export default function CameraSection({
     if (wsRef.current) wsRef.current.close();
     setThermalUrl(null);
 
-    const url = cam.webrtcUrl.startsWith("ws") ? cam.webrtcUrl : `${API_BASE}${cam.webrtcUrl}`;
+    const url = cam.webrtcUrl.startsWith("ws") ? cam.webrtcUrl : `${getApiBase()}${cam.webrtcUrl}`;
     setCameraStream(url);
   };
 

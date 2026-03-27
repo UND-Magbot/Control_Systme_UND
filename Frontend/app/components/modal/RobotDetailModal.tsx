@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import type { RobotRowData } from '@/app/type';
 import type { RobotDraft } from "@/app/(pages)/robots/components/RobotList";
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 import { useBatterySlider } from '@/app/hooks/useBatterySlider';
 import { useAlertModal } from '@/app/hooks/useAlertModal';
 
@@ -42,7 +42,7 @@ export default function RobotDetailModal({
         setIsLoading(true);
         setFetchError(null);
 
-        fetch(`${API_BASE}/DB/robots/${selectedRobotId}`)
+        fetch(`${getApiBase()}/DB/robots/${selectedRobotId}`)
             .then((res) => {
                 if (!res.ok) {
                     throw new Error("로봇 상세 조회 실패");
@@ -170,7 +170,7 @@ export default function RobotDetailModal({
         setIsSubmitting(true);
         try {
             const res = await fetch(
-            `${API_BASE}/DB/robots/${selectedRobotId}`,
+            `${getApiBase()}/DB/robots/${selectedRobotId}`,
             { method: "DELETE" }
             );
 
@@ -246,7 +246,7 @@ export default function RobotDetailModal({
         setIsSubmitting(true);
         try {
             const res = await fetch(
-            `${API_BASE}/DB/robots/${selectedRobotId}`,
+            `${getApiBase()}/DB/robots/${selectedRobotId}`,
             {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -319,7 +319,7 @@ export default function RobotDetailModal({
                             onClick={() => {
                                 setFetchError(null);
                                 setIsLoading(true);
-                                fetch(`${API_BASE}/DB/robots/${selectedRobotId}`)
+                                fetch(`${getApiBase()}/DB/robots/${selectedRobotId}`)
                                     .then(res => { if (!res.ok) throw new Error(); return res.json(); })
                                     .then(data => {
                                         const limitBattery = data.LimitBattery ?? DEFAULT_RETURN_BATTERY;

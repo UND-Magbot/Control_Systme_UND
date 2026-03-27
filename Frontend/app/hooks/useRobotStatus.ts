@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { RobotRowData } from "@/app/type";
-import { API_BASE } from '@/app/constants/api';
+import { getApiBase } from '@/app/constants/api';
 
-const API_URL = `${API_BASE}/robot/status`;
+const API_URL = `${getApiBase()}/robot/status`;
 const POLL_INTERVAL = 5000;
 
 // 로봇 heartbeat timestamp 기준 판정 임계값 (초)

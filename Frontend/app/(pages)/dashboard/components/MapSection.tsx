@@ -10,7 +10,7 @@ import { CanvasMap } from "@/app/components/map";
 import type { CanvasMapHandle } from "@/app/components/map";
 import { OCC_GRID_CONFIG } from "@/app/components/map/mapConfigs";
 import { useRobotPosition } from "@/app/hooks/useRobotPosition";
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 
 type MapSectionProps = {
   floors: Floor[];

@@ -3,10 +3,12 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import styles from "./mapManagement.module.css";
 
-const API_BASE =
-  typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? `http://${window.location.hostname}:8001`
-    : "http://localhost:8001";
+function getApiBase(): string {
+  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
+    return `http://${window.location.hostname}:8001`;
+  }
+  return "http://localhost:8001";
+}
 
 type Business = { id: number; BusinessName: string };
 type Area = { id: number; BusinessId: number; FloorName: string };
@@ -79,7 +81,7 @@ export default function MapManagementPage() {
   // ── 사업장 목록 로드 ──
   const loadBusinesses = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/map/businesses`);
+      const res = await fetch(`${getApiBase()}/map/businesses`);
       const data = await res.json();
       setBusinesses(data);
     } catch (e) {
@@ -90,7 +92,7 @@ export default function MapManagementPage() {
   // ── 층 목록 로드 ──
   const loadAreas = useCallback(async (bizId: number) => {
     try {
-      const res = await fetch(`${API_BASE}/map/areas?business_id=${bizId}`);
+      const res = await fetch(`${getApiBase()}/map/areas?business_id=${bizId}`);
       const data = await res.json();
       setAreas(data);
     } catch (e) {
@@ -101,7 +103,7 @@ export default function MapManagementPage() {
   // ── 영역(맵) 목록 로드 ──
   const loadMaps = useCallback(async (areaId: number) => {
     try {
-      const res = await fetch(`${API_BASE}/map/maps?area_id=${areaId}`);
+      const res = await fetch(`${getApiBase()}/map/maps?area_id=${areaId}`);
       const data = await res.json();
       setMaps(data);
     } catch (e) {
@@ -114,19 +116,19 @@ export default function MapManagementPage() {
     const loadFirstMap = async () => {
       try {
         // 1. 사업장 로드
-        const bizRes = await fetch(`${API_BASE}/map/businesses`);
+        const bizRes = await fetch(`${getApiBase()}/map/businesses`);
         const bizList: Business[] = await bizRes.json();
         setBusinesses(bizList);
         if (bizList.length === 0) return;
 
         for (const biz of bizList) {
           // 2. 해당 사업장의 층 로드
-          const areaRes = await fetch(`${API_BASE}/map/areas?business_id=${biz.id}`);
+          const areaRes = await fetch(`${getApiBase()}/map/areas?business_id=${biz.id}`);
           const areaList: Area[] = await areaRes.json();
 
           for (const area of areaList) {
             // 3. 해당 층의 맵 로드
-            const mapRes = await fetch(`${API_BASE}/map/maps?area_id=${area.id}`);
+            const mapRes = await fetch(`${getApiBase()}/map/maps?area_id=${area.id}`);
             const mapList: RobotMap[] = await mapRes.json();
 
             if (mapList.length > 0) {
@@ -166,7 +168,7 @@ export default function MapManagementPage() {
       setMapMeta(null);
       return;
     }
-    fetch(`${API_BASE}/map/maps/${selectedMap}/meta`)
+    fetch(`${getApiBase()}/map/maps/${selectedMap}/meta`)
       .then((res) => res.json())
       .then((data) => setMapMeta(data))
       .catch(() => setMapMeta(null));
@@ -181,7 +183,7 @@ export default function MapManagementPage() {
     const mapData = maps.find((m) => m.id === selectedMap);
     if (!mapData) return;
 
-    const imgUrl = `${API_BASE}/${(mapData.ImgFilePath || mapData.PgmFilePath).replace("./", "")}`;
+    const imgUrl = `${getApiBase()}/${(mapData.ImgFilePath || mapData.PgmFilePath).replace("./", "")}`;
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
@@ -469,7 +471,7 @@ export default function MapManagementPage() {
     setStartFloorId("");
     setStartFloorMode("select");
     try {
-      const res = await fetch(`${API_BASE}/map/areas?business_id=${bizId}`);
+      const res = await fetch(`${getApiBase()}/map/areas?business_id=${bizId}`);
       const data = await res.json();
       setStartAreas(data);
     } catch (e) {
@@ -481,7 +483,7 @@ export default function MapManagementPage() {
   const handleCheckAreaName = async () => {
     if (!startAreaName.trim()) return;
     try {
-      const res = await fetch(`${API_BASE}/map/maps`);
+      const res = await fetch(`${getApiBase()}/map/maps`);
       const data: RobotMap[] = await res.json();
       const exists = data.some((m) => m.AreaName === startAreaName.trim());
       setStartAreaChecked(!exists);
@@ -501,7 +503,7 @@ export default function MapManagementPage() {
     let bizId = startBizId as number;
     if (startBizMode === "new" && startBizNew.trim()) {
       try {
-        const res = await fetch(`${API_BASE}/map/businesses`, {
+        const res = await fetch(`${getApiBase()}/map/businesses`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ BusinessName: startBizNew.trim() }),
@@ -519,7 +521,7 @@ export default function MapManagementPage() {
     let floorId = startFloorId as number;
     if (startFloorMode === "new" && startFloorNew.trim() && bizId) {
       try {
-        const res = await fetch(`${API_BASE}/map/areas`, {
+        const res = await fetch(`${getApiBase()}/map/areas`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ BusinessId: bizId, FloorName: startFloorNew.trim() }),
@@ -545,7 +547,7 @@ export default function MapManagementPage() {
     if (isMappingStarting) return;
     setIsMappingStarting(true);
     try {
-      const res = await fetch(`${API_BASE}/map/mapping/start`, {
+      const res = await fetch(`${getApiBase()}/map/mapping/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -569,7 +571,7 @@ export default function MapManagementPage() {
     if (isMappingEnding) return;
     setIsMappingEnding(true);
     try {
-      const res = await fetch(`${API_BASE}/map/mapping/end`, {
+      const res = await fetch(`${getApiBase()}/map/mapping/end`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -607,7 +609,7 @@ export default function MapManagementPage() {
     setSelectedFloor(areaId);
 
     // 영역(맵) 목록 갱신 & 새 맵 자동 선택
-    const mapRes = await fetch(`${API_BASE}/map/maps?area_id=${areaId}`);
+    const mapRes = await fetch(`${getApiBase()}/map/maps?area_id=${areaId}`);
     const mapList: RobotMap[] = await mapRes.json();
     setMaps(mapList);
 
@@ -625,7 +627,7 @@ export default function MapManagementPage() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/map/maps`, {
+      const res = await fetch(`${getApiBase()}/map/maps`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -655,7 +657,7 @@ export default function MapManagementPage() {
     }
     const poll = async () => {
       try {
-        const res = await fetch(`${API_BASE}/robot/position`);
+        const res = await fetch(`${getApiBase()}/robot/position`);
         const data = await res.json();
         if (data.timestamp > 0) {
           setRobotPos({ x: data.x, y: data.y, yaw: data.yaw });
@@ -677,7 +679,7 @@ export default function MapManagementPage() {
   // ── 로봇 연결 모달 ──
   const handleOpenRobotModal = async () => {
     try {
-      const res = await fetch(`${API_BASE}/DB/robots`);
+      const res = await fetch(`${getApiBase()}/DB/robots`);
       const data = await res.json();
       setRobots(data);
     } catch (e) {
@@ -693,7 +695,7 @@ export default function MapManagementPage() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/DB/robots`);
+      const res = await fetch(`${getApiBase()}/DB/robots`);
       const data = await res.json();
       setSyncRobots(data);
     } catch (e) {
@@ -1124,7 +1126,7 @@ export default function MapManagementPage() {
               <button
                 className={styles.mappingCancelBtn}
                 onClick={async () => {
-                  await fetch(`${API_BASE}/map/mapping/cancel`, { method: "POST" }).catch(() => {});
+                  await fetch(`${getApiBase()}/map/mapping/cancel`, { method: "POST" }).catch(() => {});
                   setIsMappingRunning(false);
                   setMappingState("idle");
                 }}

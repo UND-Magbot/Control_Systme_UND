@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { RobotRowData, Video, Camera, PrimaryViewType } from '@/app/type';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { VideoStatus, RemotePad, ModalRobotSelect } from '@/app/components/button';
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 import { CanvasMap } from '@/app/components/map';
 import type { CanvasMapHandle } from '@/app/components/map';
 import { OCC_GRID_CONFIG } from '@/app/components/map/mapConfigs';
@@ -72,7 +72,7 @@ export default function RemoteModal({
   const [isCamOpen, setIsCamOpen] = useState(false);
   const camWrapperRef = useRef<HTMLDivElement>(null);
   const [selectedCam, setSelectedCam] = useState<number | null>(null);
-  const [cameraStream, setCameraStream] = useState(`${API_BASE}/Video/1`);
+  const [cameraStream, setCameraStream] = useState(`${getApiBase()}/Video/1`);
 
   const didInitOnOpenRef = useRef(false);
   const userTouchedCamRef = useRef(false);
@@ -261,11 +261,11 @@ export default function RemoteModal({
   }, []);
 
   /* --- robot control API --- */
-  const standHandle = () => fetch(`${API_BASE}/robot/stand`, { method: "POST" });
-  const sitHandle = () => fetch(`${API_BASE}/robot/sit`, { method: "POST" });
-  const slowHandle = () => fetch(`${API_BASE}/robot/slow`, { method: "POST" });
-  const normalHandle = () => fetch(`${API_BASE}/robot/normal`, { method: "POST" });
-  const fastHandle = () => fetch(`${API_BASE}/robot/fast`, { method: "POST" });
+  const standHandle = () => fetch(`${getApiBase()}/robot/stand`, { method: "POST" });
+  const sitHandle = () => fetch(`${getApiBase()}/robot/sit`, { method: "POST" });
+  const slowHandle = () => fetch(`${getApiBase()}/robot/slow`, { method: "POST" });
+  const normalHandle = () => fetch(`${getApiBase()}/robot/normal`, { method: "POST" });
+  const fastHandle = () => fetch(`${getApiBase()}/robot/fast`, { method: "POST" });
   const [isWorking, setIsWorking] = useState(false);
   const [showWorkMenu, setShowWorkMenu] = useState(false);
   const [loopCount, setLoopCount] = useState<number | string>(10);
@@ -277,7 +277,7 @@ export default function RemoteModal({
     if (isWorking) {
       navPollRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`${API_BASE}/robot/nav`);
+          const res = await fetch(`${getApiBase()}/robot/nav`);
           const data = await res.json();
           if (!data.is_navigating) {
             setIsWorking(false);
@@ -309,22 +309,22 @@ export default function RemoteModal({
 
   const handleWorkBtnClick = () => {
     if (isWorking) {
-      fetch(`${API_BASE}/nav/stopmove`, { method: "POST" }).then(() => setIsWorking(false));
+      fetch(`${getApiBase()}/nav/stopmove`, { method: "POST" }).then(() => setIsWorking(false));
     } else {
       setShowWorkMenu((prev) => !prev);
     }
   };
 
-  const handleInitPose = () => fetch(`${API_BASE}/robot/initpose`, { method: "POST" });
+  const handleInitPose = () => fetch(`${getApiBase()}/robot/initpose`, { method: "POST" });
 
   const startWork = (loop: number) => {
     setShowWorkMenu(false);
-    fetch(`${API_BASE}/nav/startmove?loop=${loop}`, { method: "POST" }).then(() => setIsWorking(true));
+    fetch(`${getApiBase()}/nav/startmove?loop=${loop}`, { method: "POST" }).then(() => setIsWorking(true));
   };
-  const handlesavePoint = () => fetch(`${API_BASE}/nav/savepoint`, { method: "POST" });
+  const handlesavePoint = () => fetch(`${getApiBase()}/nav/savepoint`, { method: "POST" });
   const handleClearPoints = () => {
     if (confirm("웨이포인트를 초기화하시겠습니까?")) {
-      fetch(`${API_BASE}/nav/clearpoints`, { method: "POST" });
+      fetch(`${getApiBase()}/nav/clearpoints`, { method: "POST" });
     }
   };
 
@@ -334,11 +334,11 @@ export default function RemoteModal({
 
   const sendFlashCommand = async (target: FlashTarget, value: FlashValue) => {
     if (target === "front") {
-      if (value === "on") fetch(`${API_BASE}/robot/front_on`, { method: "POST" });
-      else fetch(`${API_BASE}/robot/front_off`, { method: "POST" });
+      if (value === "on") fetch(`${getApiBase()}/robot/front_on`, { method: "POST" });
+      else fetch(`${getApiBase()}/robot/front_off`, { method: "POST" });
     } else {
-      if (value === "on") fetch(`${API_BASE}/robot/rear_on`, { method: "POST" });
-      else fetch(`${API_BASE}/robot/rear_off`, { method: "POST" });
+      if (value === "on") fetch(`${getApiBase()}/robot/rear_on`, { method: "POST" });
+      else fetch(`${getApiBase()}/robot/rear_off`, { method: "POST" });
     }
   };
 
@@ -375,7 +375,7 @@ export default function RemoteModal({
 
     if (wsRef.current) wsRef.current.close();
     setThermalUrl(null);
-    const nextUrl = cam.webrtcUrl || `${API_BASE}/Video/${cam.id}`;
+    const nextUrl = cam.webrtcUrl || `${getApiBase()}/Video/${cam.id}`;
     setCameraStream(nextUrl);
     setIsCamOpen(false);
   };
@@ -405,7 +405,7 @@ export default function RemoteModal({
     setActiveCam(baseCam.id);
     setCameraTabActiveIndex(nextIdx);
 
-    const nextUrl = baseCam.webrtcUrl || `${API_BASE}/Video/${baseCam.id}`;
+    const nextUrl = baseCam.webrtcUrl || `${getApiBase()}/Video/${baseCam.id}`;
     setCameraStream(nextUrl);
     setIsCamOpen(false);
   }, [isOpen, initialCam?.id, initialCamIndex, camera, activeCam]);

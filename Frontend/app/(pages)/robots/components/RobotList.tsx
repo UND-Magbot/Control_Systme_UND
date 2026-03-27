@@ -22,7 +22,7 @@ import PlaceMapView from "./PlaceMapView";
 import PathMapView from "./PathMapView";
 import PathCrudModal from "@/app/(pages)/robots/components/PathCrudModal";
 import PathDeleteConfirmModal from "@/app/(pages)/robots/components/PathDeleteConfirmModal";
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 import PathAlertsModal from "@/app/(pages)/robots/components/PathAlertsModal";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import {
@@ -36,10 +36,10 @@ import {
 
 // ── 경로 API 엔드포인트 (차후 백엔드 변경 시 여기만 수정) ──
 const PATH_API = {
-  LIST: `${API_BASE}/DB/getpath`,
-  CREATE: `${API_BASE}/DB/path`,
-  UPDATE: (id: number) => `${API_BASE}/DB/path/${id}`,
-  DELETE: (id: number) => `${API_BASE}/DB/path/${id}`,
+  LIST: `${getApiBase()}/DB/getpath`,
+  CREATE: `${getApiBase()}/DB/path`,
+  UPDATE: (id: number) => `${getApiBase()}/DB/path/${id}`,
+  DELETE: (id: number) => `${getApiBase()}/DB/path/${id}`,
 };
 import type { FilterOption } from "@/app/components/button/FilterSelectBox";
 import { useRobotStatus } from "@/app/hooks/useRobotStatus";
@@ -535,7 +535,7 @@ const resetCurrentPage = () => {
       let robotSchedules: any[] = [];
 
       try {
-        const res = await fetch(`${API_BASE}/DB/schedule`, {
+        const res = await fetch(`${getApiBase()}/DB/schedule`, {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error('스케줄 조회 실패');
@@ -652,7 +652,7 @@ const resetCurrentPage = () => {
 
   const fetchPlaces = async () => {
     try {
-      const res = await fetch(`${API_BASE}/DB/places`);
+      const res = await fetch(`${getApiBase()}/DB/places`);
       const data = await res.json();
       const mapped: PlaceRow[] = data.map((p: any) => ({
         id: p.id,
@@ -771,7 +771,7 @@ const resetCurrentPage = () => {
     try {
       await Promise.all(
         checkedPlaceIds.map((id) =>
-          fetch(`${API_BASE}/DB/places/${id}`, { method: "DELETE" })
+          fetch(`${getApiBase()}/DB/places/${id}`, { method: "DELETE" })
         )
       );
     } catch (err) {
@@ -1337,7 +1337,7 @@ const resetCurrentPage = () => {
           const robotName = robots.find(r => r.id === selectedRobotId)?.no ?? '';
           console.log("작업스케줄 복귀 실행:", robotName);
           // TODO: 실제 엔드포인트 확정 후 교체
-          fetch(`${API_BASE}/nav/startmove`, {
+          fetch(`${getApiBase()}/nav/startmove`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ robotName, action: "schedule_return" }),
@@ -1356,7 +1356,7 @@ const resetCurrentPage = () => {
         pathRows={pathRows}
         onConfirm={async (path) => {
           try {
-            const res = await fetch(`${API_BASE}/nav/pathmove/${path.id}`, {
+            const res = await fetch(`${getApiBase()}/nav/pathmove/${path.id}`, {
               method: "POST",
             });
             const data = await res.json();

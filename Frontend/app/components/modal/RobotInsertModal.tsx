@@ -3,7 +3,7 @@
 import styles from './Modal.module.css';
 import React, { useEffect, useState } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 import { useBatterySlider } from '@/app/hooks/useBatterySlider';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { useAlertModal } from '@/app/hooks/useAlertModal';
@@ -62,7 +62,7 @@ export default function RobotInsertModal({
             limit_battery: battery.value
         };
         try {
-            const res = await fetch(`${API_BASE}/DB/RobotInsert`, {
+            const res = await fetch(`${getApiBase()}/DB/RobotInsert`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import DeleteConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import RepeatConfirmModal, { type RepeatConfirmMode, type RepeatConfirmScope } from '@/app/(pages)/schedules/components/RepeatConfirmModals';
 import MiniCalendar from './MiniCalendar';
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 import { WORK_TYPES, WORK_STATUS } from '../constants';
 import { getByteLength } from '../utils/validation';
 import SharedCustomSelect, { type SelectOption as SharedSelectOption } from '@/app/components/select/CustomSelect';
@@ -499,7 +499,7 @@ export default function ScheduleDetail({
         try {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10000);
-            const res = await fetch(`${API_BASE}/DB/schedule/${event.id}`, {
+            const res = await fetch(`${getApiBase()}/DB/schedule/${event.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
@@ -546,7 +546,7 @@ export default function ScheduleDetail({
     useEffect(() => {
       if (!isOpen) return;
 
-      fetch(`${API_BASE}/DB/robots`)
+      fetch(`${getApiBase()}/DB/robots`)
         .then((res) => res.json())
         .then((data) => {
           const list = Array.isArray(data) ? data : (data?.robots ?? []);
@@ -566,7 +566,7 @@ export default function ScheduleDetail({
    useEffect(() => {
     if (!isOpen) return;
 
-    fetch(`${API_BASE}/DB/getpath`)
+    fetch(`${getApiBase()}/DB/getpath`)
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data?.paths ?? []);
@@ -592,7 +592,7 @@ export default function ScheduleDetail({
 
     setLoading(true);
 
-    fetch(`${API_BASE}/DB/schedule/${event.id}`)
+    fetch(`${getApiBase()}/DB/schedule/${event.id}`)
       .then(res => res.json())
       .then(data => {
         const start = new Date(data.StartDate);
@@ -669,7 +669,7 @@ export default function ScheduleDetail({
             const deletePayload = repeatScope ? { RepeatScope: repeatScope } : {};
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10000);
-            const res = await fetch(`${API_BASE}/DB/schedule/${event.id}`, {
+            const res = await fetch(`${getApiBase()}/DB/schedule/${event.id}`, {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
                 body: Object.keys(deletePayload).length > 0 ? JSON.stringify(deletePayload) : undefined,
@@ -814,7 +814,7 @@ export default function ScheduleDetail({
                 onClick={() => {
                   setFetchError(null);
                   setLoading(true);
-                  fetch(`${API_BASE}/DB/schedule/${event.id}`)
+                  fetch(`${getApiBase()}/DB/schedule/${event.id}`)
                     .then(res => res.json())
                     .then(data => {
                       // 재시도 시 동일한 로직 실행 (간략화)

@@ -3,7 +3,7 @@
 import React from 'react';
 import styles from './Button.module.css';
 import type { PrimaryViewType } from '@/app/type';
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 
 type ClassType = { 
     className?: string;
@@ -20,7 +20,7 @@ export default function RemotePad({
     const upHandle = (event: React.MouseEvent<HTMLDivElement>) => {
         console.log("upHandle 클릭됨!", event);
 
-        fetch(`${API_BASE}/robot/up`, {
+        fetch(`${getApiBase()}/robot/up`, {
             method: "POST",
             }).then(() => {
                 console.log("요청 완료");
@@ -29,7 +29,7 @@ export default function RemotePad({
     
     const leftHandle = (event: React.MouseEvent<HTMLDivElement>) => {
         console.log("leftHandle 클릭됨!", event);
-        fetch(`${API_BASE}/robot/left`, {
+        fetch(`${getApiBase()}/robot/left`, {
             method: "POST",
             }).then(() => {
                 console.log("요청 완료");
@@ -38,7 +38,7 @@ export default function RemotePad({
 
     const stopHandle = (event: React.MouseEvent<HTMLDivElement>) => {
         console.log("stopHandle 클릭됨!", event);
-        fetch(`${API_BASE}/robot/stop`, {
+        fetch(`${getApiBase()}/robot/stop`, {
             method: "POST",
             }).then(() => {
                 console.log("요청 완료");
@@ -47,7 +47,7 @@ export default function RemotePad({
     
     const rightHandle = (event: React.MouseEvent<HTMLDivElement>) => {
         console.log("rightHandle 클릭됨!", event);
-        fetch(`${API_BASE}/robot/right`, {
+        fetch(`${getApiBase()}/robot/right`, {
             method: "POST",
             }).then(() => {
                 console.log("요청 완료");
@@ -56,7 +56,7 @@ export default function RemotePad({
     
     const downHandle = (event: React.MouseEvent<HTMLDivElement>) => {
         console.log("downHandle 클릭됨!", event);
-        fetch(`${API_BASE}/robot/down`, {
+        fetch(`${getApiBase()}/robot/down`, {
             method: "POST",
             }).then(() => {
                 console.log("요청 완료");
@@ -65,7 +65,7 @@ export default function RemotePad({
 
     const leftTurnHandle = (event: React.MouseEvent<HTMLDivElement>) => {
         console.log("leftTurnHandle 클릭됨!", event);
-        fetch(`${API_BASE}/robot/leftTurn`, {
+        fetch(`${getApiBase()}/robot/leftTurn`, {
             method: "POST",
             }).then(() => {
                 console.log("요청 완료");
@@ -74,7 +74,7 @@ export default function RemotePad({
 
     const rightTurnHandle = (event: React.MouseEvent<HTMLDivElement>) => {
         console.log("rightTurnHandle 클릭됨!", event);
-        fetch(`${API_BASE}/robot/rightTurn`, {
+        fetch(`${getApiBase()}/robot/rightTurn`, {
             method: "POST",
             }).then(() => {
                 console.log("요청 완료");

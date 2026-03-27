@@ -1,11 +1,11 @@
 import type { RobotRowData } from "@/app/type";
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 
 export default async function getRobots(): Promise<RobotRowData[]> {
   let raw: any[] = [];
 
   try {
-    const res = await fetch(`${API_BASE}/DB/robots`, {
+    const res = await fetch(`${getApiBase()}/DB/robots`, {
       cache: "no-store",
     });
     if (res.ok) {

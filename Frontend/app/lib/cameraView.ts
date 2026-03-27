@@ -1,11 +1,5 @@
 import type { Camera } from "@/app/type";
-
-function getApiBase() {
-  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
-    return `http://${window.location.hostname}:8001`;
-  }
-  return "http://localhost:8001";
-}
+import { getApiBase } from "@/app/config";
 
 // 서버에서 카메라 목록 가져오고 → 가공해서 반환
 export default async function getCameras(): Promise<Camera[]> {

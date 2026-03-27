@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { RobotRowData, Camera, Floor, Video } from '@/app/type';
 import styles from './RobotList.module.css';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 import RemoteMapModal from "@/app/components/modal/RemoteMapModal";
 
 type CombinedProps = {
@@ -66,7 +66,7 @@ export default function CameraView({
         ws.onclose = () => console.log("Thermal WS closed");
     };
 
-    const [cameraStream, setCameraStream] = useState(`${API_BASE}/Video/1`);
+    const [cameraStream, setCameraStream] = useState(`${getApiBase()}/Video/1`);
     const handleCameraTab = (idx: number, cam: Camera) => {
         setSelectedCam(cam);
         setCameraTabActiveIndex(idx);
@@ -82,7 +82,7 @@ export default function CameraView({
         if (wsRef.current) wsRef.current.close();
         setThermalUrl(null);
 
-        const url = `${API_BASE}/Video/${cam.id}`;
+        const url = `${getApiBase()}/Video/${cam.id}`;
         setCameraStream(url);
         setIsOpenCam(false);
     };
@@ -93,7 +93,7 @@ export default function CameraView({
         if (cam?.id === 3) {
             connectThermalWS();
         } else {
-            const url = `${API_BASE}/Video/${cam?.id ?? 1}?t=${Date.now()}`;
+            const url = `${getApiBase()}/Video/${cam?.id ?? 1}?t=${Date.now()}`;
             setCameraStream(url);
         }
     };

@@ -14,7 +14,7 @@ import type { PlaceRow } from "@/app/mock/robotPlace_data";
 import type { POIItem } from "@/app/components/map/types";
 import DropdownSelect from "@/app/components/button/DropdownSelect";
 import ZoomControl from "@/app/components/button/ZoomControl";
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 
 export type PlaceRowData = {
   id: number;
@@ -120,7 +120,7 @@ export default function PlaceCrudModal({
   const [robotFetchError, setRobotFetchError] = useState(false);
   const fetchRobots = useCallback(() => {
     setRobotFetchError(false);
-    fetch(`${API_BASE}/DB/robots`)
+    fetch(`${getApiBase()}/DB/robots`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -277,8 +277,8 @@ export default function PlaceCrudModal({
     try {
       const isEditMode = mode === "edit" && initial?.id;
       const url = isEditMode
-        ? `${API_BASE}/DB/places/${initial.id}`
-        : `${API_BASE}/DB/places`;
+        ? `${getApiBase()}/DB/places/${initial.id}`
+        : `${getApiBase()}/DB/places`;
       const method = isEditMode ? "PUT" : "POST";
 
       const res = await fetch(url, {

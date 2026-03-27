@@ -8,7 +8,7 @@ import ScheduleInsert from './ScheduleInsert';
 import ScheduleDetail from './ScheduleDetail';
 import type { RobotRowData } from '@/app/type';
 import { mockScheduleRows, type ScheduleStatus } from "@/app/mock/schedule_data";
-import { API_BASE } from "@/app/config";
+import { getApiBase } from "@/app/config";
 
 
 // 주간
@@ -255,7 +255,7 @@ export default function Page({ robots }: RobotScheduleProps) {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE}/DB/schedule`);
+            const res = await fetch(`${getApiBase()}/DB/schedule`);
             if (!res.ok) throw new Error("서버 응답 오류");
             const data = await res.json();
             setSchedules(data);
