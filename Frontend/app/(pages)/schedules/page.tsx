@@ -1,13 +1,25 @@
+"use client";
+
+import { useEffect, useState } from 'react';
 import styles from './Schedules.module.css';
 import WorkSchedule from '@/app/(pages)/schedules/components/WorkSchedule';
 import RobotInfo from "@/app/lib/robotInfo";
 
-export default async function Page() {
+export default function Page() {
 
-    const [robots] = await Promise.all([
-        RobotInfo()
-    ]);
-  
+    const [robots, setRobots] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        Promise.all([
+            RobotInfo()
+        ]).then(([robots]) => {
+            setRobots(robots);
+            setLoading(false);
+        });
+    }, []);
+
+    if (loading) return null;
 
     return (
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>

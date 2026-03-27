@@ -1,4 +1,6 @@
-import React from 'react';
+"use client";
+
+import React, { useEffect, useState } from 'react';
 import styles from './dashboard.module.css';
 import CameraSection from "./components/CameraSection";
 import MapSection from "./components/MapSection";
@@ -11,19 +13,37 @@ import cameraView from "@/app/lib/cameraView";
 import VideoData from "@/app/lib/videoData";
 import Link from "next/link";
 import SectionHeader from "./components/SectionHeader";
+import { RobotRowData, Camera } from "@/app/type";
 
 
-export default async function DashboardPage() {
+export default function DashboardPage() {
 
+  const [robots, setRobots] = useState<RobotRowData[]>([]);
+  const [cameras, setCameras] = useState<Camera[]>([]);
+  const [floors, setFloors] = useState<any[]>([]);
+  const [videoStatus, setVideoStatus] = useState<any[]>([]);
+  const [videoItems, setVideoItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [robots, cameras, floors, videoStatus, videoItems] = await Promise.all([
-    RobotInfo(),
-    cameraView(),
-    Floors(),
-    VideoStatus(),
-    VideoData(),
-  ]);
-  
+  useEffect(() => {
+    Promise.all([
+      RobotInfo(),
+      cameraView(),
+      Floors(),
+      VideoStatus(),
+      VideoData(),
+    ]).then(([robots, cameras, floors, videoStatus, videoItems]) => {
+      setRobots(robots);
+      setCameras(cameras);
+      setFloors(floors);
+      setVideoStatus(videoStatus);
+      setVideoItems(videoItems);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) return null;
+
    return (
        <div className={styles["container-grid"]}>
 

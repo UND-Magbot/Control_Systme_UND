@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from 'react';
 import styles from './robots.module.css';
 import RobotList from './components/RobotList';
 import RobotInfo from "@/app/lib/robotInfo";
@@ -9,53 +12,77 @@ import NetworkStatus from "@/app/lib/networkData";
 import PowerStatus from "@/app/lib/powerData";
 import LocationStatus from "@/app/lib/locationData";
 
-export default async function Page() {
+export default function Page() {
 
-    const [robots, cameras, floors, videoStatus, batteryStatus, networkStatus, powerStatus, locationStatus] = await Promise.all([
-        RobotInfo(),
-        cameraView(),
-        Floors(),
-        VideoStatus(),
-        BatteryStatus(),
-        NetworkStatus(),
-        PowerStatus(),
-        LocationStatus()
-    ]);
+    const [robots, setRobots] = useState<any[]>([]);
+    const [cameras, setCameras] = useState<any[]>([]);
+    const [floors, setFloors] = useState<any[]>([]);
+    const [videoStatus, setVideoStatus] = useState<any[]>([]);
+    const [batteryStatus, setBatteryStatus] = useState<any[]>([]);
+    const [networkStatus, setNetworkStatus] = useState<any[]>([]);
+    const [powerStatus, setPowerStatus] = useState<any[]>([]);
+    const [locationStatus, setLocationStatus] = useState<any[]>([]);
+    const [robotStats, setRobotStats] = useState({ total: 0, operating: 0, standby: 0, discharged: 0, charging: 0 });
+    const [loading, setLoading] = useState(true);
 
-    let operating = 0;
-    let standby = 0;
-    let discharged = 0;
-    let charging = 0;
+    useEffect(() => {
+        Promise.all([
+            RobotInfo(),
+            cameraView(),
+            Floors(),
+            VideoStatus(),
+            BatteryStatus(),
+            NetworkStatus(),
+            PowerStatus(),
+            LocationStatus()
+        ]).then(([robots, cameras, floors, videoStatus, batteryStatus, networkStatus, powerStatus, locationStatus]) => {
+            setRobots(robots);
+            setCameras(cameras);
+            setFloors(floors);
+            setVideoStatus(videoStatus);
+            setBatteryStatus(batteryStatus);
+            setNetworkStatus(networkStatus);
+            setPowerStatus(powerStatus);
+            setLocationStatus(locationStatus);
 
-    robots.forEach(r => {
+            let operating = 0;
+            let standby = 0;
+            let discharged = 0;
+            let charging = 0;
 
-        // 전원 OFF → 무조건 Discharged
-        if (r.power === "Off") {
-            discharged++;
-            return;
-        }
+            robots.forEach((r: any) => {
+                // 전원 OFF → 무조건 Discharged
+                if (r.power === "Off") {
+                    discharged++;
+                    return;
+                }
 
-        // 충전 중 → Charging
-        if (r.isCharging) {
-            charging++;
-            return;
-        }
+                // 충전 중 → Charging
+                if (r.isCharging) {
+                    charging++;
+                    return;
+                }
 
-        // 작업 중 (작업 있음 + 대기 아님)
-        if (r.tasks.length > 0 && r.waitingTime === 0) {
-            operating++;
-            return;
-        }
+                // 작업 중 (작업 있음 + 대기 아님)
+                if (r.tasks.length > 0 && r.waitingTime === 0) {
+                    operating++;
+                    return;
+                }
 
-        // 나머지는 Standby
-        if (r.waitingTime > 0) {
-            standby++;
-            return;
-        }
-    });
+                // 나머지는 Standby
+                if (r.waitingTime > 0) {
+                    standby++;
+                    return;
+                }
+            });
 
-    // 최종 전체 개수
-    const total = robots.length;
+            const total = robots.length;
+            setRobotStats({ total, operating, standby, discharged, charging });
+            setLoading(false);
+        });
+    }, []);
+
+    if (loading) return null;
 
     return (
         <div className={styles.tabPosition}>
@@ -68,7 +95,7 @@ export default async function Page() {
                 networkStatus={networkStatus}
                 powerStatus={powerStatus}
                 locationStatus={locationStatus}
-                robotStats={{ total, operating, standby, discharged, charging }}
+                robotStats={robotStats}
             />
         </div>
     )
