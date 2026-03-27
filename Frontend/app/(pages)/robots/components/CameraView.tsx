@@ -66,7 +66,12 @@ export default function CameraView({
         ws.onclose = () => console.log("Thermal WS closed");
     };
 
-    const [cameraStream, setCameraStream] = useState(`${getApiBase()}/Video/1`);
+    const [cameraStream, setCameraStream] = useState("");
+
+    useEffect(() => {
+        setCameraStream(`${getApiBase()}/Video/1`);
+    }, []);
+
     const handleCameraTab = (idx: number, cam: Camera) => {
         setSelectedCam(cam);
         setCameraTabActiveIndex(idx);

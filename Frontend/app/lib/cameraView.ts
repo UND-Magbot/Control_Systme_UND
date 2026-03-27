@@ -1,20 +1,10 @@
 import type { Camera } from "@/app/type";
-import { getApiBase } from "@/app/config";
 
-// 서버에서 카메라 목록 가져오고 → 가공해서 반환
+// 카메라 목록 반환 — URL은 클라이언트에서 동적으로 구성
 export default async function getCameras(): Promise<Camera[]> {
-  const base = getApiBase();
-  const raw = [
-    { id: 1, label: "CAM 1", type:"http", webrtcUrl: `${base}/Video/1` },
-    { id: 2, label: "CAM 2", type:"http", webrtcUrl: `${base}/Video/2` },
-    { id: 3, label: "CAM 3", type:"ws", webrtcUrl: "ws://192.168.0.154:8765" }
-  ]
-
-  const cameras: Camera[] = raw.map((item: any) => ({
-    id: item.id,
-    label: item.label,
-    webrtcUrl: item.webrtcUrl,
-  }));
-
-  return cameras;
+  return [
+    { id: 1, label: "CAM 1", webrtcUrl: "" },
+    { id: 2, label: "CAM 2", webrtcUrl: "" },
+    { id: 3, label: "CAM 3", webrtcUrl: "ws://192.168.0.154:8765" }
+  ];
 }

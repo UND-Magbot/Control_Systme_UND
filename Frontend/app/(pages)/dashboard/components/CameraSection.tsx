@@ -87,7 +87,7 @@ export default function CameraSection({
   const [remoteModalOpen, setRemoteModalOpen] = useState(false);
 
   // 선택된 카메라 스트림 URL 상태 기본값: 첫 번째 카메라
-  const [cameraStream, setCameraStream] = useState(cameras[0]?.webrtcUrl || "");
+  const [cameraStream, setCameraStream] = useState("");
 
   const activeCam = cameras[cameraTabActiveIndex];
 
@@ -156,7 +156,8 @@ export default function CameraSection({
       setIsLoading(true);
       setHasError(false);
       startCamTimeout();
-      setCameraStream(cam.webrtcUrl + (cam.webrtcUrl.includes("?") ? "&" : "?") + "t=" + Date.now());
+      const url = `${getApiBase()}/Video/${cam.id}`;
+      setCameraStream(url + "?t=" + Date.now());
     }
   };
 
@@ -194,8 +195,7 @@ export default function CameraSection({
     if (wsRef.current) wsRef.current.close();
     setThermalUrl(null);
 
-    const url = cam.webrtcUrl.startsWith("ws") ? cam.webrtcUrl : `${getApiBase()}${cam.webrtcUrl}`;
-    setCameraStream(url);
+    setCameraStream(`${getApiBase()}/Video/${cam.id}`);
   };
 
   // 로봇 선택 핸들러
@@ -208,8 +208,12 @@ export default function CameraSection({
   // 초기 마운트 시 타임아웃 시작 + 첫 카메라 로봇 연동 + 네트워크 복구 감지
   useEffect(() => {
     if (hasCameras && hasRobots) {
+      const cam = cameras[0];
+      if (cam.id !== 3) {
+        setCameraStream(`${getApiBase()}/Video/${cam.id}`);
+      }
       startCamTimeout();
-      syncRobotByCam(cameras[0]);
+      syncRobotByCam(cam);
     } else {
       setIsLoading(false);
     }
