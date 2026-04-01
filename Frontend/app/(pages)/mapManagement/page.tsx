@@ -106,9 +106,9 @@ export default function MapManagementPage() {
 
   const loadMapPlaces = useCallback(async (mapId: number) => {
     try {
-      const res = await fetch(`${API_BASE}/DB/places?map_id=${mapId}`);
+      const res = await apiFetch(`/DB/places?map_id=${mapId}`);
       const data = await res.json();
-      setMapPlaces(data);
+      setMapPlaces(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("장소 로드 실패:", e);
       setMapPlaces([]);
@@ -220,24 +220,24 @@ export default function MapManagementPage() {
 
       // 장소 삭제
       for (const id of deletedDbIds) {
-        const res = await fetch(`${API_BASE}/DB/places/${id}`, { method: "DELETE" });
+        const res = await apiFetch(`/DB/places/${id}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`장소 ID ${id} 삭제 실패`);
       }
       // 구간 삭제
       for (const id of deletedRouteDbIds) {
-        const res = await fetch(`${API_BASE}/DB/routes/${id}`, { method: "DELETE" });
+        const res = await apiFetch(`/DB/routes/${id}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`구간 ID ${id} 삭제 실패`);
       }
       // 삭제된 장소를 참조하는 경로(WayInfo) 삭제
       if (deletedPlaceNames.size > 0) {
         try {
-          const wayRes = await fetch(`${API_BASE}/DB/getpath`);
+          const wayRes = await apiFetch(`/DB/getpath`);
           if (wayRes.ok) {
             const ways: { id: number; WayPoints: string }[] = await wayRes.json();
             for (const way of ways) {
               const wpNames = (way.WayPoints || "").split(" - ").map((n: string) => n.trim());
               if (wpNames.some((n: string) => deletedPlaceNames.has(n))) {
-                await fetch(`${API_BASE}/DB/path/${way.id}`, { method: "DELETE" });
+                await apiFetch(`/DB/path/${way.id}`, { method: "DELETE" });
               }
             }
           }
@@ -249,7 +249,7 @@ export default function MapManagementPage() {
       for (const [name, coords] of movedPlaces) {
         const dbPlace = mapPlaces.find((p) => p.LacationName === name);
         if (dbPlace && !deletedDbIds.has(dbPlace.id)) {
-          const res = await fetch(`${API_BASE}/DB/places/${dbPlace.id}`, {
+          const res = await apiFetch(`/DB/places/${dbPlace.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -274,7 +274,7 @@ export default function MapManagementPage() {
           payload.LocationX = Number(moved.x.toFixed(3));
           payload.LocationY = Number(moved.y.toFixed(3));
         }
-        const res = await fetch(`${API_BASE}/DB/places`, {
+        const res = await apiFetch(`/DB/places`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -284,7 +284,7 @@ export default function MapManagementPage() {
       // 경로 신규 저장
       const mapId = selectedMap as number;
       for (const r of pendingRoutes) {
-        const res = await fetch(`${API_BASE}/DB/routes`, {
+        const res = await apiFetch(`/DB/routes`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -405,7 +405,7 @@ export default function MapManagementPage() {
     if (!robotName) { alert("로봇 정보를 확인할 수 없습니다. 로봇을 연결하거나 장소에 로봇을 지정해주세요."); return; }
 
     try {
-      const res = await fetch(`${API_BASE}/DB/path`, {
+      const res = await apiFetch(`/DB/path`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -430,9 +430,9 @@ export default function MapManagementPage() {
   // ── 경로 DB 로드 ──
   const loadMapRoutes = useCallback(async (mapId: number) => {
     try {
-      const res = await fetch(`${API_BASE}/DB/routes?map_id=${mapId}`);
+      const res = await apiFetch(`/DB/routes?map_id=${mapId}`);
       const data = await res.json();
-      setDbRoutes(data);
+      setDbRoutes(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("경로 로드 실패:", e);
       setDbRoutes([]);
@@ -1396,7 +1396,7 @@ export default function MapManagementPage() {
                 const mapName = maps.find((m) => m.id === selectedMap)?.AreaName ?? "선택된 맵";
                 if (!confirm(`"${mapName}" 맵을 삭제하시겠습니까?\n맵에 포함된 장소, 구간, 관련 경로가 모두 삭제됩니다.`)) return;
                 try {
-                  const res = await fetch(`${API_BASE}/map/maps/${selectedMap}`, { method: "DELETE" });
+                  const res = await apiFetch(`/map/maps/${selectedMap}`, { method: "DELETE" });
                   if (!res.ok) throw new Error("맵 삭제 실패");
                   alert("맵이 삭제되었습니다.");
                   setPendingPlaces([]);
@@ -1410,7 +1410,7 @@ export default function MapManagementPage() {
                   if (selectedFloor !== "") {
                     const area = areas.find((a) => a.id === selectedFloor);
                     if (area) {
-                      const mapsRes = await fetch(`${API_BASE}/map/maps?area_id=${area.id}`);
+                      const mapsRes = await apiFetch(`/map/maps?area_id=${area.id}`);
                       if (mapsRes.ok) {
                         const updatedMaps = await mapsRes.json();
                         setMaps(updatedMaps);

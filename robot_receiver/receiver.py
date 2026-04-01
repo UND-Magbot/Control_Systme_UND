@@ -87,18 +87,21 @@ def nav_poll_loop():
 
 
 def battery_poll_loop():
+    """heartbeat(Type=100, Command=100) 전송 → 로봇이 push하는 패킷 중
+    Type=1002, Command=5 에서 BatteryStatus 추출"""
     global latest_battery
     bat_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     bat_sock.settimeout(1.0)
 
-    print("📡 배터리 폴링 시작")
+    print("📡 배터리 폴링 시작 (heartbeat 방식)")
 
     while True:
         try:
+            # heartbeat 전송
             asdu = {
                 "PatrolDevice": {
-                    "Type": 1002,
-                    "Command": 5,
+                    "Type": 100,
+                    "Command": 100,
                     "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "Items": {}
                 }
@@ -113,30 +116,35 @@ def battery_poll_loop():
             )
             bat_sock.sendto(header + asdu_bytes, (ROBOT_IP, ROBOT_PORT))
 
-            data, addr = bat_sock.recvfrom(8192)
-            try:
-                msg = json.loads(data.decode())
-            except:
-                msg = json.loads(data[16:].decode())
+            # 로봇이 여러 패킷을 push하므로 2초간 연속 수신
+            deadline = time.time() + 2.0
+            while time.time() < deadline:
+                bat_sock.settimeout(max(0.1, deadline - time.time()))
+                try:
+                    data, addr = bat_sock.recvfrom(8192)
+                    try:
+                        msg = json.loads(data.decode())
+                    except:
+                        msg = json.loads(data[16:].decode())
 
-            pd = msg.get("PatrolDevice", {})
-            if pd.get("Type") == 1002 and pd.get("Command") == 5:
-                items = pd.get("Items", {})
-                print(f"🔋 [BAT RECV] Items keys={list(items.keys())}, Items={items}")
-                battery = items.get("BatteryStatus", {})
-                if battery:
-                    latest_battery = battery
-                    print(f"✅ [BAT] latest_battery 업데이트됨: {list(battery.keys())}")
-                else:
-                    print(f"⚠️ [BAT] BatteryStatus 키 없음. Items={items}")
-            else:
-                print(f"🔋 [BAT] 예상외 응답: Type={pd.get('Type')}, Command={pd.get('Command')}")
+                    pd = msg.get("PatrolDevice", {})
+                    if pd.get("Type") == 1002 and pd.get("Command") == 5:
+                        items = pd.get("Items", {})
+                        battery = items.get("BatteryStatus", {})
+                        if battery:
+                            latest_battery = battery
+                            print(f"✅ [BAT] 업데이트: {list(battery.keys())}")
+                        else:
+                            print(f"⚠️ [BAT] BatteryStatus 키 없음. Items={items}")
+                except socket.timeout:
+                    break
+
         except socket.timeout:
             pass
         except Exception as e:
             print("[BAT POLL ERR]", e)
 
-        time.sleep(2)
+        time.sleep(3)
 
 
 def position_poll_loop():
