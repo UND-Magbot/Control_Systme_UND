@@ -699,63 +699,35 @@ def send_heartbeat(sock):
 
 
 def status_thread():
-    global _last_logged_error_code
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(3.0)
-
-    print(f"📡 상태 Listener 시작 (heartbeat → {ROBOT_IP}:{ROBOT_PORT})")
+    """receiver.py 경유로 배터리 상태 폴링"""
+    print(f"📡 상태 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
     while True:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
         try:
-            # heartbeat 전송 → 로봇이 상태 데이터를 push
-            send_heartbeat(sock)
+            msg = json.dumps({"action": "STATUS"}).encode("utf-8")
+            sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
 
-            # 로봇이 여러 패킷을 push하므로 연속 수신
-            deadline = time.time() + 2.0
-            while time.time() < deadline:
-                sock.settimeout(max(0.1, deadline - time.time()))
-                try:
-                    data, addr = sock.recvfrom(8192)
-                    try:
-                        msg = json.loads(data.decode("utf-8"))
-                    except Exception:
-                        msg = json.loads(data[16:].decode("utf-8"))
+            data, addr = sock.recvfrom(8192)
+            resp = json.loads(data.decode("utf-8"))
 
-                    pd = msg.get("PatrolDevice", {})
-                    items = pd.get("Items", {})
+            battery = resp.get("BatteryStatus", {})
+            if battery:
+                rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+                if rid is not None:
+                    runtime.update_status(rid, battery, time.time())
 
-                    # Type=1002, Command=5 → BatteryStatus
-                    if pd.get("Type") == 1002 and pd.get("Command") == 5:
-                        battery = items.get("BatteryStatus", {})
-                        if battery:
-                            rid = runtime.get_robot_id_by_ip(ROBOT_IP)
-                            if rid is not None:
-                                runtime.update_status(rid, battery, time.time())
-
-                    # 에러 코드 감지
-                    error_code = items.get("ErrorCode", 0)
-                    if error_code and error_code != _last_logged_error_code:
-                        _last_logged_error_code = error_code
-                        error_hex = f"0x{error_code:04X}" if isinstance(error_code, int) else str(error_code)
-                        error_msg = ROBOT_ERROR_CODES.get(error_code, f"알 수 없는 에러 ({error_hex})")
-                        print(f"[ROBOT ERROR] {error_hex}: {error_msg}")
-                        log_event("error", "robot_error_code",
-                                  f"로봇 에러 발생 [{error_hex}]: {error_msg}",
-                                  detail=json.dumps({"error_code": error_hex, "raw_items": items}, ensure_ascii=False),
-                                  robot_id=get_robot_id(), robot_name=get_robot_name())
-                    elif error_code == 0 and _last_logged_error_code != 0:
-                        _last_logged_error_code = 0
-
-                except socket.timeout:
-                    break
-
+        except socket.timeout:
+            pass
         except Exception as e:
             print("[ERR STATUS]", e)
             log_event("error", "robot_connection_error", f"로봇 상태 수신 오류: {e}",
                       robot_id=get_robot_id(), robot_name=get_robot_name())
+        finally:
+            sock.close()
 
-        time.sleep(2)
+        time.sleep(REQ_INTERVAL_HB)
 
 
 # ======================================================
