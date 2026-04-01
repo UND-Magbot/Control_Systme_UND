@@ -3,6 +3,7 @@
 import styles from './Login.module.css';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/app/context/AuthContext';
 
 type LoginForm = {
   userId: string;
@@ -14,34 +15,19 @@ type LoginErrors = {
   password?: string;
 };
 
-type LoginResult = {
-  success: boolean;
-  error?: "USER_NOT_FOUND" | "WRONG_PASSWORD";
-};
-
-// 임시 계정 (추후 JWT API 연동 시 삭제)
-const TEMP_ACCOUNT = { userId: "admin", password: "admin1234!" };
-
-// 인증 함수 — 추후 API 호출로 이 함수만 교체
-async function loginWithCredentials(userId: string, password: string): Promise<LoginResult> {
-    const account = TEMP_ACCOUNT.userId === userId ? TEMP_ACCOUNT : undefined;
-    if (!account) return { success: false, error: "USER_NOT_FOUND" };
-    if (account.password !== password) return { success: false, error: "WRONG_PASSWORD" };
-    return { success: true };
-}
-
 const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,12}$/;
 
 export default function Login() {
     const router = useRouter();
+    const { isAuthenticated, isLoading, login } = useAuth();
     const [loginForm, setLoginForm] = useState<LoginForm>({ userId: "", password: "" });
     const [errors, setErrors] = useState<LoginErrors>({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // 이미 로그인 상태면 대시보드로 리다이렉트
     useEffect(() => {
-        const hasAuth = document.cookie.split(";").some((c) => c.trim().startsWith("auth="));
-        if (hasAuth) router.replace("/dashboard");
-    }, [router]);
+        if (!isLoading && isAuthenticated) router.replace("/dashboard");
+    }, [isLoading, isAuthenticated, router]);
 
     const handleChange =
         (key: keyof LoginForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,6 +38,7 @@ export default function Login() {
 
     const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (isSubmitting) return;
 
         const { userId, password } = loginForm;
         const newErrors: LoginErrors = {};
@@ -70,19 +57,25 @@ export default function Login() {
             return;
         }
 
-        // 인증
-        const result = await loginWithCredentials(userId.trim(), password);
+        // API 로그인
+        setIsSubmitting(true);
+        const result = await login(userId.trim(), password);
+        setIsSubmitting(false);
 
         if (!result.success) {
-            if (result.error === "USER_NOT_FOUND") {
-                setErrors({ userId: "존재하지 않는 아이디입니다" });
-            } else if (result.error === "WRONG_PASSWORD") {
-                setErrors({ password: "비밀번호가 일치하지 않습니다" });
+            const errMsg = result.error ?? "로그인에 실패했습니다";
+            if (errMsg.includes("아이디")) {
+                setErrors({ userId: errMsg });
+            } else if (errMsg.includes("비밀번호")) {
+                setErrors({ password: errMsg });
+            } else if (errMsg.includes("비활성화")) {
+                setErrors({ userId: errMsg });
+            } else {
+                setErrors({ password: errMsg });
             }
             return;
         }
 
-        document.cookie = `auth=1; path=/; max-age=${60 * 60 * 24}; samesite=lax`;
         router.push("/dashboard");
     };
 
@@ -132,7 +125,7 @@ export default function Login() {
                     </div>
 
                     {/* 로그인 버튼 */}
-                    <button type="submit" className={styles.loginButton}>
+                    <button type="submit" className={styles.loginButton} disabled={isSubmitting}>
                         로그인
                     </button>
                 </form>

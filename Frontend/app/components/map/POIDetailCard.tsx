@@ -17,9 +17,10 @@ type Props = {
   screenX: number;
   screenY: number;
   onClose: () => void;
+  onNavigate?: (poi: POIItem) => void;
 };
 
-export default function POIDetailCard({ poi, screenX, screenY, onClose }: Props) {
+export default function POIDetailCard({ poi, screenX, screenY, onClose, onNavigate }: Props) {
   const cat = poi.category ?? "work";
   const meta = CATEGORY_META[cat];
 
@@ -43,6 +44,15 @@ export default function POIDetailCard({ poi, screenX, screenY, onClose }: Props)
         <Layers size={12} />
         {poi.floor}
       </div>
+
+      {onNavigate && (
+        <button
+          className={styles.navigateBtn}
+          onClick={() => onNavigate(poi)}
+        >
+          장소 이동
+        </button>
+      )}
     </div>
   );
 }

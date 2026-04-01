@@ -1117,7 +1117,7 @@
 
 .placeAddBtn {
   width: 110px;
-  height: 29px;
+  height: 38px;
   border-radius: 6px;
   padding: 8px 12px;
 
@@ -1555,7 +1555,7 @@
   border-bottom-color: var(--color-info);
 }
 
-/* 사업자 테이블 — 일반 모드: No 사업자명 주소 영역수 로봇수 정보 */
+/* 사업장 테이블 — 일반 모드: No 사업장명 주소 영역수 로봇수 정보 */
 .businessTable th:nth-child(1) { width: 6%; }
 .businessTable th:nth-child(2) { width: 20%; }
 .businessTable th:nth-child(3) { width: 32%; }
@@ -1563,7 +1563,7 @@
 .businessTable th:nth-child(5) { width: 10%; }
 .businessTable th:nth-child(6) { width: 14%; }
 
-/* 사업자 테이블 — 삭제 모드: 체크 + No 사업자명 주소 영역수 로봇수 정보 */
+/* 사업장 테이블 — 삭제 모드: 체크 + No 사업장명 주소 영역수 로봇수 정보 */
 .businessTableDelete th:nth-child(1) { width: 4%; }
 .businessTableDelete th:nth-child(2) { width: 5%; }
 .businessTableDelete th:nth-child(3) { width: 19%; }

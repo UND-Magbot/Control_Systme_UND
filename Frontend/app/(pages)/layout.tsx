@@ -1,51 +1,80 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import React, { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/app/components/common/Header";
 import Sidebar from "@/app/components/common/Sidebar";
 import AlertsConfirmModal from "@/app/components/modal/AlertsConfirmModal";
+import IdleTimeoutWarning from "@/app/components/modal/IdleTimeoutWarning";
 import GlobalErrorAlert from "@/app/components/common/GlobalErrorAlert";
 import GlobalLoading from "@/app/components/common/GlobalLoading";
 import { ToastProvider } from "@/app/components/common/Toast";
 import { SidebarProvider } from "@/app/context/SidebarContext";
+import { AlertProvider } from "@/app/context/AlertContext";
+import { useAuth } from "@/app/context/AuthContext";
+import { useIdleTimeout } from "@/app/hooks/useIdleTimeout";
 
-function getAuthCookie(): boolean {
-  return document.cookie.split(";").some((c) => c.trim().startsWith("auth="));
-}
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;    // 30분
+const WARNING_BEFORE_MS = 5 * 60 * 1000;   // 25분에 경고 표시
 
 export default function PagesLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+  const { isAuthenticated, isLoading, logout, refreshUser } = useAuth();
   const [alertsOpen, setAlertsOpen] = useState(false);
 
-  useEffect(() => {
-    if (!getAuthCookie()) {
-      setIsAuthed(false);
-      router.replace("/login");
-    } else {
-      setIsAuthed(true);
-    }
-  }, [router, pathname]);
+  const handleTimeout = useCallback(async () => {
+    await logout();
+    router.replace("/login");
+  }, [logout, router]);
 
-  if (!isAuthed) return null;
+  const handleExtend = useCallback(async () => {
+    await refreshUser();
+  }, [refreshUser]);
+
+  const { isWarningVisible, remainingSeconds, extendSession, logoutNow } =
+    useIdleTimeout({
+      idleTimeoutMs: IDLE_TIMEOUT_MS,
+      warningBeforeMs: WARNING_BEFORE_MS,
+      onTimeout: handleTimeout,
+      onExtend: handleExtend,
+      enabled: isAuthenticated,
+    });
+
+  // 미인증 시 로그인 페이지로
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [isLoading, isAuthenticated, router]);
+
+  // 로딩 중 또는 미인증
+  if (isLoading || !isAuthenticated) return null;
 
   return (
     <SidebarProvider>
-      <ToastProvider>
-        <GlobalLoading />
-        <Header onAlertClick={() => setAlertsOpen(true)} />
-        <Sidebar />
-        <main className="page-container">{children}</main>
+      <AlertProvider>
+        <ToastProvider>
+          <GlobalLoading />
+          <Header onAlertClick={() => setAlertsOpen(true)} />
+          <Sidebar />
+          <main className="page-container">{children}</main>
 
-        <AlertsConfirmModal
-          isOpen={alertsOpen}
-          onClose={() => setAlertsOpen(false)}
-        />
+          <AlertsConfirmModal
+            isOpen={alertsOpen}
+            onClose={() => setAlertsOpen(false)}
+          />
 
-        <GlobalErrorAlert />
-      </ToastProvider>
+          <GlobalErrorAlert />
+
+          {isWarningVisible && (
+            <IdleTimeoutWarning
+              remainingSeconds={remainingSeconds}
+              onExtend={extendSession}
+              onLogout={logoutNow}
+            />
+          )}
+        </ToastProvider>
+      </AlertProvider>
     </SidebarProvider>
   );
 }

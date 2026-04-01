@@ -45,7 +45,8 @@ export default function CameraView({
     const connectThermalWS = () => {
         if (wsRef.current) wsRef.current.close();
 
-        const ws = new WebSocket("ws://10.21.41.29:8765");
+        const wsUrl = selectedCam?.webrtcUrl ?? "";
+        const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onmessage = (e) => {
@@ -72,7 +73,7 @@ export default function CameraView({
         setCameraTabActiveIndex(idx);
         setCamStatus("loading");
 
-        if (cam.id === 3) {
+        if (cam.streamType === "ws") {
             setThermalUrl(null);
             connectThermalWS();
             setIsOpenCam(false);

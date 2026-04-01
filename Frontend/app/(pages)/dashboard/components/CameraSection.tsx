@@ -119,7 +119,9 @@ export default function CameraSection({
     setHasError(false);
     startCamTimeout();
 
-    const ws = new WebSocket("ws://10.21.41.29:8765");
+    const cam = selectedCam ?? cameras[0];
+    const wsUrl = cam?.webrtcUrl ?? "";
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => console.log("🔥 Thermal WS Connected");
@@ -150,7 +152,7 @@ export default function CameraSection({
     const cam = selectedCam ?? cameras[0];
     if (!cam) return;
 
-    if (cam.id === 3) {
+    if (cam.streamType === "ws") {
       connectThermalWS();
     } else {
       setIsLoading(true);
@@ -183,7 +185,7 @@ export default function CameraSection({
     syncRobotByCam(cam);
 
     // 🔥 카메라 3번 = Thermal
-    if (cam.id === 3) {
+    if (cam.streamType === "ws") {
       console.log("🔥 Thermal Camera Selected");
       setThermalUrl(null);
       connectThermalWS();

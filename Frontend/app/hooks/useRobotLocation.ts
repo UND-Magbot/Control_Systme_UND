@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 
 type Place = {
   id: number;
@@ -28,7 +28,7 @@ export function useRobotLocation(): RobotLocation {
 
   // 장소 데이터 1회 fetch
   useEffect(() => {
-    fetch(`${API_BASE}/DB/places`)
+    apiFetch(`/DB/places`)
       .then((res) => (res.ok ? res.json() : []))
       .then((data: any[]) => {
         setPlaces(
@@ -48,7 +48,7 @@ export function useRobotLocation(): RobotLocation {
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch(`${API_BASE}/robot/position`);
+        const res = await apiFetch(`/robot/position`);
         if (!res.ok) return;
         const pos = await res.json();
 

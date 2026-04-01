@@ -1,20 +1,56 @@
-import type { Camera } from "@/app/type";
+import type { Camera, RobotModule } from "@/app/type";
+import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
 
-// 서버에서 카메라 목록 가져오고 → 가공해서 반환
-export default async function getCameras(): Promise<Camera[]> {
-  const raw = [
-    { id: 1, label: "전방", type:"http", webrtcUrl: `${API_BASE}/Video/1` },
-    { id: 2, label: "후방", type:"http", webrtcUrl: `${API_BASE}/Video/2` },
-    { id: 4, label: "TEST-CAM3", type:"http", webrtcUrl: `${API_BASE}/Video/1` },
-    { id: 5, label: "TEST-CAM4", type:"http", webrtcUrl: `${API_BASE}/Video/2` },
-  ]
+/**
+ * 모듈 트리에서 type="camera"인 노드를 flat 배열로 추출
+ */
+function extractCameras(modules: RobotModule[]): Camera[] {
+  const cameras: Camera[] = [];
 
-  const cameras: Camera[] = raw.map((item: any) => ({
-    id: item.id,
-    label: item.label,
-    webrtcUrl: item.webrtcUrl,
-  }));
+  function walk(nodes: RobotModule[]) {
+    for (const node of nodes) {
+      if (node.type === "camera" && node.isActive && node.config) {
+        const cfg = node.config as {
+          streamType: "rtsp" | "ws";
+          streamUrl: string;
+        };
+        cameras.push({
+          id: node.id,
+          label: node.label,
+          streamType: cfg.streamType,
+          webrtcUrl:
+            cfg.streamType === "ws"
+              ? cfg.streamUrl
+              : `${API_BASE}${cfg.streamUrl}`,
+        });
+      }
+      if (node.children?.length) walk(node.children);
+    }
+  }
 
+  walk(modules);
   return cameras;
+}
+
+/**
+ * @deprecated 로봇별 카메라 로딩으로 전환됨 — getCamerasForRobot() 사용
+ * 기존 페이지 호환용 빈 배열 반환
+ */
+export default function getCameras(): Camera[] {
+  return [];
+}
+
+/**
+ * 로봇 ID로 해당 로봇의 카메라 목록을 가져옴
+ */
+export async function getCamerasForRobot(robotId: number): Promise<Camera[]> {
+  try {
+    const res = await apiFetch(`/DB/robots/${robotId}/modules`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return extractCameras(data.modules ?? []);
+  } catch {
+    return [];
+  }
 }

@@ -46,7 +46,8 @@ class BusinessService:
                 "RepresentName": b.RepresentName,
                 "Contact": b.Contact,
                 "Description": b.Description,
-                "Adddate": b.Adddate,
+                "CreatedAt": b.CreatedAt,
+                "UpdatedAt": b.UpdatedAt,
                 "AreaCount": area_counts.get(b.id, 0),
                 "RobotCount": robot_counts.get(b.id, 0),
             }
@@ -82,7 +83,8 @@ class BusinessService:
             "RepresentName": biz.RepresentName,
             "Contact": biz.Contact,
             "Description": biz.Description,
-            "Adddate": biz.Adddate,
+            "CreatedAt": biz.CreatedAt,
+            "UpdatedAt": biz.UpdatedAt,
             "AreaCount": area_count,
             "RobotCount": robot_count,
         }
@@ -129,37 +131,41 @@ class BusinessService:
         if not biz:
             raise HTTPException(status_code=404, detail="사업자를 찾을 수 없습니다")
 
-        if name is not None:
-            name = name.strip()
-            if not name:
-                raise HTTPException(status_code=400, detail="사업자명을 입력해주세요")
-            if len(name) > 100:
-                raise HTTPException(status_code=400, detail="사업자명은 100자 이내로 입력해주세요")
-            exists = (
-                self.db.query(BusinessInfo)
-                .filter(BusinessInfo.BusinessName == name, BusinessInfo.id != biz_id)
-                .first()
-            )
-            if exists:
-                raise HTTPException(status_code=409, detail="이미 등록된 사업자명입니다")
-            biz.BusinessName = name
+        changes = []
+        field_map = {
+            "사업자명": ("BusinessName", name),
+            "우편번호": ("ZipCode", zip_code),
+            "주소": ("Address", address),
+            "상세주소": ("AddressDetail", address_detail),
+            "대표자명": ("RepresentName", represent_name),
+            "연락처": ("Contact", contact),
+            "비고": ("Description", description),
+        }
 
-        if zip_code is not None:
-            biz.ZipCode = zip_code
-        if address is not None:
-            biz.Address = address
-        if address_detail is not None:
-            biz.AddressDetail = address_detail
-        if represent_name is not None:
-            biz.RepresentName = represent_name
-        if contact is not None:
-            biz.Contact = contact
-        if description is not None:
-            biz.Description = description
+        for label, (attr, new_val) in field_map.items():
+            if new_val is None:
+                continue
+            if attr == "BusinessName":
+                new_val = new_val.strip()
+                if not new_val:
+                    raise HTTPException(status_code=400, detail="사업자명을 입력해주세요")
+                if len(new_val) > 100:
+                    raise HTTPException(status_code=400, detail="사업자명은 100자 이내로 입력해주세요")
+                exists = (
+                    self.db.query(BusinessInfo)
+                    .filter(BusinessInfo.BusinessName == new_val, BusinessInfo.id != biz_id)
+                    .first()
+                )
+                if exists:
+                    raise HTTPException(status_code=409, detail="이미 등록된 사업자명입니다")
+            old_val = getattr(biz, attr)
+            if old_val != new_val:
+                changes.append(f"{label}: {old_val or ''} → {new_val or ''}")
+                setattr(biz, attr, new_val)
 
         self.db.commit()
         self.db.refresh(biz)
-        return biz
+        return biz, changes
 
     # ─── 삭제 ───
 

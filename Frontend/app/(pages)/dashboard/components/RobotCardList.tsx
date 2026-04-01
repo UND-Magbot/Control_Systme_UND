@@ -6,6 +6,7 @@ import type { RobotRowData, Floor, Camera, Video } from "@/app/type";
 import { useRobotStatus } from "@/app/hooks/useRobotStatus";
 import RobotCard from "./RobotCard";
 import SectionHeader from "./SectionHeader";
+import RobotLegend from "@/app/components/common/RobotLegend";
 import Link from "next/link";
 
 type RobotLocation = {
@@ -36,7 +37,7 @@ export default function RobotCardList({
   const [search, setSearch] = useState("");
 
   const visibleRobots = useMemo(() => {
-    const active = liveRobots.filter((r) => r.power === "On");
+    const active = liveRobots.filter((r) => r.power !== "Off");
     if (!search.trim()) return active;
 
     const q = search.trim().toLowerCase();
@@ -47,6 +48,18 @@ export default function RobotCardList({
         r.site.toLowerCase().includes(q)
     );
   }, [liveRobots, search]);
+
+  const legendStats = useMemo(() => {
+    let operating = 0, standby = 0, charging = 0, offline = 0;
+    liveRobots.forEach(r => {
+      if (r.power === "Off") { offline++; return; }
+      if (r.power === "-") { offline++; return; }  // 미확인 상태도 오프라인 카운트
+      if (r.isCharging) { charging++; return; }
+      if (r.tasks.length > 0 && r.waitingTime === 0) { operating++; return; }
+      standby++;
+    });
+    return { total: liveRobots.length, operating, standby, charging, offline };
+  }, [liveRobots]);
 
   const headerRight = (
     <Link href="/robots" className={styles.moreLink}>더보기 ›</Link>
@@ -59,6 +72,10 @@ export default function RobotCardList({
         title="로봇 목록"
         rightSlot={headerRight}
       />
+
+      <div className={styles.legendRow}>
+        <RobotLegend stats={legendStats} />
+      </div>
 
       <div className={styles.searchWrapper}>
         <svg className={styles.searchIcon} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

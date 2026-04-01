@@ -28,7 +28,10 @@ export default function POIOverlay({
   showLabels = true,
   selectedId,
   onItemClick,
+  scale = 1,
 }: POIOverlayProps) {
+  const inverseScale = 1 / scale;
+
   return (
     <>
       {items.map(({ poi, screenX, screenY }) => {
@@ -43,6 +46,7 @@ export default function POIOverlay({
             style={{
               left: screenX,
               top: screenY,
+              transform: `translate(-50%, -50%) scale(${inverseScale})`,
               cursor: onItemClick ? "pointer" : "default",
             }}
             onClick={() => onItemClick?.(poi)}
@@ -59,7 +63,7 @@ export default function POIOverlay({
                   : "drop-shadow(0 1px 2px rgba(0,0,0,0.5))",
               }}
             />
-            {/* 라벨: hover 시 표시, 선택된 항목은 항상 표시 */}
+            {/* 라벨 */}
             {showLabels && (
               <span className={`${styles.label} ${isSelected ? styles.labelAlwaysVisible : ""}`}>
                 {poi.name}

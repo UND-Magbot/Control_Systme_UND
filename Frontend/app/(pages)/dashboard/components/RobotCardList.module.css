@@ -1,3 +1,8 @@
+/* ── 범례 ── */
+.legendRow {
+  margin-bottom: 8px;
+}
+
 /* ── 검색 ── */
 .searchWrapper {
   display: flex;
@@ -93,12 +98,7 @@
   border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid transparent;
-  cursor: pointer;
   transition: all 0.15s ease;
-}
-
-.card:not(.cardSelected):hover {
-  background: var(--surface-4);
 }
 
 .cardSelected {
@@ -223,12 +223,7 @@
 }
 
 .criticalBattery {
-  animation: blink 1s ease-in-out infinite;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  /* 색상으로 충분히 위험도 전달 — 깜빡임 제거 */
 }
 
 /* ── 층 표시 ── */

@@ -117,39 +117,47 @@
 /* ── 카메라 슬롯 래퍼 ── */
 .camSlotWrapper {
   position: relative;
-  overflow: visible !important;
 }
 
-/* ── 페이지 화살표 오버레이 ── */
-.pageArrow {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
+/* ── 스크롤 바 ── */
+.scrollBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 0;
+  flex-shrink: 0;
+}
+
+.scrollBtn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
-  border: 2px solid var(--surface-3);
-  border-radius: 50%;
-  background: var(--surface-5);
-  color: var(--text-primary);
+  border: none;
+  border-radius: 6px;
+  background: var(--color-info);
+  color: #fff;
   cursor: pointer;
   transition: all 0.15s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
-.pageArrow:hover {
-  background: var(--surface-elevated);
+.scrollBtn:hover:not(:disabled) {
+  filter: brightness(1.2);
 }
 
-.pageArrowUp {
-  top: -16px;
+.scrollBtn:disabled {
+  background: var(--surface-5);
+  color: var(--text-muted);
+  cursor: default;
 }
 
-.pageArrowDown {
-  bottom: -16px;
+.scrollIndicator {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 0 4px;
 }
 
 /* ── 전체보기 버튼 ── */

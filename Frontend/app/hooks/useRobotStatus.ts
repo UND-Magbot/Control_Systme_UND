@@ -1,28 +1,23 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import type { RobotRowData } from "@/app/type";
-import { API_BASE } from '@/app/constants/api';
+import { apiFetch } from "@/app/lib/api";
 
-const API_URL = `${API_BASE}/robot/status`;
+const API_PATH = `/robot/status`;
 const POLL_INTERVAL = 5000;
 
-// 로봇 heartbeat timestamp 기준 판정 임계값 (초)
-const ONLINE_MAX_AGE = 5;   // 5초 이내 → Online
-const ERROR_MAX_AGE = 15;   // 5~15초 → Error, 15초 초과 → Offline
-
-/**
- * 로봇 heartbeat timestamp로 실제 통신 상태를 판정한다.
- * - timestamp가 없으면 → 한 번도 heartbeat를 받지 못한 것 → Offline
- * - timestamp가 오래됐으면 → 통신 끊김
- */
-function deriveNetworkStatus(timestamp: number | undefined): "Online" | "Error" | "Offline" {
-  if (!timestamp) return "Offline";
-  const age = Date.now() / 1000 - timestamp;
-  if (age <= ONLINE_MAX_AGE) return "Online";
-  if (age <= ERROR_MAX_AGE) return "Error";
-  return "Offline";
-}
+type StatusEntry = {
+  robot_id: number;
+  robot_name: string;
+  robot_type: string;
+  battery: Record<string, unknown>;
+  network: "Online" | "Offline" | "Error" | "-";
+  power: "On" | "Off" | "-";
+  is_charging: boolean;
+  timestamp: number;
+  position: { x: number; y: number; yaw: number; timestamp: number };
+};
 
 export function useRobotStatus(initialData: RobotRowData[]) {
   const [robots, setRobots] = useState<RobotRowData[]>(initialData);
@@ -34,35 +29,50 @@ export function useRobotStatus(initialData: RobotRowData[]) {
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch(API_URL);
+        const res = await apiFetch(API_PATH);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        const status = await res.json();
-
-        // 핵심: 서버 응답이 와도 robot_status.timestamp로 실제 로봇 통신 여부를 판정
-        const network = deriveNetworkStatus(status.timestamp);
-        const isConnected = network === "Online";
-
-        const targetName = status.robot_name as string | undefined;
-        const soc = status.battery?.SOC;
-        const charging = status.battery?.Charging ?? false;
+        const statuses: StatusEntry[] = await res.json();
 
         setRobots((prev) =>
           prev.map((r) => {
-            if (targetName && r.no === targetName) {
+            const match = statuses.find((s) => s.robot_name === r.no);
+            if (!match) {
+              return { ...r, network: "-" as const, power: "-" as const };
+            }
+
+            const bat = match.battery ?? {};
+
+            if (r.type === "QUADRUPED") {
               return {
                 ...r,
-                battery: soc != null ? soc : r.battery,
-                isCharging: charging,
-                network,
-                power: network === "Offline" ? "Off" as const : "On" as const,
+                batteryLeft: (bat.BatteryLevelLeft as number) ?? r.batteryLeft,
+                batteryRight: (bat.BatteryLevelRight as number) ?? r.batteryRight,
+                voltageLeft: (bat.VoltageLeft as number) ?? r.voltageLeft,
+                voltageRight: (bat.VoltageRight as number) ?? r.voltageRight,
+                batteryTempLeft: (bat.battery_temperatureLeft as number) ?? r.batteryTempLeft,
+                batteryTempRight: (bat.battery_temperatureRight as number) ?? r.batteryTempRight,
+                chargeLeft: (bat.chargeLeft as boolean) ?? r.chargeLeft,
+                chargeRight: (bat.chargeRight as boolean) ?? r.chargeRight,
+                serialLeft: (bat.serialLeft as string) ?? r.serialLeft,
+                serialRight: (bat.serialRight as string) ?? r.serialRight,
+                isCharging: match.is_charging ?? r.isCharging,
+                network: match.network,
+                power: match.power,
               };
             }
-            return r;
+
+            const soc = bat.SOC as number | undefined;
+            return {
+              ...r,
+              battery: soc ?? r.battery,
+              isCharging: match.is_charging ?? r.isCharging,
+              network: match.network,
+              power: match.power,
+            };
           })
         );
       } catch {
-        // FastAPI 서버 자체가 응답하지 않는 경우
         setRobots((prev) =>
           prev.map((r) => ({
             ...r,

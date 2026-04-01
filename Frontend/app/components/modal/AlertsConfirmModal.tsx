@@ -2,12 +2,12 @@
 
 import styles from './Modal.module.css';
 import { useRouter } from 'next/navigation';
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
-import { getAlerts, markAlertRead } from '@/app/lib/alertData';
 import { useCustomScrollbar } from '@/app/hooks/useCustomScrollbar';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
+import { useAlertContext } from '@/app/context/AlertContext';
 
 type AlertsConfirmModalProps = {
     isOpen: boolean;
@@ -34,17 +34,8 @@ export default function AlertsConfirmModal({
     isOpen,
     onClose,
 }: AlertsConfirmModalProps) {
-    const [alerts, setAlerts] = useState<AlertMockData[]>([]);
+    const { unreadAlerts, unreadCounts: ctxCounts, refresh, handleMarkRead } = useAlertContext();
     const [activeTab, setActiveTab] = useState<ModalTabKey>('total');
-
-    const fetchAlerts = useCallback(async () => {
-        try {
-            const data = await getAlerts({ size: 10000 });
-            setAlerts(data.items);
-        } catch {
-            // 실패 시 무시
-        }
-    }, []);
 
     const router = useRouter();
 
@@ -57,42 +48,36 @@ export default function AlertsConfirmModal({
     const trackRef = useRef<HTMLDivElement>(null);
     const thumbRef = useRef<HTMLDivElement>(null);
 
-    // 모달 열릴 때 탭 초기화 + 데이터 로드
+    // 모달 열릴 때 탭 초기화 + 최신 데이터 보장
     useEffect(() => {
         if (isOpen) {
             setActiveTab('total');
-            fetchAlerts();
+            refresh();
         }
-    }, [isOpen, fetchAlerts]);
+    }, [isOpen, refresh]);
 
     // ESC 키로 모달 닫기 (CancelConfirmModal 스택 충돌 방지)
     useModalBehavior({ isOpen, onClose, disabled: showConfirm });
 
-    // 탭별 미읽음 카운트
-    const unreadCounts = useMemo(() => {
-        const counts: Record<ModalTabKey, number> = { total: 0, schedule: 0, robot: 0, notice: 0 };
-        for (const a of alerts) {
-            if (!a.isRead) {
-                counts.total++;
-                if (a.type === 'Schedule') counts.schedule++;
-                else if (a.type === 'Robot') counts.robot++;
-                else if (a.type === 'Notice') counts.notice++;
-            }
-        }
-        return counts;
-    }, [alerts]);
+    // 탭별 미읽음 카운트 (Context의 카운트를 모달 탭 키로 매핑)
+    const tabCounts = useMemo<Record<ModalTabKey, number>>(() => ({
+        total: ctxCounts.total,
+        schedule: ctxCounts.schedule,
+        robot: ctxCounts.robot,
+        notice: ctxCounts.notice,
+    }), [ctxCounts]);
 
     // 탭 라벨
     const tabs = useMemo<{ id: ModalTabKey; label: string }[]>(() => [
-        { id: 'total', label: unreadCounts.total > 0 ? `전체 (${unreadCounts.total})` : '전체' },
-        { id: 'schedule', label: unreadCounts.schedule > 0 ? `스케줄 (${unreadCounts.schedule})` : '스케줄' },
-        { id: 'robot', label: unreadCounts.robot > 0 ? `로봇 (${unreadCounts.robot})` : '로봇' },
-        { id: 'notice', label: unreadCounts.notice > 0 ? `공지사항 (${unreadCounts.notice})` : '공지사항' },
-    ], [unreadCounts]);
+        { id: 'total', label: tabCounts.total > 0 ? `전체 (${tabCounts.total})` : '전체' },
+        { id: 'schedule', label: tabCounts.schedule > 0 ? `스케줄 (${tabCounts.schedule})` : '스케줄' },
+        { id: 'robot', label: tabCounts.robot > 0 ? `로봇 (${tabCounts.robot})` : '로봇' },
+        { id: 'notice', label: tabCounts.notice > 0 ? `공지사항 (${tabCounts.notice})` : '공지사항' },
+    ], [tabCounts]);
 
-    // 필터: 미읽음 → 탭 타입
+    // 필터: 탭 타입별
     const filteredAlerts = useMemo(() => {
-        let list = alerts.filter((a) => !a.isRead);
+        let list = [...unreadAlerts];
 
         const filterType = tabTypeMap[activeTab];
         if (filterType) {
@@ -102,13 +87,20 @@ export default function AlertsConfirmModal({
         list.sort((a, b) => b.date.localeCompare(a.date));
 
         return list;
-    }, [alerts, activeTab]);
+    }, [unreadAlerts, activeTab]);
 
     // 타입별 배지 슬러그
     const toTypeSlug = (t?: string) => {
         const v = (t ?? '').toLowerCase();
         if (v.startsWith('emerg')) return 'emerg';
         return v;
+    };
+
+    // 타입 배지 한글 라벨
+    const typeLabel: Record<string, string> = {
+        Robot: '로봇',
+        Schedule: '스케줄',
+        Notice: '공지',
     };
 
     // 표시 상태 결정 (알림 페이지와 동일한 Robot 상태값)
@@ -135,13 +127,6 @@ export default function AlertsConfirmModal({
     const handleTabChange = (tabId: ModalTabKey) => {
         setActiveTab(tabId);
         if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    };
-
-    // 읽음 처리
-    const handleMarkRead = async (alertId: number) => {
-        await markAlertRead(alertId);
-        setAlerts(prev => prev.filter(a => a.id !== alertId));
-        window.dispatchEvent(new Event('alert-read-changed'));
     };
 
     // 로그 전송 버튼 핸들러
@@ -236,7 +221,7 @@ export default function AlertsConfirmModal({
                                             >
                                                 <div className={styles.topContents}>
                                                     <div className={`${styles.aletsType} ${styles[`badge--${toTypeSlug(item.type)}`]}`}>
-                                                        {item.type}
+                                                        {typeLabel[item.type] ?? item.type}
                                                     </div>
 
                                                     {displayStatus ? (

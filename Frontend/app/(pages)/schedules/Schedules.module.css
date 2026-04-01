@@ -47,3 +47,34 @@
 .completedC {
     background-color: var(--color-success);
 }
+
+/* ─── 탭 메뉴 ─── */
+.scheduleTab {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 0;
+}
+
+.scheduleTab div {
+    background: var(--surface-tab-inactive);
+    border-radius: 8px 8px 0 0;
+    width: 120px;
+    height: var(--tab-height);
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.scheduleTab div:hover {
+    color: var(--text-tertiary);
+}
+
+.scheduleTab div.active {
+    background: var(--surface-3);
+    color: var(--text-primary);
+}

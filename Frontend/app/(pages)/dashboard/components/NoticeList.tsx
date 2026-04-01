@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './NoticeList.module.css';
-import { alertMockData } from '@/app/mock/alerts_data';
+import { getAlerts } from '@/app/lib/alertData';
+import type { AlertMockData } from '@/app/mock/alerts_data';
 
 const VISIBLE_COUNT = 3;
 
@@ -16,15 +17,21 @@ function formatDate(date: string): string {
 
 export default function NoticeList() {
   const router = useRouter();
+  const [allNotices, setAllNotices] = useState<AlertMockData[]>([]);
 
-  // 전체 공지사항 → 미읽음 우선 → 최신순 정렬
+  useEffect(() => {
+    getAlerts({ type: "Notice", size: VISIBLE_COUNT })
+      .then((res) => setAllNotices(res.items))
+      .catch(() => setAllNotices([]));
+  }, []);
+
+  // 미읽음 우선 → 최신순 정렬
   const notices = useMemo(() => {
-    const allNotices = alertMockData.filter((a) => a.type === 'Notice');
     return [...allNotices].sort((a, b) => {
       if (a.isRead !== b.isRead) return a.isRead ? 1 : -1;
       return b.date.localeCompare(a.date);
     });
-  }, []);
+  }, [allNotices]);
 
   const visibleNotices = notices.slice(0, VISIBLE_COUNT);
 

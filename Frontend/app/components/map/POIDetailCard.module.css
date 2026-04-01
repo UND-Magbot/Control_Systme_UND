@@ -81,3 +81,25 @@
 .closeBtn:hover {
   color: #fff;
 }
+
+.navigateBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 0;
+  border: none;
+  border-radius: 6px;
+  background: #64b4ff;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.navigateBtn:hover {
+  background: #4a9ee6;
+}

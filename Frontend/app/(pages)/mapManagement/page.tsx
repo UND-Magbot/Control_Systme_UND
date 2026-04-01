@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import styles from "./mapManagement.module.css";
+import PlaceList from "@/app/(pages)/schedules/components/PlaceList";
+import PathList from "@/app/(pages)/schedules/components/PathList";
+import type { RobotRowData, Floor } from "@/app/type";
+import { apiFetch } from "@/app/lib/api";
+import { API_BASE } from "@/app/config";
 
-const API_BASE =
-  typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? `http://${window.location.hostname}:8000`
-    : "http://localhost:8000";
+type MapTab = "map" | "place" | "path";
 
 type Business = { id: number; BusinessName: string };
 type Area = { id: number; BusinessId: number; FloorName: string };
@@ -16,6 +18,59 @@ type Robot = { id: number; RobotName: string; ModelName: string; SerialNumber: s
 type MappingState = "idle" | "startModal" | "mappingModal" | "success" | "saveModal";
 
 export default function MapManagementPage() {
+  // ── 탭 상태 ──
+  const [activeTab, setActiveTab] = useState<MapTab>("map");
+
+  // ── PlaceList / PathList 용 데이터 ──
+  const [tabRobots, setTabRobots] = useState<RobotRowData[]>([]);
+  const [tabFloors] = useState<Floor[]>([
+    { id: "1", label: "B2" },
+    { id: "2", label: "B1" },
+    { id: "3", label: "1F" },
+    { id: "4", label: "2F" },
+    { id: "5", label: "3F" },
+  ]);
+
+  useEffect(() => {
+    const fetchTabRobots = async () => {
+      try {
+        const res = await apiFetch(`/DB/robots`);
+        if (!res.ok) return;
+        const raw = await res.json();
+        const mapped: RobotRowData[] = raw.map((item: any) => ({
+          id: item.id,
+          no: item.RobotName ?? "",
+          type: item.robot_type ?? "",
+          info: item.RobotName ?? "",
+          battery: item.battery ?? 0,
+          batteryLeft: item.BatteryLeft ?? undefined,
+          batteryRight: item.BatteryRight ?? undefined,
+          return: item.LimitBattery ?? 30,
+          isCharging: item.is_charging ?? false,
+          network: item.network ?? "Online",
+          power: item.power ?? "On",
+          mark: item.mark ?? "No",
+          tasks: Array.isArray(item.tasks) ? item.tasks : [],
+          errors: Array.isArray(item.errors) ? item.errors : [],
+          chargingTime: item.charging_time ?? 0,
+          waitingTime: item.waiting_time ?? 0,
+          dockingTime: item.docking_time ?? 0,
+          operator: item.ProductCompany ?? "",
+          serialNumber: item.SerialNumber ?? "",
+          model: item.ModelName ?? "",
+          group: item.Group ?? "",
+          softwareVersion: item.SWversion ?? "",
+          site: item.Site ?? "",
+          registrationDateTime: item.CreatedAt ?? "",
+        }));
+        setTabRobots(mapped);
+      } catch (e) {
+        console.error("로봇 데이터 로드 실패:", e);
+      }
+    };
+    fetchTabRobots();
+  }, []);
+
   // ── 사업장 / 층 / 영역(맵) 데이터 ──
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
@@ -79,7 +134,7 @@ export default function MapManagementPage() {
   // ── 사업장 목록 로드 ──
   const loadBusinesses = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/map/businesses`);
+      const res = await apiFetch(`/map/businesses`);
       const data = await res.json();
       setBusinesses(data);
     } catch (e) {
@@ -90,7 +145,7 @@ export default function MapManagementPage() {
   // ── 층 목록 로드 ──
   const loadAreas = useCallback(async (bizId: number) => {
     try {
-      const res = await fetch(`${API_BASE}/map/areas?business_id=${bizId}`);
+      const res = await apiFetch(`/map/areas?business_id=${bizId}`);
       const data = await res.json();
       setAreas(data);
     } catch (e) {
@@ -101,7 +156,7 @@ export default function MapManagementPage() {
   // ── 영역(맵) 목록 로드 ──
   const loadMaps = useCallback(async (areaId: number) => {
     try {
-      const res = await fetch(`${API_BASE}/map/maps?area_id=${areaId}`);
+      const res = await apiFetch(`/map/maps?area_id=${areaId}`);
       const data = await res.json();
       setMaps(data);
     } catch (e) {
@@ -114,19 +169,19 @@ export default function MapManagementPage() {
     const loadFirstMap = async () => {
       try {
         // 1. 사업장 로드
-        const bizRes = await fetch(`${API_BASE}/map/businesses`);
+        const bizRes = await apiFetch(`/map/businesses`);
         const bizList: Business[] = await bizRes.json();
         setBusinesses(bizList);
         if (bizList.length === 0) return;
 
         for (const biz of bizList) {
           // 2. 해당 사업장의 층 로드
-          const areaRes = await fetch(`${API_BASE}/map/areas?business_id=${biz.id}`);
+          const areaRes = await apiFetch(`/map/areas?business_id=${biz.id}`);
           const areaList: Area[] = await areaRes.json();
 
           for (const area of areaList) {
             // 3. 해당 층의 맵 로드
-            const mapRes = await fetch(`${API_BASE}/map/maps?area_id=${area.id}`);
+            const mapRes = await apiFetch(`/map/maps?area_id=${area.id}`);
             const mapList: RobotMap[] = await mapRes.json();
 
             if (mapList.length > 0) {
@@ -166,7 +221,7 @@ export default function MapManagementPage() {
       setMapMeta(null);
       return;
     }
-    fetch(`${API_BASE}/map/maps/${selectedMap}/meta`)
+    apiFetch(`/map/maps/${selectedMap}/meta`)
       .then((res) => res.json())
       .then((data) => setMapMeta(data))
       .catch(() => setMapMeta(null));
@@ -469,7 +524,7 @@ export default function MapManagementPage() {
     setStartFloorId("");
     setStartFloorMode("select");
     try {
-      const res = await fetch(`${API_BASE}/map/areas?business_id=${bizId}`);
+      const res = await apiFetch(`/map/areas?business_id=${bizId}`);
       const data = await res.json();
       setStartAreas(data);
     } catch (e) {
@@ -481,7 +536,7 @@ export default function MapManagementPage() {
   const handleCheckAreaName = async () => {
     if (!startAreaName.trim()) return;
     try {
-      const res = await fetch(`${API_BASE}/map/maps`);
+      const res = await apiFetch(`/map/maps`);
       const data: RobotMap[] = await res.json();
       const exists = data.some((m) => m.AreaName === startAreaName.trim());
       setStartAreaChecked(!exists);
@@ -501,7 +556,7 @@ export default function MapManagementPage() {
     let bizId = startBizId as number;
     if (startBizMode === "new" && startBizNew.trim()) {
       try {
-        const res = await fetch(`${API_BASE}/map/businesses`, {
+        const res = await apiFetch(`/map/businesses`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ BusinessName: startBizNew.trim() }),
@@ -519,7 +574,7 @@ export default function MapManagementPage() {
     let floorId = startFloorId as number;
     if (startFloorMode === "new" && startFloorNew.trim() && bizId) {
       try {
-        const res = await fetch(`${API_BASE}/map/areas`, {
+        const res = await apiFetch(`/map/areas`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ BusinessId: bizId, FloorName: startFloorNew.trim() }),
@@ -545,7 +600,7 @@ export default function MapManagementPage() {
     if (isMappingStarting) return;
     setIsMappingStarting(true);
     try {
-      const res = await fetch(`${API_BASE}/map/mapping/start`, {
+      const res = await apiFetch(`/map/mapping/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -569,7 +624,7 @@ export default function MapManagementPage() {
     if (isMappingEnding) return;
     setIsMappingEnding(true);
     try {
-      const res = await fetch(`${API_BASE}/map/mapping/end`, {
+      const res = await apiFetch(`/map/mapping/end`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -607,7 +662,7 @@ export default function MapManagementPage() {
     setSelectedFloor(areaId);
 
     // 영역(맵) 목록 갱신 & 새 맵 자동 선택
-    const mapRes = await fetch(`${API_BASE}/map/maps?area_id=${areaId}`);
+    const mapRes = await apiFetch(`/map/maps?area_id=${areaId}`);
     const mapList: RobotMap[] = await mapRes.json();
     setMaps(mapList);
 
@@ -625,7 +680,7 @@ export default function MapManagementPage() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/map/maps`, {
+      const res = await apiFetch(`/map/maps`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -655,7 +710,7 @@ export default function MapManagementPage() {
     }
     const poll = async () => {
       try {
-        const res = await fetch(`${API_BASE}/robot/position`);
+        const res = await apiFetch(`/robot/position`);
         const data = await res.json();
         if (data.timestamp > 0) {
           setRobotPos({ x: data.x, y: data.y, yaw: data.yaw });
@@ -677,7 +732,7 @@ export default function MapManagementPage() {
   // ── 로봇 연결 모달 ──
   const handleOpenRobotModal = async () => {
     try {
-      const res = await fetch(`${API_BASE}/DB/robots`);
+      const res = await apiFetch(`/DB/robots`);
       const data = await res.json();
       setRobots(data);
     } catch (e) {
@@ -693,7 +748,7 @@ export default function MapManagementPage() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/DB/robots`);
+      const res = await apiFetch(`/DB/robots`);
       const data = await res.json();
       setSyncRobots(data);
     } catch (e) {
@@ -717,12 +772,30 @@ export default function MapManagementPage() {
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      {/* 페이지 헤더 */}
-      <div className="page-header">
+      {/* 페이지 헤더 + 탭 */}
+      <div className="page-header-tab">
         <h1>맵 관리</h1>
+        <div className={styles.mapTab}>
+          {([
+            { id: "map" as MapTab, label: "맵 편집" },
+            { id: "place" as MapTab, label: "장소 목록" },
+            { id: "path" as MapTab, label: "경로 목록" },
+          ]).map((tab) => (
+            <div
+              key={tab.id}
+              className={activeTab === tab.id ? styles.mapTabActive : ""}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className={styles.container}>
+      {activeTab === "place" && <PlaceList robots={tabRobots} floors={tabFloors} hideActions />}
+      {activeTab === "path" && <PathList robots={tabRobots} floors={tabFloors} hideActions />}
+
+      {activeTab === "map" && <div className={styles.container}>
         {/* ── 상단 툴바 ── */}
         <div className={styles.toolbar}>
           <span className={styles.toolbarLabel}>사업장:</span>
@@ -907,7 +980,7 @@ export default function MapManagementPage() {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ── 맵핑 시작 모달 ── */}
       {mappingState === "startModal" && (
@@ -1124,7 +1197,7 @@ export default function MapManagementPage() {
               <button
                 className={styles.mappingCancelBtn}
                 onClick={async () => {
-                  await fetch(`${API_BASE}/map/mapping/cancel`, { method: "POST" }).catch(() => {});
+                  await apiFetch(`/map/mapping/cancel`, { method: "POST" }).catch(() => {});
                   setIsMappingRunning(false);
                   setMappingState("idle");
                 }}

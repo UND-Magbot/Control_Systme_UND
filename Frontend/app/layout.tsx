@@ -2,6 +2,7 @@ import '@/app/globals.css'
 import type { Viewport } from "next";
 import { DebugMapProvider } from "@/app/components/map/DebugMapContext";
 import DebugMapPanel from "@/app/components/map/DebugMapPanel";
+import { AuthProvider } from "@/app/context/AuthContext";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -20,10 +21,12 @@ export default function RootLayout({
   return (    
     <html lang="ko">
       <body suppressHydrationWarning>
-        <DebugMapProvider>
-          {children}
-          <DebugMapPanel />
-        </DebugMapProvider>
+        <AuthProvider>
+          <DebugMapProvider>
+            {children}
+            <DebugMapPanel />
+          </DebugMapProvider>
+        </AuthProvider>
       </body>
     </html>
   )

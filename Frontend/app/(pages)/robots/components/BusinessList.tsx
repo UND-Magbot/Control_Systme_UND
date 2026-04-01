@@ -5,7 +5,7 @@ import styles from './RobotList.module.css';
 import Pagination from "@/app/components/pagination";
 import BusinessDetailModal from './BusinessDetailModal';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 
 const BUSINESS_PAGE_SIZE = 6;
 
@@ -20,25 +20,26 @@ export type BusinessItem = {
   description: string;
   areaCount: number;
   robotCount: number;
-  addDate: string;
+  createdAt: string;
 };
 
 export type AreaItem = {
   id: number;
   businessId: number;
   floorName: string;
-  addDate: string;
+  createdAt: string;
 };
 
 const BUSINESS_API = {
-  LIST: `${API_BASE}/DB/businesses`,
-  DELETE: (id: number) => `${API_BASE}/DB/businesses/${id}`,
+  LIST: `/DB/businesses`,
+  DELETE: (id: number) => `/DB/businesses/${id}`,
 };
 
 export default function BusinessList() {
   const [businessRows, setBusinessRows] = useState<BusinessItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [appliedQuery, setAppliedQuery] = useState("");
 
   const [selectedBusinessId, setSelectedBusinessId] = useState<number | null>(null);
   const [checkedBusinessIds, setCheckedBusinessIds] = useState<number[]>([]);
@@ -59,10 +60,10 @@ export default function BusinessList() {
   const fetchBusinessList = async () => {
     setLoading(true);
     try {
-      const res = await fetch(BUSINESS_API.LIST);
+      const res = await apiFetch(BUSINESS_API.LIST);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail ?? "사업자 목록 조회 실패");
+        throw new Error(err.detail ?? "사업장 목록 조회 실패");
       }
       const data = await res.json();
       const mapped: BusinessItem[] = (data.items ?? []).map((b: any) => ({
@@ -76,11 +77,11 @@ export default function BusinessList() {
         description: b.Description ?? "",
         areaCount: b.AreaCount ?? 0,
         robotCount: b.RobotCount ?? 0,
-        addDate: b.Adddate ? new Date(b.Adddate).toLocaleDateString("ko-KR") : "-",
+        createdAt: b.CreatedAt ? new Date(b.CreatedAt).toLocaleDateString("ko-KR") : "-",
       }));
       setBusinessRows(mapped);
     } catch (err) {
-      console.error("사업자 목록 로드 실패:", err);
+      console.error("사업장 목록 로드 실패:", err);
     } finally {
       setLoading(false);
     }
@@ -90,15 +91,20 @@ export default function BusinessList() {
     fetchBusinessList();
   }, []);
 
-  // 필터
+  // 조회
+  const handleSearch = () => {
+    setAppliedQuery(searchQuery);
+    setPage(1);
+  };
+
   const filteredRows = useMemo(() => {
-    if (!searchQuery.trim()) return businessRows;
-    const q = searchQuery.trim().toLowerCase();
+    if (!appliedQuery.trim()) return businessRows;
+    const q = appliedQuery.trim().toLowerCase();
     return businessRows.filter(b =>
       b.businessName.toLowerCase().includes(q) ||
       b.address.toLowerCase().includes(q)
     );
-  }, [businessRows, searchQuery]);
+  }, [businessRows, appliedQuery]);
 
   const totalItems = filteredRows.length;
   const startIdx = (page - 1) * BUSINESS_PAGE_SIZE;
@@ -134,14 +140,14 @@ export default function BusinessList() {
   const confirmDelete = async () => {
     if (checkedBusinessIds.length === 0) return;
     try {
-      await Promise.all(checkedBusinessIds.map(id => fetch(BUSINESS_API.DELETE(id), { method: "DELETE" })));
+      await Promise.all(checkedBusinessIds.map(id => apiFetch(BUSINESS_API.DELETE(id), { method: "DELETE" })));
       setBusinessRows(prev => prev.filter(b => !checkedBusinessIds.includes(b.id)));
       setCheckedBusinessIds([]);
       setSelectedBusinessId(null);
       setDeleteConfirmOpen(false);
       setDeleteMode(false);
     } catch (err) {
-      console.error("사업자 삭제 실패:", err);
+      console.error("사업장 삭제 실패:", err);
     }
   };
 
@@ -178,14 +184,12 @@ export default function BusinessList() {
               <input
                 type="text"
                 className={styles.searchInput}
-                placeholder="사업자명, 주소 검색"
+                placeholder="사업장명, 주소 검색"
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
-              {searchQuery && (
-                <button className={styles.searchClear} onClick={() => { setSearchQuery(""); setPage(1); }}>✕</button>
-              )}
             </div>
+            <button type="button" className={styles.primaryActionBtn} onClick={handleSearch}>조회</button>
           </div>
 
           <div className={styles.topRightGroup}>
@@ -238,7 +242,7 @@ export default function BusinessList() {
                   </th>
                 )}
                 <th>No</th>
-                <th>사업자명</th>
+                <th>사업장명</th>
                 <th>주소</th>
                 <th>영역 수</th>
                 <th>로봇 수</th>
@@ -247,7 +251,7 @@ export default function BusinessList() {
             </thead>
             <tbody>
               {currentItems.length === 0 && (
-                <tr><td colSpan={colCount} className={styles.emptyState}>등록된 사업자가 없습니다.</td></tr>
+                <tr><td colSpan={colCount} className={styles.emptyState}>등록된 사업장이 없습니다.</td></tr>
               )}
               {currentItems.map((b, idx) => {
                 const rowNum = startIdx + idx + 1;
@@ -302,8 +306,8 @@ export default function BusinessList() {
         <CancelConfirmModal
           message={
             checkedBusinessIds.length <= 1
-              ? "선택한 사업자를 정말 삭제하시겠습니까?\n하위 영역도 함께 삭제됩니다."
-              : `${checkedBusinessIds.length}개의 사업자를 정말 삭제하시겠습니까?\n하위 영역도 함께 삭제됩니다.`
+              ? "선택한 사업장을 정말 삭제하시겠습니까?\n하위 영역도 함께 삭제됩니다."
+              : `${checkedBusinessIds.length}개의 사업장을 정말 삭제하시겠습니까?\n하위 영역도 함께 삭제됩니다.`
           }
           onConfirm={confirmDelete}
           onCancel={() => setDeleteConfirmOpen(false)}

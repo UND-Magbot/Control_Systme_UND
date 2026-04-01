@@ -1,4 +1,4 @@
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import type { AlertMockData } from "@/app/mock/alerts_data";
 
 type NoticeDetail = {
@@ -117,7 +117,7 @@ export async function getAlerts(params?: {
   if (params?.page) query.set("page", String(params.page));
   if (params?.size) query.set("size", String(params.size));
 
-  const res = await fetch(`${API_BASE}/DB/alerts?${query.toString()}`);
+  const res = await apiFetch(`/DB/alerts?${query.toString()}`);
   if (!res.ok) {
     return { items: [], total: 0, page: 1, size: 20, unread_count: { total: 0, robot: 0, schedule: 0, notice: 0 } };
   }
@@ -131,17 +131,17 @@ export async function getAlerts(params?: {
 
 export async function markAlertRead(alertId: number, UserId?: number): Promise<void> {
   const q = UserId != null ? `?UserId=${UserId}` : '';
-  await fetch(`${API_BASE}/DB/alerts/${alertId}/read${q}`, { method: "PUT" });
+  await apiFetch(`/DB/alerts/${alertId}/read${q}`, { method: "PUT" });
 }
 
 export async function markAllAlertsRead(UserId?: number): Promise<void> {
   const q = UserId != null ? `?UserId=${UserId}` : '';
-  await fetch(`${API_BASE}/DB/alerts/read-all${q}`, { method: "PUT" });
+  await apiFetch(`/DB/alerts/read-all${q}`, { method: "PUT" });
 }
 
 export async function getUnreadCount(UserId?: number): Promise<UnreadCount> {
   const q = UserId != null ? `?UserId=${UserId}` : '';
-  const res = await fetch(`${API_BASE}/DB/alerts/unread-count${q}`);
+  const res = await apiFetch(`/DB/alerts/unread-count${q}`);
   if (!res.ok) return { total: 0, robot: 0, schedule: 0, notice: 0 };
   return res.json();
 }
@@ -149,7 +149,7 @@ export async function getUnreadCount(UserId?: number): Promise<UnreadCount> {
 export async function uploadNoticeFile(file: File): Promise<{ original_name: string; stored_name: string; url: string }> {
   const formData = new FormData();
   formData.append("file", file);
-  const res = await fetch(`${API_BASE}/DB/notices/upload`, {
+  const res = await apiFetch(`/DB/notices/upload`, {
     method: "POST",
     body: formData,
   });
@@ -168,7 +168,7 @@ export async function createNotice(data: {
   AttachmentName?: string;
   AttachmentUrl?: string;
 }): Promise<{ status: string; id: number }> {
-  const res = await fetch(`${API_BASE}/DB/notices`, {
+  const res = await apiFetch(`/DB/notices`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -187,7 +187,7 @@ export async function updateNotice(noticeId: number, data: {
   AttachmentName?: string;
   AttachmentUrl?: string;
 }): Promise<void> {
-  const res = await fetch(`${API_BASE}/DB/notices/${noticeId}`, {
+  const res = await apiFetch(`/DB/notices/${noticeId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -199,7 +199,7 @@ export async function updateNotice(noticeId: number, data: {
 }
 
 export async function deleteNotice(noticeId: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/DB/notices/${noticeId}`, { method: "DELETE" });
+  const res = await apiFetch(`/DB/notices/${noticeId}`, { method: "DELETE" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail ?? `삭제 실패 (${res.status})`);

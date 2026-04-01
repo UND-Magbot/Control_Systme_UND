@@ -2,10 +2,10 @@
 
 import styles from './Modal.module.css';
 import React, { useState, useEffect } from 'react';
-import type { RobotRowData } from '@/app/type';
+import type { RobotRowData, RobotModule } from '@/app/type';
 import type { RobotDraft } from "@/app/(pages)/robots/components/RobotList";
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import { useBatterySlider } from '@/app/hooks/useBatterySlider';
 import { useAlertModal } from '@/app/hooks/useAlertModal';
 import RobotWorkScheduleModal from "@/app/components/modal/WorkScheduleModal";
@@ -14,6 +14,7 @@ import PlacePathModal from "@/app/components/modal/PlacePathModal";
 import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
 import PathMoveModal from "@/app/components/modal/PathMoveModal";
 import { MapPin, Route } from "lucide-react";
+import { getBatteryColor } from "@/app/constants/robotIcons";
 import WaypointProgress from "@/app/components/common/WaypointProgress";
 import type { WaypointStep } from "@/app/components/common/WaypointProgress";
 
@@ -43,6 +44,7 @@ export default function RobotDetailModal({
     // B-1: 로딩 / 에러 상태
     const [isLoading, setIsLoading] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         if (!isOpen) return;
@@ -53,7 +55,7 @@ export default function RobotDetailModal({
         setIsLoading(true);
         setFetchError(null);
 
-        fetch(`${API_BASE}/DB/robots/${selectedRobotId}`)
+        apiFetch(`/DB/robots/${selectedRobotId}`)
             .then((res) => {
                 if (!res.ok) {
                     throw new Error("로봇 상세 조회 실패");
@@ -157,6 +159,67 @@ export default function RobotDetailModal({
     // Path data (lazy loaded)
     const [pathRows, setPathRows] = useState<any[]>([]);
 
+    // 장착 모듈
+    const [modules, setModules] = useState<RobotModule[]>([]);
+    const [modulesLoading, setModulesLoading] = useState(false);
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [addForm, setAddForm] = useState({ moduleType: "camera", label: "", streamType: "rtsp", port: "8554", path: "", cameraIP: "" });
+
+    const fetchModules = () => {
+      if (!selectedRobotId) return;
+      setModulesLoading(true);
+      apiFetch(`/DB/robots/${selectedRobotId}/modules`)
+        .then(res => res.ok ? res.json() : { modules: [] })
+        .then(data => setModules(data.modules ?? []))
+        .catch(() => setModules([]))
+        .finally(() => setModulesLoading(false));
+    };
+
+    useEffect(() => {
+      if (isOpen && selectedRobotId) fetchModules();
+    }, [isOpen, selectedRobotId]);
+
+    const handleAddModule = async () => {
+      if (!selectedRobotId || !addForm.label.trim()) return;
+      const payload: Record<string, unknown> = {
+        moduleType: addForm.moduleType,
+        label: addForm.label,
+      };
+      if (addForm.moduleType === "camera") {
+        payload.streamType = addForm.streamType;
+        payload.port = parseInt(addForm.port) || 8554;
+        payload.path = addForm.path || null;
+        payload.cameraIP = addForm.cameraIP || null;
+      }
+      try {
+        const res = await apiFetch(`/DB/robots/${selectedRobotId}/modules`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          setShowAddForm(false);
+          setAddForm({ moduleType: "camera", label: "", streamType: "rtsp", port: "8554", path: "", cameraIP: "" });
+          fetchModules();
+        }
+      } catch (err) {
+        console.error("모듈 추가 실패:", err);
+      }
+    };
+
+    const handleDeleteModule = async (moduleId: number) => {
+      try {
+        const res = await apiFetch(`/DB/modules/${moduleId}`, { method: "DELETE" });
+        if (res.ok) fetchModules();
+        else {
+          const data = await res.json();
+          apiAlert.show(data.detail || "모듈 삭제 실패");
+        }
+      } catch (err) {
+        console.error("모듈 삭제 실패:", err);
+      }
+    };
+
 
     // B-9: ESC 키 동작 - 수정 모드에서는 보기 모드로 전환, 보기 모드에서는 모달 닫기
     useEffect(() => {
@@ -197,8 +260,8 @@ export default function RobotDetailModal({
 
         setIsSubmitting(true);
         try {
-            const res = await fetch(
-            `${API_BASE}/DB/robots/${selectedRobotId}`,
+            const res = await apiFetch(
+            `/DB/robots/${selectedRobotId}`,
             { method: "DELETE" }
             );
 
@@ -256,6 +319,27 @@ export default function RobotDetailModal({
     const handleSave = async () => {
         if (isSubmitting) return;
 
+        // 필수값 유효성 검증
+        const requiredFields = {
+            robotName: "로봇명",
+            model: "모델",
+            serialNumber: "시리얼 번호",
+            operator: "운영사",
+        } as const;
+
+        const errors: Record<string, boolean> = {};
+        for (const [key, label] of Object.entries(requiredFields)) {
+            if (!(draft[key as keyof typeof draft] as string).trim()) {
+                errors[key] = true;
+            }
+        }
+
+        if (Object.keys(errors).length > 0) {
+            setFieldErrors(errors);
+            return;
+        }
+        setFieldErrors({});
+
         const ok = battery.validateAndFix();
         if (!ok) return;
 
@@ -274,8 +358,8 @@ export default function RobotDetailModal({
 
         setIsSubmitting(true);
         try {
-            const res = await fetch(
-            `${API_BASE}/DB/robots/${selectedRobotId}`,
+            const res = await apiFetch(
+            `/DB/robots/${selectedRobotId}`,
             {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -327,7 +411,7 @@ export default function RobotDetailModal({
       setWorkScheduleError(null);
 
       try {
-        const res = await fetch(`${API_BASE}/DB/schedule`);
+        const res = await apiFetch(`/DB/schedule`);
         if (!res.ok) throw new Error('스케줄 조회 실패');
         const schedules = await res.json();
         const robotSchedules = schedules.filter((s: any) => s.RobotName === robotName);
@@ -362,7 +446,7 @@ export default function RobotDetailModal({
     // 경로 이동용 path 데이터 lazy fetch
     const fetchPathRows = async () => {
       try {
-        const res = await fetch(`${API_BASE}/DB/getpath`);
+        const res = await apiFetch(`/DB/getpath`);
         if (!res.ok) throw new Error("경로 목록 조회 실패");
         const data = await res.json();
         setPathRows(data.map((p: any) => ({
@@ -432,7 +516,7 @@ export default function RobotDetailModal({
                             onClick={() => {
                                 setFetchError(null);
                                 setIsLoading(true);
-                                fetch(`${API_BASE}/DB/robots/${selectedRobotId}`)
+                                apiFetch(`/DB/robots/${selectedRobotId}`)
                                     .then(res => { if (!res.ok) throw new Error(); return res.json(); })
                                     .then(data => {
                                         const limitBattery = data.LimitBattery ?? DEFAULT_RETURN_BATTERY;
@@ -493,9 +577,7 @@ export default function RobotDetailModal({
 
                   // 배터리 색상
                   const bat = r.battery ?? 0;
-                  const batClass = bat > 25 ? styles.detailBatSuccess
-                    : bat > 10 ? styles.detailBatWarning
-                    : styles.detailBatDanger;
+                  const limitBat = r.return ?? 30;
 
                   return (
                     <div className={`${styles.detailStatusSection} ${isOffline ? styles.detailStatusOffline : ""}`}>
@@ -522,12 +604,12 @@ export default function RobotDetailModal({
                             {isOffline ? "-" : (
                               r.type === "QUADRUPED" && r.batteryLeft != null && r.batteryRight != null ? (
                                 <>
-                                  <span className={r.batteryLeft > 25 ? styles.detailBatSuccess : r.batteryLeft > 10 ? styles.detailBatWarning : styles.detailBatDanger}>L {r.batteryLeft}%</span>
+                                  L <span style={{ color: getBatteryColor(r.batteryLeft, limitBat) }}>{r.batteryLeft}%</span>
                                   <span style={{ color: "var(--text-muted)" }}> / </span>
-                                  <span className={r.batteryRight > 25 ? styles.detailBatSuccess : r.batteryRight > 10 ? styles.detailBatWarning : styles.detailBatDanger}>R {r.batteryRight}%</span>
+                                  R <span style={{ color: getBatteryColor(r.batteryRight, limitBat) }}>{r.batteryRight}%</span>
                                 </>
                               ) : (
-                                <span className={batClass}>{bat}%</span>
+                                <span style={{ color: getBatteryColor(bat, limitBat) }}>{bat}%</span>
                               )
                             )}
                           </span>
@@ -548,23 +630,39 @@ export default function RobotDetailModal({
                   const r = robotDetail ?? selectedRobot;
                   const isRobotOffline = r?.power === "Off";
 
-                  const infoField = (label: string, field: keyof typeof draft | null, value: string, readonly?: boolean) => (
-                    <div className={styles.detailInfoRow}>
-                      <span className={styles.detailInfoLabel}>{label}</span>
-                      <span className={styles.detailInfoValue}>
-                        {isEditMode && field && !readonly ? (
-                          <input
-                            className={styles.detailInfoInput}
-                            type="text"
-                            maxLength={20}
-                            value={draft[field] as string}
-                            placeholder="입력"
-                            onChange={(e) => setDraft((p) => ({ ...p, [field]: e.target.value }))}
-                          />
-                        ) : value}
-                      </span>
-                    </div>
-                  );
+                  const requiredFieldKeys = ["robotName", "model", "serialNumber", "operator"];
+
+                  const infoField = (label: string, field: keyof typeof draft | null, value: string, readonly?: boolean) => {
+                    const isRequired = field != null && requiredFieldKeys.includes(field);
+                    const hasError = field != null && fieldErrors[field];
+
+                    return (
+                      <div className={styles.detailInfoRow}>
+                        <span className={styles.detailInfoLabel}>
+                          {label}
+                          {isEditMode && isRequired && !readonly && <span className={styles.requiredMark}> *</span>}
+                        </span>
+                        <span className={styles.detailInfoValue}>
+                          {isEditMode && field && !readonly ? (
+                            <div>
+                              <input
+                                className={`${styles.detailInfoInput} ${hasError ? styles.inputError : ""}`}
+                                type="text"
+                                maxLength={20}
+                                value={draft[field] as string}
+                                placeholder="입력"
+                                onChange={(e) => {
+                                  setDraft((p) => ({ ...p, [field]: e.target.value }));
+                                  if (fieldErrors[field]) setFieldErrors((p) => ({ ...p, [field]: false }));
+                                }}
+                              />
+                              {hasError && <span className={styles.errorMessage}>필수 입력 항목입니다</span>}
+                            </div>
+                          ) : value}
+                        </span>
+                      </div>
+                    );
+                  };
 
                   return (
                     <div className={styles.detailInfoSection}>
@@ -573,13 +671,13 @@ export default function RobotDetailModal({
                         {infoField("로봇명", "robotName",
                           r?.no ?? "-")}
                         {infoField("모델", "model",
-                          r?.model ?? "-", true)}
+                          r?.model ?? "-")}
                         {infoField("시리얼 번호", "serialNumber",
-                          r?.serialNumber ?? "-", true)}
+                          r?.serialNumber ?? "-")}
                         {infoField("운영사", "operator",
-                          r?.operator ?? "-", true)}
+                          r?.operator ?? "-")}
                         {infoField("사이트", "site",
-                          r?.site ?? "-")}
+                          r?.site ?? "-", true)}
                         {infoField("S/W 버전", "softwareVersion",
                           r?.softwareVersion ?? "-", true)}
 
@@ -612,7 +710,7 @@ export default function RobotDetailModal({
                           </span>
                         </div>
                         {infoField("등록일시", null,
-                          r?.registrationDateTime ?? "-", true)}
+                          r?.registrationDateTime?.replace("T", " ") ?? "-", true)}
                       </div>
 
                       {/* 액션 버튼 (기본정보 섹션 내부) */}
@@ -703,6 +801,131 @@ export default function RobotDetailModal({
                   );
                 })()}
 
+                {/* ── 장착 모듈 섹션 ── */}
+                {!isEditMode && (
+                  <div className={styles.detailModuleSection}>
+                    <div className={styles.detailModuleHeader}>
+                      <h3 className={styles.detailSectionTitle}>장착 모듈</h3>
+                      <button
+                        type="button"
+                        className={styles.detailModuleAddBtn}
+                        onClick={() => setShowAddForm(!showAddForm)}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        모듈 추가
+                      </button>
+                    </div>
+
+                    {/* 인라인 추가 폼 */}
+                    {showAddForm && (
+                      <div className={styles.moduleAddForm}>
+                        <div className={styles.moduleAddFormRow}>
+                          <label>타입</label>
+                          <select value={addForm.moduleType} onChange={e => setAddForm(p => ({ ...p, moduleType: e.target.value }))}>
+                            <option value="camera">카메라</option>
+                            <option value="arm">암</option>
+                            <option value="gripper">그리퍼</option>
+                            <option value="sensor">센서</option>
+                          </select>
+                        </div>
+                        <div className={styles.moduleAddFormRow}>
+                          <label>라벨</label>
+                          <input
+                            type="text" maxLength={50} placeholder="예: 암 카메라"
+                            value={addForm.label}
+                            onChange={e => setAddForm(p => ({ ...p, label: e.target.value }))}
+                          />
+                        </div>
+                        {addForm.moduleType === "camera" && (
+                          <>
+                            <div className={styles.moduleAddFormRow}>
+                              <label>프로토콜</label>
+                              <select value={addForm.streamType} onChange={e => setAddForm(p => ({ ...p, streamType: e.target.value }))}>
+                                <option value="rtsp">RTSP</option>
+                                <option value="ws">WebSocket</option>
+                              </select>
+                            </div>
+                            <div className={styles.moduleAddFormRow}>
+                              <label>포트</label>
+                              <input type="text" inputMode="numeric" maxLength={5} placeholder="8554"
+                                value={addForm.port}
+                                onChange={e => setAddForm(p => ({ ...p, port: e.target.value.replace(/\D/g, "") }))}
+                              />
+                            </div>
+                            <div className={styles.moduleAddFormRow}>
+                              <label>경로</label>
+                              <input type="text" maxLength={100} placeholder="/video3"
+                                value={addForm.path}
+                                onChange={e => setAddForm(p => ({ ...p, path: e.target.value }))}
+                              />
+                            </div>
+                            <div className={styles.moduleAddFormRow}>
+                              <label>IP</label>
+                              <input type="text" maxLength={45} placeholder="비워두면 로봇 IP 사용"
+                                value={addForm.cameraIP}
+                                onChange={e => setAddForm(p => ({ ...p, cameraIP: e.target.value }))}
+                              />
+                            </div>
+                          </>
+                        )}
+                        <div className={styles.moduleAddFormActions}>
+                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgRed}`}
+                            onClick={() => setShowAddForm(false)} style={{ padding: "4px 12px", fontSize: "var(--font-size-xs)" }}>
+                            취소
+                          </button>
+                          <button type="button"
+                            className={`${styles.btnItemCommon} ${styles.btnBgBlue} ${!addForm.label.trim() ? styles.btnDisabled : ""}`}
+                            onClick={handleAddModule} disabled={!addForm.label.trim()}
+                            style={{ padding: "4px 12px", fontSize: "var(--font-size-xs)" }}>
+                            추가
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 모듈 목록 */}
+                    {modulesLoading ? (
+                      <div className={styles.detailModuleEmpty}>불러오는 중...</div>
+                    ) : modules.length === 0 ? (
+                      <div className={styles.detailModuleEmpty}>등록된 모듈이 없습니다</div>
+                    ) : (
+                      <div className={styles.detailModuleList}>
+                        {(() => {
+                          const renderModules = (items: RobotModule[], depth: number) =>
+                            items.map(m => (
+                              <React.Fragment key={m.id}>
+                                <div className={`${styles.detailModuleItem} ${depth > 0 ? styles.moduleChild : ""}`}>
+                                  <span className={`${styles.detailModuleTypeBadge} ${styles[m.type] ?? ""}`}>
+                                    {m.type}
+                                  </span>
+                                  <span className={styles.detailModuleLabel}>{m.label}</span>
+                                  {m.isBuiltIn && (
+                                    <span className={styles.detailModuleBuiltIn}>내장</span>
+                                  )}
+                                  {!m.isBuiltIn && (
+                                    <button
+                                      className={styles.detailModuleDeleteBtn}
+                                      onClick={() => handleDeleteModule(m.id)}
+                                      title="삭제"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                </div>
+                                {m.children?.length > 0 && renderModules(m.children, depth + 1)}
+                              </React.Fragment>
+                            ));
+                          return renderModules(modules, 0);
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 </>
                 )}
                 </div>
@@ -749,7 +972,7 @@ export default function RobotDetailModal({
             error={workScheduleError}
             onConfirmReturn={() => {
               const robotName = (robotDetail ?? selectedRobot)?.no ?? '';
-              fetch(`${API_BASE}/nav/startmove`, {
+              apiFetch(`/nav/startmove`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ robotName, action: "schedule_return" }),
@@ -776,7 +999,7 @@ export default function RobotDetailModal({
             pathRows={pathRows}
             onConfirm={async (path) => {
               try {
-                const res = await fetch(`${API_BASE}/nav/pathmove/${path.id}`, { method: "POST" });
+                const res = await apiFetch(`/nav/pathmove/${path.id}`, { method: "POST" });
                 const data = await res.json();
                 console.log("경로 이동 명령 전송:", data.msg ?? data.status);
               } catch (err) {

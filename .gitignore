@@ -7,6 +7,10 @@ dist/
 build/
 *.egg
 
+# Environment variables
+.env
+Backend/.env
+
 # Virtual environment
 noah/
 venv/

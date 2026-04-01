@@ -3,7 +3,7 @@
 import styles from './Modal.module.css';
 import React, { useEffect, useState, useRef } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import { useBatterySlider } from '@/app/hooks/useBatterySlider';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { useAlertModal } from '@/app/hooks/useAlertModal';
@@ -36,6 +36,14 @@ export default function RobotInsertModal({
     const [bizDropdownOpen, setBizDropdownOpen] = useState(false);
     const bizDropdownRef = useRef<HTMLDivElement>(null);
 
+    const [robotType, setRobotType] = useState("");
+    const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
+    const typeDropdownRef = useRef<HTMLDivElement>(null);
+    const ROBOT_TYPES = ["QUADRUPED", "COBOT", "AMR", "HUMANOID"];
+
+    const [robotIP, setRobotIP] = useState("");
+    const [robotPort, setRobotPort] = useState("30000");
+
     const battery = useBatterySlider({ min: 15, max: 30, defaultValue: 30 });
 
     // 드롭다운 외부 클릭 닫기
@@ -43,6 +51,9 @@ export default function RobotInsertModal({
         const handleClickOutside = (e: MouseEvent) => {
             if (bizDropdownRef.current && !bizDropdownRef.current.contains(e.target as Node)) {
                 setBizDropdownOpen(false);
+            }
+            if (typeDropdownRef.current && !typeDropdownRef.current.contains(e.target as Node)) {
+                setTypeDropdownOpen(false);
             }
         };
         document.addEventListener("mousedown", handleClickOutside);
@@ -62,6 +73,7 @@ export default function RobotInsertModal({
         if (!robotName.trim()) newErrors.robotName = true;
         if (!robotModel.trim()) newErrors.robotModel = true;
         if (!robotSN.trim()) newErrors.robotSN = true;
+        if (!robotType) newErrors.robotType = true;
         if (businessId == null) newErrors.businessId = true;
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
@@ -75,11 +87,14 @@ export default function RobotInsertModal({
             robot_id: robotSN,
             robot_name: robotName,
             robot_model: robotModel,
+            robot_type: robotType || undefined,
+            robot_ip: robotIP.trim() || undefined,
+            robot_port: robotPort ? parseInt(robotPort) : 30000,
             limit_battery: battery.value,
             business_id: businessId,
         };
         try {
-            const res = await fetch(`${API_BASE}/DB/RobotInsert`, {
+            const res = await apiFetch(`/DB/RobotInsert`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -113,25 +128,37 @@ export default function RobotInsertModal({
         setRobotName("");
         setRobotModel("");
         setRobotSN("");
+        setRobotType("");
+        setRobotIP("");
+        setRobotPort("30000");
         setBusinessId(null);
+        setBizDropdownOpen(false);
+        setTypeDropdownOpen(false);
         setErrors({});
         setSnDuplicateMsg("");
         setIsSubmitting(false);
         battery.reset();
 
         // 사업장 목록 조회
-        fetch(`${API_BASE}/DB/businesses?size=10000`)
-            .then(res => res.json())
+        apiFetch(`/DB/businesses?size=10000`)
+            .then(res => {
+                if (!res.ok) throw new Error("사업장 목록 조회 실패");
+                return res.json();
+            })
             .then(data => {
+                console.log("사업장 목록:", data);
                 const items = (data.items ?? []).map((b: any) => ({ id: b.id, name: b.BusinessName }));
                 setBusinessList(items);
             })
-            .catch(() => setBusinessList([]));
+            .catch((err) => {
+                console.error("사업장 목록 오류:", err);
+                setBusinessList([]);
+            });
     }, [isOpen]);
 
     if (!isOpen) return null;
 
-    const isFormEmpty = !robotName.trim() || !robotModel.trim() || !robotSN.trim() || businessId == null;
+    const isFormEmpty = !robotName.trim() || !robotModel.trim() || !robotSN.trim() || !robotType || businessId == null;
     const selectedBizName = businessList.find(b => b.id === businessId)?.name ?? "";
 
     return (
@@ -202,18 +229,17 @@ export default function RobotInsertModal({
                                 <div
                                     ref={bizDropdownRef}
                                     className={styles.customSelectWrap}
-                                    style={{ width: 320 }}
                                 >
                                     <button
                                         type="button"
                                         className={`${styles.customSelectTrigger} ${errors.businessId ? styles.inputError : ""}`}
-                                        onClick={() => setBizDropdownOpen(prev => !prev)}
+                                        onClick={() => { setBizDropdownOpen(prev => !prev); setTypeDropdownOpen(false); }}
                                         aria-label="운영사"
                                     >
                                         <span style={{ color: selectedBizName ? "var(--text-primary)" : "var(--text-tertiary)" }}>
                                             {selectedBizName || "운영사를 선택하세요"}
                                         </span>
-                                        <span className={styles.customSelectArrow}>&#9662;</span>
+                                        <img className={styles.customSelectArrow} src={bizDropdownOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
                                     </button>
                                     {bizDropdownOpen && (
                                         <div className={styles.customSelectDropdown}>
@@ -240,39 +266,96 @@ export default function RobotInsertModal({
                                 {errors.businessId && <div className={styles.errorMessage}>필수 선택 항목입니다.</div>}
                             </div>
                         </div>
+                        {/* 로봇 타입 */}
                         <div className={styles.insertItemBox}>
-                            <div className={styles.insertItemLabel}>복귀 배터리양</div>
-                            <input type="text"
-                                inputMode="numeric"
-                                value={battery.text}
-                                onChange={battery.handleInputChange}
-                                onBlur={battery.validateAndFix}
-                                onKeyDown={battery.handleInputKeyDown}
-                                placeholder='아래 조정바로 설정하거나 15~30사이의 숫자만 기입 (%제외)'
-                                aria-label="복귀 배터리양"
-                            />
+                            <div className={styles.insertItemLabel}>로봇 타입 <span className={styles.requiredMark}>*</span></div>
+                            <div className={styles.insertInputWrap}>
+                                <div
+                                    ref={typeDropdownRef}
+                                    className={styles.customSelectWrap}
+                                >
+                                    <button
+                                        type="button"
+                                        className={`${styles.customSelectTrigger} ${errors.robotType ? styles.inputError : ""}`}
+                                        onClick={() => { setTypeDropdownOpen(prev => !prev); setBizDropdownOpen(false); }}
+                                        aria-label="로봇 타입"
+                                    >
+                                        <span style={{ color: robotType ? "var(--text-primary)" : "var(--text-tertiary)" }}>
+                                            {robotType || "로봇 타입을 선택하세요"}
+                                        </span>
+                                        <img className={styles.customSelectArrow} src={typeDropdownOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
+                                    </button>
+                                    {typeDropdownOpen && (
+                                        <div className={styles.customSelectDropdown}>
+                                            {ROBOT_TYPES.map((type) => (
+                                                <div
+                                                    key={type}
+                                                    className={`${styles.customSelectItem} ${robotType === type ? styles.customSelectItemActive : ""}`}
+                                                    onClick={() => {
+                                                        setRobotType(type);
+                                                        setTypeDropdownOpen(false);
+                                                        setErrors(p => ({ ...p, robotType: false }));
+                                                    }}
+                                                >
+                                                    {type}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                {errors.robotType && <div className={styles.errorMessage}>필수 선택 항목입니다.</div>}
+                            </div>
                         </div>
-                        <div className={styles.slidebarinsert}>
-                            <div className={styles.insertItemLabel} />
+                        {/* 복귀 배터리양 */}
+                        <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>복귀 배터리양 <span className={styles.batteryCurrentValue}>{battery.value}%</span></div>
                             <div className={styles.batterySliderWrap}>
                                 <div className={styles.batterySliderTrackArea}>
-                                <input
-                                    className={styles.batterySlider}
-                                    type="range"
-                                    min={battery.min}
-                                    max={battery.max}
-                                    step={1}
-                                    value={battery.value}
-                                    onChange={battery.handleSliderChange}
-                                    aria-label="복귀 배터리양 조정"
-                                    style={{ ['--percent' as any]: `${battery.sliderPercent}%` }}
-                                />
+                                    <input
+                                        className={styles.batterySlider}
+                                        type="range"
+                                        min={battery.min}
+                                        max={battery.max}
+                                        step={1}
+                                        value={battery.value}
+                                        onChange={battery.handleSliderChange}
+                                        aria-label="복귀 배터리양 조정"
+                                        style={{ ['--percent' as any]: `${battery.sliderPercent}%` }}
+                                    />
                                 </div>
-
                                 <div className={styles.batterySliderLabels}>
-                                <span>{battery.min}%</span>
-                                <span>{battery.max}%</span>
+                                    <span>{battery.min}%</span>
+                                    <span>{battery.max}%</span>
                                 </div>
+                            </div>
+                        </div>
+                        {/* 로봇 IP */}
+                        <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>로봇 IP</div>
+                            <div className={styles.insertInputWrap}>
+                                <input
+                                    type="text"
+                                    maxLength={45}
+                                    value={robotIP}
+                                    onChange={(e) => setRobotIP(e.target.value)}
+                                    placeholder='예: 127.0.0.1'
+                                    aria-label="로봇 IP"
+                                />
+                            </div>
+                        </div>
+                        {/* 로봇 Port */}
+                        <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>로봇 Port</div>
+                            <div className={styles.insertInputWrap}>
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    maxLength={5}
+                                    value={robotPort}
+                                    onChange={(e) => setRobotPort(e.target.value.replace(/\D/g, ""))}
+                                    placeholder='기본값: 30000'
+                                    aria-label="로봇 Port"
+                                />
                             </div>
                         </div>
                     </div>

@@ -1,5 +1,3 @@
-import { DateTime } from "next-auth/providers/kakao";
-
 export type Video = {
     id: number;
     label: string;
@@ -10,10 +8,23 @@ export type Floor = {
     label: string;
 };
 
-export type Camera = { 
+export type Camera = {
     id: number;
     label: string;
     webrtcUrl: string;
+    streamType?: "rtsp" | "ws";
+};
+
+export type RobotModule = {
+    id: number;
+    type: string;
+    label: string;
+    parentModuleId: number | null;
+    isBuiltIn: boolean;
+    isActive: boolean;
+    sortOrder: number;
+    config: Record<string, unknown> | null;
+    children: RobotModule[];
 };
 
 export type PrimaryViewType = 'camera' | 'map';
@@ -22,12 +33,22 @@ export type RobotRowData = {
     id: number;
     no: string;
     info: string;
-    type: "QUADRUPED" | "COBOT" | "AMR" | "HUMANOID";   
+    type: "QUADRUPED" | "COBOT" | "AMR" | "HUMANOID" | "";
     battery: number;
+    batteryLeft?: number;           // BatteryLevelLeft
+    batteryRight?: number;          // BatteryLevelRight
+    voltageLeft?: number;           // VoltageLeft
+    voltageRight?: number;          // VoltageRight
+    batteryTempLeft?: number;       // battery_temperatureLeft
+    batteryTempRight?: number;      // battery_temperatureRight
+    chargeLeft?: boolean;           // chargeLeft
+    chargeRight?: boolean;          // chargeRight
+    serialLeft?: string;            // serialLeft
+    serialRight?: string;           // serialRight
     return: number;
     isCharging: boolean;
-    network: 'Online' | 'Offline' | 'Error';
-    power: 'On' | 'Off';
+    network: 'Online' | 'Offline' | 'Error' | '-';
+    power: 'On' | 'Off' | '-';
     mark: 'Yes' | 'No';
     tasks: RobotStatistic[];
     chargingTime: number;  // 충전 시간(분)
@@ -75,7 +96,7 @@ export type VideoItem = {
     contentType: string;
     data: string;
     videoTime: string;
-    date: DateTime;
+    date: string;
 }
 
 // VideoItem과 임시로 동일하게 적용
@@ -88,7 +109,7 @@ export type DtItem = {
     contentType: string;
     data: string;
     videoTime: string;
-    date: DateTime;
+    date: string;
 }
 
 export type LogCategory = "robot" | "system" | "schedule" | "error";

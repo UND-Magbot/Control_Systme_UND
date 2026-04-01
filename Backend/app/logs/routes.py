@@ -3,8 +3,10 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.Database.database import SessionLocal
+from app.Database.models import UserInfo
 from app.logs.schemas import LogCreateReq, LogListResponse
 from app.logs.service import LogService
+from app.auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/DB", tags=["logs"])
 
@@ -26,6 +28,7 @@ def get_logs(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=10000),
     db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user),
 ):
     return LogService(db).get_list(
         category=category,
@@ -38,7 +41,7 @@ def get_logs(
 
 
 @router.post("/logs")
-def create_log(req: LogCreateReq, db: Session = Depends(get_db)):
+def create_log(req: LogCreateReq, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
     log = LogService(db).create(
         category=req.Category,
         action=req.Action,

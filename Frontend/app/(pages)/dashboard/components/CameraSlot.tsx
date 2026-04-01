@@ -25,7 +25,7 @@ export default function CameraSlot({ camera, robotName, onExpand }: CameraSlotPr
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isThermal = camera.id === 3;
+  const isThermal = (camera.streamType ?? "rtsp") === "ws";
 
   const clearTimers = useCallback(() => {
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
@@ -49,7 +49,7 @@ export default function CameraSlot({ camera, robotName, onExpand }: CameraSlotPr
     setIsLoading(true);
     setHasError(false);
 
-    const ws = new WebSocket("ws://10.21.41.29:8765");
+    const ws = new WebSocket(camera.webrtcUrl);
     wsRef.current = ws;
 
     timeoutRef.current = setTimeout(() => {

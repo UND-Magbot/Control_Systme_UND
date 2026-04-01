@@ -7,8 +7,9 @@ import time
 # 🔥 main.py의 전역변수 직접 가져오기
 import app.main
 from app.Database.database import SessionLocal
-from app.Database.models import LocationInfo
+from app.Database.models import LocationInfo, UserInfo
 from app.current_user import get_user_id
+from app.auth.dependencies import get_current_user
 
 point = APIRouter(prefix="/nav")
 
@@ -44,10 +45,12 @@ def _next_cur_name(db: Session) -> str:
 
 
 @point.post("/savepoint")
-def save_current_waypoint(db: Session = Depends(get_db)):
+def save_current_waypoint(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
 
-    # receiver.py에서 수집 중인 위치 사용
-    current_pos = app.main.robot_position
+    # runtime에서 현재 로봇 위치 조회
+    import app.robot_runtime as runtime
+    rid = runtime.get_first_robot_id()
+    current_pos = runtime.get_position(rid) if rid else {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
 
     if current_pos["timestamp"] == 0:
         return {"status": "error", "msg": "로봇 위치 응답 없음"}
@@ -99,7 +102,7 @@ def save_current_waypoint(db: Session = Depends(get_db)):
     }
 
 @point.post("/clearpoints")
-def clear_waypoints():
+def clear_waypoints(current_user: UserInfo = Depends(get_current_user)):
     with open(WAYPOINT_FILE, "w") as f:
         json.dump([], f, indent=4)
     return {"status": "ok", "msg": "웨이포인트 초기화 완료"}

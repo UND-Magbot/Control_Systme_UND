@@ -9,7 +9,7 @@ import {
   getBatteryColor,
   isCriticalBattery,
 } from "@/app/constants/robotIcons";
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import PlacePathModal from "@/app/components/modal/PlacePathModal";
 import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
 
@@ -42,6 +42,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
 
   // 작업 상태 파생
   const taskStatus = (() => {
+    if (robot.power === "-") return { label: "미확인", className: styles.taskIdle };
     if (robot.network === "Error") return { label: "오류", className: styles.taskError };
     if (robot.isCharging) return { label: "충전 중", className: styles.taskCharging };
     if (robot.dockingTime > 0) return { label: "도킹 중", className: styles.taskDocking };
@@ -54,7 +55,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
 
   const handleScheduleReturn = (e: React.MouseEvent) => {
     e.stopPropagation();
-    fetch(`${API_BASE}/nav/startmove`, {
+    apiFetch(`/nav/startmove`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ robotName: robot.no, action: "schedule_return" }),
@@ -68,7 +69,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
 
   const handleEmergencyStop = (e: React.MouseEvent) => {
     e.stopPropagation();
-    fetch(`${API_BASE}/nav/stop`, {
+    apiFetch(`/nav/stop`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ robotName: robot.no }),
@@ -95,7 +96,6 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
           <div className={styles.cardTop}>
             <span
               className={styles.robotName}
-              style={{ color: ROBOT_TYPE_COLOR[robot.type] }}
             >
               {robot.no}
             </span>
@@ -106,11 +106,19 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
           </div>
 
           <div className={styles.cardBottom}>
-            <span
-              className={isCriticalBattery(robot) ? styles.criticalBattery : ""}
-              style={{ color: getBatteryColor(robot.battery, robot.return) }}
-            >
-              {robot.battery}% ({robot.return}%)
+            <span className={isCriticalBattery(robot) ? styles.criticalBattery : ""}>
+              {robot.type === "QUADRUPED" && robot.batteryLeft != null && robot.batteryRight != null ? (
+                <>
+                  <span style={{ color: "var(--text-primary)" }}>L </span><span style={{ color: getBatteryColor(robot.batteryLeft, robot.return) }}>{robot.batteryLeft}%</span>
+                  <span style={{ color: "var(--text-muted)" }}> / </span>
+                  <span style={{ color: "var(--text-primary)" }}>R </span><span style={{ color: getBatteryColor(robot.batteryRight, robot.return) }}>{robot.batteryRight}%</span>
+                  <span style={{ color: "var(--text-muted)" }}> ({robot.return}%)</span>
+                </>
+              ) : (
+                <span style={{ color: getBatteryColor(robot.battery, robot.return) }}>
+                  {robot.battery}% ({robot.return}%)
+                </span>
+              )}
             </span>
             <span className={styles.floorLabel}>
               {robotLocation.floor}{robotLocation.placeName ? ` · ${robotLocation.placeName}` : ""}

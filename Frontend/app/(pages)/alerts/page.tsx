@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import styles from './Alerts.module.css';
 import { type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
 import { getAlerts, markAlertRead, markAllAlertsRead, createNotice, updateNotice, deleteNotice, uploadNoticeFile } from '@/app/lib/alertData';
+import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from '@/app/config';
 import Pagination from '@/app/components/pagination';
 import FilterSelectBox, { type FilterOption } from '@/app/components/button/FilterSelectBox';
@@ -73,7 +74,7 @@ export default function AlertsPage() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/user/current`)
+    apiFetch(`/user/current`)
       .then(res => res.json())
       .then(user => {
         setCurrentUserId(user.id ?? 0);
@@ -200,15 +201,23 @@ export default function AlertsPage() {
   };
 
   const handleMarkRead = async (id: number) => {
-    await markAlertRead(id);
-    setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
-    window.dispatchEvent(new Event('alert-read-changed'));
+    try {
+      await markAlertRead(id);
+      setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
+      window.dispatchEvent(new Event('alert-read-changed'));
+    } catch {
+      // API 실패 시 상태 변경하지 않음
+    }
   };
 
   const handleMarkAllRead = async () => {
-    await markAllAlertsRead();
-    setAlerts(prev => prev.map(a => ({ ...a, isRead: true })));
-    window.dispatchEvent(new Event('alert-read-changed'));
+    try {
+      await markAllAlertsRead();
+      setAlerts(prev => prev.map(a => ({ ...a, isRead: true })));
+      window.dispatchEvent(new Event('alert-read-changed'));
+    } catch {
+      // API 실패 시 상태 변경하지 않음
+    }
   };
 
   const handleSearch = () => {
@@ -549,7 +558,7 @@ export default function AlertsPage() {
                         onClick={async (e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          const res = await fetch(`${API_BASE}${selectedAlert.attachmentUrl}`);
+                          const res = await apiFetch(`${selectedAlert.attachmentUrl}`);
                           const blob = await res.blob();
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement('a');

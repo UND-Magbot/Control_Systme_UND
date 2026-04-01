@@ -59,7 +59,7 @@ export default function RobotStatusList({robotRows}:RobotStatusListProps) {
   function getRowClassName(r: RobotRowData, idx: number): string {
     const classes: string[] = [];
     if (idx === robotActiveIndex) classes.push(styles.activeRow);
-    if (r.power === "Off" || r.network === "Offline") classes.push(styles.offlineRow);
+    if (r.power === "Off" || r.power === "-" || r.network === "Offline") classes.push(styles.offlineRow);
     return classes.join(' ');
   }
 
@@ -87,7 +87,7 @@ export default function RobotStatusList({robotRows}:RobotStatusListProps) {
               </tr>
           </thead>
           <tbody>
-          {robots.filter((r) => r.power === "On").map((r, idx) => (
+          {robots.filter((r) => r.power !== "Off").map((r, idx) => (
               <tr
                 key={r.no}
                 className={getRowClassName(r, idx)}

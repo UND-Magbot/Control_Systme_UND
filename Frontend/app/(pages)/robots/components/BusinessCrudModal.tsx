@@ -66,7 +66,7 @@ export default function BusinessCrudModal({
 
   const handleSubmit = () => {
     const newErrors: Record<string, string> = {};
-    if (!name.trim()) newErrors.name = "사업자명을 입력해주세요";
+    if (!name.trim()) newErrors.name = "사업장명을 입력해주세요";
     else if (name.trim().length > 100) newErrors.name = "100자 이내로 입력해주세요";
     if (address.length > 200) newErrors.address = "200자 이내로 입력해주세요";
     setErrors(newErrors);
@@ -132,7 +132,7 @@ export default function BusinessCrudModal({
         {/* ── Header ── */}
         <div className={styles.detailHeader}>
           <div className={styles.detailHeaderTop}>
-            <h2>{mode === "create" ? "사업자 등록" : (initial?.businessName ?? "사업자")}</h2>
+            <h2>{mode === "create" ? "사업장 등록" : (initial?.businessName ?? "사업장")}</h2>
             <button className={styles.detailCloseBtn} onClick={onClose} aria-label="닫기">✕</button>
           </div>
 
@@ -159,8 +159,8 @@ export default function BusinessCrudModal({
           <div className={styles.detailInfoSection}>
             <h3 className={styles.detailSectionTitle}>기본 정보</h3>
             <div className={styles.detailInfoGrid}>
-              {infoField("사업자명", name || initial?.businessName || "", "name", {
-                required: true, maxLength: 100, placeholder: "사업자명을 입력하세요", fullWidth: true,
+              {infoField("사업장명", name || initial?.businessName || "", "name", {
+                required: true, maxLength: 100, placeholder: "사업장명을 입력하세요", fullWidth: true,
               })}
               {infoField("주소", address || initial?.address || "", "address", {
                 maxLength: 200, placeholder: "주소를 입력하세요", fullWidth: true,
@@ -178,7 +178,7 @@ export default function BusinessCrudModal({
                   </div>
                   <div className={`${styles.detailInfoRow} ${styles.detailInfoFull}`}>
                     <span className={styles.detailInfoLabel}>등록일</span>
-                    <span className={styles.detailInfoValue}>{initial.addDate}</span>
+                    <span className={styles.detailInfoValue}>{initial.createdAt}</span>
                   </div>
                 </>
               )}

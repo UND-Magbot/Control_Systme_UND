@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { RobotRowData, Video, Camera, PrimaryViewType } from '@/app/type';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { VideoStatus, RemotePad, ModalRobotSelect } from '@/app/components/button';
+import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
 import { CanvasMap } from '@/app/components/map';
 import type { CanvasMapHandle } from '@/app/components/map';
@@ -108,7 +109,9 @@ export default function RemoteModal({
 
   const connectThermalWS = () => {
     if (wsRef.current) wsRef.current.close();
-    const ws = new WebSocket("ws://10.21.41.29:8765");
+    const cam = camera?.find(c => c.streamType === "ws");
+    const wsUrl = cam?.webrtcUrl ?? "";
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => console.log("🔥 Thermal WS Connected");
     ws.onerror = (e) => console.error("🔥 Thermal WS Error", e);
@@ -261,11 +264,11 @@ export default function RemoteModal({
   }, []);
 
   /* --- robot control API --- */
-  const standHandle = () => fetch(`${API_BASE}/robot/stand`, { method: "POST" });
-  const sitHandle = () => fetch(`${API_BASE}/robot/sit`, { method: "POST" });
-  const slowHandle = () => fetch(`${API_BASE}/robot/slow`, { method: "POST" });
-  const normalHandle = () => fetch(`${API_BASE}/robot/normal`, { method: "POST" });
-  const fastHandle = () => fetch(`${API_BASE}/robot/fast`, { method: "POST" });
+  const standHandle = () => apiFetch(`/robot/stand`, { method: "POST" });
+  const sitHandle = () => apiFetch(`/robot/sit`, { method: "POST" });
+  const slowHandle = () => apiFetch(`/robot/slow`, { method: "POST" });
+  const normalHandle = () => apiFetch(`/robot/normal`, { method: "POST" });
+  const fastHandle = () => apiFetch(`/robot/fast`, { method: "POST" });
   const [isWorking, setIsWorking] = useState(false);
   const [showWorkMenu, setShowWorkMenu] = useState(false);
   const [loopCount, setLoopCount] = useState<number | string>(10);
@@ -277,7 +280,7 @@ export default function RemoteModal({
     if (isWorking) {
       navPollRef.current = setInterval(async () => {
         try {
-          const res = await fetch(`${API_BASE}/robot/nav`);
+          const res = await apiFetch(`/robot/nav`);
           const data = await res.json();
           if (!data.is_navigating) {
             setIsWorking(false);
@@ -309,22 +312,22 @@ export default function RemoteModal({
 
   const handleWorkBtnClick = () => {
     if (isWorking) {
-      fetch(`${API_BASE}/nav/stopmove`, { method: "POST" }).then(() => setIsWorking(false));
+      apiFetch(`/nav/stopmove`, { method: "POST" }).then(() => setIsWorking(false));
     } else {
       setShowWorkMenu((prev) => !prev);
     }
   };
 
-  const handleInitPose = () => fetch(`${API_BASE}/robot/initpose`, { method: "POST" });
+  const handleInitPose = () => apiFetch(`/robot/initpose`, { method: "POST" });
 
   const startWork = (loop: number) => {
     setShowWorkMenu(false);
-    fetch(`${API_BASE}/nav/startmove?loop=${loop}`, { method: "POST" }).then(() => setIsWorking(true));
+    apiFetch(`/nav/startmove?loop=${loop}`, { method: "POST" }).then(() => setIsWorking(true));
   };
-  const handlesavePoint = () => fetch(`${API_BASE}/nav/savepoint`, { method: "POST" });
+  const handlesavePoint = () => apiFetch(`/nav/savepoint`, { method: "POST" });
   const handleClearPoints = () => {
     if (confirm("웨이포인트를 초기화하시겠습니까?")) {
-      fetch(`${API_BASE}/nav/clearpoints`, { method: "POST" });
+      apiFetch(`/nav/clearpoints`, { method: "POST" });
     }
   };
 
@@ -334,11 +337,11 @@ export default function RemoteModal({
 
   const sendFlashCommand = async (target: FlashTarget, value: FlashValue) => {
     if (target === "front") {
-      if (value === "on") fetch(`${API_BASE}/robot/front_on`, { method: "POST" });
-      else fetch(`${API_BASE}/robot/front_off`, { method: "POST" });
+      if (value === "on") apiFetch(`/robot/front_on`, { method: "POST" });
+      else apiFetch(`/robot/front_off`, { method: "POST" });
     } else {
-      if (value === "on") fetch(`${API_BASE}/robot/rear_on`, { method: "POST" });
-      else fetch(`${API_BASE}/robot/rear_off`, { method: "POST" });
+      if (value === "on") apiFetch(`/robot/rear_on`, { method: "POST" });
+      else apiFetch(`/robot/rear_off`, { method: "POST" });
     }
   };
 
@@ -366,7 +369,7 @@ export default function RemoteModal({
     setActiveCam(cam.id);
     setCameraTabActiveIndex(idx);
 
-    if (cam.id === 3) {
+    if (cam.streamType === "ws") {
       setThermalUrl(null);
       connectThermalWS();
       setIsCamOpen(false);

@@ -6,9 +6,10 @@ import math
 import app.main
 from app.robot_sender import send_nav_to_robot
 from app.Database.database import SessionLocal
-from app.Database.models import LocationInfo, WayInfo
+from app.Database.models import LocationInfo, WayInfo, UserInfo
 from app.logs.service import log_event
 from app.current_user import get_robot_id, get_robot_name
+from app.auth.dependencies import get_current_user
 
 
 move = APIRouter(prefix="/nav")
@@ -57,7 +58,7 @@ def _signal_nav_reset():
     _nav_reset_flag = True
 
 @move.post("/startmove")
-def start_navigation(loop: int = 3):
+def start_navigation(loop: int = 3, current_user: UserInfo = Depends(get_current_user)):
 
     waypoints = load_waypoints()
 
@@ -80,7 +81,7 @@ def start_navigation(loop: int = 3):
     return {"status": "ok", "msg": f"네비게이션 명령 전송 완료 ({loop}회)"}
 
 @move.post("/stopmove")
-def stop_navigation():
+def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
     global is_navigating, current_wp_index, nav_loop_remaining
     was_active = is_navigating
     is_navigating = False
@@ -152,7 +153,7 @@ def load_waypoints():
 
 
 @move.post("/placemove/{place_id}")
-def move_to_place(place_id: int, db: Session = Depends(get_db)):
+def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
     place = db.query(LocationInfo).filter(LocationInfo.id == place_id).first()
 
     if not place:
@@ -171,7 +172,7 @@ def move_to_place(place_id: int, db: Session = Depends(get_db)):
 
 
 @move.post("/pathmove/{path_id}")
-def move_along_path(path_id: int, db: Session = Depends(get_db)):
+def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
     global current_wp_index, waypoints_list, is_navigating
 
     path = db.query(WayInfo).filter(WayInfo.id == path_id).first()

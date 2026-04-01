@@ -10,12 +10,10 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
-    "@prisma/client": "^6.18.0",
     "@tailwindcss/postcss": "^4.2.2",
     "axios": "^1.13.2",
     "lucide-react": "^1.0.1",
     "next": "^15.5.7",
-    "next-auth": "^4.24.13",
     "react": "^18.2.0",
     "react-cookie": "^8.0.1",
     "react-dom": "^18.2.0",
@@ -28,7 +26,6 @@
     "@types/react-dom": "^18.2.0",
     "eslint": "^9.38.0",
     "eslint-config-next": "^15.5.7",
-    "prisma": "^6.18.0",
     "typescript": "5.9.3"
   }
 }

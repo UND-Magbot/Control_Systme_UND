@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import styles from './DbBackup.module.css';
+import { apiFetch } from '@/app/lib/api';
 
 export default function DbBackup() {
   const [backupPath, setBackupPath] = useState("/home/und/app/backups/");
@@ -24,11 +25,25 @@ export default function DbBackup() {
 
     setIsBackingUp(true);
 
-    // Mock: 백업 시뮬레이션
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const res = await apiFetch("/api/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backup_path: backupPath }),
+      });
 
-    setIsBackingUp(false);
-    setResult({ success: true, message: "백업이 완료되었습니다" });
+      const data = await res.json().catch(() => ({ detail: "응답을 처리할 수 없습니다" }));
+
+      if (res.ok) {
+        setResult({ success: true, message: `백업이 완료되었습니다 (${data.file_name})` });
+      } else {
+        setError(data.detail || "백업에 실패했습니다");
+      }
+    } catch {
+      setError("서버에 연결할 수 없습니다");
+    } finally {
+      setIsBackingUp(false);
+    }
   };
 
   return (

@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { useRouter } from 'next/navigation';
 import type { RobotRowData } from '@/app/type';
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import CustomSelect, { type SelectOption } from '@/app/components/select/CustomSelect';
 import TimePicker from './TimePicker';
 import RepeatSettings from './RepeatSettings';
@@ -158,7 +158,7 @@ export default function InsertModal({
         if (!isOpen) return;
         setLoadingPaths(true);
 
-        fetch(`${API_BASE}/DB/way-names`)
+        apiFetch(`/DB/way-names`)
             .then((res) => res.json())
             .then((data) => {
                 const list = Array.isArray(data) ? data : (data?.paths ?? []);
@@ -275,7 +275,7 @@ export default function InsertModal({
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10000);
 
-            const res = await fetch(`${API_BASE}/DB/schedule`, {
+            const res = await apiFetch(`/DB/schedule`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),

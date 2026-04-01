@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from "next/navigation";
 import styles from './RobotList.module.css';
 import Pagination from "@/app/components/pagination";
@@ -8,14 +8,14 @@ import type { RobotRowData, BatteryItem, Camera, Floor, Video, NetworkItem, Powe
 import RobotInsertModal from "@/app/components/modal/RobotInsertModal";
 import RobotDetailModal from "@/app/components/modal/RobotDetailModal";
 import CancelConfirmModal from "@/app/components/modal/CancelConfirmModal";
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import RemoteMapModal from "@/app/components/modal/RemoteMapModal";
 import {
   ROBOT_COLORS,
   getRobotIndexFromNo,
 } from "@/app/constants/robotIcons";
-import { isAdmin } from "@/app/utils/auth";
+import { useAuth } from "@/app/context/AuthContext";
 import { useRobotStatus } from "@/app/hooks/useRobotStatus";
 import BusinessList from './BusinessList';
 
@@ -38,14 +38,12 @@ interface RobotStats {
 
 interface RobotStatusListProps {
   cameras: Camera[];
-  robots: RobotRowData[];
   floors: Floor[];
   video: Video[];
   batteryStatus: BatteryItem[];
   networkStatus: NetworkItem[];
   powerStatus: PowerItem[];
   locationStatus: LocationItem[];
-  robotStats: RobotStats;
 }
 
 export type RobotDraft = {
@@ -61,7 +59,7 @@ export type RobotDraft = {
 
 /** 로봇 상태를 계산하는 헬퍼 */
 function getRobotStatus(r: RobotRowData): { label: string; className: string } {
-  if (r.power === "Off") return { label: "오프라인", className: styles.statusOffline };
+  if (r.power === "Off" || r.power === "-") return { label: r.power === "-" ? "미확인" : "오프라인", className: styles.statusOffline };
   if (r.isCharging) return { label: "충전", className: styles.statusCharging };
   if (r.tasks.length > 0 && r.waitingTime === 0) return { label: "운영", className: styles.statusOperating };
   if (r.waitingTime > 0) return { label: "대기", className: styles.statusStandby };
@@ -72,14 +70,14 @@ function getRobotStatus(r: RobotRowData): { label: string; className: string } {
 // TODO: 백엔드 로봇별 실시간 위치 API (/robot/positions) 완성 후
 //       useRobotLocations(robots) 훅으로 교체하여 "1F 대기실" 형태로 표시
 function getRobotLocation(r: RobotRowData): string {
-  if (r.power === "Off") return "-";
+  if (r.power === "Off" || r.power === "-") return "-";
   // 현재는 site 필드로 대체. API 연동 시 floor + placeName 조합으로 교체
   return r.site || "-";
 }
 
 /** 로봇 현재 작업 표시 */
 function getRobotCurrentTask(r: RobotRowData): string {
-  if (r.power === "Off") return "-";
+  if (r.power === "Off" || r.power === "-") return "-";
   if (r.tasks.length === 0) return "-";
   return r.tasks[0].taskName;
 }
@@ -98,19 +96,22 @@ function isDualBattery(r: RobotRowData): boolean {
 
 export default function RobotStatusList({
   cameras,
-  robots: initialRobots,
   floors,
   video,
   batteryStatus,
   networkStatus,
   powerStatus,
   locationStatus,
-  robotStats
 }: RobotStatusListProps) {
 
+  const [initialRobots, setInitialRobots] = useState<RobotRowData[]>([]);
   const robots = useRobotStatus(initialRobots);
   const router = useRouter();
-  const admin = useMemo(() => isAdmin(), []);
+  const { isAdmin: admin } = useAuth();
+
+  useEffect(() => {
+    import("@/app/lib/robotInfo").then((mod) => mod.default()).then(setInitialRobots);
+  }, []);
 
   // 탭 메뉴
   const [activeTab, setActiveTab] = useState<"robots" | "business">("robots");
@@ -234,7 +235,7 @@ export default function RobotStatusList({
   const confirmDeleteRobots = async () => {
     if (checkedRobotIds.length === 0) return;
     try {
-      await Promise.all(checkedRobotIds.map(id => fetch(`${API_BASE}/DB/robots/${id}`, { method: "DELETE" })));
+      await Promise.all(checkedRobotIds.map(id => apiFetch(`/DB/robots/${id}`, { method: "DELETE" })));
       setDeleteConfirmOpen(false); setDeleteMode(false); setCheckedRobotIds([]);
       setSelectedRobotId(null); setSelectedRobot(null);
       window.location.reload();
@@ -269,10 +270,10 @@ export default function RobotStatusList({
   return (
     <>
     <div className="page-header-tab">
-        <h1>{activeTab === "robots" ? "로봇 목록" : "사업자 목록"}</h1>
+        <h1>{activeTab === "robots" ? "로봇 목록" : "사업장 목록"}</h1>
         <div className={styles.robotListTab}>
             <div className={`${activeTab === "robots" ? styles.active : ""}`} onClick={() => handleTabClick("robots")}>로봇 목록</div>
-            <div className={`${activeTab === "business" ? styles.active : ""}`} onClick={() => handleTabClick("business")}>사업자 목록</div>
+            <div className={`${activeTab === "business" ? styles.active : ""}`} onClick={() => handleTabClick("business")}>사업장 목록</div>
         </div>
     </div>
 
@@ -449,8 +450,9 @@ export default function RobotStatusList({
                     <div className={styles.infoBtnGroup}>
                       <div className={styles["info-box"]} onClick={(e) => { e.stopPropagation(); ViewInfoClick(idx, r); }}>상세보기</div>
                       <div
-                        className={`${styles["viewMap"]} ${!admin ? styles.btnDisabled : ""}`}
-                        onClick={(e) => { e.stopPropagation(); if (admin) handleRemoteClick(r); }}
+                        className={`${styles["viewMap"]} ${!admin || r.power !== "On" ? styles.btnDisabled : ""}`}
+                        onClick={(e) => { e.stopPropagation(); if (admin && r.power === "On") handleRemoteClick(r); }}
+                        title={r.power !== "On" ? "로봇 전원이 꺼져있습니다" : undefined}
                       >원격</div>
                     </div>
                   </td>

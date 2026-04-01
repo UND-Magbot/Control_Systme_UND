@@ -2,13 +2,28 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import styles from './MenuPermissions.module.css';
+import modalStyles from '@/app/components/modal/Modal.module.css';
 import {
-  menuTree,
-  userGroups,
   getAllLeafIds,
   permissionsToRecord,
 } from '@/app/mock/settings_data';
-import type { MenuNode, MockUser } from '@/app/mock/settings_data';
+import type { MenuNode } from '@/app/mock/settings_data';
+import { apiFetch } from '@/app/lib/api';
+import { useAuth } from '@/app/context/AuthContext';
+
+type ApiUser = {
+  id: number;
+  login_id: string;
+  user_name: string;
+  permission: number;
+  is_active: number;
+};
+
+type UserGroup = {
+  id: string;
+  label: string;
+  users: ApiUser[];
+};
 
 /** 트리에서 노드의 체크 상태를 계산 */
 type CheckState = "checked" | "unchecked" | "indeterminate";
@@ -137,18 +152,64 @@ function MenuTreeNode({
 }
 
 export default function MenuPermissions() {
-  const allLeafIds = useMemo(() => getAllLeafIds(menuTree), []);
+  const { isAdmin } = useAuth();
+
+  // API에서 로드한 메뉴 트리
+  const [menuTree, setMenuTree] = useState<MenuNode[]>([]);
+  const allLeafIds = useMemo(() => getAllLeafIds(menuTree), [menuTree]);
+
+  // API에서 로드한 사용자 목록
+  const [apiUsers, setApiUsers] = useState<ApiUser[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
 
   // 사용자 선택 상태
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set(userGroups.map((g) => g.id))
-  );
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["admin-group", "user-group"]));
   const [userSearch, setUserSearch] = useState("");
   const [menuSearch, setMenuSearch] = useState("");
 
-  // 메뉴 트리 접이식 상태 (기본 모두 펼침)
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
+  // 메뉴 트리 API 로드
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch("/api/users/menus");
+        if (res.ok) {
+          const data = await res.json();
+          // API 응답을 Full Menu 래퍼로 감싸기
+          setMenuTree([{ id: "full-menu", label: "Full Menu", children: data }]);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
+  // 사용자 목록 API 로드
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/users?size=100");
+        if (res.ok) {
+          const data = await res.json();
+          setApiUsers(data.items);
+        }
+      } catch { /* ignore */ }
+      setIsLoadingUsers(false);
+    })();
+  }, [isAdmin]);
+
+  // API 사용자를 그룹으로 분류
+  const userGroups: UserGroup[] = useMemo(() => {
+    const admins = apiUsers.filter((u) => u.permission === 1);
+    const users = apiUsers.filter((u) => u.permission === 2);
+    return [
+      { id: "admin-group", label: "관리자", users: admins },
+      { id: "user-group", label: "사용자", users: users },
+    ];
+  }, [apiUsers]);
+
+  // 메뉴 트리 접이식 상태 (기본 모두 펼침, menuTree 로드 후 갱신)
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  useEffect(() => {
     const ids = new Set<string>();
     const collect = (nodes: MenuNode[]) => {
       for (const n of nodes) {
@@ -159,13 +220,13 @@ export default function MenuPermissions() {
       }
     };
     collect(menuTree);
-    return ids;
-  });
+    setExpandedNodes(ids);
+  }, [menuTree]);
 
   // 권한 상태
   const [leafStates, setLeafStates] = useState<Record<string, boolean>>({});
   const [originalStates, setOriginalStates] = useState<Record<string, boolean>>({});
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [confirmMessage, setConfirmMessage] = useState<string | null>(null);
 
   // 선택된 사용자 객체
   const selectedUser = useMemo(() => {
@@ -174,16 +235,24 @@ export default function MenuPermissions() {
       if (user) return user;
     }
     return null;
-  }, [selectedUserId]);
+  }, [selectedUserId, userGroups]);
 
-  // 사용자 선택 시 권한 로드
+  // 사용자 선택 시 권한 API 로드
   const handleSelectUser = useCallback(
-    (user: MockUser) => {
+    async (user: ApiUser) => {
       setSelectedUserId(user.id);
-      const record = permissionsToRecord(user.permissions, allLeafIds);
-      setLeafStates(record);
-      setOriginalStates(record);
-      setSaveMessage(null);
+      try {
+        const res = await apiFetch(`/api/users/${user.id}/permissions`);
+        if (res.ok) {
+          const data = await res.json();
+          const record = permissionsToRecord(data.menu_ids, allLeafIds);
+          setLeafStates(record);
+          setOriginalStates(record);
+        }
+      } catch {
+        setLeafStates({});
+        setOriginalStates({});
+      }
     },
     [allLeafIds]
   );
@@ -222,7 +291,6 @@ export default function MenuPermissions() {
         }
         return next;
       });
-      setSaveMessage(null);
     },
     [leafStates]
   );
@@ -235,9 +303,31 @@ export default function MenuPermissions() {
   }, [leafStates, originalStates]);
 
   // 저장
-  const handleSave = () => {
-    setOriginalStates({ ...leafStates });
-    setSaveMessage("저장되었습니다");
+  const [isSaving, setIsSaving] = useState(false);
+  const handleSave = async () => {
+    if (!selectedUserId) return;
+    setIsSaving(true);
+    const menuIds = Object.entries(leafStates)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    try {
+      const res = await apiFetch(`/api/users/${selectedUserId}/permissions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ menu_ids: menuIds }),
+      });
+      if (res.ok) {
+        setOriginalStates({ ...leafStates });
+        setConfirmMessage("저장되었습니다");
+      } else {
+        const data = await res.json().catch(() => ({ detail: "저장에 실패했습니다" }));
+        setConfirmMessage(data.detail);
+      }
+    } catch {
+      setConfirmMessage("서버에 연결할 수 없습니다");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // 사용자 검색 필터
@@ -248,15 +338,17 @@ export default function MenuPermissions() {
       .map((group) => ({
         ...group,
         users: group.users.filter((u) =>
-          u.name.toLowerCase().includes(searchLower)
+          (u.user_name ?? "").toLowerCase().includes(searchLower) ||
+          (u.login_id ?? "").toLowerCase().includes(searchLower)
         ),
       }))
       .filter((group) => group.users.length > 0);
-  }, [searchLower]);
+  }, [searchLower, userGroups]);
 
   const menuSearchLower = menuSearch.toLowerCase();
 
   return (
+    <>
     <div className={styles.wrapper}>
       {/* 왼쪽: 사용자 선택 */}
       <div className={styles.leftPanel}>
@@ -299,7 +391,7 @@ export default function MenuPermissions() {
                         checked={selectedUserId === user.id}
                         onChange={() => handleSelectUser(user)}
                       />
-                      <span className={styles.userLabel}>{user.name}</span>
+                      <span className={styles.userLabel}>{user.user_name ?? user.login_id}</span>
                     </label>
                   ))}
               </div>
@@ -318,22 +410,18 @@ export default function MenuPermissions() {
           <>
             <div className={styles.rightHeader}>
               <h3 className={styles.panelTitle}>
-                <span className={styles.userName}>{selectedUser.name}</span>
+                <span className={styles.userName}>{selectedUser.user_name ?? selectedUser.login_id}</span>
                 {" "}메뉴 권한
               </h3>
               <button
                 type="button"
                 className={styles.saveBtn}
-                disabled={!isDirty}
+                disabled={!isDirty || isSaving}
                 onClick={handleSave}
               >
-                저장
+                {isSaving ? "저장 중..." : "저장"}
               </button>
             </div>
-
-            {saveMessage && (
-              <div className={styles.saveMessage}>{saveMessage}</div>
-            )}
 
             <input
               type="text"
@@ -375,5 +463,26 @@ export default function MenuPermissions() {
         )}
       </div>
     </div>
+
+    {confirmMessage && (
+      <div className={modalStyles.confirmOverlay}>
+        <div className={modalStyles.confirmBox}>
+          <button className={modalStyles.closeBox} onClick={() => setConfirmMessage(null)}>
+            <img src="/icon/close_btn.png" alt="" />
+          </button>
+          <div className={modalStyles.confirmContents}>{confirmMessage}</div>
+          <div className={modalStyles.confirmButtons}>
+            <button
+              className={`${modalStyles.btnItemCommon} ${modalStyles.btnBgBlue}`}
+              onClick={() => setConfirmMessage(null)}
+            >
+              <span className={modalStyles.btnIcon}><img src="/icon/check.png" alt="확인" /></span>
+              <span>확인</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

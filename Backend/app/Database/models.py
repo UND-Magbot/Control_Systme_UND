@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Text,
     ForeignKey,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -20,6 +21,9 @@ class RobotInfo(Base):
     id = Column(Integer, primary_key=True, index=True)
     UserId = Column(Integer)
     RobotName = Column(String(100))
+    RobotType = Column(String(20), nullable=True)          # QUADRUPED / COBOT / AMR / HUMANOID
+    RobotIP = Column(String(45), nullable=True)            # 로봇 IP (카메라 RTSP URL도 이 IP로 동적 생성)
+    RobotPort = Column(Integer, nullable=True, default=30000)  # 로봇 UDP 포트
     ProductCompany = Column(String(100))
     SerialNumber = Column(String(100))
     ModelName = Column(String(100))
@@ -27,8 +31,10 @@ class RobotInfo(Base):
     SWversion = Column(String(100))
     Site = Column(String(100))
     BusinessId = Column(Integer, nullable=True)
-    Adddate = Column(DateTime, server_default=func.now())
-    LimitBattery = Column(Integer)
+    LimitBattery = Column(Integer, default=30)
+    CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
+    UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    DeletedAt = Column(DateTime, nullable=True, default=None)
 
 # =========================
 # 로봇 위치 정보 (누적)
@@ -129,8 +135,67 @@ class UserInfo(Base):
     __tablename__ = "user_info"
 
     id = Column(Integer, primary_key=True, index=True)
-    Permission = Column(Integer)
+    Permission = Column(Integer)                                    # 역할: 1=admin, 2=user
     UserName = Column(String(50), nullable=True)
+    LoginId = Column(String(50), unique=True, nullable=True)
+    Password = Column(String(255), nullable=True)                   # bcrypt 해시
+    RefreshTokenHash = Column(String(255), nullable=True)           # SHA-256 해시 (1유저=1세션)
+    IsActive = Column(Integer, default=1)                           # 1=활성, 0=정지
+    BusinessId = Column(Integer, nullable=True)                     # 소속 사업자 FK
+    LastLoginAt = Column(DateTime, nullable=True)
+    CreatedAt = Column(DateTime, server_default=func.now())
+    UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    DeletedAt = Column(DateTime, nullable=True, default=None)       # 소프트 삭제 (탈퇴)
+
+
+# =========================
+# 메뉴 정보 (마스터)
+# =========================
+class MenuInfo(Base):
+    __tablename__ = "menu_info"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ParentId = Column(Integer, ForeignKey("menu_info.id", ondelete="CASCADE"), nullable=True)
+    MenuKey = Column(String(50), unique=True, nullable=False)       # 고유 식별자 (dashboard, robot-list 등)
+    MenuName = Column(String(100), nullable=False)                  # 표시명
+    SortOrder = Column(Integer, default=0)                          # 정렬 순서
+
+    parent = relationship("MenuInfo", remote_side="MenuInfo.id", uselist=False)
+    children = relationship("MenuInfo", back_populates="parent", cascade="all, delete-orphan")
+
+
+# =========================
+# 사용자 메뉴 권한
+# =========================
+class UserPermission(Base):
+    __tablename__ = "user_permission"
+    __table_args__ = (
+        UniqueConstraint("UserId", "MenuId", name="uq_user_menu"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    UserId = Column(Integer, ForeignKey("user_info.id", ondelete="CASCADE"), nullable=False)
+    MenuId = Column(Integer, ForeignKey("menu_info.id", ondelete="CASCADE"), nullable=False)
+    CreatedAt = Column(DateTime, server_default=func.now())
+
+    user = relationship("UserInfo", primaryjoin="UserPermission.UserId == UserInfo.id", foreign_keys="[UserPermission.UserId]", uselist=False, viewonly=True)
+    menu = relationship("MenuInfo", uselist=False, viewonly=True)
+
+
+# =========================
+# 감사 로그
+# =========================
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    UserId = Column(Integer, nullable=True)
+    Action = Column(String(50), nullable=False)                     # login, logout, password_changed, user_created 등
+    TargetType = Column(String(50), nullable=True)                  # user, robot, path, place, schedule, notice, business, area
+    TargetId = Column(Integer, nullable=True)
+    Detail = Column(Text, nullable=True)                            # JSON 컨텍스트
+    IpAddress = Column(String(45), nullable=True)
+    CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
 
 
 # =========================
@@ -161,7 +226,9 @@ class BusinessInfo(Base):
     RepresentName = Column(String(50), nullable=True)
     Contact = Column(String(30), nullable=True)
     Description = Column(String(500), nullable=True)
-    Adddate = Column(DateTime, server_default=func.now())
+    CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
+    UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    DeletedAt = Column(DateTime, nullable=True, default=None)
 
 # =========================
 # 영역(층) 정보
@@ -171,7 +238,7 @@ class AreaInfo(Base):
     id = Column(Integer, primary_key=True, index=True)
     BusinessId = Column(Integer, nullable=False)
     FloorName = Column(String(50), nullable=False)  # B1, 1F, 2F 등
-    Adddate = Column(DateTime, server_default=func.now())
+    CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
 
 # =========================
 # 로봇 맵 정보
@@ -210,3 +277,41 @@ class ScheduleInfo(Base):
     Repeat_End = Column(String(50))
 
     # CreateTime = Column(DateTime)
+
+
+# =========================
+# 로봇 모듈 (장착 장비 registry)
+# =========================
+class RobotModule(Base):
+    __tablename__ = "robot_module"
+
+    id = Column(Integer, primary_key=True, index=True)
+    RobotId = Column(Integer, ForeignKey("robot_info.id", ondelete="CASCADE"), nullable=False)
+    ParentModuleId = Column(Integer, ForeignKey("robot_module.id", ondelete="CASCADE"), nullable=True)
+    ModuleType = Column(String(20), nullable=False)             # camera, arm, gripper, sensor
+    Label = Column(String(50), nullable=False)                  # "전방", "후방", "UR5e"
+    IsBuiltIn = Column(Integer, default=0)                      # 1=내장, 0=외장
+    IsActive = Column(Integer, default=1)
+    SortOrder = Column(Integer, default=0)
+    CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
+    UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    parent = relationship("RobotModule", remote_side="RobotModule.id", uselist=False)
+    children = relationship("RobotModule", back_populates="parent", cascade="all, delete-orphan")
+    camera_info = relationship("ModuleCameraInfo", back_populates="module", uselist=False, cascade="all, delete-orphan")
+
+
+# =========================
+# 카메라 모듈 상세 정보
+# =========================
+class ModuleCameraInfo(Base):
+    __tablename__ = "module_camera_info"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ModuleId = Column(Integer, ForeignKey("robot_module.id", ondelete="CASCADE"), unique=True, nullable=False)
+    StreamType = Column(String(10), nullable=False)             # rtsp | ws
+    CameraIP = Column(String(45), nullable=True)                # NULL → RobotIP 사용
+    Port = Column(Integer, nullable=True)                       # 8554 (RTSP), 8765 (WS)
+    Path = Column(String(100), nullable=True)                   # /video1, /video2
+
+    module = relationship("RobotModule", back_populates="camera_info")

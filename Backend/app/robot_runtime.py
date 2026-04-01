@@ -1,0 +1,193 @@
+"""
+인메모리 로봇 런타임 상태 관리 모듈.
+
+DB에 저장하지 않는 실시간 데이터(배터리, 위치, 네트워크 상태)를
+로봇별로 관리한다. 스레드 안전.
+"""
+
+import time
+import threading
+from typing import Optional
+
+# ── 상수 ──────────────────────────────────────────────
+ONLINE_MAX_AGE = 5      # 5초 이내 → Online
+ERROR_MAX_AGE = 15      # 5~15초 → Error, 15초 초과 → Offline
+
+# ── 내부 저장소 ───────────────────────────────────────
+_lock = threading.Lock()
+_runtime: dict[int, dict] = {}      # robot_info.id → 런타임 상태
+
+
+# ── 초기화 ────────────────────────────────────────────
+
+def init_runtime(robots) -> None:
+    """서버 시작 시 DB의 RobotInfo 목록으로 런타임 초기화."""
+    with _lock:
+        _runtime.clear()
+        for r in robots:
+            _runtime[r.id] = {
+                "robot_id": r.id,
+                "robot_name": r.RobotName or "",
+                "robot_type": r.RobotType or "",
+                "robot_ip": r.RobotIP,
+                "robot_port": r.RobotPort or 30000,
+                "position": {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0},
+                "battery": {},
+                "last_heartbeat": 0,
+                "nav": {"arrived": False, "last_state": None, "timestamp": 0},
+            }
+        print(f"✅ robot_runtime 초기화 완료: {len(_runtime)}대")
+
+
+# ── 상태 업데이트 ─────────────────────────────────────
+
+def update_status(robot_id: int, battery: dict, timestamp: float) -> None:
+    """heartbeat 수신 시 배터리 및 타임스탬프 갱신."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return
+        entry["battery"] = battery
+        entry["last_heartbeat"] = timestamp
+
+
+def update_position(robot_id: int, x: float, y: float, yaw: float) -> None:
+    """위치 수신 시 좌표 갱신."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return
+        entry["position"] = {
+            "x": x,
+            "y": y,
+            "yaw": yaw,
+            "timestamp": time.time(),
+        }
+
+
+def update_nav(robot_id: int, arrived: bool, last_state, timestamp: float) -> None:
+    """네비게이션 상태 갱신."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return
+        entry["nav"] = {
+            "arrived": arrived,
+            "last_state": last_state,
+            "timestamp": timestamp,
+        }
+
+
+# ── 조회 ──────────────────────────────────────────────
+
+def _derive_network(last_heartbeat: float) -> str:
+    """last_heartbeat 기준 네트워크 상태 판정.
+    - 한 번도 heartbeat 없으면 → "-" (미확인)
+    - 5초 이내 → "Online"
+    - 5~15초 → "Error"
+    - 15초 초과 → "Offline"
+    """
+    if last_heartbeat == 0:
+        return "-"
+    age = time.time() - last_heartbeat
+    if age <= ONLINE_MAX_AGE:
+        return "Online"
+    if age <= ERROR_MAX_AGE:
+        return "Error"
+    return "Offline"
+
+
+def _derive_power(network: str) -> str:
+    """network 상태에서 power 도출.
+    - "-" (미확인) → "-"
+    - "Offline" → "Off"
+    - 그 외 → "On"
+    """
+    if network == "-":
+        return "-"
+    if network == "Offline":
+        return "Off"
+    return "On"
+
+
+def get_runtime(robot_id: int) -> Optional[dict]:
+    """단일 로봇 런타임 조회."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return None
+        return _build_status(entry)
+
+
+def get_all_statuses() -> list[dict]:
+    """전체 로봇 런타임 상태를 API 응답 형태로 반환."""
+    with _lock:
+        return [_build_status(entry) for entry in _runtime.values()]
+
+
+def _build_status(entry: dict) -> dict:
+    """내부 엔트리를 API 응답 형태로 변환."""
+    network = _derive_network(entry["last_heartbeat"])
+    power = _derive_power(network)
+    battery = entry["battery"]
+    return {
+        "robot_id": entry["robot_id"],
+        "robot_name": entry["robot_name"],
+        "robot_type": entry["robot_type"],
+        "battery": battery,
+        "network": network,
+        "power": power,
+        "is_charging": battery.get("Charging", False),
+        "timestamp": entry["last_heartbeat"],
+        "position": entry["position"],
+    }
+
+
+# ── 유틸 ──────────────────────────────────────────────
+
+def get_robot_ip_port(robot_id: int) -> tuple[Optional[str], int]:
+    """로봇 IP/Port 조회. IP가 없으면 (None, 30000) 반환."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return None, 30000
+        return entry["robot_ip"], entry["robot_port"]
+
+
+def get_first_robot_id() -> Optional[int]:
+    """등록된 첫 번째 로봇 ID 반환 (단일 로봇 환경 호환용)."""
+    with _lock:
+        if not _runtime:
+            return None
+        return next(iter(_runtime))
+
+
+def get_robot_id_by_ip(ip: str) -> Optional[int]:
+    """RobotIP가 일치하는 로봇 ID 반환."""
+    with _lock:
+        for rid, entry in _runtime.items():
+            if entry.get("robot_ip") == ip:
+                return rid
+        return None
+
+
+def get_position(robot_id: int) -> dict:
+    """단일 로봇 위치 조회."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
+        return {
+            "robot_id": entry["robot_id"],
+            "robot_name": entry["robot_name"],
+            **entry["position"],
+        }
+
+
+def get_nav(robot_id: int) -> dict:
+    """단일 로봇 네비게이션 상태 조회."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return {"arrived": False, "last_state": None, "timestamp": 0}
+        return dict(entry["nav"])

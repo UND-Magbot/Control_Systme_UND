@@ -36,7 +36,7 @@ class NoticeService:
         return notice
 
     def update(self, notice_id: int, title: str = None, content: str = None,
-               importance: str = None, attachment_name: str = None, attachment_url: str = None) -> Notice:
+               importance: str = None, attachment_name: str = None, attachment_url: str = None):
         notice = self.db.query(Notice).filter(
             Notice.id == notice_id,
             Notice.DeletedAt.is_(None),
@@ -44,17 +44,25 @@ class NoticeService:
         if not notice:
             raise HTTPException(status_code=404, detail="공지사항을 찾을 수 없습니다.")
 
-        if title is not None:
-            notice.Title = title
+        changes = []
+        field_map = {
+            "제목": ("Title", title),
+            "내용": ("Content", content),
+            "중요도": ("Importance", importance),
+            "첨부파일명": ("AttachmentName", attachment_name),
+            "첨부파일URL": ("AttachmentUrl", attachment_url),
+        }
 
-        if content is not None:
-            notice.Content = content
-        if importance is not None:
-            notice.Importance = importance
-        if attachment_name is not None:
-            notice.AttachmentName = attachment_name
-        if attachment_url is not None:
-            notice.AttachmentUrl = attachment_url
+        for label, (attr, new_val) in field_map.items():
+            if new_val is None:
+                continue
+            old_val = getattr(notice, attr)
+            if old_val != new_val:
+                if label == "내용":
+                    changes.append(f"{label}: 변경됨")
+                else:
+                    changes.append(f"{label}: {old_val or ''} → {new_val or ''}")
+                setattr(notice, attr, new_val)
 
         # alert.Content 동기화
         alert = self.db.query(Alert).filter(
@@ -66,7 +74,7 @@ class NoticeService:
 
         self.db.commit()
         self.db.refresh(notice)
-        return notice
+        return notice, changes
 
     def delete(self, notice_id: int):
         notice = self.db.query(Notice).filter(

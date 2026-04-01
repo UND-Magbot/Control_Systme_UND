@@ -250,6 +250,7 @@
 
     transform: translateX(-100%);
     transition: transform 0.25s ease;
+    will-change: transform;
 }
 
 .sidebarOpen {
@@ -262,6 +263,14 @@
     top: var(--header-height);
     z-index: 55;
     background: rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.sidebarBackdropOpen {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .sidebar div {
@@ -293,6 +302,37 @@
     width: 24px;
     height: 24px;
     object-fit: contain;
+}
+
+.iconWrap {
+    position: relative;
+}
+
+.iconDefault,
+.iconHover {
+    transition: opacity 0.2s ease;
+}
+
+.iconDefault {
+    opacity: 1;
+}
+
+.iconHover {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+}
+
+.sidebar div .menuItems:hover .iconDefault,
+.sidebar div .menuItems:active .iconDefault {
+    opacity: 0;
+}
+
+.sidebar div .menuItems:hover .iconHover,
+.sidebar div .menuItems:active .iconHover {
+    opacity: 1;
 }
 
 .sidebar div .menuItems:hover, .sidebar div .menuItems:active {

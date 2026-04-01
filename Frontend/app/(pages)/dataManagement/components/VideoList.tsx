@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import styles from './VideoList.module.css';
 import Pagination from "@/app/components/pagination";
 import Calendar from "@/app/components/Calendar";
@@ -17,12 +17,10 @@ const PAGE_SIZE = 8;
 
 type VideoListProps = {
   cameras: Camera[];
-  robots: RobotRowData[];
   statisticsData: RobotRowData[];
   video: Video[];
   videoData: VideoItem[];
   robotTypeData: RobotType[];
-  logData: LogItem[];
 }
 
 // 오늘 날짜만 필터하는 유틸
@@ -44,15 +42,20 @@ const filterTodayVideos = (videoData: VideoItem[]) => {
 
 export default function VideoList({
     videoData,
-    robots,
     statisticsData,
     video,
     robotTypeData,
-    logData,
 }:VideoListProps) {
 
+    const [robots, setRobots] = useState<RobotRowData[]>([]);
+    const [logData, setLogData] = useState<LogItem[]>([]);
     const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
     const [selectedRobot, setSelectedRobot] = useState<RobotRowData | null>(null);
+
+    useEffect(() => {
+        import("@/app/lib/robotInfo").then((mod) => mod.default()).then(setRobots);
+        import("@/app/lib/logData").then((mod) => mod.getLogData({ size: 10000 })).then((res) => setLogData(res.items));
+    }, []);
     const [selectedPeriod, setSelectedPeriod] = useState<Period | null>(null);
 
     const [externalStartDate, setExternalStartDate] = useState<string | null>(null);

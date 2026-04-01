@@ -1,4 +1,4 @@
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import type { LogItem } from "@/app/type";
 
 export type LogListResponse = {
@@ -24,7 +24,7 @@ export async function getLogData(params?: {
   if (params?.page) query.set("page", String(params.page));
   if (params?.size) query.set("size", String(params.size));
 
-  const res = await fetch(`${API_BASE}/DB/logs?${query.toString()}`, {
+  const res = await apiFetch(`/DB/logs?${query.toString()}`, {
     cache: "no-store",
   });
 

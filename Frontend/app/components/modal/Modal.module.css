@@ -1101,7 +1101,7 @@ button.workPopoverItem:hover {
 /* Robot Detail Modal */
 
 .insertModalContent {
-  width: 580px;
+  width: 780px;
   max-height: calc(100vh - 40px);
 
   background: var(--surface-3);
@@ -1170,35 +1170,42 @@ button.workPopoverItem:hover {
   border-radius: 16px;
   background: var(--surface-5);
 
-  padding: 28px 30px;
+  padding: 20px 24px;
 
   margin-top: 16px;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 24px;
+  row-gap: 0;
 }
 
 .insertItemBox {
   width: 100%;
-  min-height: 56px;
 
-  padding: 10px 0;
+  padding: 6px 0;
 
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: flex-start;
+  gap: 4px;
 }
 
 .insertItemLabel {
   font-size: var(--font-size-md);
-  line-height: 36px;
+  line-height: 28px;
   flex-shrink: 0;
 }
 
-.slidebarinsert {
-  display: flex;
-  justify-content: space-between;
+.batteryCurrentValue {
+  font-weight: 600;
+  color: var(--color-info);
+  margin-left: 6px;
 }
 
-.insertItemBox input {
-  width: 320px;
+
+.insertItemBox input[type="text"] {
+  width: 100%;
   height: 36px;
   border-radius: 6px;
   padding: 5px 10px;
@@ -1208,24 +1215,24 @@ button.workPopoverItem:hover {
   font-size: var(--font-size-sm);
 }
 
-.insertItemBox input:focus {
+.insertItemBox input[type="text"]:focus {
   outline: none;
   border-color: var(--color-info);
 }
 
-.insertItemBox input::placeholder {
+.insertItemBox input[type="text"]::placeholder {
   color: var(--text-tertiary);
   font-size: var(--font-size-sm);
   font-weight: 300;
 }
 
 /* 입력 필드 에러 상태 */
-.insertItemBox input.inputError,
+.insertItemBox input[type="text"].inputError,
 .insertItemBox .inputError {
   border-color: var(--color-error-soft);
 }
 
-.insertItemBox input.inputError:focus {
+.insertItemBox input[type="text"].inputError:focus {
   border-color: var(--color-error-soft);
 }
 
@@ -1271,9 +1278,11 @@ button.workPopoverItem:hover {
 }
 
 .customSelectArrow {
-  font-size: 10px;
-  color: var(--text-tertiary);
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
   margin-left: 8px;
+  opacity: 0.6;
 }
 
 .customSelectDropdown {
@@ -1323,19 +1332,22 @@ button.workPopoverItem:hover {
 .insertInputWrap {
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 
 .batterySliderWrap {
-  width: 320px;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .batterySliderTrackArea {
   height: 20px;
   display: flex;
   align-items: center;
+  position: relative;
+  overflow: visible;
 }
 
 /* range 기본 스타일 제거 */
@@ -1347,6 +1359,8 @@ button.workPopoverItem:hover {
   border-radius: 999px;
   outline: none;
   cursor: pointer;
+  border: none;
+  padding: 0;
 
   /* 중요: 활성(왼쪽) / 비활성(오른쪽) 분기 */
   background: linear-gradient(
@@ -1356,6 +1370,14 @@ button.workPopoverItem:hover {
     #7B7F8D var(--percent),
     #7B7F8D 100%
   );
+}
+
+/* Webkit track */
+.batterySlider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: transparent;
+  border: none;
 }
 
 /* Webkit thumb */
@@ -1370,6 +1392,7 @@ button.workPopoverItem:hover {
 
   box-shadow: 0 0 0 3px rgba(121, 201, 242, 0.18);
   border: none;
+  margin-top: -5px;
 }
 
 /* Firefox thumb */
@@ -3461,6 +3484,177 @@ button.workPopoverItem:hover {
   50% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
 }
 
+/* ── 장착 모듈 섹션 ── */
+.detailModuleSection {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+}
+
+.detailModuleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.detailModuleList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.detailModuleItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-3);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+
+.detailModuleItem.moduleChild {
+  margin-left: 24px;
+  border-left: 2px solid var(--text-accent);
+}
+
+.detailModuleTypeBadge {
+  font-size: var(--font-size-2xs);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.detailModuleTypeBadge.camera {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93bbfc;
+}
+
+.detailModuleTypeBadge.arm {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fbbf24;
+}
+
+.detailModuleTypeBadge.gripper {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+}
+
+.detailModuleTypeBadge.sensor {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.detailModuleLabel {
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailModuleBuiltIn {
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.detailModuleDeleteBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.detailModuleDeleteBtn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.detailModuleEmpty {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: 20px 0;
+}
+
+.detailModuleAddBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.detailModuleAddBtn:hover {
+  background: var(--surface-4);
+  color: var(--text-primary);
+}
+
+/* 모듈 추가 인라인 폼 */
+.moduleAddForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-3);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  margin-top: 6px;
+}
+
+.moduleAddFormRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.moduleAddFormRow label {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.moduleAddFormRow input,
+.moduleAddFormRow select {
+  flex: 1;
+  font-size: var(--font-size-xs);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+.moduleAddFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
 /* ── 기본 정보 (2열 그리드) ── */
 .detailInfoSection {
   margin-bottom: 12px;
@@ -3506,7 +3700,7 @@ button.workPopoverItem:hover {
 .detailInfoValue {
   font-size: var(--font-size-md);
   color: var(--text-primary);
-  text-align: right;
+  text-align: left;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3515,7 +3709,7 @@ button.workPopoverItem:hover {
 
 .detailInfoInput {
   width: 100%;
-  text-align: right;
+  text-align: left;
   background: var(--surface-3);
   border: 1px solid var(--border-default);
   border-radius: 6px;

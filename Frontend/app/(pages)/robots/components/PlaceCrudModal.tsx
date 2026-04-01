@@ -14,7 +14,7 @@ import type { PlaceRow } from "@/app/mock/robotPlace_data";
 import type { POIItem } from "@/app/components/map/types";
 import DropdownSelect from "@/app/components/button/DropdownSelect";
 import ZoomControl from "@/app/components/button/ZoomControl";
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import { MapPin, MapPinned } from "lucide-react";
 import type { POICategory } from "@/app/components/map/types";
 
@@ -131,7 +131,7 @@ export default function PlaceCrudModal({
   const [robotFetchError, setRobotFetchError] = useState(false);
   const fetchRobots = useCallback(() => {
     setRobotFetchError(false);
-    fetch(`${API_BASE}/DB/robots`)
+    apiFetch(`/DB/robots`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -290,11 +290,11 @@ export default function PlaceCrudModal({
     try {
       const isEditMode = mode === "edit" && initial?.id;
       const url = isEditMode
-        ? `${API_BASE}/DB/places/${initial.id}`
-        : `${API_BASE}/DB/places`;
+        ? `/DB/places/${initial.id}`
+        : `/DB/places`;
       const method = isEditMode ? "PUT" : "POST";
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(dbPayload),

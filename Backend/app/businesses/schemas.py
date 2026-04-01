@@ -34,7 +34,8 @@ class BusinessResponse(BaseModel):
     Description: Optional[str] = None
     AreaCount: int = 0
     RobotCount: int = 0
-    Adddate: Optional[datetime] = None
+    CreatedAt: Optional[datetime] = None
+    UpdatedAt: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -56,7 +57,7 @@ class AreaResponse(BaseModel):
     id: int
     BusinessId: int
     FloorName: str
-    Adddate: Optional[datetime] = None
+    CreatedAt: Optional[datetime] = None
 
     class Config:
         from_attributes = True

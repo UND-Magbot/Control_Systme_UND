@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.Database.database import SessionLocal
-from app.Database.models import RobotMapInfo
+from app.Database.models import RobotMapInfo, UserInfo
+from app.auth.dependencies import get_current_user
 
 import paramiko
 import os
@@ -109,7 +110,7 @@ class MappingStartReq(BaseModel):
 
 
 @mapping_ctrl.post("/start")
-def mapping_start(req: MappingStartReq):
+def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(get_current_user)):
     if mapping_state["is_running"]:
         raise HTTPException(status_code=409, detail="이미 매핑이 진행 중입니다.")
 
@@ -164,7 +165,7 @@ class MappingEndReq(BaseModel):
 
 
 @mapping_ctrl.post("/end")
-def mapping_end(req: MappingEndReq, db: Session = Depends(get_db)):
+def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
     client = None
 
     try:
@@ -287,7 +288,7 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db)):
 # 매핑 취소 (저장 없이 종료)
 # ══════════════════════════════════════
 @mapping_ctrl.post("/cancel")
-def mapping_cancel():
+def mapping_cancel(current_user: UserInfo = Depends(get_current_user)):
     area_name = mapping_state.get("area_name")
     client = None
 
@@ -318,7 +319,7 @@ def mapping_cancel():
 # 매핑 상태 조회
 # ══════════════════════════════════════
 @mapping_ctrl.get("/status")
-def mapping_status():
+def mapping_status(current_user: UserInfo = Depends(get_current_user)):
     return {
         "is_running": mapping_state["is_running"],
         "area_name": mapping_state["area_name"],

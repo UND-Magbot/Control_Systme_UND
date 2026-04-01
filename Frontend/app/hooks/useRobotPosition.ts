@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { RobotPosition } from "@/app/components/map/types";
-import { API_BASE } from '@/app/constants/api';
+import { apiFetch } from "@/app/lib/api";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const LERP_FACTOR = 0.08;
@@ -40,7 +40,7 @@ export function useRobotPosition(enabled = true): UseRobotPositionReturn {
     if (!enabled) return;
 
     const fetchPos = () => {
-      fetch(`${API_BASE}/robot/position`)
+      apiFetch(`/robot/position`)
         .then((res) => res.json())
         .then((data: RobotPosition) => {
           targetRef.current = data;

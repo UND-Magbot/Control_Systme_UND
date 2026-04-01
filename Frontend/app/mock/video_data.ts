@@ -13,28 +13,6 @@ export const videoRows: VideoItem[] = [
     "date": "2024-11-19T10:01:20"
   },
   {
-    "id": 25,
-    "robotNo": "TestRobot-01",
-    "cameraNo": "TEST-CAM3",
-    "cameraType": "AR",
-    "filename": "test_cam3.mp4",
-    "contentType": "video/mp4",
-    "data": "",
-    "videoTime": "00:00:00",
-    "date": "2026-03-26T00:00:00"
-  },
-  {
-    "id": 26,
-    "robotNo": "TestRobot-01",
-    "cameraNo": "TEST-CAM4",
-    "cameraType": "AR",
-    "filename": "test_cam4.mp4",
-    "contentType": "video/mp4",
-    "data": "",
-    "videoTime": "00:00:00",
-    "date": "2026-03-26T00:00:00"
-  },
-  {
     "id": 2,
     "robotNo": "TestRobot-01",
     "cameraNo": "후방",

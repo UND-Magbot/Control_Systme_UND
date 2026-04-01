@@ -40,6 +40,7 @@ export type NavPath = {
 export type CanvasMapProps = {
   config: MapConfig;
   robotPos?: RobotPosition | null;
+  robotName?: string;
   pois?: POIItem[];
   navPath?: NavPath | null;
   selectedPoiId?: number | null;
@@ -50,6 +51,7 @@ export type CanvasMapProps = {
   showPath?: boolean;
   showLabels?: boolean;
   onPoiClick?: (poi: POIItem) => void;
+  onPoiNavigate?: (poi: POIItem) => void;
   onMapClick?: (worldCoords: { x: number; y: number }) => void;
   onMapMouseMove?: (worldCoords: { x: number; y: number }) => void;
   interactive?: boolean;

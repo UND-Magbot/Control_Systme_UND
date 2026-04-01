@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./ScheduleTimeline.module.css";
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
 
 type DBSchedule = {
@@ -52,18 +52,10 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
 
   // 데이터 fetch
   useEffect(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const mockData: DBSchedule[] = [
-      { id: 901, RobotName: "TestRobot-01", WorkName: "1F 순찰", TaskType: "순찰", StartDate: `${today}T09:00:00`, EndDate: `${today}T09:30:00`, TaskStatus: "완료", WayName: "A구역", Repeat: "N", Repeat_Day: null, Repeat_End: null },
-      { id: 902, RobotName: "TestRobot-01", WorkName: "B구역 점검", TaskType: "점검", StartDate: `${today}T10:30:00`, EndDate: `${today}T11:00:00`, TaskStatus: "진행중", WayName: "B구역", Repeat: "N", Repeat_Day: null, Repeat_End: null },
-      { id: 903, RobotName: "TestRobot-01", WorkName: "C구역 보안", TaskType: "보안", StartDate: `${today}T14:00:00`, EndDate: `${today}T14:30:00`, TaskStatus: "대기", WayName: "C구역", Repeat: "Y", Repeat_Day: "월,화,수,목,금", Repeat_End: "2026-12-31T23:59:59" },
-      { id: 904, RobotName: "TestRobot-01", WorkName: "D구역 순찰", TaskType: "순찰", StartDate: `${today}T16:00:00`, EndDate: `${today}T16:30:00`, TaskStatus: "대기", WayName: "D구역", Repeat: "Y", Repeat_Day: "월,수,금", Repeat_End: "2026-12-31T23:59:59" },
-    ];
-
-    fetch(`${API_BASE}/DB/schedule`)
+    apiFetch(`/DB/schedule`)
       .then((res) => { if (!res.ok) throw new Error("fail"); return res.json(); })
-      .then((data: DBSchedule[]) => setSchedules(data.length > 0 ? data : mockData))
-      .catch(() => setSchedules(mockData));
+      .then((data: DBSchedule[]) => setSchedules(data))
+      .catch(() => setSchedules([]));
   }, []);
 
   // 오늘 스케줄 필터
@@ -115,7 +107,7 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
   // 삭제
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`${API_BASE}/DB/schedule/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/DB/schedule/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("삭제 실패");
       setSchedules((prev) => prev.filter((s) => s.id !== id));
     } catch (e) {

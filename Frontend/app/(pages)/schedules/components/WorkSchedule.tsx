@@ -8,7 +8,7 @@ import ScheduleInsert from './ScheduleInsert';
 import ScheduleDetail from './ScheduleDetail';
 import type { RobotRowData } from '@/app/type';
 import { mockScheduleRows, type ScheduleStatus } from "@/app/mock/schedule_data";
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 import { expandRepeatSchedules, extractOriginalId, type DBSchedule } from "../utils/expandRepeatSchedules";
 
 // ===== 반복 스케줄 테스트용 Mock 데이터 =====
@@ -308,7 +308,7 @@ export default function Page({ robots }: RobotScheduleProps) {
             if (USE_MOCK) {
                 setSchedules(MOCK_SCHEDULES);
             } else {
-                const res = await fetch(`${API_BASE}/DB/schedule`);
+                const res = await apiFetch(`/DB/schedule`);
                 if (!res.ok) throw new Error("서버 응답 오류");
                 const data = await res.json();
                 setSchedules(data);

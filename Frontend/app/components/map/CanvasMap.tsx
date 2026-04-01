@@ -21,6 +21,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
   {
     config,
     robotPos,
+    robotName,
     pois,
     navPath,
     selectedPoiId,
@@ -30,6 +31,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
     showPath = false,
     showLabels = true,
     onPoiClick,
+    onPoiNavigate,
     onMapClick,
     onMapMouseMove,
     interactive = true,
@@ -163,7 +165,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
         />
 
         {showRobot && robotScreen && (
-          <RobotMarker screenX={robotScreen.x} screenY={robotScreen.y} yaw={robotPos?.yaw} size={robotMarkerSize} scale={scale} />
+          <RobotMarker screenX={robotScreen.x} screenY={robotScreen.y} yaw={robotPos?.yaw} name={robotName} size={robotMarkerSize} scale={scale} />
         )}
 
 
@@ -178,10 +180,6 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
             }}
             scale={scale}
           />
-        )}
-
-        {showRobot && robotScreen && (
-          <RobotMarker screenX={robotScreen.x} screenY={robotScreen.y} size={robotMarkerSize} scale={scale} />
         )}
 
         {/* Debug test markers */}
@@ -215,6 +213,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
             screenX={screenX}
             screenY={screenY}
             onClose={() => setDetailPoi(null)}
+            onNavigate={onPoiNavigate}
           />
         );
       })()}
