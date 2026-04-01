@@ -6,7 +6,7 @@ import os
 import re
 
 from app.Database.database import SessionLocal
-from app.Database.models import BusinessInfo, AreaInfo, RobotMapInfo
+from app.Database.models import BusinessInfo, AreaInfo, RobotMapInfo, LocationInfo, RouteInfo, WayInfo
 
 map_manage = APIRouter(prefix="/map")
 
@@ -138,6 +138,36 @@ def delete_map(map_id: int, db: Session = Depends(get_db)):
     m = db.query(RobotMapInfo).filter(RobotMapInfo.id == map_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Map not found")
+
+    # 해당 맵의 장소명 수집 (경로 정리용)
+    places = db.query(LocationInfo).filter(LocationInfo.MapId == map_id).all()
+    place_names = {p.LacationName for p in places}
+
+    # 장소명이 포함된 경로(WayInfo) 삭제
+    if place_names:
+        all_ways = db.query(WayInfo).all()
+        for way in all_ways:
+            wp_names = {n.strip() for n in (way.WayPoints or "").split(" - ")}
+            if wp_names & place_names:
+                db.delete(way)
+
+    # 해당 맵의 구간 삭제
+    db.query(RouteInfo).filter(RouteInfo.MapId == map_id).delete()
+
+    # 해당 맵의 장소 삭제
+    db.query(LocationInfo).filter(LocationInfo.MapId == map_id).delete()
+
+    # 맵 파일 삭제 (pgm, yaml, png)
+    for path in [m.PgmFilePath, m.YamlFilePath, m.ImgFilePath]:
+        if path:
+            try:
+                full = os.path.join(".", path) if not os.path.isabs(path) else path
+                if os.path.exists(full):
+                    os.remove(full)
+            except Exception as e:
+                print(f"[WARN] 맵 파일 삭제 실패: {path} — {e}")
+
+    # 맵 삭제
     db.delete(m)
     db.commit()
     return {"status": "deleted"}

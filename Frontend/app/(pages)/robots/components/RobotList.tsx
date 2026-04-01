@@ -20,7 +20,7 @@ import PlaceCrudModal, { type PlaceRowData } from "./PlaceCrudModal";
 import PlaceDeleteConfirmModal from "./PlaceDeleteConfirmModal";
 import PlaceMapView from "./PlaceMapView";
 import PathMapView from "./PathMapView";
-import PathCrudModal from "@/app/(pages)/robots/components/PathCrudModal";
+import PathCrudModal, { type RouteRow } from "@/app/(pages)/robots/components/PathCrudModal";
 import PathDeleteConfirmModal from "@/app/(pages)/robots/components/PathDeleteConfirmModal";
 import { API_BASE } from "@/app/config";
 import PathAlertsModal from "@/app/(pages)/robots/components/PathAlertsModal";
@@ -603,6 +603,7 @@ const resetCurrentPage = () => {
 
    // 장소관리
   const [placeRows, setPlaceRows] = useState<PlaceRow[]>([]);
+  const [routeRows, setRouteRows] = useState<RouteRow[]>([]);
 
   const [selectedPlaceRobot, setSelectedPlaceRobot] = useState<string | null>(null); // null=Total
   const [selectedPlaceFloor, setSelectedPlaceFloor] = useState<string | null>(null); // null=Total
@@ -673,9 +674,21 @@ const resetCurrentPage = () => {
     }
   };
 
+  const fetchRoutes = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/DB/routes`);
+      const data = await res.json();
+      setRouteRows(data);
+    } catch (e) {
+      console.error("도로 목록 로드 실패", e);
+      setRouteRows([]);
+    }
+  };
+
   useEffect(() => {
     if (activeTab !== "place" && activeTab !== "path") return;
     fetchPlaces();
+    if (activeTab === "path") fetchRoutes();
   }, [activeTab]);
 
 
@@ -1827,6 +1840,7 @@ const resetCurrentPage = () => {
       mode="create"
       placeRows={placeRows}
       existingPaths={pathRows}
+      routes={routeRows}
       initial={null}
       onClose={() => setPathCreateOpen(false)}
       onSubmit={savePathToDB}
@@ -1839,6 +1853,7 @@ const resetCurrentPage = () => {
       mode="edit"
       placeRows={placeRows}
       existingPaths={pathRows}
+      routes={routeRows}
       robots={robots}
       floors={floors}
       initial={singleCheckedPathRow}

@@ -21,6 +21,14 @@ export type PlaceRow = {
   updatedAt?: string;
 };
 
+export type RouteRow = {
+  id: number;
+  MapId: number;
+  StartPlaceName: string;
+  EndPlaceName: string;
+  Direction: string; // "forward" | "reverse" | "bidirectional"
+};
+
 export type PathRow = {
   id: number;
   robotNo: string;
@@ -41,6 +49,9 @@ type Props = {
   placeRows: PlaceRow[];
   robots: RobotRowData[];
   floors: Floor[];
+
+  // ✅ 도로(연결 가능 구간) 목록 — 경로 필터링용
+  routes?: RouteRow[];
 
   // ✅ 수정 모드일 때 초기값
   initial: PathRow | null;
@@ -98,6 +109,7 @@ export default function PathCrudModal({
   placeRows,
   robots,
   floors,
+  routes = [],
   initial,
   existingPaths = [],
   onSubmit,
@@ -234,15 +246,40 @@ export default function PathCrudModal({
     []
   );
 
+  // 현재 마지막 장소에서 도로로 연결 가능한 장소 이름 Set
+  const reachablePlaceNames = useMemo(() => {
+    if (selectedOrder.length === 0 || routes.length === 0) return null; // null = 제한 없음 (시작점 선택)
+    const lastPlace = selectedOrder[selectedOrder.length - 1];
+    const names = new Set<string>();
+    for (const r of routes) {
+      // forward: start → end 방향만
+      if (r.Direction === "forward" && r.StartPlaceName === lastPlace.placeName) {
+        names.add(r.EndPlaceName);
+      }
+      // reverse: end → start 방향만
+      if (r.Direction === "reverse" && r.EndPlaceName === lastPlace.placeName) {
+        names.add(r.StartPlaceName);
+      }
+      // bidirectional: 양쪽 다
+      if (r.Direction === "bidirectional") {
+        if (r.StartPlaceName === lastPlace.placeName) names.add(r.EndPlaceName);
+        if (r.EndPlaceName === lastPlace.placeName) names.add(r.StartPlaceName);
+      }
+    }
+    return names;
+  }, [selectedOrder, routes]);
+
   const filteredPlaceRows = useMemo(() => {
     const keyword = placeSearch.trim().toLowerCase();
     return placeRows.filter((p) => {
       const robotOk = !selectedRobot || p.robotNo === selectedRobot;
       const floorOk = !selectedFloor || p.floor === selectedFloor;
       const searchOk = !keyword || p.placeName.toLowerCase().includes(keyword);
-      return robotOk && floorOk && searchOk;
+      // 도로 필터: routes가 있고 시작점이 선택됐으면, 연결 가능한 장소만 표시
+      const routeOk = !reachablePlaceNames || reachablePlaceNames.has(p.placeName);
+      return robotOk && floorOk && searchOk && routeOk;
     });
-  }, [placeRows, selectedRobot, selectedFloor, placeSearch]);
+  }, [placeRows, selectedRobot, selectedFloor, placeSearch, reachablePlaceNames]);
 
   const shouldShowPlaceScroll = filteredPlaceRows.length > 0;
 

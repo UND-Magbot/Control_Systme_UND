@@ -7,6 +7,7 @@ from app.Database.models import RobotInfo
 from app.Database.models import LocationInfo
 from app.Database.models import WayInfo
 from app.Database.models import ScheduleInfo
+from app.Database.models import RouteInfo
 from fastapi.encoders import jsonable_encoder
 
 from datetime import datetime
@@ -84,11 +85,12 @@ def get_robot_by_id(robot_id: int, db: Session = Depends(get_db)):
 
 class RobotPlaceInsertReq(BaseModel):
     RobotName: str
-    LacationName : str
+    LacationName: str
     Floor: str
     LocationX: float
     LocationY: float
     Yaw: float = 0.0
+    MapId: int | None = None
     Imformation: str | None = None
 
 @database.post("/places")
@@ -99,11 +101,12 @@ def insert_robot_place(
     place = LocationInfo(
         UserId=1,              # 🔹 임시 (로그인 연동 전)
         RobotName=req.RobotName,
-        LacationName = req.LacationName,
+        LacationName=req.LacationName,
         Floor=req.Floor,
         LocationX=req.LocationX,
         LocationY=req.LocationY,
         Yaw=req.Yaw,
+        MapId=req.MapId,
         Imformation=req.Imformation,
     )
 
@@ -114,8 +117,11 @@ def insert_robot_place(
     return place
 
 @database.get("/places")
-def get_places(db: Session = Depends(get_db)):
-    return db.query(LocationInfo).order_by(LocationInfo.id.desc()).all()
+def get_places(map_id: int | None = None, db: Session = Depends(get_db)):
+    q = db.query(LocationInfo)
+    if map_id is not None:
+        q = q.filter(LocationInfo.MapId == map_id)
+    return q.order_by(LocationInfo.id.desc()).all()
 
 
 class PathInsertReq(BaseModel):
@@ -382,6 +388,7 @@ def update_place(place_id: int, req: RobotPlaceInsertReq, db: Session = Depends(
     place.LocationX = req.LocationX
     place.LocationY = req.LocationY
     place.Yaw = req.Yaw
+    place.MapId = req.MapId
     place.Imformation = req.Imformation
 
     db.commit()
@@ -421,4 +428,46 @@ def delete_path(path_id: int, db: Session = Depends(get_db)):
     db.delete(path)
     db.commit()
 
+    return {"status": "deleted"}
+
+
+# =========================
+# 경로(구간) CRUD
+# =========================
+class RouteInsertReq(BaseModel):
+    MapId: int
+    StartPlaceName: str
+    EndPlaceName: str
+    Direction: str  # forward, reverse, bidirectional
+
+
+@database.get("/routes")
+def get_routes(map_id: int | None = None, db: Session = Depends(get_db)):
+    q = db.query(RouteInfo)
+    if map_id is not None:
+        q = q.filter(RouteInfo.MapId == map_id)
+    return q.all()
+
+
+@database.post("/routes")
+def insert_route(req: RouteInsertReq, db: Session = Depends(get_db)):
+    route = RouteInfo(
+        MapId=req.MapId,
+        StartPlaceName=req.StartPlaceName,
+        EndPlaceName=req.EndPlaceName,
+        Direction=req.Direction,
+    )
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+    return route
+
+
+@database.delete("/routes/{route_id}")
+def delete_route(route_id: int, db: Session = Depends(get_db)):
+    route = db.query(RouteInfo).filter(RouteInfo.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    db.delete(route)
+    db.commit()
     return {"status": "deleted"}
