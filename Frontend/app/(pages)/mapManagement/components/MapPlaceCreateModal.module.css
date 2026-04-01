@@ -1,0 +1,511 @@
+/* ─── 오버레이 ─── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+  animation: fadeIn 0.2s ease;
+}
+
+/* ─── 모달 컨테이너 (단일 컬럼) ─── */
+.modal {
+  width: min(440px, 90vw);
+  max-height: min(620px, 85vh);
+  border-radius: 14px;
+  background: var(--surface-3);
+  padding: 14px 22px 14px;
+  position: relative;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  animation: slideUp 0.25s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── 헤더 ─── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerLeft img {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.headerLeft h2 {
+  margin: 0;
+  font-weight: 500;
+  font-size: var(--font-size-xl);
+  color: var(--text-primary);
+}
+
+.closeBtn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  flex-shrink: 0;
+}
+.closeBtn:hover {
+  opacity: 0.7;
+}
+
+/* ─── 본문 ─── */
+.body {
+  flex: 1;
+  min-height: 0;
+  margin-top: 14px;
+  overflow-y: auto;
+  overflow-x: visible;
+  padding-right: 4px;
+}
+
+/* 스크롤바 */
+.body::-webkit-scrollbar {
+  width: 4px;
+}
+.body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+.body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ─── 섹션 그룹 ─── */
+.sectionGroup {
+  border-radius: 10px;
+  background: var(--surface-5);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sectionTitleLine {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ─── 폼 행 ─── */
+.row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+}
+
+.rowAlignTop {
+  align-items: flex-start;
+}
+
+.rowAlignTop .label {
+  padding-top: 4px;
+}
+
+/* ─── 레이블 ─── */
+.label {
+  width: 68px;
+  flex: 0 0 68px;
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.selectWrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+/* DropdownSelect 오버라이드 */
+.modalSelect {
+  --ds-trigger-bg: var(--surface-input);
+  --ds-trigger-border: var(--border-input);
+  --ds-trigger-hover-bg: var(--surface-elevated);
+  --ds-trigger-padding: 0 11px;
+  --ds-trigger-height: 30px;
+  --ds-border-radius: 5px;
+  --ds-font-size: var(--font-size-sm);
+  --ds-placeholder-color: var(--text-tertiary);
+  --ds-menu-bg: var(--surface-1);
+  --ds-menu-border: var(--border-input);
+  --ds-menu-z: 100;
+  --ds-option-padding: 6px 11px;
+  --ds-option-hover-bg: var(--color-info-selected);
+}
+
+/* ─── 텍스트 인풋 ─── */
+.input {
+  width: 100%;
+  height: 30px;
+  background: var(--surface-input);
+  border-radius: 5px;
+  border: 1px solid var(--border-input);
+  padding: 0 11px;
+  font-weight: 400;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.input::placeholder {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  opacity: 1;
+}
+
+/* ─── XY 좌표 필드 ─── */
+.xyBoxInline {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+}
+
+.xyInlineItem {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.xyInput {
+  width: 100%;
+  height: 30px;
+  background: var(--surface-input);
+  border-radius: 5px;
+  border: 1px solid var(--border-input);
+  padding: 0 8px;
+  font-weight: 400;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  min-width: 0;
+}
+
+.xyInput::placeholder {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  opacity: 1;
+}
+
+.xyLabel {
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.xyInputEmpty {
+  border-style: dashed;
+  border-color: var(--text-muted);
+  background: var(--surface-4);
+  cursor: default;
+}
+
+.xyInputFilled {
+  border-color: var(--color-success, #92D050);
+  background: var(--surface-input);
+  cursor: default;
+}
+
+/* ─── 좌표 에러 행 ─── */
+.xyErrorRow {
+  margin: -4px 0 6px 0;
+  display: flex;
+  gap: 10px;
+}
+
+/* ─── 방향 입력 래퍼 ─── */
+.directionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.directionInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.directionInputWrap .xyInput {
+  flex: 1;
+  min-width: 0;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.directionInputWrap .xyInput::-webkit-inner-spin-button,
+.directionInputWrap .xyInput::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ─── 방향 인디케이터 ─── */
+.directionIndicator {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.directionIndicator:hover {
+  border-color: var(--color-info-border);
+  box-shadow: 0 0 0 2px rgba(14, 133, 183, 0.15);
+}
+
+.directionIndicator::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.directionArrow {
+  width: 2px;
+  height: 14px;
+  background: var(--color-accent-light, #92d4f4);
+  border-radius: 1px;
+  transform-origin: center bottom;
+  position: absolute;
+  bottom: 50%;
+}
+
+.directionArrow::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 5px solid var(--color-accent-light, #92d4f4);
+}
+
+/* ─── 텍스트 영역 ─── */
+.rowTextArea {
+  align-items: flex-start;
+}
+
+.textarea {
+  width: 100%;
+  height: 56px;
+  resize: none;
+  background: var(--surface-input);
+  border-radius: 5px;
+  border: 1px solid var(--border-input);
+  padding: 8px 10px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+.textarea::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+/* ─── 포커스 스타일 ─── */
+.edit:focus {
+  outline: none;
+  border-color: var(--color-info-border);
+  box-shadow: 0 0 0 2px rgba(14, 133, 183, 0.25);
+}
+
+/* ─── 하단 버튼 ─── */
+.footer {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 10px;
+  flex-shrink: 0;
+}
+
+.footerBtn {
+  width: 130px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.footerBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.footerBtn img {
+  width: 11px;
+  height: 11px;
+}
+
+.btnRed {
+  border: 1px solid var(--color-error-border);
+  background: var(--color-error-bg);
+}
+.btnRed:hover:not(:disabled) {
+  background: var(--color-error-hover);
+}
+.btnRed:active:not(:disabled) {
+  background: #7a1019;
+}
+
+.btnBlue {
+  border: 1px solid var(--color-info-border);
+  background: var(--color-info-bg);
+}
+.btnBlue:hover:not(:disabled) {
+  background: #1d7aab;
+}
+.btnBlue:active:not(:disabled) {
+  background: #135a80;
+}
+
+/* ─── 필수 필드 표시 ─── */
+.required::after {
+  content: " *";
+  color: var(--color-error, #ff4b4b);
+}
+
+/* ─── 글자수 카운터 ─── */
+.inputWrap,
+.textareaWrap {
+  flex: 1;
+  position: relative;
+}
+
+.inputWrap .input,
+.textareaWrap .textarea {
+  width: 100%;
+}
+
+.charCounter {
+  text-align: right;
+  font-size: var(--font-size-2xs);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.charCounterWarn {
+  color: var(--color-error, #ff4b4b);
+}
+
+/* ─── 필드 에러 ─── */
+.fieldError {
+  font-size: var(--font-size-xs);
+  color: var(--color-error-soft, #ff4b4b);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+.inputError {
+  border-color: var(--color-error-soft, #ff4b4b) !important;
+}
+
+/* ─── 좌표 정보 표시 ─── */
+.coordInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.coordRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coordTag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  background: rgba(0, 176, 238, 0.12);
+  color: var(--color-info, #00B0EE);
+  flex-shrink: 0;
+  min-width: 44px;
+  text-align: center;
+}
+
+.coordValues {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+/* ─── 저장 버튼 스피너 ─── */
+.btnSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: var(--text-primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

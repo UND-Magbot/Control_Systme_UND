@@ -29,6 +29,7 @@ WAYPOINT_FILE = "./data/waypoints.json"
 
 # nav_thread 상태 리셋 신호 (새 주행/정지 시 nav_thread가 감지)
 _nav_reset_flag = False
+_nav_full_reset_flag = False  # True면 retry_count도 리셋
 
 def is_nav_active():
     return is_navigating
@@ -45,16 +46,19 @@ def get_nav_sent_time():
     return nav_sent_time
 
 def check_and_clear_reset_flag():
-    """nav_thread에서 호출: 리셋 신호가 있으면 True 반환 후 클리어"""
-    global _nav_reset_flag
+    """nav_thread에서 호출: 리셋 신호가 있으면 (True, is_full) 반환 후 클리어"""
+    global _nav_reset_flag, _nav_full_reset_flag
     if _nav_reset_flag:
+        is_full = _nav_full_reset_flag
         _nav_reset_flag = False
-        return True
-    return False
+        _nav_full_reset_flag = False
+        return True, is_full
+    return False, False
 
-def _signal_nav_reset():
-    global _nav_reset_flag
+def _signal_nav_reset(full=False):
+    global _nav_reset_flag, _nav_full_reset_flag
     _nav_reset_flag = True
+    _nav_full_reset_flag = full
 
 @move.post("/startmove")
 def start_navigation(loop: int = 3):
@@ -68,8 +72,8 @@ def start_navigation(loop: int = 3):
     is_navigating = True
     nav_loop_remaining = loop - 1
 
-    # nav_thread 상태 리셋 (last_status, zero_count 초기화)
-    _signal_nav_reset()
+    # nav_thread 상태 리셋 (last_status, zero_count, retry_count 초기화)
+    _signal_nav_reset(full=True)
 
     print(f"🚗 NAV START — 총 {len(waypoints_list)}개 웨이포인트, 반복: {loop}회")
     log_event("schedule", "nav_start",
@@ -86,7 +90,7 @@ def stop_navigation():
     is_navigating = False
     current_wp_index = 0
     nav_loop_remaining = 0
-    _signal_nav_reset()
+    _signal_nav_reset(full=True)
     print(f"🛑 NAV STOP (was_active={was_active})")
     return {"status": "ok", "msg": "네비게이션 정지 완료"}
 
@@ -136,7 +140,7 @@ def navigation_send_next():
 
     # 다음 웨이포인트 전송 전 nav_thread 상태 리셋
     # → last_status=None으로 초기화되어 새 상태 전환을 감지할 수 있음
-    _signal_nav_reset()
+    _signal_nav_reset(full=True)
 
     print(f"➡ NAV 이동 시작: {idx} / {len(waypoints_list)}")
     time.sleep(1)  # 로봇 네비게이션 준비 대기
@@ -211,7 +215,7 @@ def move_along_path(path_id: int, db: Session = Depends(get_db)):
     waypoints_list = waypoints
     current_wp_index = 0
     is_navigating = True
-    _signal_nav_reset()
+    _signal_nav_reset(full=True)
 
     print(f"🛤 경로 이동 시작: {path.WayName} — 총 {len(waypoints)}개 포인트")
     for i, wp in enumerate(waypoints):

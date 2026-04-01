@@ -374,6 +374,7 @@ NAV_POLL_INTERVAL = 1.0
 NAV_RETRY_TIMEOUT = 30.0   # 전송 후 N초 내 이동 시작 안 하면 재전송
 NAV_MAX_RETRIES = 3        # 최대 재전송 횟수
 ARRIVAL_CONFIRM_COUNT = 3  # status==0 연속 N회 확인 후 도착 판정 (오판 방지)
+NEAR_SKIP_DISTANCE = 0.5   # 목표 웨이포인트까지 이 거리(m) 이내면 이미 도착으로 간주
 
 def nav_thread():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -383,6 +384,8 @@ def nav_thread():
     last_status = None
     ever_moved = False      # 현재 WP에서 이동(!=0)을 한 번이라도 감지했는지
     zero_count = 0          # status==0 연속 카운트
+    pause_since = 0         # 255 연속 시작 시간
+    last_stand_sent = 0     # 마지막 STAND 전송 시간
     retry_count = 0
 
     print(f"📡 네비 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
@@ -391,12 +394,16 @@ def nav_thread():
         arrived = False
 
         # ── 리셋 신호 감지 (새 주행 시작 / 정지 / 다음 WP 전송 시) ──
-        if check_and_clear_reset_flag():
+        reset, is_full = check_and_clear_reset_flag()
+        if reset:
             last_status = None
             ever_moved = False
             zero_count = 0
-            retry_count = 0
-            print("[NAV] 상태 리셋 (last_status=None)")
+            pause_since = 0
+            last_stand_sent = 0
+            if is_full:
+                retry_count = 0
+            print(f"[NAV] 상태 리셋 (last_status=None, full={is_full})")
 
         # ── 상태 기반 도착 감지 ──
         try:
@@ -446,8 +453,65 @@ def nav_thread():
                               f"웨이포인트 {current_wp_index}/{len(waypoints_list)} 도착",
                               robot_id=get_robot_id(), robot_name=get_robot_name())
 
+                # 이동 미감지: status=0이 지속될 때 처리
+                sent_time = get_nav_sent_time()
+                elapsed = time.time() - sent_time if sent_time > 0 else 0
+                if (not arrived and not ever_moved
+                        and zero_count >= ARRIVAL_CONFIRM_COUNT
+                        and is_nav_active() and cooldown_ok):
+                    # 이미 목표 근처에 있으면 바로 도착 처리 (재전송 불필요)
+                    target = get_current_target()
+                    if target:
+                        dx = robot_position["x"] - target["x"]
+                        dy = robot_position["y"] - target["y"]
+                        dist = (dx**2 + dy**2) ** 0.5
+                        if dist < NEAR_SKIP_DISTANCE:
+                            arrived = True
+                            print(f"✅ NAV 이미 목표 근처 (거리={dist:.2f}m < {NEAR_SKIP_DISTANCE}m) — 다음 WP로 진행")
+
+                    # 목표와 멀면 재전송 (5초 대기 후)
+                    if not arrived and elapsed >= 5.0:
+                        if retry_count < NAV_MAX_RETRIES:
+                            retry_count += 1
+                            print(f"⚠️ NAV 이동 미감지 — 재전송 ({retry_count}/{NAV_MAX_RETRIES})")
+                            try:
+                                navigation_resend_current()
+                            except Exception as e:
+                                print(f"[ERR] 재전송 실패: {e}")
+                        else:
+                            arrived = True
+                            print(f"⚠️ NAV 이동 미감지 — 재전송 한도 초과, 다음 WP로 진행")
+
+                # 일시 정지(255) 추적 + 앉기 방지
+                if status == 255:
+                    if pause_since == 0:
+                        pause_since = time.time()
+                    # 5초마다 STAND 전송하여 앉기 방지
+                    if is_nav_active() and (time.time() - last_stand_sent) >= 5.0:
+                        last_stand_sent = time.time()
+                        try:
+                            from app.robot_sender import send_to_robot
+                            send_to_robot("STAND")
+                        except Exception as e:
+                            print(f"[ERR] STAND 전송 실패: {e}")
+                else:
+                    pause_since = 0
+
+                # 일시 정지(255): 연속 5초 이상 지속 시 현재 WP 재전송
+                if (not arrived and status == 255 and pause_since > 0
+                        and is_nav_active() and cooldown_ok
+                        and (time.time() - pause_since) >= 10.0
+                        and retry_count < NAV_MAX_RETRIES):
+                    retry_count += 1
+                    pause_since = time.time()  # 재전송 후 타이머 리셋
+                    print(f"⚠️ NAV 일시정지(255) 연속 10초 지속 — 재전송 ({retry_count}/{NAV_MAX_RETRIES})")
+                    try:
+                        navigation_resend_current()
+                    except Exception as e:
+                        print(f"[ERR] 재전송 실패: {e}")
+
                 # 재전송: 전송 후 N초 지났는데 이동을 한 번도 안 했으면 명령 재전송
-                if (is_nav_active() and not ever_moved
+                if (is_nav_active() and not ever_moved and not arrived
                         and sent_time > 0
                         and (time.time() - sent_time) > NAV_RETRY_TIMEOUT
                         and retry_count < NAV_MAX_RETRIES):
