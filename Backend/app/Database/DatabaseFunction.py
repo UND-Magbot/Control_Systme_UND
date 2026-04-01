@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.Database.database import SessionLocal
-from app.Database.models import RobotInfo, LocationInfo, WayInfo, ScheduleInfo, UserInfo, RobotModule, ModuleCameraInfo
+from app.Database.models import RobotInfo, LocationInfo, WayInfo, ScheduleInfo, UserInfo, RobotModule, ModuleCameraInfo, RouteInfo
 from fastapi.encoders import jsonable_encoder
 
 from datetime import datetime
@@ -113,11 +113,12 @@ def get_robot_by_id(robot_id: int, db: Session = Depends(get_db), current_user: 
 
 class RobotPlaceInsertReq(BaseModel):
     RobotName: str
-    LacationName : str
+    LacationName: str
     Floor: str
     LocationX: float
     LocationY: float
     Yaw: float = 0.0
+    MapId: int | None = None
     Imformation: str | None = None
 
 @database.post("/places")
@@ -130,11 +131,12 @@ def insert_robot_place(
     place = LocationInfo(
         UserId=current_user.id,
         RobotName=req.RobotName,
-        LacationName = req.LacationName,
+        LacationName=req.LacationName,
         Floor=req.Floor,
         LocationX=req.LocationX,
         LocationY=req.LocationY,
         Yaw=req.Yaw,
+        MapId=req.MapId,
         Imformation=req.Imformation,
     )
 
@@ -149,8 +151,11 @@ def insert_robot_place(
     return place
 
 @database.get("/places")
-def get_places(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
-    return db.query(LocationInfo).order_by(LocationInfo.id.desc()).all()
+def get_places(map_id: int | None = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+    q = db.query(LocationInfo)
+    if map_id is not None:
+        q = q.filter(LocationInfo.MapId == map_id)
+    return q.order_by(LocationInfo.id.desc()).all()
 
 
 class PathInsertReq(BaseModel):
@@ -404,6 +409,7 @@ def update_place(place_id: int, req: RobotPlaceInsertReq, request: Request, db: 
         "X좌표": ("LocationX", req.LocationX),
         "Y좌표": ("LocationY", req.LocationY),
         "방향": ("Yaw", req.Yaw),
+        "맵ID": ("MapId", req.MapId),
         "정보": ("Imformation", req.Imformation),
     }
 
@@ -669,3 +675,45 @@ def delete_module(
                 ip_address=get_client_ip(request))
 
     return {"status": "ok"}
+
+
+# =========================
+# 경로(구간) CRUD
+# =========================
+class RouteInsertReq(BaseModel):
+    MapId: int
+    StartPlaceName: str
+    EndPlaceName: str
+    Direction: str  # forward, reverse, bidirectional
+
+
+@database.get("/routes")
+def get_routes(map_id: int | None = None, db: Session = Depends(get_db)):
+    q = db.query(RouteInfo)
+    if map_id is not None:
+        q = q.filter(RouteInfo.MapId == map_id)
+    return q.all()
+
+
+@database.post("/routes")
+def insert_route(req: RouteInsertReq, db: Session = Depends(get_db)):
+    route = RouteInfo(
+        MapId=req.MapId,
+        StartPlaceName=req.StartPlaceName,
+        EndPlaceName=req.EndPlaceName,
+        Direction=req.Direction,
+    )
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+    return route
+
+
+@database.delete("/routes/{route_id}")
+def delete_route(route_id: int, db: Session = Depends(get_db)):
+    route = db.query(RouteInfo).filter(RouteInfo.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    db.delete(route)
+    db.commit()
+    return {"status": "deleted"}

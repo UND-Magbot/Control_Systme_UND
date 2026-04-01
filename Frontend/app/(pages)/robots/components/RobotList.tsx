@@ -9,6 +9,21 @@ import RobotInsertModal from "@/app/components/modal/RobotInsertModal";
 import RobotDetailModal from "@/app/components/modal/RobotDetailModal";
 import CancelConfirmModal from "@/app/components/modal/CancelConfirmModal";
 import { apiFetch } from "@/app/lib/api";
+import RobotWorkScheduleModal from "@/app/components/modal/WorkScheduleModal";
+import type { WorkScheduleCase } from "@/app/components/modal/WorkScheduleModal";
+import PlacePathModal from "@/app/components/modal/PlacePathModal";
+import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
+import PathMoveModal from "@/app/components/modal/PathMoveModal";
+import type { PlaceRow } from "@/app/mock/robotPlace_data";
+import { mockPathRows } from "@/app/mock/robotPath_data";
+import PlaceCrudModal, { type PlaceRowData } from "./PlaceCrudModal";
+import PlaceDeleteConfirmModal from "./PlaceDeleteConfirmModal";
+import PlaceMapView from "./PlaceMapView";
+import PathMapView from "./PathMapView";
+import PathCrudModal, { type RouteRow } from "@/app/(pages)/robots/components/PathCrudModal";
+import PathDeleteConfirmModal from "@/app/(pages)/robots/components/PathDeleteConfirmModal";
+import { API_BASE } from "@/app/config";
+import PathAlertsModal from "@/app/(pages)/robots/components/PathAlertsModal";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import RemoteMapModal from "@/app/components/modal/RemoteMapModal";
 import {
@@ -227,6 +242,148 @@ export default function RobotStatusList({
     setRobotDetailEditMode(false);
     setRobotDetailModalOpen(true);
   };
+
+  const handleSendLogOk = () => {
+    // ✅ 여기서 checkedRobotIds를 사용해서 전송
+    console.log("충전소 이동 robots:", checkedRobotIds);
+
+    // TODO: API/WS 호출 (checkedRobotIds 전체 대상)
+
+    setShowConfirm(false);
+
+    // 선택을 유지할지/초기화할지 정책 결정:
+    // setCheckedRobotIds([]); // 필요 시 초기화
+  };
+
+  const handleSendLogCancel = () => {
+    setShowConfirm(false);
+  };
+
+   // 장소관리
+  const [placeRows, setPlaceRows] = useState<PlaceRow[]>([]);
+  const [routeRows, setRouteRows] = useState<RouteRow[]>([]);
+
+  const [selectedPlaceRobot, setSelectedPlaceRobot] = useState<string | null>(null); // null=Total
+  const [selectedPlaceFloor, setSelectedPlaceFloor] = useState<string | null>(null); // null=Total
+  const [selectedPlaceId, setSelectedPlaceId] = useState<number | null>(null);
+
+  // ✅ 로봇 탭 checkedRobotIds와 동일 패턴
+  const [checkedPlaceIds, setCheckedPlaceIds] = useState<number[]>([]);
+  const placeCheckedCount = checkedPlaceIds.length;
+
+  // ✅ 조건4 정책 (요구대로)
+  const isPlaceCreateEnabled = placeCheckedCount === 0;
+  const isPlaceEditEnabled = placeCheckedCount === 1;
+  const isPlaceDeleteEnabled = placeCheckedCount >= 1;
+
+  // ✅ 체크 1개일 때만 선택 장소(단일) 계산
+  const singleCheckedPlaceRow = useMemo(() => {
+    if (checkedPlaceIds.length !== 1) return null;
+    const id = checkedPlaceIds[0];
+    return placeRows.find((r) => r.id === id) ?? null;
+  }, [checkedPlaceIds, placeRows]);
+
+  const [places, setPlaces] = useState<PlaceRowData[]>([
+    {
+      id: 1,
+      robotNo: "Robot 1",
+      floor: "1F",
+      name: "병원대기 2",
+      x: "62.2803218070417",
+      y: "51.71609980765794",
+      direction: "0",
+      desc: "대학병원 대기공간",
+      updatedAt: "2025.12.12 오전 10:35:47",
+    },
+  ]);
+
+  const placeRobotOptions = useMemo(() => {
+    const set = new Set(robots.map((r) => r.no));
+    return Array.from(set);
+  }, [robots]);
+
+  const placeFloorOptions = useMemo(() => {
+    const set = new Set(floors.map((f) => f.label));
+    // 층 정렬(원하면 커스텀)
+    return Array.from(set);
+  }, [floors]);
+
+
+  const fetchPlaces = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/DB/places`);
+      const data = await res.json();
+      const mapped: PlaceRow[] = data.map((p: any) => ({
+        id: p.id,
+        robotNo: p.RobotName ?? "",
+        floor: p.Floor ?? "",
+        placeName: p.LacationName ?? "",
+        x: p.LocationX ?? 0,
+        y: p.LocationY ?? 0,
+        direction: p.LocationDir ?? 0,
+        updatedAt: p.UpdatedAt
+          ? new Date(p.UpdatedAt).toLocaleString("ko-KR")
+          : "",
+      }));
+      setPlaceRows(mapped);
+    } catch (e) {
+      console.error("장소 목록 로드 실패", e);
+      setPlaceRows([]);
+    }
+  };
+
+  const fetchRoutes = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/DB/routes`);
+      const data = await res.json();
+      setRouteRows(data);
+    } catch (e) {
+      console.error("도로 목록 로드 실패", e);
+      setRouteRows([]);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "place" && activeTab !== "path") return;
+    fetchPlaces();
+    if (activeTab === "path") fetchRoutes();
+  }, [activeTab]);
+
+
+  const toPlaceRowData = (row: PlaceRow): PlaceRowData => ({
+    id: row.id,
+    robotNo: row.robotNo,
+    floor: row.floor,
+    name: row.placeName,
+    x: String(row.x),
+    y: String(row.y),
+    direction: String(row.direction ?? 0),
+    desc: "",
+    updatedAt: row.updatedAt,
+  });
+
+  // place 탭 데이터 필터
+  const filteredPlaceRows = useMemo(() => {
+    return placeRows
+      .filter((r) => {
+        const robotOk = !selectedPlaceRobot || r.robotNo === selectedPlaceRobot;
+        const floorOk = !selectedPlaceFloor || r.floor === selectedPlaceFloor;
+        return robotOk && floorOk;
+      })
+      // .sort((a, b) => {
+      //   return parseUpdatedAt(b.updatedAt) - parseUpdatedAt(a.updatedAt);
+      // });
+  }, [placeRows, selectedPlaceRobot, selectedPlaceFloor]);
+
+  const selectedPlaceRow = useMemo(() => {
+    if (selectedPlaceId == null) return null;
+    return filteredPlaceRows.find(r => r.id === selectedPlaceId) ?? null;
+  }, [selectedPlaceId, filteredPlaceRows]);
+
+  const selectedPlace = useMemo(
+    () => places.find((p) => p.id === selectedPlaceId) ?? null,
+    [places, selectedPlaceId]
+  );
 
   // 삭제 모드
   const enterDeleteMode = () => { setDeleteMode(true); setCheckedRobotIds([]); setSelectedRobotId(null); setSelectedRobot(null); };
@@ -482,6 +639,243 @@ export default function RobotStatusList({
     )}
 
     {activeTab === "business" && <BusinessList />}
+
+    {activeTab === "path" && (
+      <div className={styles.pathWrap}>
+        {/* LEFT: 경로 목록 */}
+        <div className={styles.pathLeft}>
+          <div className={styles.pathTopBar}>
+            <h2>경로 목록</h2>
+
+            <div className={styles.pathFilters}>
+              <FilterSelectBox
+                items={pathRobotOptions.map((no, i) => ({ id: i, label: no }))}
+                selectedLabel={selectedPathRobot}
+                placeholder="로봇명"
+                showTotal={pathRobotOptions.length > 0}
+                width={170}
+                onSelect={(item) => {
+                  setSelectedPathRobot(item?.label ?? null);
+                  resetPathSelection();
+                }}
+              />
+
+              <FilterSelectBox
+                items={pathWorkTypeOptions.map((t, i) => ({ id: i, label: t }))}
+                selectedLabel={selectedPathWorkType}
+                placeholder="작업유형"
+                width={130}
+                onSelect={(item) => {
+                  setSelectedPathWorkType(item?.label ?? null);
+                  resetPathSelection();
+                }}
+              />
+            </div>
+          </div>
+
+          {/* table + 로딩 오버레이 */}
+          <div className={styles.pathListBoxWrap}>
+            {pathLoading && (
+              <div className={styles.pathLoadingOverlay}>
+                <div className={styles.pathSpinner} />
+              </div>
+            )}
+            <div className={styles.pathListBox}>
+              <table className={`${styles.status} ${pathDeleteMode ? styles.pathTableDelete : styles.pathTable}`}>
+                <thead>
+                  <tr>
+                    {pathDeleteMode && (
+                      <th>
+                        <img
+                          src={isAllCurrentPathItemsChecked ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                          alt="현재 페이지 경로 전체 선택"
+                          style={{ cursor: "pointer" }}
+                          onClick={() => toggleAllCurrentPathItems(!isAllCurrentPathItemsChecked)}
+                        />
+                      </th>
+                    )}
+                    <th>로봇명</th>
+                    <th>작업유형</th>
+                    <th>경로명</th>
+                    <th>경로순서</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {currentPathItems.length === 0 && !pathLoading && (
+                    <tr>
+                      <td colSpan={pathDeleteMode ? 5 : 4}>
+                        <div className={styles.pathEmptyWrap}>
+                          <div className={styles.pathEmptyIcon}>!</div>
+                          <div className={styles.pathEmptyTitle}>등록된 경로가 없습니다.</div>
+                          <div className={styles.pathEmptyDesc}>경로 등록 버튼을 클릭하여 새 경로를 등록해 주세요.</div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {currentPathItems.map((row) => {
+                    const deleteChecked = checkedPathIds.includes(row.id);
+                    const isRowSelected = selectedPathId === row.id;
+
+                    return (
+                      <tr
+                        key={row.id}
+                        className={pathDeleteMode ? (deleteChecked ? styles.selectedRow : undefined) : (isRowSelected ? styles.selectedRow : undefined)}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => pathDeleteMode ? togglePathChecked(row.id, !deleteChecked) : setSelectedPathId(isRowSelected ? null : row.id)}
+                      >
+                        {pathDeleteMode && (
+                          <td>
+                            <img
+                              src={deleteChecked ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                              alt=""
+                            />
+                          </td>
+                        )}
+                        <td>{row.robotNo}</td>
+                        <td>{row.workType}</td>
+                        <td>{row.pathName}</td>
+                        <td className={styles.pathOrderCell}>
+                          <div className={styles.pathOrderText} title={row.pathOrder}>{row.pathOrder}</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* bottom buttons */}
+          <div className={styles.pathBottomBar}>
+            {pathDeleteMode ? (
+              <>
+                <div
+                  className={`${styles.pathPrimaryBtn} ${!isPathDeleteEnabled ? styles.btnDisabled : ""}`}
+                  onClick={() => { if (isPathDeleteEnabled) openPathDelete(); }}
+                >
+                  <img src="/icon/delete_icon.png" alt="" />
+                  <span>삭제 확인 ({pathCheckedCount})</span>
+                </div>
+                <div className={styles.robotWorkBox}>
+                  <div
+                    className={styles.robotWorkCommonBtn}
+                    onClick={() => { setPathDeleteMode(false); setCheckedPathIds([]); }}
+                  >
+                    <img src="/icon/close_btn.png" alt="" />
+                    취소
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className={styles.pathPrimaryBtn}
+                  onClick={openPathCreate}
+                >
+                  <img src="/icon/check.png" alt="check" />
+                  <span>경로 등록</span>
+                </div>
+
+                <div className={styles.robotWorkBox}>
+                  <div
+                    className={styles.robotWorkCommonBtn}
+                    onClick={() => { setPathDeleteMode(true); setCheckedPathIds([]); setSelectedPathId(null); }}
+                  >
+                    <img src="/icon/delete_icon.png" alt="" />
+                    경로 삭제
+                  </div>
+
+                  <div
+                    className={`${styles.robotWorkCommonBtn} ${!isPathEditEnabled ? styles.btnDisabled : ""}`}
+                    onClick={openPathEdit}
+                    aria-disabled={!isPathEditEnabled}
+                  >
+                    <img src="/icon/edit_icon.png" alt="" />
+                    경로 수정
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          <div className={styles.pathPagination}>
+            <Pagination
+              totalItems={pathTotalItems}
+              currentPage={pathPage}
+              onPageChange={handlePathPageChange}
+              pageSize={PATH_PAGE_SIZE}
+              blockSize={5}
+            />
+          </div>
+        </div>
+
+        {/* RIGHT: 경로 미리보기 */}
+        <div className={styles.pathRight}>
+          <div className={styles.robotPlaceBox}>
+            <h2>경로 미리보기</h2>
+            <span className={styles.pathHintInline}>목록에서 경로를 클릭하면 경로가 지도에 표시됩니다.</span>
+          </div>
+
+          {selectedPathRow == null ? (
+            <div className={styles.monitoringPlaceholder}>
+              <span>목록에서 경로를 선택하면 경로가 표시됩니다.</span>
+            </div>
+          ) : (
+            <div className={styles.pathMapCard}>
+              <PathMapView
+                selectedPath={selectedPathRow}
+                placeRows={placeRows}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+
+    <PathCrudModal
+      isOpen={pathCreateOpen}
+      mode="create"
+      placeRows={placeRows}
+      existingPaths={pathRows}
+      routes={routeRows}
+      initial={null}
+      onClose={() => setPathCreateOpen(false)}
+      onSubmit={savePathToDB}
+      robots={robots}
+      floors={floors}
+    />
+
+    <PathCrudModal
+      isOpen={pathEditOpen}
+      mode="edit"
+      placeRows={placeRows}
+      existingPaths={pathRows}
+      routes={routeRows}
+      robots={robots}
+      floors={floors}
+      initial={singleCheckedPathRow}
+      onClose={() => setPathEditOpen(false)}
+      onSubmit={savePathToDB}
+    />
+
+    <PathDeleteConfirmModal
+      isOpen={pathDeleteConfirmOpen}
+      message={
+        checkedPathIds.length <= 1
+          ? "선택한 경로를 정말 삭제하시겠습니까?"
+          : `${checkedPathIds.length}개의 경로를 정말 삭제하시겠습니까?`
+      }
+      onCancel={() => setPathDeleteConfirmOpen(false)}
+      onConfirm={confirmDeletePath}
+    />
+
+    {/* 경로 관리 알림 모달 */}
+    <PathAlertsModal
+      isOpen={!!pathAlertMessage}
+      message={pathAlertMessage ?? ""}
+      onCancel={() => setPathAlertMessage(null)}
+      onConfirm={() => setPathAlertMessage(null)}
+    />
     </>
   );
 }

@@ -318,9 +318,7 @@ def cancel_nav():
     print("[NAV] 네비게이션 취소 전송")
 
 def send_nav_command(idx, x, y, yaw):
-    # 이전 네비게이션 취소 → 모드 리셋 → 새 명령 전송
-    cancel_nav()
-    time.sleep(0.3)
+    # 모드 리셋 → 새 명령 전송 
     set_control_mode(0)
     time.sleep(0.3)
 

@@ -49,6 +49,7 @@ class LocationInfo(Base):
     LocationX = Column(Double)
     LocationY = Column(Double)
     Yaw = Column(Double, default=0.0)
+    MapId = Column(Integer)
     Imformation = Column(String(100))
 
 # =========================
@@ -256,6 +257,18 @@ class RobotMapInfo(Base):
     InitPosY = Column(Float)
     InitYaw = Column(Float)
     Adddate = Column(DateTime, server_default=func.now())
+
+
+# =========================
+# 경로(구간) 정보
+# =========================
+class RouteInfo(Base):
+    __tablename__ = "route_info"
+    id = Column(Integer, primary_key=True, index=True)
+    MapId = Column(Integer, nullable=False)
+    StartPlaceName = Column(String(100), nullable=False)
+    EndPlaceName = Column(String(100), nullable=False)
+    Direction = Column(String(20), nullable=False)  # forward, reverse, bidirectional
 
 
 class ScheduleInfo(Base):

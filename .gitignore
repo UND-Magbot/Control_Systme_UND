@@ -27,6 +27,7 @@ Thumbs.db
 
 # Build output
 Backend/out/
+Frontend/out/
 
 # Junk files (accidentally created)
 Backend/1
