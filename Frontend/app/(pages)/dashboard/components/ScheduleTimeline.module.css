@@ -114,8 +114,10 @@
   top: calc(100% + 8px);
   left: 0;
   width: 100%;
-  max-height: 360px;
-  overflow-y: auto;
+  max-height: 560px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--surface-1);
   border: 1.5px solid rgba(130, 190, 255, 0.25);
   border-radius: 12px;
@@ -125,17 +127,96 @@
   animation: dropdownIn 0.15s ease-out;
 }
 
-.dropdown::-webkit-scrollbar {
+.dropdownScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-top: 14px;
+}
+
+.dropdownScroll::-webkit-scrollbar {
   width: 4px;
 }
 
-.dropdown::-webkit-scrollbar-track {
+.dropdownScroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.dropdown::-webkit-scrollbar-thumb {
+.dropdownScroll::-webkit-scrollbar-thumb {
   background: var(--surface-5);
   border-radius: 2px;
+}
+
+.dropdownFooter {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.historyBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 0.15s;
+}
+
+.historyBtn:hover {
+  color: var(--text-primary);
+}
+
+.historySection {
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.historySectionTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 176, 238, 0.08);
+  border-left: 3px solid var(--color-info);
+  border-radius: 0 6px 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.historySectionTitleDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-info);
+}
+
+.historyCard {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.historyCount {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.historyLastTime {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 @keyframes dropdownIn {
@@ -143,35 +224,126 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ── 탭 ── */
-.sectionTab {
+/* ── 드롭다운 헤더 ── */
+.dropdownHeader {
   display: flex;
-  gap: 0;
-  margin-bottom: 14px;
-  border-bottom: 1px solid var(--surface-5);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: rgba(146, 208, 80, 0.08);
+  border-left: 3px solid #92D050;
+  border-radius: 0 6px 6px 0;
+  flex-shrink: 0;
 }
 
-.tab {
-  flex: 1;
-  padding: 10px 0;
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  text-align: center;
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s;
-}
-
-.tab:not(.tabActive):hover {
-  color: var(--text-secondary);
-}
-
-.tabActive {
+.dropdownTitle {
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text-primary);
-  border-bottom-color: var(--color-info);
+}
+
+.dropdownCount {
+  font-size: 12px;
+  font-weight: 600;
+  color: #92D050;
+}
+
+.modeFilterSelect {
+  margin-left: auto;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+
+.modeFilterSelect:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* ── 모드 뱃지 ── */
+.modeBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cardSep {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.cardInfoText {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mode_once {
+  color: #92D050;
+  background: rgba(146, 208, 80, 0.15);
+}
+
+.mode_weekly {
+  color: #7EC8F0;
+  background: rgba(126, 200, 240, 0.15);
+}
+
+.mode_interval {
+  color: #F0A030;
+  background: rgba(240, 160, 48, 0.15);
+}
+
+.cardBadges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.cardRobotRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.cardRobotIcon {
+  width: 12px;
+  height: 12px;
+  opacity: 0.6;
+}
+
+.cardRobotName {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.typeBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cardModeInfo {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── 스케줄 카드 ── */

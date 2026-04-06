@@ -134,3 +134,18 @@
   font-size: 12px;
   text-align: center;
 }
+
+.inlineInput {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: inherit;
+  padding: 0;
+  cursor: text;
+}
+
+.inlineInput::placeholder {
+  color: var(--text-muted);
+}

@@ -27,7 +27,19 @@ export const AMPM = ["오전", "오후"] as const;
 
 export const HOURS = Array.from({ length: 12 }, (_, i) => i + 1); // 1~12
 
-export const MINUTES = ["00", "10", "20", "30", "40", "50"] as const;
+export const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 
 export const DOWS = ["월", "화", "수", "목", "금", "토", "일"] as const;
 export type Dow = (typeof DOWS)[number];
+
+// 스케줄 모드
+export const SCHEDULE_MODES = ["once", "weekly", "interval"] as const;
+export type ScheduleMode = (typeof SCHEDULE_MODES)[number];
+
+export const SCHEDULE_MODE_LABELS: Record<ScheduleMode, string> = {
+  once: "단일 실행",
+  weekly: "요일 반복",
+  interval: "주기 반복",
+};
+
+export const INTERVAL_PRESETS = [5, 10, 15, 20, 30, 60] as const;

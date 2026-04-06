@@ -2,6 +2,7 @@
 
 import styles from './WorkSchedule.module.css';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import MiniCalendar from './MiniCalendar';
 import ScheduleInsert from './ScheduleInsert';
@@ -64,9 +65,29 @@ const MOCK_SCHEDULES: DBSchedule[] = [
         Repeat: "N",
         Repeat_Day: null,
         Repeat_End: null,
+        ScheduleMode: "once",
+    },
+    {
+        id: 905,
+        RobotName: "Robot 2",
+        WorkName: "주기 순찰 (10분)",
+        TaskType: "task1",
+        StartDate: "2026-03-24T09:00:00",
+        EndDate: "2026-03-24T18:00:00",
+        TaskStatus: "대기",
+        WayName: "E구역",
+        Repeat: "Y",
+        Repeat_Day: "월,화,수,목,금",
+        Repeat_End: "2026-04-30",
+        ScheduleMode: "interval",
+        IntervalMinutes: 10,
+        ActiveStartTime: "09:00",
+        ActiveEndTime: "18:00",
+        SeriesStartDate: "2026-03-24",
+        SeriesEndDate: "2026-04-30",
     },
 ];
-const USE_MOCK = true; // false로 바꾸면 실제 API 사용
+const USE_MOCK = false; // false로 바꾸면 실제 API 사용
 // ===== Mock 데이터 끝 =====
 
 
@@ -82,6 +103,8 @@ type WeekEvent = {
   startMin: number;   // 0~1439
   endMin: number;     // 1~1440
   color?: "green" | "yellow" | "blue" | "red";
+  status?: string;       // "대기" | "진행중" | "완료" | "오류"
+  scheduleMode?: string; // "once" | "weekly" | "interval"
 };
 
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -90,6 +113,15 @@ function hourLabel(h: number) {
   const ampm = h < 12 ? "오전" : "오후";
   const display = h % 12 === 0 ? 12 : h % 12;
   return `${ampm} ${display}시`;
+}
+
+/** 분 단위까지 간소하게 표시 (예: "오후5:31", 정각이면 "오후5:00") */
+function timeLabel(totalMin: number) {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const ampm = h < 12 ? "오전" : "오후";
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${ampm}${display}:${String(m).padStart(2, "0")}`;
 }
 
 // 월간
@@ -209,6 +241,7 @@ type MonthEvent = {
   date: string; // "2025-01-09"
   color?: "green" | "yellow" | "blue" | "red";
   status?: ScheduleStatus;
+  startMin?: number;
 };
 
 
@@ -265,15 +298,16 @@ const monthColorClass: Record<NonNullable<MonthEvent["color"]>, string> = {
 
 function statusToColor(status: string): WeekEvent["color"] {
   switch (status) {
-    case "대기": return "blue";
-    case "진행": case "진행중": return "yellow";
+    case "대기": return "yellow";
+    case "진행": case "진행중": return "blue";
     case "오류": return "red";
     case "완료": return "green";
     default: return "green";
   }
 }
 
-const MONTH_MAX_VISIBLE = 2;
+const MONTH_MAX_VISIBLE = 3;
+const WEEK_MAX_VISIBLE = 2;
 
 const statusDotClass = (status?: ScheduleStatus) => {
   switch (status) {
@@ -311,7 +345,8 @@ export default function Page({ robots }: RobotScheduleProps) {
                 const res = await apiFetch(`/DB/schedule`);
                 if (!res.ok) throw new Error("서버 응답 오류");
                 const data = await res.json();
-                setSchedules(data);
+                console.log("[SCHEDULE] API 응답:", data);
+                setSchedules(Array.isArray(data) ? data : []);
             }
         } catch (e) {
             console.error("스케줄 조회 실패", e);
@@ -324,7 +359,36 @@ export default function Page({ robots }: RobotScheduleProps) {
     useEffect(() => {
         fetchSchedules();
     }, [fetchSchedules]);
-    
+
+    // URL ?id= 파라미터로 상세 모달 자동 열기
+    const searchParams = useSearchParams();
+    const [autoOpenHandled, setAutoOpenHandled] = useState(false);
+
+    useEffect(() => {
+        if (autoOpenHandled || loading || schedules.length === 0) return;
+        const idParam = searchParams.get("id");
+        if (!idParam) return;
+
+        const found = schedules.find((s) => String(s.id) === idParam);
+        if (found) {
+            const start = new Date(found.StartDate);
+            setSelectedWeekEvent({
+                id: String(found.id),
+                title: found.WorkName,
+                robotNo: found.RobotName,
+                robotType: found.TaskType,
+                dayIndex: start.getDay(),
+                startMin: start.getHours() * 60 + start.getMinutes(),
+                endMin: new Date(found.EndDate).getHours() * 60 + new Date(found.EndDate).getMinutes(),
+                color: statusToColor(found.TaskStatus),
+                status: found.TaskStatus,
+                scheduleMode: found.ScheduleMode || (found.Repeat === "Y" ? "weekly" : "once"),
+            });
+            setIsDetailModalOpen(true);
+        }
+        setAutoOpenHandled(true);
+    }, [searchParams, schedules, loading, autoOpenHandled]);
+
     // 필터 항목 드롭다운 구현
     const [isRobotTypeSelected, setIsRobotTypeSelected] = useState(true);
     const [isRobotNameSelected, setIsRobotNameSelected] = useState(true);
@@ -412,13 +476,20 @@ export default function Page({ robots }: RobotScheduleProps) {
     }, [schedules, viewDate]);
 
     const monthEvents: MonthEvent[] = useMemo(() => {
-        return monthExpanded.map((s) => ({
-            id: s._isVirtual ? `${s._originalId}_${ymd(s._virtualDate)}` : String(s._originalId),
-            title: s.WorkName,
-            date: ymd(s._virtualDate),
-            color: statusToColor(s.TaskStatus),
-            status: s.TaskStatus as ScheduleStatus,
-        }));
+        return monthExpanded.map((s) => {
+            const displayTitle = s.ScheduleMode === 'interval' && s.IntervalMinutes
+                ? `${s.WorkName} (${s.IntervalMinutes}분)`
+                : s.WorkName;
+            const origStart = new Date(s.StartDate);
+            return {
+                id: s._isVirtual ? `${s._originalId}_${ymd(s._virtualDate)}_${s._virtualDate.getHours()}${s._virtualDate.getMinutes()}` : String(s._originalId),
+                title: displayTitle,
+                date: ymd(s._virtualDate),
+                color: statusToColor(s.TaskStatus),
+                status: s.TaskStatus as ScheduleStatus,
+                startMin: origStart.getHours() * 60 + origStart.getMinutes(),
+            };
+        });
     }, [monthExpanded]);
 
     const filteredMonthEvents: MonthEvent[] = useMemo(() => {
@@ -454,15 +525,24 @@ export default function Page({ robots }: RobotScheduleProps) {
             const origStart = new Date(s.StartDate);
             const origEnd = new Date(s.EndDate);
 
+            // interval 모드: 제목에 간격 표시
+            const displayTitle = s.ScheduleMode === 'interval' && s.IntervalMinutes
+                ? `${s.WorkName} (${s.IntervalMinutes}분 간격)`
+                : s.WorkName;
+
+            const mode = s.ScheduleMode || (s.Repeat === "Y" ? "weekly" : "once");
+
             return {
-                id: s._isVirtual ? `${s._originalId}_${ymd(d)}` : String(s._originalId),
-                title: s.WorkName,
+                id: s._isVirtual ? `${s._originalId}_${ymd(d)}_${origStart.getHours()}${origStart.getMinutes()}` : String(s._originalId),
+                title: displayTitle,
                 robotNo: s.RobotName,
                 robotType: s.TaskType,
                 dayIndex: d.getDay(),
                 startMin: origStart.getHours() * 60 + origStart.getMinutes(),
                 endMin: origEnd.getHours() * 60 + origEnd.getMinutes(),
                 color: statusToColor(s.TaskStatus),
+                status: s.TaskStatus,
+                scheduleMode: mode,
             };
         });
     }, [schedules, weekStart]);
@@ -554,18 +634,8 @@ export default function Page({ robots }: RobotScheduleProps) {
     // 드롭다운 상태: 겹침 그룹 키 → 열림 여부
     const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
-    // 겹침 그룹별 이벤트 맵 (col 0 대표 + 나머지)
-    const groupedEvents = useMemo(() => {
-        const map = new Map<string, LayoutEvent[]>();
-        for (const ev of layoutWeekEvents) {
-            const start = Math.max(0, Math.min(24 * 60, ev.startMin));
-            const key = `${ev.dayIndex}-${start}`;
-            const arr = map.get(key) ?? [];
-            arr.push(ev);
-            map.set(key, arr);
-        }
-        return map;
-    }, [layoutWeekEvents]);
+    // 개별 이벤트 리스트
+    const groupedEvents = layoutWeekEvents;
 
     // 드롭다운 외부 클릭 시 닫기
     useEffect(() => {
@@ -619,7 +689,7 @@ export default function Page({ robots }: RobotScheduleProps) {
     };
 
     /** 1) 화면 옵션 */
-    const hourRowPx = 38;     // 1시간 칸 높이
+    const hourRowPx = 60;     // 1시간 칸 높이
     const totalMinutes = 24 * 60;
     const gridHeight = 24 * hourRowPx;
 
@@ -716,6 +786,17 @@ export default function Page({ robots }: RobotScheduleProps) {
         deps: [viewType, gridHeight],
     });
 
+    // 주간 뷰 로드 시 현재 시간대로 자동 스크롤 (1시간 전 위치)
+    useEffect(() => {
+        if (viewType !== "week" || loading || schedules.length === 0) return;
+        // DOM 렌더링 후 스크롤
+        requestAnimationFrame(() => {
+            if (!scrollRef.current) return;
+            const now = new Date();
+            const offsetHour = Math.max(0, now.getHours() - 1);
+            scrollRef.current.scrollTop = offsetHour * hourRowPx;
+        });
+    }, [viewType, weekStart, loading, schedules.length]);
 
     // 작업등록 모달 open/close 상태
     const [isInsertModalOpen, setIsInsertModalOpen] = useState(false);
@@ -726,10 +807,41 @@ export default function Page({ robots }: RobotScheduleProps) {
     // ✅ 클릭된 주간 이벤트 저장
     const [selectedWeekEvent, setSelectedWeekEvent] = useState<WeekEvent | null>(null);
 
+    // 날짜별 작업 목록 모달
+    const [isDayListOpen, setIsDayListOpen] = useState(false);
+    const [dayListDate, setDayListDate] = useState<string>("");
+    const [dayListEvents, setDayListEvents] = useState<LayoutEvent[]>([]);
+    const [dayListFilterType, setDayListFilterType] = useState<string>("all");
+    const [dayListFilterRobot, setDayListFilterRobot] = useState<string>("all");
+
     const handleClickWeekEvent = (event: WeekEvent) => {
-        // 가상 이벤트인 경우 원본 DB ID로 교체하여 API 호출 시 정상 동작하도록 함
+        // 같은 시간대(시작 시간 기준)의 이벤트를 모아서 목록 모달 열기
+        const clickedHour = Math.floor(event.startMin / 60);
+        const hourEvents = groupedEvents.filter((ev) =>
+            ev.dayIndex === event.dayIndex && Math.floor(ev.startMin / 60) === clickedHour
+        );
+        if (hourEvents.length === 1) {
+            // 1개면 바로 상세 모달
+            const realId = extractOriginalId(event.id);
+            setSelectedWeekEvent({ ...event, id: realId });
+            setIsDetailModalOpen(true);
+        } else {
+            // 2개 이상이면 목록 모달
+            const clickedHour = Math.floor(event.startMin / 60);
+            const hourLabel12 = clickedHour < 12
+                ? `오전 ${clickedHour === 0 ? 12 : clickedHour}시`
+                : `오후 ${clickedHour === 12 ? 12 : clickedHour - 12}시`;
+            const dateStr = weekDates[event.dayIndex];
+            setDayListDate(dateStr ? `${dateStr.getMonth() + 1}월 ${dateStr.getDate()}일 ${hourLabel12}` : "");
+            setDayListEvents(hourEvents);
+            setDayListFilterType(selectedRobotTypes.length === 1 ? selectedRobotTypes[0] : "all"); setDayListFilterRobot(selectedRobotNames.length === 1 ? selectedRobotNames[0] : "all"); setIsDayListOpen(true);
+        }
+    };
+
+    const handleDayListSelect = (event: LayoutEvent) => {
         const realId = extractOriginalId(event.id);
         setSelectedWeekEvent({ ...event, id: realId });
+        setIsDayListOpen(false);
         setIsDetailModalOpen(true);
     };
 
@@ -752,7 +864,11 @@ export default function Page({ robots }: RobotScheduleProps) {
     const origId = extractOriginalId(ev.id);
     // 먼저 확장된 배열에서 찾기 (가상 인스턴스의 날짜/시간 반영)
     const expanded = monthExpanded.find(
-        (s) => (s._isVirtual ? `${s._originalId}_${ymd(s._virtualDate)}` : String(s._originalId)) === ev.id
+        (s) => {
+            const vd = s._virtualDate;
+            const sid = s._isVirtual ? `${s._originalId}_${ymd(vd)}_${vd.getHours()}${vd.getMinutes()}` : String(s._originalId);
+            return sid === ev.id;
+        }
     );
     const full = expanded ?? schedules.find((s) => String(s.id) === origId);
     if (!full) return null;
@@ -1075,11 +1191,9 @@ useEffect(() => {
                                 <div className={styles.corner} />
                                     {DOW.map((d, i) => {
                                         const isToday = isSameYmd(weekDates[i], today0);
-
                                         return (
                                             <div key={d} className={styles.dayHeader}>
                                             <div className={i === 0 ? styles.sun : i === 6 ? styles.sat : undefined}>{d}</div>
-
                                             <div className={`${styles.dateChip} ${isToday ? styles.todayDateChip : ""}`}>
                                                 {dates[i] ?? ""}
                                             </div>
@@ -1104,7 +1218,7 @@ useEffect(() => {
                                 {/* 7일 그리드 */}
                                 <div className={styles.daysCol}>
                                     <div className={styles.daysGrid} style={{ height: gridHeight }}>
-                                    
+
                                     {/* 가로 라인(시간) */}
                                     {hours.map((h) => (
                                         <div
@@ -1114,10 +1228,10 @@ useEffect(() => {
                                         />
                                     ))}
 
-                                    {/* 7일 컬럼 배경(오늘 강조) */}
+                                    {/* 7일 컬럼 배경(오늘 강조 + 시간 칸별 클릭) */}
                                     {Array.from({ length: 7 }).map((_, i) => {
                                         const isToday = isSameYmd(weekDates[i], today0);
-
+                                        const dayEvts = groupedEvents.filter((ev) => ev.dayIndex === i);
                                         return (
                                             <div
                                             key={`bg-${i}`}
@@ -1127,108 +1241,98 @@ useEffect(() => {
                                                 width: `${100 / 7}%`,
                                                 height: gridHeight,
                                             }}
-                                            />
+                                            >
+                                                {hours.map((h) => {
+                                                    const hourEvts = dayEvts.filter((ev) => Math.floor(ev.startMin / 60) === h);
+                                                    const hasEvents = hourEvts.length > 0;
+                                                    return (
+                                                        <div
+                                                            key={h}
+                                                            className={`${styles.hourCell} ${hasEvents ? styles.hourCellClickable : ""}`}
+                                                            style={{ height: hourRowPx }}
+                                                            onClick={() => {
+                                                                if (!hasEvents) return;
+                                                                const dateStr = weekDates[i];
+                                                                const hourLabel12 = h < 12
+                                                                    ? `오전 ${h === 0 ? 12 : h}시`
+                                                                    : `오후 ${h === 12 ? 12 : h - 12}시`;
+                                                                setDayListDate(dateStr ? `${dateStr.getMonth() + 1}월 ${dateStr.getDate()}일 ${hourLabel12}` : "");
+                                                                setDayListEvents(hourEvts.sort((a, b) => a.startMin - b.startMin));
+                                                                setDayListFilterType(selectedRobotTypes.length === 1 ? selectedRobotTypes[0] : "all"); setDayListFilterRobot(selectedRobotNames.length === 1 ? selectedRobotNames[0] : "all"); setIsDayListOpen(true);
+                                                            }}
+                                                        />
+                                                    );
+                                                })}
+                                            </div>
                                         );
                                     })}
 
-                                    {/* Now 라인 */}
+                                    {/* 현재 시간 하이라이트 (전체 행) */}
                                     {todayDayIndex >= 0 && (
                                         <div
                                             className={styles.nowLine}
                                             style={{
-                                                top: (nowMinutes / 60) * hourRowPx,
-                                                left: `${(todayDayIndex / 7) * 100}%`,
-                                                width: `${100 / 7}%`,
+                                                top: Math.floor(nowMinutes / 60) * hourRowPx,
                                             }}
                                         />
                                     )}
 
-                                    {/* 이벤트 (겹침 → 대표 1개 + 드롭다운) */}
-                                    {Array.from(groupedEvents.entries()).map(([groupKey, evts]) => {
-                                        const first = evts[0];
-                                        const start = Math.max(0, Math.min(totalMinutes, first.startMin));
-                                        const end = Math.max(0, Math.min(totalMinutes, first.endMin));
-                                        const dur = Math.max(10, end - start);
+                                    {/* 요일별 이벤트 컨테이너 */}
+                                    {Array.from({ length: 7 }).map((_, dayIdx) => {
+                                        const dayEvents = [...groupedEvents]
+                                            .filter((ev) => ev.dayIndex === dayIdx)
+                                            .sort((a, b) => a.startMin - b.startMin);
+                                        if (dayEvents.length === 0) return null;
 
-                                        const top = (start / 60) * hourRowPx;
-                                        const height = (dur / 60) * hourRowPx;
+                                        // 시간대별 그룹핑 (같은 시간 시작 이벤트 묶기)
+                                        const byHour = new Map<number, typeof dayEvents>();
+                                        for (const ev of dayEvents) {
+                                            const h = Math.floor(ev.startMin / 60);
+                                            const arr = byHour.get(h) ?? [];
+                                            arr.push(ev);
+                                            byHour.set(h, arr);
+                                        }
 
-                                        const dayLeftPct = (first.dayIndex / 7) * 100;
                                         const dayWidthPct = 100 / 7;
                                         const padding = 4;
 
-                                        const fullWidth = `calc(${dayWidthPct}% - ${padding * 2}px)`;
-                                        const fullLeft = `calc(${dayLeftPct}% + ${padding}px)`;
-                                        const isOpen = openDropdown === groupKey;
-                                        const hasMultiple = evts.length > 1;
-
-                                        return (
-                                        <React.Fragment key={groupKey}>
-                                            {/* 대표 이벤트 */}
+                                        return Array.from(byHour.entries()).map(([h, evts]) => (
                                             <div
-                                                className={`${styles.event} ${colorClass(first.color)}`}
+                                                key={`day${dayIdx}-h${h}`}
+                                                className={styles.hourEventSlot}
                                                 style={{
-                                                    top,
-                                                    height,
-                                                    left: fullLeft,
-                                                    width: fullWidth,
-                                                }}
-                                                title={first.title}
-                                                onClick={() => {
-                                                    if (hasMultiple) {
-                                                        setOpenDropdown(isOpen ? null : groupKey);
-                                                    } else {
-                                                        handleClickWeekEvent(first);
-                                                    }
+                                                    top: h * hourRowPx + 2,
+                                                    left: `calc(${dayIdx * dayWidthPct}% + ${padding}px)`,
+                                                    width: `calc(${dayWidthPct}% - ${padding * 2}px)`,
+                                                    maxHeight: hourRowPx - 4,
                                                 }}
                                             >
-                                                <span className={styles.eventCircle}></span>
-                                                {first.title}
-                                                {hasMultiple && (
-                                                    <span className={styles.eventBadge}>+{evts.length - 1}</span>
-                                                )}
-                                                {dur >= 30 && (
-                                                    <span className={styles.eventTime}>
-                                                        {hourLabel(Math.floor(first.startMin / 60))} ~ {hourLabel(Math.floor(first.endMin / 60))}
-                                                    </span>
+                                                {evts.slice(0, WEEK_MAX_VISIBLE).map((ev) => (
+                                                    <div
+                                                        key={ev.id}
+                                                        className={styles.weekSlotEvent}
+                                                        onClick={() => handleClickWeekEvent(ev)}
+                                                        title={ev.scheduleMode === 'interval'
+                                                          ? `${ev.title} (${timeLabel(ev.startMin)} ~ ${timeLabel(ev.endMin)})`
+                                                          : `${ev.title} (${timeLabel(ev.startMin)})`}
+                                                    >
+                                                        <span className={`${styles.weekSlotDot} ${colorClass(ev.color)}`} />
+                                                        <span className={styles.weekSlotTitle}>{ev.title}</span>
+                                                        <span className={styles.weekSlotTime}>
+                                                            {ev.scheduleMode === 'interval'
+                                                              ? `${timeLabel(ev.startMin)}~${timeLabel(ev.endMin)}`
+                                                              : timeLabel(ev.startMin)}
+                                                        </span>
+                                                        <span className={styles.weekSlotStatus}>{ev.status}</span>
+                                                    </div>
+                                                ))}
+                                                {evts.length > WEEK_MAX_VISIBLE && (
+                                                    <div className={styles.weekSlotMore}>··· +{evts.length - WEEK_MAX_VISIBLE}건</div>
                                                 )}
                                             </div>
-
-                                            {/* 드롭다운 */}
-                                            {isOpen && (
-                                                <div
-                                                    className={styles.eventDropdown}
-                                                    style={{
-                                                        position: 'absolute',
-                                                        top: top + height + 2,
-                                                        left: fullLeft,
-                                                        width: fullWidth,
-                                                        zIndex: 20,
-                                                    }}
-                                                >
-                                                    {evts.map((ev) => (
-                                                        <button
-                                                            key={ev.id}
-                                                            type="button"
-                                                            className={styles.eventDropdownItem}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setOpenDropdown(null);
-                                                                handleClickWeekEvent(ev);
-                                                            }}
-                                                        >
-                                                            <span className={`${styles.eventCircle} ${colorClass(ev.color)}`}></span>
-                                                            <span className={styles.eventDropdownText}>{ev.title}</span>
-                                                            <span className={styles.eventDropdownTime}>
-                                                                {hourLabel(Math.floor(ev.startMin / 60))} ~ {hourLabel(Math.floor(ev.endMin / 60))}
-                                                            </span>
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </React.Fragment>
-                                        );
+                                        ));
                                     })}
+
                                     </div>
                                 </div>
                             </div>
@@ -1241,6 +1345,95 @@ useEffect(() => {
                     </div>
                 </section>
                 )}
+
+                {/* 날짜별 작업 목록 모달 */}
+                {isDayListOpen && (() => {
+                    // 필터용: 현재 목록의 작업유형/로봇명 추출
+                    const typeSet = new Set<string>();
+                    const robotSet = new Set<string>();
+                    dayListEvents.forEach((ev) => {
+                        if (ev.robotType) typeSet.add(ev.robotType);
+                        if (ev.robotNo) robotSet.add(ev.robotNo);
+                    });
+                    const typeOptions = Array.from(typeSet);
+                    const robotOptions = Array.from(robotSet);
+
+                    const filtered = dayListEvents.filter((ev) => {
+                        if (dayListFilterType !== "all" && ev.robotType !== dayListFilterType) return false;
+                        if (dayListFilterRobot !== "all" && ev.robotNo !== dayListFilterRobot) return false;
+                        return true;
+                    });
+
+                    return (
+                    <div className={styles.dayListOverlay} onClick={() => setIsDayListOpen(false)}>
+                        <div className={styles.dayListModal} onClick={(e) => e.stopPropagation()}>
+                            <div className={styles.dayListHeader}>
+                                <h3>{dayListDate} 작업 목록</h3>
+                                <button type="button" onClick={() => setIsDayListOpen(false)} className={styles.dayListClose}>✕</button>
+                            </div>
+                            <div className={styles.dayListFilters}>
+                                <select
+                                    value={dayListFilterType}
+                                    onChange={(e) => setDayListFilterType(e.target.value)}
+                                    className={styles.dayListSelect}
+                                >
+                                    <option value="all">전체 작업유형</option>
+                                    {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                                <select
+                                    value={dayListFilterRobot}
+                                    onChange={(e) => setDayListFilterRobot(e.target.value)}
+                                    className={styles.dayListSelect}
+                                >
+                                    <option value="all">전체 로봇</option>
+                                    {robotOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                                <span className={styles.dayListCount}>{filtered.length}건</span>
+                            </div>
+                            <div className={styles.dayListBody}>
+                                {filtered.length === 0 && (
+                                    <div className={styles.dayListEmpty}>해당 조건의 작업이 없습니다.</div>
+                                )}
+                                {filtered.map((ev) => {
+                                    const origId = extractOriginalId(ev.id);
+                                    const full = schedules.find((s) => String(s.id) === origId);
+                                    const mode = full?.ScheduleMode || (full?.Repeat === "Y" ? "weekly" : "once");
+                                    const isRepeat = mode === "weekly" || mode === "interval";
+                                    const timeText = mode === 'interval'
+                                        ? `${timeLabel(ev.startMin)} ~ ${timeLabel(ev.endMin)}`
+                                        : timeLabel(ev.startMin);
+                                    return (
+                                    <button
+                                        key={ev.id}
+                                        type="button"
+                                        className={styles.dayListItem}
+                                        onClick={() => handleDayListSelect(ev)}
+                                    >
+                                        <div className={`${styles.dayListColor} ${colorClass(ev.color)}`} />
+                                        <div className={styles.dayListInfo}>
+                                            <div className={styles.dayListRowTop}>
+                                                <span className={styles.dayListTitle}>{ev.title}</span>
+                                                <span className={styles.dayListStatus} data-color={ev.color}>{ev.status || full?.TaskStatus}</span>
+                                            </div>
+                                            <div className={styles.dayListRowBottom}>
+                                                <span className={styles.dayListModeBadge} data-mode={mode}>
+                                                    {mode === 'once' ? '단일' : mode === 'weekly' ? '요일반복' : '주기반복'}
+                                                </span>
+                                                <span className={styles.dayListTime}>{timeText}</span>
+                                                <span className={styles.dayListDivider}>·</span>
+                                                <img src="/icon/robot_w.png" alt="" className={styles.dayListRobotIcon} />
+                                                <span className={styles.dayListRobot}>{ev.robotNo}</span>
+                                            </div>
+                                        </div>
+                                        <span className={styles.dayListArrow}>›</span>
+                                    </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                    );
+                })()}
 
                 {isDetailModalOpen && selectedWeekEvent && (
                     <ScheduleDetail
@@ -1295,51 +1488,62 @@ useEffect(() => {
                             {monthCells.map((cell) => {
                                 const events = monthEventsForDay(cell.key);
                                 const maxVisible = MONTH_MAX_VISIBLE;
-
                                 const visible = events.slice(0, maxVisible);
                                 const remain = events.length - visible.length;
-
                                 const isToday = isSameYmd(cell.date, today0);
+
+                                const handleCellClick = () => {
+                                    if (events.length === 0) return;
+                                    const d = cell.date;
+                                    setDayListDate(`${d.getMonth() + 1}월 ${d.getDate()}일`);
+                                    // 월간 이벤트를 LayoutEvent 형태로 변환
+                                    const mapped = events.map((ev) => {
+                                        const origId = extractOriginalId(ev.id);
+                                        const full = schedules.find((s) => String(s.id) === origId);
+                                        const startDate = full ? new Date(full.StartDate) : new Date();
+                                        const endDate = full ? new Date(full.EndDate) : new Date();
+                                        return {
+                                            id: ev.id,
+                                            title: ev.title,
+                                            robotNo: full?.RobotName ?? "",
+                                            robotType: full?.TaskType ?? "",
+                                            dayIndex: d.getDay(),
+                                            startMin: startDate.getHours() * 60 + startDate.getMinutes(),
+                                            endMin: endDate.getHours() * 60 + endDate.getMinutes(),
+                                            color: ev.color as WeekEvent["color"],
+                                            col: 0,
+                                            totalCols: 1,
+                                        };
+                                    });
+                                    setDayListEvents(mapped.sort((a, b) => a.startMin - b.startMin));
+                                    setDayListFilterType(selectedRobotTypes.length === 1 ? selectedRobotTypes[0] : "all"); setDayListFilterRobot(selectedRobotNames.length === 1 ? selectedRobotNames[0] : "all"); setIsDayListOpen(true);
+                                };
 
                                 return (
                                     <div
                                     key={cell.key}
-                                    className={`${styles.monthCell} ${isToday ? styles.monthToday : ""}`}
+                                    className={`${styles.monthCell} ${isToday ? styles.monthToday : ""} ${events.length > 0 ? styles.monthCellClickable : ""}`}
+                                    onClick={handleCellClick}
                                     >
                                         <div className={styles.dateNumber}>{cell.day}</div>
 
                                         <div className={styles.cellEvents}>
                                             {visible.map((ev) => (
-                                                <button
+                                                <div
                                                     key={ev.id}
-                                                    type="button"
-                                                    className={`${styles.cellEvent} ${ev.color ? monthColorClass[ev.color] : styles.evGreen}`}
-                                                    onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const detail = toDetailEventFromMonth(ev);
-                                                    if (!detail) return;
-                                                    setSelectedWeekEvent(detail);
-                                                    setIsDetailModalOpen(true);
-                                                    }}
+                                                    className={styles.cellEvent}
                                                 >
                                                     <span className={`${styles.cellEventDot} ${statusDotClass(ev.status)}`.trim()} />
                                                     <span className={styles.cellEventText}>{ev.title}</span>
-                                                </button>
+                                                    {ev.startMin != null && <span className={styles.cellEventTime}>{timeLabel(ev.startMin)}</span>}
+                                                    {ev.status && <span className={styles.cellEventStatus}>{ev.status}</span>}
+                                                </div>
                                             ))}
 
                                             {remain > 0 && (
-                                                <button
-                                                    type="button"
-                                                    className={styles.moreBtn}
-                                                    onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setMonthOverflowDateKey(cell.key);
-                                                    setMonthOverflowDateObj(cell.date);
-                                                    setMonthOverflowOpen(true);
-                                                    }}
-                                                >
-                                                    +{remain}건
-                                                </button>
+                                                <div className={styles.moreBtn}>
+                                                    ··· +{remain}건
+                                                </div>
                                             )}
                                         </div>
                                     </div>

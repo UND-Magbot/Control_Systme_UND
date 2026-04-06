@@ -3462,6 +3462,94 @@ button.workPopoverItem:hover {
   margin-left: auto;
 }
 
+.detailTaskInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.detailTaskInfoItem {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.detailTaskMode {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.detailTaskMode[data-mode="once"] {
+  color: #92D050;
+  background: rgba(146, 208, 80, 0.15);
+}
+
+.detailTaskMode[data-mode="weekly"] {
+  color: #7EC8F0;
+  background: rgba(126, 200, 240, 0.15);
+}
+
+.detailTaskMode[data-mode="interval"] {
+  color: #F0A030;
+  background: rgba(240, 160, 48, 0.15);
+}
+
+.detailTaskStatus {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 10px;
+  color: #00B0EE;
+  background: rgba(0, 176, 238, 0.15);
+  margin-left: auto;
+}
+
+/* 다중 시각 슬롯 */
+.detailTimeSlots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.detailTimeSlot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.detailTimeSlotIcon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.detailTimeSlot_done {
+  color: rgba(146, 208, 80, 0.8);
+  background: rgba(146, 208, 80, 0.1);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.detailTimeSlot_active {
+  color: #00B0EE;
+  background: rgba(0, 176, 238, 0.15);
+  font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(0, 176, 238, 0.3);
+}
+
+.detailTimeSlot_waiting {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 /* 경로 진행 트랙 */
 .detailWaypointTrack {
   display: flex;

@@ -311,11 +311,74 @@
 }
 
 /* 현재 위치 / 현재 작업 셀 */
-.locationCell,
-.taskCell {
+.locationCell {
   font-size: var(--font-size-sm);
   color: var(--text-tertiary);
   max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskCell {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  max-width: 200px;
+}
+
+.taskCellActive {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.taskCellRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.taskCellName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskCellBadge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.taskCellBadgeOnce {
+  color: #92D050;
+  background: rgba(146, 208, 80, 0.15);
+}
+
+.taskCellBadgeWeekly {
+  color: #7EC8F0;
+  background: rgba(126, 200, 240, 0.15);
+}
+
+.taskCellBadgeInterval {
+  color: #F0A030;
+  background: rgba(240, 160, 48, 0.15);
+}
+
+.taskCellBadgeType {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.taskCellSub {
+  font-size: 10px;
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

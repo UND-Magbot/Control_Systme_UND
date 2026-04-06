@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import styles from "./mapManagement.module.css";
 import PlaceList from "@/app/(pages)/schedules/components/PlaceList";
 import PathList from "@/app/(pages)/schedules/components/PathList";
@@ -20,8 +21,12 @@ type Robot = { id: number; RobotName: string; ModelName: string; SerialNumber: s
 type MappingState = "idle" | "startModal" | "mappingModal" | "success" | "saveModal";
 
 export default function MapManagementPage() {
-  // ── 탭 상태 ──
-  const [activeTab, setActiveTab] = useState<MapTab>("map");
+  // ── URL query에서 초기 탭 결정 ──
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get("tab") as MapTab) || "map";
+  const [activeTab, setActiveTab] = useState<MapTab>(
+    ["map", "place", "path"].includes(initialTab) ? initialTab : "map"
+  );
 
   // ── PlaceList / PathList 용 데이터 ──
   const [tabRobots, setTabRobots] = useState<RobotRowData[]>([]);
@@ -533,7 +538,7 @@ export default function MapManagementPage() {
     try {
       const res = await apiFetch(`/map/businesses`);
       const data = await res.json();
-      setBusinesses(data);
+      setBusinesses(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("사업장 로드 실패:", e);
     }
@@ -544,7 +549,7 @@ export default function MapManagementPage() {
     try {
       const res = await apiFetch(`/map/areas?business_id=${bizId}`);
       const data = await res.json();
-      setAreas(data);
+      setAreas(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("층 로드 실패:", e);
     }
@@ -567,19 +572,22 @@ export default function MapManagementPage() {
       try {
         // 1. 사업장 로드
         const bizRes = await apiFetch(`/map/businesses`);
-        const bizList: Business[] = await bizRes.json();
+        const bizRaw = await bizRes.json();
+        const bizList: Business[] = Array.isArray(bizRaw) ? bizRaw : [];
         setBusinesses(bizList);
         if (bizList.length === 0) return;
 
         for (const biz of bizList) {
           // 2. 해당 사업장의 층 로드
           const areaRes = await apiFetch(`/map/areas?business_id=${biz.id}`);
-          const areaList: Area[] = await areaRes.json();
+          const areaRaw = await areaRes.json();
+          const areaList: Area[] = Array.isArray(areaRaw) ? areaRaw : [];
 
           for (const area of areaList) {
             // 3. 해당 층의 맵 로드
             const mapRes = await apiFetch(`/map/maps?area_id=${area.id}`);
-            const mapList: RobotMap[] = await mapRes.json();
+            const mapRaw = await mapRes.json();
+            const mapList: RobotMap[] = Array.isArray(mapRaw) ? mapRaw : [];
 
             if (mapList.length > 0) {
               // 첫 번째 맵 발견 → 전부 세팅

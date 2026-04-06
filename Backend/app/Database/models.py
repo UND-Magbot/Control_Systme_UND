@@ -5,6 +5,7 @@ from sqlalchemy import (
     String,
     Double,
     Float,
+    Date,
     DateTime,
     Text,
     ForeignKey,
@@ -287,11 +288,24 @@ class ScheduleInfo(Base):
     StartDate  = Column(DateTime)
     EndDate  = Column(DateTime)
 
-    Repeat = Column(String(50), default=False)
+    # 레거시 호환 필드
+    Repeat = Column(String(50), default="N")
     Repeat_Day = Column(String(100))
     Repeat_End = Column(String(50))
 
-    # CreateTime = Column(DateTime)
+    # 3모드 스케줄 필드
+    ScheduleMode = Column(String(20), default="once")       # "once" | "weekly" | "interval"
+    ExecutionTime = Column(String(200), nullable=True)        # weekly: "HH:MM" 또는 "09:00,13:00,18:00"
+    IntervalMinutes = Column(Integer, nullable=True)         # interval: 반복 간격(분)
+    ActiveStartTime = Column(String(5), nullable=True)       # interval: 활동 시작 "HH:MM"
+    ActiveEndTime = Column(String(5), nullable=True)         # interval: 활동 종료 "HH:MM"
+    SeriesStartDate = Column(Date, nullable=True)            # 반복 시작일
+    SeriesEndDate = Column(Date, nullable=True)              # 반복 종료일 (null=무기한)
+
+    # 스케줄러 추적
+    LastRunDate = Column(DateTime, nullable=True)
+    RunCount = Column(Integer, default=0)
+    MaxRunCount = Column(Integer, nullable=True)
 
 
 # =========================

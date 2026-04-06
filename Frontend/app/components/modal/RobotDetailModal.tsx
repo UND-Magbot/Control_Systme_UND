@@ -18,6 +18,24 @@ import { getBatteryColor } from "@/app/constants/robotIcons";
 import WaypointProgress from "@/app/components/common/WaypointProgress";
 import type { WaypointStep } from "@/app/components/common/WaypointProgress";
 
+type ActiveScheduleInfo = {
+    id: number;
+    RobotName: string;
+    WorkName: string;
+    TaskType: string;
+    TaskStatus: string;
+    WayName: string;
+    StartDate: string;
+    EndDate: string;
+    Repeat: string;
+    Repeat_Day: string | null;
+    ScheduleMode?: string;
+    ExecutionTime?: string | null;
+    ActiveStartTime?: string | null;
+    ActiveEndTime?: string | null;
+    IntervalMinutes?: number | null;
+};
+
 type DetailModalProps = {
     isOpen: boolean;
     onClose: () => void;
@@ -25,6 +43,7 @@ type DetailModalProps = {
     selectedRobot: RobotRowData | null;
     robots: RobotRowData[];
     initialEditMode?: boolean;
+    activeSchedule?: ActiveScheduleInfo | null;
 
     persistedDraft?: RobotDraft;
     onPersistDraft?: (robotId: number, next: RobotDraft) => void;
@@ -37,6 +56,7 @@ export default function RobotDetailModal({
     selectedRobot,
     robots,
     initialEditMode = false,
+    activeSchedule = null,
 }:DetailModalProps ){
 
     const [robotDetail, setRobotDetail] = useState<RobotRowData | null>(null);
@@ -830,7 +850,7 @@ export default function RobotDetailModal({
                   );
                 })()}
 
-                {/* ── 현재 작업 & 경로 진행 섹션 ── */}
+                {/* ── 현재 작업 섹션 ── */}
                 {!isEditMode && (() => {
                   const r = robotDetail ?? selectedRobot;
                   if (!r) return null;
@@ -845,33 +865,101 @@ export default function RobotDetailModal({
                     );
                   }
 
-                  if (r.tasks.length === 0) {
+                  if (!activeSchedule) {
                     return (
                       <div className={styles.detailTaskSection}>
                         <h3 className={styles.detailSectionTitle}>현재 작업</h3>
-                        <div className={styles.detailTaskEmpty}>할당된 작업 없음</div>
+                        <div className={styles.detailTaskEmpty}>진행 중인 작업 없음</div>
                       </div>
                     );
+                  }
+
+                  const as = activeSchedule;
+                  const mode = as.ScheduleMode || (as.Repeat === "Y" ? "weekly" : "once");
+                  const modeLabel = mode === "weekly" ? "요일반복" : mode === "interval" ? "주기반복" : "단일";
+
+                  const fmt = (d: string) => {
+                    const dt = new Date(d);
+                    return `${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;
+                  };
+                  let timeText = "";
+                  let modeInfo = "";
+                  // 요일반복 다중시각: 각 시각별 상태 배열
+                  type TimeSlot = { str: string; min: number; status: "done" | "active" | "waiting" };
+                  let timeSlots: TimeSlot[] | null = null;
+
+                  if (mode === "interval") {
+                    timeText = `${as.ActiveStartTime || fmt(as.StartDate)} ~ ${as.ActiveEndTime || fmt(as.EndDate)}`;
+                    const days = as.Repeat_Day ? (as.Repeat_Day === "월,화,수,목,금,토,일" ? "매일" : `매주 ${as.Repeat_Day}`) : "";
+                    modeInfo = `${days} ${as.IntervalMinutes ?? 0}분 간격`.trim();
+                  } else if (mode === "weekly") {
+                    const days = as.Repeat_Day === "월,화,수,목,금,토,일" ? "매일" : as.Repeat_Day ? `매주 ${as.Repeat_Day}` : "";
+                    if (as.ExecutionTime) {
+                      const now = new Date();
+                      const nowMin = now.getHours() * 60 + now.getMinutes();
+                      const timeMins = as.ExecutionTime.split(",").map((t: string) => {
+                        const [h, m] = t.trim().split(":").map(Number);
+                        return { min: h * 60 + m, str: t.trim() };
+                      }).sort((a, b) => a.min - b.min);
+
+                      // 현재 실행 중인 시각 인덱스
+                      let currentIdx = -1;
+                      for (let i = timeMins.length - 1; i >= 0; i--) {
+                        if (timeMins[i].min <= nowMin) { currentIdx = i; break; }
+                      }
+
+                      timeSlots = timeMins.map((t, i) => ({
+                        ...t,
+                        status: i < currentIdx ? "done" as const
+                          : i === currentIdx ? "active" as const
+                          : "waiting" as const,
+                      }));
+                      modeInfo = days;
+                    } else {
+                      timeText = fmt(as.StartDate);
+                      modeInfo = days;
+                    }
+                  } else {
+                    timeText = fmt(as.StartDate);
                   }
 
                   return (
                     <div className={styles.detailTaskSection}>
                       <h3 className={styles.detailSectionTitle}>현재 작업</h3>
-                      <div className={styles.detailTaskList}>
-                        {r.tasks.map((task, i) => {
-                          // TODO: 백엔드 API (GET /robot/{id}/task-progress) 연동 시 교체
-                          const mockWaypoints: WaypointStep[] = [];
-                          return (
-                            <div key={i} className={styles.detailTaskCard}>
-                              <div className={styles.detailTaskHeader}>
-                                <span className={styles.detailTaskName}>{task.taskName}</span>
-                                <span className={styles.detailTaskType}>{task.taskType}</span>
-                                <span className={styles.detailTaskTime}>{task.taskTime}분</span>
-                              </div>
-                              <WaypointProgress waypoints={mockWaypoints} />
+                      <div className={styles.detailTaskCard}>
+                        <div className={styles.detailTaskHeader}>
+                          <span className={styles.detailTaskName}>{as.WorkName}</span>
+                          <span className={styles.detailTaskType}>{as.TaskType}</span>
+                          <span className={styles.detailTaskMode} data-mode={mode}>{modeLabel}</span>
+                          <span className={styles.detailTaskStatus}>{as.TaskStatus}</span>
+                        </div>
+                        {timeSlots ? (
+                          <>
+                            <div className={styles.detailTimeSlots}>
+                              {timeSlots.map((slot, i) => (
+                                <span key={i} className={`${styles.detailTimeSlot} ${styles[`detailTimeSlot_${slot.status}`]}`}>
+                                  <span className={styles.detailTimeSlotIcon}>
+                                    {slot.status === "done" ? "✓" : slot.status === "active" ? "▶" : "·"}
+                                  </span>
+                                  {slot.str}
+                                </span>
+                              ))}
                             </div>
-                          );
-                        })}
+                            {modeInfo && (
+                              <div className={styles.detailTaskInfo}>
+                                <span className={styles.detailTaskInfoItem}>{modeInfo}</span>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className={styles.detailTaskInfo}>
+                            <span className={styles.detailTaskInfoItem}>{timeText}</span>
+                            {modeInfo && <span className={styles.detailTaskInfoItem}>{modeInfo}</span>}
+                          </div>
+                        )}
+                        <div className={styles.detailTaskInfo}>
+                          <span className={styles.detailTaskInfoItem}>작업 경로: {as.WayName}</span>
+                        </div>
                       </div>
                     </div>
                   );

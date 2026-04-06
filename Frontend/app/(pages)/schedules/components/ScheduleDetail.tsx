@@ -8,9 +8,11 @@ import DeleteConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import RepeatConfirmModal, { type RepeatConfirmMode, type RepeatConfirmScope } from '@/app/(pages)/schedules/components/RepeatConfirmModals';
 import MiniCalendar from './MiniCalendar';
 import { apiFetch } from "@/app/lib/api";
-import { WORK_TYPES, WORK_STATUS } from '../constants';
+import { WORK_TYPES, WORK_STATUS, DOWS as DOWS_CONST, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, type ScheduleMode, type Dow } from '../constants';
 import { getByteLength } from '../utils/validation';
+import { extractOriginalId } from '../utils/expandRepeatSchedules';
 import SharedCustomSelect, { type SelectOption as SharedSelectOption } from '@/app/components/select/CustomSelect';
+import NumberSpinner from '@/app/components/select/NumberSpinner';
 
 
 type MockScheduleData = {
@@ -24,6 +26,14 @@ type MockScheduleData = {
   Repeat: string;
   Repeat_Day: string | null;
   Repeat_End: string | null;
+  // 3모드 필드
+  ScheduleMode?: string;
+  ExecutionTime?: string | null;
+  IntervalMinutes?: number | null;
+  ActiveStartTime?: string | null;
+  ActiveEndTime?: string | null;
+  SeriesStartDate?: string | null;
+  SeriesEndDate?: string | null;
 };
 
 type ScheduleDetailProps = {
@@ -205,9 +215,9 @@ const HOUR_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
   label: String(i + 1).padStart(2, "0"),
 }));
 
-const MINUTE_OPTIONS = [0, 10, 20, 30, 40, 50].map((m, i) => ({
+const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, i) => ({
   id: i + 1,
-  label: String(m).padStart(2, "0"),
+  label: String(i).padStart(2, "0"),
 }));
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -268,12 +278,28 @@ type FormState = {
   pathDetails: PathDetail[];
   pathOrder: string;
 
-// 반복 설정
-  repeatEnabled: boolean;                 // 반복 / 반복 안함
+  // 3모드 스케줄
+  scheduleMode: 'once' | 'weekly' | 'interval';
+
+  // 반복 설정 (weekly)
+  repeatEnabled: boolean;
   repeatDays: Array<'월'|'화'|'수'|'목'|'금'|'토'|'일'>;
-  repeatEveryday: boolean;               // 매일 체크
-  repeatEndType: 'none' | 'date';        // 없음 / 종료 날짜
+  repeatEveryday: boolean;
+  repeatEndType: 'none' | 'date';
   repeatEndDate: string;                 // YYYY-MM-DD
+
+  // weekly 다중 시각
+  executionTimes: string[];              // ["10:58","11:02","11:05"]
+
+  // interval 모드
+  intervalMinutes: number | null;
+  activeStartTime: string;               // "HH:MM"
+  activeEndTime: string;                 // "HH:MM"
+  intervalRepeatDays: Array<'월'|'화'|'수'|'목'|'금'|'토'|'일'>;
+
+  // 시리즈 공통
+  seriesStartDate: string;               // "YYYY-MM-DD"
+  seriesEndDate: string;                 // "YYYY-MM-DD"
 };
 
 // 작업경로(목업)
@@ -317,11 +343,23 @@ function buildInitialForm(event: ScheduleDetailProps['event']): FormState {
     pathDetails: [],
     pathOrder: "",
 
+    scheduleMode: 'once',
+
     repeatEnabled: false,
     repeatDays: [],
     repeatEveryday: false,
     repeatEndType: 'none',
     repeatEndDate: '',
+
+    executionTimes: [],
+
+    intervalMinutes: null,
+    activeStartTime: '09:00',
+    activeEndTime: '18:00',
+    intervalRepeatDays: [],
+
+    seriesStartDate: '',
+    seriesEndDate: '',
   };
 }
 
@@ -330,6 +368,16 @@ function formatTimeRangeFromForm(f: FormState) {
     f.endHour
   )}:${pad2(f.endMin)}`;
 }
+
+// render helpers (컴포넌트 밖에 정의해야 매 렌더마다 재생성되지 않음)
+const FieldRow = ({ label, children, lined }: { label: string; children: React.ReactNode; lined?: boolean }) => (
+  <div className={lined ? styles.detailFieldRowLine : styles.detailFieldRow}>
+    <div className={styles.detailFieldLabel}>{label}</div>
+    <div className={styles.detailFieldValue}>{children}</div>
+  </div>
+);
+
+const ViewText = ({ value }: { value: string }) => <span className={styles.detailViewText}>{value}</span>;
 
 export default function ScheduleDetail({
   isOpen,
@@ -341,6 +389,7 @@ export default function ScheduleDetail({
   onScheduleChanged,
 }: ScheduleDetailProps) {
   const router = useRouter();
+    const dbId = extractOriginalId(event.id);
     const [mode, setMode] = useState<Mode>('view');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [repeatConfirmOpen, setRepeatConfirmOpen] = useState(false);
@@ -468,28 +517,32 @@ export default function ScheduleDetail({
         if (!form.workStatus) errors.workStatus = "작업상태를 선택하세요.";
         if (!form.pathName) errors.pathName = "작업경로를 선택하세요.";
 
-        // 시작/종료 시간 비교
-        const startDT = makeDetailDateTime(startDateText, form.startAmpm, form.startHour, form.startMin);
-        const endDT = makeDetailDateTime(endDateText, form.endAmpm, form.endHour, form.endMin);
-        if (new Date(startDT) >= new Date(endDT)) errors.dateTime = "시작 일시가 종료 일시보다 같거나 늦습니다.";
-
-        // 과거 날짜 방지 (반복 일정 제외)
-        if (!form.repeatEnabled) {
+        // 모드별 검증
+        if (form.scheduleMode === 'once') {
+            const startDT = makeDetailDateTime(startDateText, form.startAmpm, form.startHour, form.startMin);
             const now = new Date();
             const startDate = new Date(startDT.replace(" ", "T"));
             if (startDate < now) {
-                errors.pastDate = "시작 일시가 현재 시각보다 이전입니다.";
+                errors.pastDate = "실행 일시가 현재 시각보다 이전입니다.";
             }
         }
 
-        // 반복 설정 검증
-        if (form.repeatEnabled) {
+        if (form.scheduleMode === 'weekly') {
             if (form.repeatDays.length === 0) errors.repeatDays = "반복요일을 최소 1일 선택하세요.";
-            if (form.repeatEndType === "date" && form.repeatEndDate) {
-                const repeatEnd = new Date(form.repeatEndDate);
-                const startD = new Date(startDateText);
-                if (repeatEnd < startD) {
-                    errors.repeatEndDate = "반복 종료일이 시작일보다 빠릅니다.";
+            if (form.repeatEndType === "date" && form.repeatEndDate && form.seriesStartDate) {
+                if (form.repeatEndDate < form.seriesStartDate) {
+                    errors.seriesEndDate = "종료일이 시작일보다 빠릅니다.";
+                }
+            }
+        }
+
+        if (form.scheduleMode === 'interval') {
+            if (!form.intervalMinutes || form.intervalMinutes < 1) {
+                errors.intervalMinutes = "반복 간격을 1분 이상 입력하세요.";
+            }
+            if (form.repeatEndType === "date" && form.repeatEndDate && form.seriesStartDate) {
+                if (form.repeatEndDate < form.seriesStartDate) {
+                    errors.seriesEndDate = "종료일이 시작일보다 빠릅니다.";
                 }
             }
         }
@@ -505,33 +558,46 @@ export default function ScheduleDetail({
         const startDT = makeDetailDateTime(startDateText, form.startAmpm, form.startHour, form.startMin);
         const endDT = makeDetailDateTime(endDateText, form.endAmpm, form.endHour, form.endMin);
 
-        const payload = {
+        const payload: Record<string, any> = {
             id: event.id,
-            RobotName: form.robotNo,
-            TaskName: form.title,
-            TaskType: form.workType,
             TaskStatus: form.workStatus,
-            WayName: form.pathName,
-            StartTime: startDT,
-            EndTime: endDT,
-            Repeat: form.repeatEnabled,
-            RepeatDays: form.repeatDays.length ? form.repeatDays.join(",") : null,
-            RepeatEndDate: form.repeatEndType === "date" ? form.repeatEndDate : null,
+            ScheduleMode: form.scheduleMode,
             ...(repeatScope ? { RepeatScope: repeatScope } : {}),
         };
+
+        if (form.scheduleMode === 'once') {
+            payload.StartTime = startDT;
+        } else if (form.scheduleMode === 'weekly') {
+            payload.ExecutionTime = form.executionTimes.length > 0
+              ? form.executionTimes.join(",")
+              : `${pad2(fromAmpmHour(form.startAmpm, form.startHour))}:${pad2(form.startMin)}`;
+            payload.RepeatDays = form.repeatDays.join(",");
+            payload.SeriesStartDate = form.seriesStartDate || startDateText;
+            payload.SeriesEndDate = form.repeatEndType === "date" ? form.repeatEndDate : null;
+        } else if (form.scheduleMode === 'interval') {
+            payload.ActiveStartTime = form.activeStartTime;
+            payload.ActiveEndTime = form.activeEndTime;
+            payload.IntervalMinutes = form.intervalMinutes;
+            payload.RepeatDays = form.intervalRepeatDays.length ? form.intervalRepeatDays.join(",") : null;
+            payload.SeriesStartDate = form.seriesStartDate || startDateText;
+            payload.SeriesEndDate = form.repeatEndType === "date" ? form.repeatEndDate : null;
+        }
 
         setSaving(true);
         try {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10000);
-            const res = await apiFetch(`/DB/schedule/${event.id}`, {
+            const res = await apiFetch(`/DB/schedule/${dbId}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
                 signal: controller.signal,
             });
             clearTimeout(timeout);
-            if (!res.ok) throw new Error("수정 실패");
+            if (!res.ok) {
+                const body = await res.json().catch(() => null);
+                throw new Error(body?.detail || "수정 실패");
+            }
             onUpdate?.({
                 id: event.id,
                 robotNo: form.robotNo,
@@ -550,7 +616,7 @@ export default function ScheduleDetail({
             if (e?.name === 'AbortError') {
                 setApiError("서버 응답 시간이 초과되었습니다. 다시 시도해주세요.");
             } else {
-                setApiError("스케줄 수정에 실패했습니다.");
+                setApiError(e instanceof Error && e.message !== "수정 실패" ? e.message : "스케줄 수정에 실패했습니다.");
             }
         } finally {
             setSaving(false);
@@ -626,6 +692,8 @@ export default function ScheduleDetail({
     const startAmpm = startH24 < 12 ? '오전' : '오후';
     const endAmpm = endH24 < 12 ? '오전' : '오후';
 
+    const mode = (data.ScheduleMode || (data.Repeat === "Y" ? "weekly" : "once")) as FormState["scheduleMode"];
+
     setForm({
       robotNo: data.RobotName,
       title: data.TaskName,
@@ -648,13 +716,29 @@ export default function ScheduleDetail({
       pathDetails: [],
       pathOrder: matchedPath?.order ?? "",
 
-      repeatEnabled: data.Repeat === "Y",
-      repeatDays: data.Repeat_Day
+      scheduleMode: mode,
+
+      repeatEnabled: mode === "weekly" || mode === "interval",
+      repeatDays: mode === "weekly" && data.Repeat_Day
         ? data.Repeat_Day.split(",") as Array<'월'|'화'|'수'|'목'|'금'|'토'|'일'>
         : [],
       repeatEveryday: data.Repeat_Day === '월,화,수,목,금,토,일',
-      repeatEndType: data.Repeat_End ? 'date' : 'none',
-      repeatEndDate: data.Repeat_End ?? '',
+      repeatEndType: (data.SeriesEndDate || data.Repeat_End) ? 'date' : 'none',
+      repeatEndDate: data.SeriesEndDate ?? data.Repeat_End ?? '',
+
+      executionTimes: data.ExecutionTime
+        ? data.ExecutionTime.split(",").map((t: string) => t.trim())
+        : [],
+
+      intervalMinutes: data.IntervalMinutes ?? null,
+      activeStartTime: data.ActiveStartTime ?? '09:00',
+      activeEndTime: data.ActiveEndTime ?? '18:00',
+      intervalRepeatDays: mode === "interval" && data.Repeat_Day
+        ? data.Repeat_Day.split(",") as Array<'월'|'화'|'수'|'목'|'금'|'토'|'일'>
+        : [],
+
+      seriesStartDate: data.SeriesStartDate ?? formatDate(start),
+      seriesEndDate: data.SeriesEndDate ?? data.Repeat_End ?? '',
     });
 
     setStartDateText(formatDate(start));
@@ -674,7 +758,7 @@ export default function ScheduleDetail({
       return;
     }
 
-    apiFetch(`/DB/schedule/${event.id}`)
+    apiFetch(`/DB/schedule/${dbId}`)
       .then(res => res.json())
       .then(data => {
         applyDetailData(data);
@@ -697,7 +781,17 @@ export default function ScheduleDetail({
         setFetchError("데이터를 불러오지 못했습니다.");
       })
       .finally(() => setLoading(false));
-  }, [isOpen, event.id, mockData, pathOptions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, event.id, mockData]);
+
+  // pathOptions 로드 후 경로순서 매칭
+  useEffect(() => {
+    if (!isOpen || pathOptions.length === 0 || !form.pathName) return;
+    const matched = pathOptions.find((p) => p.label === form.pathName);
+    if (matched?.order && !form.pathOrder) {
+      setForm((p) => ({ ...p, pathOrder: matched.order ?? "" }));
+    }
+  }, [pathOptions, isOpen, form.pathName, form.pathOrder]);
 
     const handleDeleteCancel = () => setShowDeleteConfirm(false);
 
@@ -706,7 +800,7 @@ export default function ScheduleDetail({
             const deletePayload = repeatScope ? { RepeatScope: repeatScope } : {};
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10000);
-            const res = await apiFetch(`/DB/schedule/${event.id}`, {
+            const res = await apiFetch(`/DB/schedule/${dbId}`, {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
                 body: Object.keys(deletePayload).length > 0 ? JSON.stringify(deletePayload) : undefined,
@@ -747,20 +841,27 @@ export default function ScheduleDetail({
     // ===== view helpers =====
     const workTypeTitle = useMemo(() => (form.workType ?? '').replace(' / ', '/'), [form.workType]);
 
-    // 상세(보기)에서 보여줄 텍스트는 “form” 기반으로 통일(수정 후 즉시 반영)
-    const viewWorkPeriodText = `${form.dateText} - 반복`;
-    const viewDowText = form.dowText;
-    const viewTimeText = formatTimeRangeFromForm(form);
+    // 모드별 보기 텍스트
+    const viewScheduleModeLabel = form.scheduleMode === 'once' ? '단일 실행'
+      : form.scheduleMode === 'weekly' ? '요일 반복'
+      : '주기 반복';
 
-    // ===== render helpers =====
-    const FieldRow = ({ label, children }: { label: string; children: React.ReactNode }) => (
-        <div className={styles.itemBox}>
-        <div className={styles.itemtitle}>{label}</div>
-        {children}
-        </div>
-    );
+    const viewTimeText = form.scheduleMode === 'once'
+      ? `${startDateText} ${form.startAmpm} ${pad2(form.startHour)}:${pad2(form.startMin)}`
+      : form.scheduleMode === 'weekly'
+        ? form.executionTimes.length > 0
+          ? `매주 ${form.repeatDays.join(',')} ${form.executionTimes.join(', ')}`
+          : `매주 ${form.repeatDays.join(',')} ${form.startAmpm} ${pad2(form.startHour)}:${pad2(form.startMin)}`
+        : `${form.activeStartTime}~${form.activeEndTime} 매 ${form.intervalMinutes ?? 0}분`;
 
-    const ViewText = ({ value }: { value: string }) => <div className={styles.itemDetail}>{value}</div>;
+    const viewSeriesText = (form.scheduleMode === 'weekly' || form.scheduleMode === 'interval')
+      ? `${form.seriesStartDate}${form.repeatEndType === 'date' && form.repeatEndDate ? ` ~ ${form.repeatEndDate}` : ' ~ 무기한'}`
+      : '';
+
+    const viewDowText = form.scheduleMode === 'interval' && form.intervalRepeatDays.length > 0
+      ? form.intervalRepeatDays.join(',')
+      : form.dowText;
+
 
     // 달력/반복종료 달력 open 상태
     const [isStartDateOpen, setIsStartDateOpen] = useState(false);
@@ -823,14 +924,14 @@ export default function ScheduleDetail({
     <>
       <div className={styles.scheduleModalOverlay} onClick={handleSafeClose}>
         <div className={styles.scheduleModalContainer} onClick={(e) => e.stopPropagation()}>
-          <button className={styles.CloseBtn} onClick={handleSafeClose}>
-            ✕
-          </button>
 
-          {/* 타이틀 */}
-          <div className={styles.Title}>
-            <div className={styles.TitleCircle}></div>
-            <h2>{isEditMode ? '작업 수정' : '작업 상세'}</h2>
+          {/* 헤더 */}
+          <div className={styles.detailHeader}>
+            <div className={styles.detailHeaderLeft}>
+              <img src="/icon/robot_schedule_w.png" alt="" className={styles.detailHeaderIcon} />
+              <h2>{isEditMode ? '작업 수정' : '작업 상세'}</h2>
+            </div>
+            <button className={styles.CloseBtn} onClick={handleSafeClose}>✕</button>
           </div>
 
           {/* 로딩 상태 */}
@@ -851,7 +952,7 @@ export default function ScheduleDetail({
                 onClick={() => {
                   setFetchError(null);
                   setLoading(true);
-                  apiFetch(`/DB/schedule/${event.id}`)
+                  apiFetch(`/DB/schedule/${dbId}`)
                     .then(res => res.json())
                     .then(data => {
                       // 재시도 시 동일한 로직 실행 (간략화)
@@ -870,178 +971,499 @@ export default function ScheduleDetail({
           )}
 
           {/* 본문 */}
-          {!loading && !fetchError && <div className={styles.itemContainer}>
+          {!loading && !fetchError && <div className={styles.detailBody}>
             {/* === 기본 정보 섹션 === */}
-            <FieldRow label="로봇명">
-              <ViewText value={form.robotNo}/>
-            </FieldRow>
+            <div className={styles.detailSection}>
+              <div className={styles.detailSectionTitle}>기본 정보<span className={styles.detailSectionLine} /></div>
 
-            <FieldRow label="작업명">
-              {isEditMode ? (
-                <div className={styles.inputWithByte}>
-                  <input
-                    className={`${styles.editInput} ${fieldErrors.title ? styles.inputError : ''}`}
-                    value={form.title}
-                    onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                    placeholder="25자(50byte) 이내로 작성하세요"
-                    maxLength={25}
-                  />
-                  <span className={`${styles.byteInline} ${getByteLength(form.title) > 40 ? styles.byteCounterWarn : ''}`}>
-                    {getByteLength(form.title)}/50
-                  </span>
-                  {fieldErrors.title && <span className={styles.fieldError}>{fieldErrors.title}</span>}
-                </div>
-              ) : (
-                <ViewText value={form.title} />
-              )}
-            </FieldRow>
-
-            <FieldRow label="작업유형">
-            {isEditMode ? (
-                <SharedCustomSelect
-                  placeholder="작업유형을 선택하세요"
-                  value={WORK_TYPES.find(t => t.label === form.workType) ?? null}
-                  options={WORK_TYPES}
-                  onChange={(opt) => setForm((p) => ({ ...p, workType: opt.label }))}
-                  error={!!fieldErrors.workType}
-                />
-            ) : (
-                <ViewText value={form.workType} />
-            )}
-            </FieldRow>
-            {isEditMode && fieldErrors.workType && (
-              <span className={styles.fieldError}>{fieldErrors.workType}</span>
-            )}
-
-            {/* === 작업일시 === */}
-            <FieldRow label="작업일시">
+              <FieldRow label="로봇명" lined>
                 {isEditMode ? (
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* 시작 */}
-                    <div className={styles.itemDateBox}>
-                        <div className={styles.itemDateLabel}>시작</div>
+                  <ViewText value={form.robotNo}/>
+                ) : (
+                  <span className={styles.detailRobotBadge}>
+                    <img src="/icon/robot_w.png" alt="" className={styles.detailRobotIcon} />
+                    {form.robotNo}
+                  </span>
+                )}
+              </FieldRow>
 
-                        <div ref={startDateWrapperRef} className={styles.itemDate}>
-                            {startDateText}
-                            <img
-                              src="/icon/search_calendar.png"
-                              alt=""
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIsStartDateOpen((v) => !v);
-                              }}
-                            />
-                            {isStartDateOpen && (
-                              <div className={styles.calendarPopover} onClick={(e) => e.stopPropagation()}>
-                                <MiniCalendar
-                                  value={parseDateText(startDateText)}
-                                  showTodayButton
-                                  size="modal"
-                                  onPickDate={(date) => {
-                                    const next = formatDate(date);
-                                    setStartDateText(next);
-                                    setEndDateText(next); // 당일 일정만 허용: 종료일도 동기화
-                                    setForm((p) => ({ ...p, dateText: next }));
-                                    setIsStartDateOpen(false);
-                                  }}
-                                />
-                              </div>
-                            )}
+              <FieldRow label="작업명" lined>
+                {isEditMode ? (
+                  <div className={styles.inputWithByte}>
+                    <input
+                      className={`${styles.editInput} ${fieldErrors.title ? styles.inputError : ''}`}
+                      value={form.title}
+                      onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
+                      placeholder="25자(50byte) 이내로 작성하세요"
+                      maxLength={25}
+                    />
+                    <span className={`${styles.byteInline} ${getByteLength(form.title) > 40 ? styles.byteCounterWarn : ''}`}>
+                      {getByteLength(form.title)}/50
+                    </span>
+                    {fieldErrors.title && <span className={styles.fieldError}>{fieldErrors.title}</span>}
+                  </div>
+                ) : (
+                  <span className={styles.detailTitleText}>{form.title}</span>
+                )}
+              </FieldRow>
+
+              <FieldRow label="작업유형" lined>
+              {isEditMode ? (
+                  <SharedCustomSelect
+                    placeholder="작업유형을 선택하세요"
+                    value={WORK_TYPES.find(t => t.label === form.workType) ?? null}
+                    options={WORK_TYPES}
+                    onChange={(opt) => setForm((p) => ({ ...p, workType: opt.label }))}
+                    error={!!fieldErrors.workType}
+                  />
+              ) : (
+                  <ViewText value={form.workType} />
+              )}
+              </FieldRow>
+              {isEditMode && fieldErrors.workType && (
+                <span className={styles.fieldError}>{fieldErrors.workType}</span>
+              )}
+            </div>
+
+            {/* === 일시 섹션 === */}
+            <div className={styles.detailSection}>
+              <div className={styles.detailSectionTitle}>작업 일시<span className={styles.detailSectionLine} /></div>
+
+              {isEditMode ? (
+                <>
+                  {/* 실행 방식 라디오 */}
+                  <FieldRow label="실행 방식">
+                    <div className={styles.modeRadioGroup}>
+                      {(['once', 'weekly', 'interval'] as ScheduleMode[]).map((m) => (
+                        <label key={m} className={styles.modeRadioLabel}>
+                          <input type="radio" name="editScheduleMode" checked={form.scheduleMode === m}
+                            onChange={() => setForm((p) => ({ ...p, scheduleMode: m, repeatEnabled: m !== 'once' }))}
+                          />
+                          <span>{SCHEDULE_MODE_LABELS[m]}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </FieldRow>
+
+                  {/* === once: 날짜 + 시각 === */}
+                  {form.scheduleMode === 'once' && (
+                    <div className={styles.detailDateRow}>
+                      <div className={styles.detailFieldLabel}>실행 일시</div>
+                      <div className={styles.detailDateControls}>
+                        <div ref={startDateWrapperRef} className={styles.detailDatePicker}>
+                          {startDateText}
+                          <img src="/icon/search_calendar.png" alt=""
+                            onClick={(e) => { e.stopPropagation(); setIsStartDateOpen((v) => !v); }}
+                          />
+                          {isStartDateOpen && (
+                            <div className={styles.calendarPopover} onClick={(e) => e.stopPropagation()}>
+                              <MiniCalendar
+                                value={parseDateText(startDateText)} showTodayButton size="modal"
+                                onPickDate={(date) => {
+                                  const next = formatDate(date);
+                                  setStartDateText(next); setEndDateText(next);
+                                  setForm((p) => ({ ...p, dateText: next }));
+                                  setIsStartDateOpen(false);
+                                }}
+                              />
+                            </div>
+                          )}
                         </div>
-                        <SharedCustomSelect
-                          options={AMPM_OPTIONS}
+                        <SharedCustomSelect options={AMPM_OPTIONS}
                           value={AMPM_OPTIONS.find(o => o.label === form.startAmpm) ?? null}
                           onChange={(opt) => setForm((p) => ({ ...p, startAmpm: opt.label as FormState["startAmpm"] }))}
-                          placeholder="오전"
-                          compact
+                          placeholder="오전" compact
                         />
-                        <SharedCustomSelect
-                          options={HOUR_OPTIONS}
+                        <SharedCustomSelect options={HOUR_OPTIONS}
                           value={HOUR_OPTIONS.find(o => o.label === String(form.startHour).padStart(2, "0")) ?? null}
                           onChange={(opt) => setForm((p) => ({ ...p, startHour: Number(opt.label) }))}
-                          placeholder="01"
-                          compact
+                          placeholder="01" compact
                         />
-                        <SharedCustomSelect
-                          options={MINUTE_OPTIONS}
-                          value={MINUTE_OPTIONS.find(o => o.label === String(form.startMin).padStart(2, "0")) ?? null}
-                          onChange={(opt) => setForm((p) => ({ ...p, startMin: Number(opt.label) }))}
-                          placeholder="00"
-                          compact
+                        <NumberSpinner value={form.startMin}
+                          onChange={(v) => setForm((p) => ({ ...p, startMin: v }))}
+                          min={0} max={59} placeholder="00"
                         />
+                      </div>
                     </div>
+                  )}
 
-                    {/* 종료 */}
-                    <div style={{ marginTop: 8 }} />
-                    <div className={styles.itemDateBox}>
-                        <div className={styles.itemDateLabel}>종료</div>
-
-                        <div ref={endDateWrapperRef} className={styles.itemDate}>
-                        {endDateText}
-                        <img
-                          src="/icon/search_calendar.png"
-                          alt=""
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setIsEndDateOpen((v) => !v);
-                          }}
-                        />
-                        {isEndDateOpen && (
-                          <div className={styles.calendarPopover} onClick={(e) => e.stopPropagation()}>
-                            <MiniCalendar
-                              value={parseDateText(endDateText)}
-                              showTodayButton
-                              size="modal"
-                              minDate={startDateText}
-                              maxDate={startDateText}
-                              onPickDate={(date) => {
-                                setEndDateText(formatDate(date));
-                                setIsEndDateOpen(false);
-                              }}
-                            />
+                  {/* === weekly: 다중 시각 + 요일 + 유효기간 === */}
+                  {form.scheduleMode === 'weekly' && (
+                    <>
+                      <div className={styles.detailFieldLabel} style={{ marginBottom: 6 }}>실행 시각</div>
+                      {(form.executionTimes.length > 0 ? form.executionTimes : [""]).map((t, i) => {
+                        const [hRaw, mRaw] = (t || "00:00").split(":").map(Number);
+                        const ampm = hRaw < 12 ? "오전" : "오후";
+                        const h12 = hRaw % 12 === 0 ? 12 : hRaw % 12;
+                        const updateTime = (newH24: number, newM: number) => {
+                          const next = [...form.executionTimes];
+                          next[i] = `${String(newH24).padStart(2, "0")}:${String(newM).padStart(2, "0")}`;
+                          setForm((p) => ({ ...p, executionTimes: next }));
+                        };
+                        return (
+                          <div key={i} className={styles.detailDateRow} style={{ marginBottom: 6 }}>
+                            <div className={styles.detailFieldLabel} style={{ minWidth: 30 }}>#{i + 1}</div>
+                            <div className={styles.detailDateControls}>
+                              <SharedCustomSelect options={AMPM_OPTIONS}
+                                value={AMPM_OPTIONS.find(o => o.label === ampm) ?? null}
+                                onChange={(opt) => {
+                                  let h = h12 % 12;
+                                  if (opt.label === "오후") h += 12;
+                                  updateTime(h, mRaw);
+                                }}
+                                placeholder="오전" compact
+                              />
+                              <SharedCustomSelect options={HOUR_OPTIONS}
+                                value={HOUR_OPTIONS.find(o => o.label === String(h12).padStart(2, "0")) ?? null}
+                                onChange={(opt) => {
+                                  let h = Number(opt.label);
+                                  if (ampm === "오후" && h !== 12) h += 12;
+                                  if (ampm === "오전" && h === 12) h = 0;
+                                  updateTime(h, mRaw);
+                                }}
+                                placeholder="01" compact
+                              />
+                              <NumberSpinner value={mRaw}
+                                onChange={(v) => updateTime(hRaw, v)}
+                                min={0} max={59} placeholder="00"
+                              />
+                              {form.executionTimes.length > 1 && (
+                                <button type="button" className={styles.execTimeRemoveBtn}
+                                  onClick={() => setForm((p) => ({ ...p, executionTimes: p.executionTimes.filter((_, j) => j !== i) }))}
+                                >✕</button>
+                              )}
+                            </div>
                           </div>
-                        )}
+                        );
+                      })}
+                      <button type="button" className={styles.execTimeAddBtn}
+                        onClick={() => setForm((p) => ({ ...p, executionTimes: [...p.executionTimes, "09:00"] }))}
+                      >+ 시각 추가</button>
+                      <FieldRow label="반복 요일">
+                        <div className={styles.repeatDayWrap}>
+                          <div className={styles.repeatDayBtns}>
+                            {DOWS.map((d) => (
+                              <button key={d} type="button"
+                                className={`${styles.repeatDayBtn} ${form.repeatDays.includes(d) ? styles.repeatDayBtnActive : ''}`}
+                                onClick={() => toggleRepeatDay(d)}
+                              >{d}</button>
+                            ))}
+                          </div>
+                          <label className={styles.repeatEveryday}>
+                            <input type="checkbox" checked={form.repeatEveryday} onChange={(e) => toggleEveryday(e.target.checked)} />
+                            매일
+                          </label>
                         </div>
-                        <SharedCustomSelect
-                          options={AMPM_OPTIONS}
-                          value={AMPM_OPTIONS.find(o => o.label === form.endAmpm) ?? null}
-                          onChange={(opt) => setForm((p) => ({ ...p, endAmpm: opt.label as FormState["endAmpm"] }))}
-                          placeholder="오전"
-                          compact
-                        />
-                        <SharedCustomSelect
-                          options={HOUR_OPTIONS}
-                          value={HOUR_OPTIONS.find(o => o.label === String(form.endHour).padStart(2, "0")) ?? null}
-                          onChange={(opt) => setForm((p) => ({ ...p, endHour: Number(opt.label) }))}
-                          placeholder="01"
-                          compact
-                        />
-                        <SharedCustomSelect
-                          options={MINUTE_OPTIONS}
-                          value={MINUTE_OPTIONS.find(o => o.label === String(form.endMin).padStart(2, "0")) ?? null}
-                          onChange={(opt) => setForm((p) => ({ ...p, endMin: Number(opt.label) }))}
-                          placeholder="00"
-                          compact
-                        />
+                      </FieldRow>
+                      {fieldErrors.repeatDays && <span className={styles.fieldError}>{fieldErrors.repeatDays}</span>}
+                      <FieldRow label="유효 기간">
+                        <div className={styles.seriesDateWrap}>
+                          <input type="date" value={form.seriesStartDate}
+                            onChange={(e) => setForm((p) => ({ ...p, seriesStartDate: e.target.value }))}
+                            className={styles.seriesDateInput}
+                          />
+                          <span>~</span>
+                          <div className={styles.seriesEndOptions}>
+                            <label>
+                              <input type="radio" checked={form.repeatEndType === 'none'}
+                                onChange={() => setForm((p) => ({ ...p, repeatEndType: 'none' }))} />
+                              무기한
+                            </label>
+                            <label>
+                              <input type="radio" checked={form.repeatEndType === 'date'}
+                                onChange={() => setForm((p) => ({ ...p, repeatEndType: 'date', repeatEndDate: p.repeatEndDate || formatDate(new Date()) }))} />
+                              <input type="date" value={form.repeatEndDate}
+                                onChange={(e) => setForm((p) => ({ ...p, repeatEndDate: e.target.value }))}
+                                min={form.seriesStartDate}
+                                disabled={form.repeatEndType !== 'date'}
+                                className={`${styles.seriesDateInput} ${form.repeatEndType !== 'date' ? styles.disabled : ''}`}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </FieldRow>
+                      {fieldErrors.seriesEndDate && <span className={styles.fieldError}>{fieldErrors.seriesEndDate}</span>}
+                    </>
+                  )}
+
+                  {/* === interval: 활동시간 + 간격 + 요일 + 유효기간 === */}
+                  {form.scheduleMode === 'interval' && (
+                    <>
+                      <div className={styles.detailDateRow}>
+                        <div className={styles.detailFieldLabel}>활동 시작</div>
+                        <div className={styles.detailDateControls}>
+                          <SharedCustomSelect options={AMPM_OPTIONS}
+                            value={AMPM_OPTIONS.find(o => o.label === (parseInt(form.activeStartTime.split(':')[0]) < 12 ? '오전' : '오후')) ?? null}
+                            onChange={(opt) => {
+                              const [hh, mm] = form.activeStartTime.split(':');
+                              let h = parseInt(hh) % 12;
+                              if (opt.label === '오후') h += 12;
+                              setForm((p) => ({ ...p, activeStartTime: `${String(h).padStart(2,'0')}:${mm}` }));
+                            }}
+                            placeholder="오전" compact
+                          />
+                          <SharedCustomSelect options={HOUR_OPTIONS}
+                            value={(() => { let h = parseInt(form.activeStartTime.split(':')[0]) % 12; if (h === 0) h = 12; return HOUR_OPTIONS.find(o => o.label === String(h).padStart(2,'0')) ?? null; })()}
+                            onChange={(opt) => {
+                              const [hh, mm] = form.activeStartTime.split(':');
+                              const ispm = parseInt(hh) >= 12;
+                              let h = Number(opt.label);
+                              if (ispm && h !== 12) h += 12;
+                              if (!ispm && h === 12) h = 0;
+                              setForm((p) => ({ ...p, activeStartTime: `${String(h).padStart(2,'0')}:${mm}` }));
+                            }}
+                            placeholder="09" compact
+                          />
+                          <NumberSpinner value={parseInt(form.activeStartTime.split(':')[1]) || 0}
+                            onChange={(v) => {
+                              const hh = form.activeStartTime.split(':')[0];
+                              setForm((p) => ({ ...p, activeStartTime: `${hh}:${String(v).padStart(2,'0')}` }));
+                            }}
+                            min={0} max={59} placeholder="00"
+                          />
+                        </div>
+                      </div>
+                      <div className={styles.detailDateRow}>
+                        <div className={styles.detailFieldLabel}>활동 종료</div>
+                        <div className={styles.detailDateControls}>
+                          <SharedCustomSelect options={AMPM_OPTIONS}
+                            value={AMPM_OPTIONS.find(o => o.label === (parseInt(form.activeEndTime.split(':')[0]) < 12 ? '오전' : '오후')) ?? null}
+                            onChange={(opt) => {
+                              const [hh, mm] = form.activeEndTime.split(':');
+                              let h = parseInt(hh) % 12;
+                              if (opt.label === '오후') h += 12;
+                              setForm((p) => ({ ...p, activeEndTime: `${String(h).padStart(2,'0')}:${mm}` }));
+                            }}
+                            placeholder="오후" compact
+                          />
+                          <SharedCustomSelect options={HOUR_OPTIONS}
+                            value={(() => { let h = parseInt(form.activeEndTime.split(':')[0]) % 12; if (h === 0) h = 12; return HOUR_OPTIONS.find(o => o.label === String(h).padStart(2,'0')) ?? null; })()}
+                            onChange={(opt) => {
+                              const [hh, mm] = form.activeEndTime.split(':');
+                              const ispm = parseInt(hh) >= 12;
+                              let h = Number(opt.label);
+                              if (ispm && h !== 12) h += 12;
+                              if (!ispm && h === 12) h = 0;
+                              setForm((p) => ({ ...p, activeEndTime: `${String(h).padStart(2,'0')}:${mm}` }));
+                            }}
+                            placeholder="06" compact
+                          />
+                          <NumberSpinner value={parseInt(form.activeEndTime.split(':')[1]) || 0}
+                            onChange={(v) => {
+                              const hh = form.activeEndTime.split(':')[0];
+                              setForm((p) => ({ ...p, activeEndTime: `${hh}:${String(v).padStart(2,'0')}` }));
+                            }}
+                            min={0} max={59} placeholder="00"
+                          />
+                        </div>
+                      </div>
+                      <FieldRow label="반복 간격">
+                        <div className={styles.intervalInputWrap}>
+                          <NumberSpinner value={form.intervalMinutes} onChange={(v) => setForm((p) => ({ ...p, intervalMinutes: v }))}
+                            min={1} max={1440} placeholder="10" pad={1} error={!!fieldErrors.intervalMinutes}
+                          />
+                          <span className={styles.intervalUnit}>분마다</span>
+                          <div className={styles.intervalPresets}>
+                            {INTERVAL_PRESETS.map((p) => (
+                              <button key={p} type="button"
+                                className={`${styles.intervalPresetBtn} ${form.intervalMinutes === p ? styles.intervalPresetActive : ''}`}
+                                onClick={() => setForm((prev) => ({ ...prev, intervalMinutes: p }))}
+                              >{p}분</button>
+                            ))}
+                          </div>
+                        </div>
+                      </FieldRow>
+                      {fieldErrors.intervalMinutes && <span className={styles.fieldError}>{fieldErrors.intervalMinutes}</span>}
+                      <FieldRow label="반복 요일">
+                        <div className={styles.repeatDayWrap}>
+                          <div className={styles.repeatDayBtns}>
+                            {DOWS.map((d) => (
+                              <button key={d} type="button"
+                                className={`${styles.repeatDayBtn} ${form.intervalRepeatDays.includes(d) ? styles.repeatDayBtnActive : ''}`}
+                                onClick={() => {
+                                  setForm((p) => {
+                                    const days = p.intervalRepeatDays.includes(d)
+                                      ? p.intervalRepeatDays.filter(x => x !== d)
+                                      : [...p.intervalRepeatDays, d as any];
+                                    return { ...p, intervalRepeatDays: days };
+                                  });
+                                }}
+                              >{d}</button>
+                            ))}
+                          </div>
+                          <label className={styles.repeatEveryday}>
+                            <input type="checkbox"
+                              checked={form.intervalRepeatDays.length === 7}
+                              onChange={(e) => setForm((p) => ({ ...p, intervalRepeatDays: e.target.checked ? [...DOWS] as any : [] }))}
+                            />
+                            매일
+                          </label>
+                        </div>
+                      </FieldRow>
+                      <FieldRow label="유효 기간">
+                        <div className={styles.seriesDateWrap}>
+                          <input type="date" value={form.seriesStartDate}
+                            onChange={(e) => setForm((p) => ({ ...p, seriesStartDate: e.target.value }))}
+                            className={styles.seriesDateInput}
+                          />
+                          <span>~</span>
+                          <div className={styles.seriesEndOptions}>
+                            <label>
+                              <input type="radio" checked={form.repeatEndType === 'none'}
+                                onChange={() => setForm((p) => ({ ...p, repeatEndType: 'none' }))} />
+                              무기한
+                            </label>
+                            <label>
+                              <input type="radio" checked={form.repeatEndType === 'date'}
+                                onChange={() => setForm((p) => ({ ...p, repeatEndType: 'date', repeatEndDate: p.repeatEndDate || formatDate(new Date()) }))} />
+                              <input type="date" value={form.repeatEndDate}
+                                onChange={(e) => setForm((p) => ({ ...p, repeatEndDate: e.target.value }))}
+                                min={form.seriesStartDate}
+                                disabled={form.repeatEndType !== 'date'}
+                                className={`${styles.seriesDateInput} ${form.repeatEndType !== 'date' ? styles.disabled : ''}`}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </FieldRow>
+                      {fieldErrors.seriesEndDate && <span className={styles.fieldError}>{fieldErrors.seriesEndDate}</span>}
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* 실행 방식 뱃지 */}
+                  <FieldRow label="실행 방식" lined>
+                    <span className={`${styles.modeBadge} ${
+                      form.scheduleMode === 'once' ? styles.modeBadgeOnce
+                      : form.scheduleMode === 'weekly' ? styles.modeBadgeWeekly
+                      : styles.modeBadgeInterval
+                    }`}>
+                      <span className={styles.modeBadgeDot} />
+                      {viewScheduleModeLabel}
+                    </span>
+                  </FieldRow>
+
+                  {/* === once 모드 보기 === */}
+                  {form.scheduleMode === 'once' && (
+                    <div className={styles.timeCardWrap}>
+                      <div className={styles.timeCard}>
+                        <div className={styles.timeCardIcon}>⏱</div>
+                        <div className={styles.timeCardBody}>
+                          <span className={styles.timeCardLabel}>실행 일시</span>
+                          <span className={styles.timeCardValue}>
+                            {form.startAmpm} {pad2(form.startHour)}:{pad2(form.startMin)}
+                          </span>
+                          <span className={styles.timeCardSub}>{startDateText}</span>
+                        </div>
+                      </div>
                     </div>
+                  )}
+
+                  {/* === weekly 모드 보기 === */}
+                  {form.scheduleMode === 'weekly' && (
+                    <div className={styles.timeCardWrap}>
+                      {/* 실행 시각들 */}
+                      <FieldRow label="실행 시각" lined>
+                        <div className={styles.execTimeTags}>
+                          {form.executionTimes.length > 0
+                            ? form.executionTimes.map((t, i) => (
+                                <span key={t} className={styles.execTimeTag}>
+                                  <span className={styles.execTimeTagIndex}>#{i + 1}</span>
+                                  {t}
+                                </span>
+                              ))
+                            : <span className={styles.execTimeTag}>
+                                {form.startAmpm} {pad2(form.startHour)}:{pad2(form.startMin)}
+                              </span>
+                          }
+                        </div>
+                      </FieldRow>
+                      {/* 반복 요일 칩 */}
+                      <FieldRow label="반복 요일" lined>
+                        <div className={styles.dowChips}>
+                          {(['월','화','수','목','금','토','일'] as const).map((d) => (
+                            <span key={d} className={`${styles.dowChip} ${form.repeatDays.includes(d) ? styles.dowChipActive : ''}`}>
+                              {d}
+                            </span>
+                          ))}
+                        </div>
+                      </FieldRow>
+                      {/* 유효 기간 */}
+                      {(form.seriesStartDate || form.seriesEndDate) && (
+                        <FieldRow label="유효 기간" lined>
+                          <div className={styles.seriesCard}>
+                            <span className={styles.seriesCardIcon}>📅</span>
+                            <span>{form.seriesStartDate}</span>
+                            <span className={styles.seriesCardArrow}>→</span>
+                            {form.repeatEndType === 'date' && form.repeatEndDate
+                              ? <span>{form.repeatEndDate}</span>
+                              : <span className={styles.seriesCardInfinity}>무기한</span>
+                            }
+                          </div>
+                        </FieldRow>
+                      )}
                     </div>
-                ) : (
-                    <ViewText value={`${startDateText} ${form.startAmpm} ${pad2(form.startHour)}:${pad2(form.startMin)} ~ ${endDateText} ${form.endAmpm} ${pad2(form.endHour)}:${pad2(form.endMin)}`} />
-                )}
-                </FieldRow>
+                  )}
+
+                  {/* === interval 모드 보기 === */}
+                  {form.scheduleMode === 'interval' && (
+                    <div className={styles.timeCardWrap}>
+                      {/* 활동 시간대 */}
+                      <div className={styles.timeCard}>
+                        <div className={`${styles.timeCardIcon} ${styles.timeCardIconInterval}`}>⏳</div>
+                        <div className={styles.timeCardBody}>
+                          <span className={styles.timeCardLabel}>활동 시간대</span>
+                          <span className={styles.timeCardValue}>
+                            {form.activeStartTime} ~ {form.activeEndTime}
+                          </span>
+                          <span className={styles.timeCardSub}>
+                            매 {form.intervalMinutes ?? 0}분 간격 실행
+                          </span>
+                        </div>
+                      </div>
+                      {/* 반복 요일 */}
+                      {form.intervalRepeatDays.length > 0 && (
+                        <FieldRow label="반복 요일" lined>
+                          <div className={styles.dowChips}>
+                            {(['월','화','수','목','금','토','일'] as const).map((d) => (
+                              <span key={d} className={`${styles.dowChip} ${form.intervalRepeatDays.includes(d) ? styles.dowChipActiveInterval : ''}`}>
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                        </FieldRow>
+                      )}
+                      {/* 유효 기간 */}
+                      {(form.seriesStartDate || form.seriesEndDate) && (
+                        <FieldRow label="유효 기간" lined>
+                          <div className={styles.seriesCard}>
+                            <span className={styles.seriesCardIcon}>📅</span>
+                            <span>{form.seriesStartDate}</span>
+                            <span className={styles.seriesCardArrow}>→</span>
+                            {form.repeatEndType === 'date' && form.repeatEndDate
+                              ? <span>{form.repeatEndDate}</span>
+                              : <span className={styles.seriesCardInfinity}>무기한</span>
+                            }
+                          </div>
+                        </FieldRow>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
                 {isEditMode && (fieldErrors.dateTime || fieldErrors.pastDate) && (
                   <div style={{ marginBottom: 8 }}>
                     <span className={styles.fieldError}>{fieldErrors.dateTime || fieldErrors.pastDate}</span>
                   </div>
                 )}
+            </div>
 
-              {!isEditMode && (
-                <FieldRow label="작업요일">
-                    <ViewText value={viewDowText || "-"} />
-                </FieldRow>
-              )}
+            {/* === 상태 섹션 === */}
+            <div className={styles.detailSection}>
+              <div className={styles.detailSectionTitle}>상태<span className={styles.detailSectionLine} /></div>
 
-            <FieldRow label="작업상태">
+            <FieldRow label="작업상태" lined>
             {isEditMode ? (
                 <SharedCustomSelect
                   placeholder="작업상태를 선택하세요"
@@ -1051,184 +1473,31 @@ export default function ScheduleDetail({
                   error={!!fieldErrors.workStatus}
                 />
             ) : (
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span className={`${styles.statusDot} ${
-                    form.workStatus === '대기' ? styles.statusDotWaiting
-                    : form.workStatus === '진행중' || form.workStatus === '진행' ? styles.statusDotWorking
-                    : form.workStatus === '완료' ? styles.statusDotCompleted
-                    : form.workStatus === '오류' ? styles.statusDotError
-                    : form.workStatus === '취소' ? styles.statusDotCancelled
+                <span className={`${styles.detailStatusBadge} ${
+                    form.workStatus === '대기' ? styles.detailStatusYellow
+                    : form.workStatus === '진행중' || form.workStatus === '진행' ? styles.detailStatusBlue
+                    : form.workStatus === '완료' ? styles.detailStatusGreen
+                    : form.workStatus === '오류' ? styles.detailStatusRed
+                    : form.workStatus === '취소' ? styles.detailStatusRed
                     : ''
-                  }`} />
-                  <ViewText value={form.workStatus} />
-                </div>
+                  }`}>
+                  {form.workStatus}
+                </span>
             )}
             </FieldRow>
             {isEditMode && fieldErrors.workStatus && (
               <span className={styles.fieldError}>{fieldErrors.workStatus}</span>
             )}
 
-            {isEditMode && (
-                <>
-                    {/* 반복설정 — "전체 일정 수정"이 아니면 비활성화 */}
-                    {(() => { const repeatLocked = repeatScope !== "all"; return (<>
-                    <div className={styles.itemRadioBox} style={repeatLocked ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
-                    <div className={styles.itemtitle}>반복설정</div>
+            {/* 반복설정은 일시 섹션의 3모드 UI로 통합됨 */}
 
-                    <div className={`${styles.radioBtnFlex} ${styles.itemLeftMg}`}>
-                        {/* 반복 */}
-                        <div
-                        className={styles.radioBtnBox}
-                        role="button"
-                        tabIndex={repeatLocked ? -1 : 0}
-                        onClick={() => !repeatLocked && setRepeatEnabled(true)}
-                        >
-                        <img
-                            src={form.repeatEnabled ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
-                            alt=""
-                        />
-                        <span>반복</span>
-                        </div>
+            </div>
 
-                        {/* 반복 안함 */}
-                        <div
-                        className={styles.radioBtnBox}
-                        role="button"
-                        tabIndex={repeatLocked ? -1 : 0}
-                        onClick={() => !repeatLocked && setRepeatEnabled(false)}
-                        >
-                        <img
-                            src={!form.repeatEnabled ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
-                            alt=""
-                        />
-                        <span>반복 안함</span>
-                        </div>
-                    </div>
-                    </div>
+            {/* === 경로 섹션 === */}
+            <div className={styles.detailSection}>
+              <div className={styles.detailSectionTitle}>경로 정보<span className={styles.detailSectionLine} /></div>
 
-                    {/* ✅ 조건: 반복 선택된 경우에만 표시 */}
-                    {form.repeatEnabled && (
-                    <>
-                        <div className={styles.itemRadioBox} style={repeatLocked ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
-                            <div className={styles.itemtitle}>반복요일</div>
-
-                            <div className={`${styles.radioBtnFlex} ${styles.itemLeftMg}`} style={{ gap: 10 }}>
-                                {DOWS.map((d) => {
-                                const active = form.repeatDays.includes(d);
-                                return (
-                                    <button
-                                    key={d}
-                                    type="button"
-                                    disabled={repeatLocked}
-                                    onClick={() => toggleRepeatDay(d)}
-                                    className={`${styles.repeatDayBtn} ${active ? styles.repeatDayBtnActive : ""}`}
-                                    >
-                                    {d}
-                                    </button>
-                                );
-                                })}
-
-                                <label className={styles.everydayBox}>
-                                <input
-                                    type="checkbox"
-                                    disabled={repeatLocked}
-                                    checked={form.repeatEveryday}
-                                    onChange={(e) => toggleEveryday(e.target.checked)}
-                                />
-                                <span>매일</span>
-                                </label>
-                            </div>
-                        </div>
-                        {fieldErrors.repeatDays && (
-                          <span className={styles.fieldError}>{fieldErrors.repeatDays}</span>
-                        )}
-
-                        <div className={styles.itemRadioBox} style={repeatLocked ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
-                        <div className={styles.itemtitle}>반복종료</div>
-
-                        <div className={`${styles.radioBtnFlex} ${styles.itemLeftMg}`}>
-                            <div
-                            className={styles.radioBtnBox}
-                            role="button"
-                            tabIndex={repeatLocked ? -1 : 0}
-                            onClick={() => {
-                              if (repeatLocked) return;
-                              setForm((p) => ({ ...p, repeatEndType: "none" }));
-                              setIsRepeatEndDateOpen(false);
-                            }}
-                            >
-                            <img
-                                src={form.repeatEndType === "none" ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
-                                alt=""
-                            />
-                            <span>없음</span>
-                            </div>
-
-                            <div
-                            className={styles.radioBtnBox}
-                            role="button"
-                            tabIndex={repeatLocked ? -1 : 0}
-                            onClick={() => {
-                              if (repeatLocked) return;
-                              setForm((p) => ({
-                                ...p,
-                                repeatEndType: "date",
-                                repeatEndDate: p.repeatEndDate || formatDate(new Date()),
-                              }));
-                            }}
-                            >
-                            <img
-                                src={form.repeatEndType === "date" ? "/icon/place_chk.png" : "/icon/place_none_chk.png"}
-                                alt=""
-                            />
-                            <span>종료 날짜</span>
-                            </div>
-
-                            {form.repeatEndType === "date" && (
-                            <div
-                                ref={repeatEndDateWrapperRef}
-                                className={styles.repeatEndDateBox}
-                            >
-                                <span className={styles.repeatEndDateText}>
-                                  {form.repeatEndDate || formatDate(new Date())}
-                                </span>
-                                <img
-                                    src="/icon/search_calendar.png"
-                                    alt=""
-                                    onClick={(e) => {
-                                        if (repeatLocked) return;
-                                        e.stopPropagation();
-                                        setIsRepeatEndDateOpen((v) => !v);
-                                    }}
-                                />
-                                {isRepeatEndDateOpen && !repeatLocked && (
-                                    <div
-                                        className={styles.calendarPopover}
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        <MiniCalendar
-                                            value={parseDateText(form.repeatEndDate || formatDate(new Date()))}
-                                            showTodayButton
-                                            size="modal"
-                                            onPickDate={(date) => {
-                                                setForm((p) => ({ ...p, repeatEndDate: formatDate(date) }));
-                                                setIsRepeatEndDateOpen(false);
-                                            }}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-                            )}
-                        </div>
-                        </div>
-                    </>
-                    )}
-                </>); })()}
-                </>
-                )}
-
-                {/* === 작업경로 === */}
-                <FieldRow label="작업경로">
+                <FieldRow label="작업경로" lined>
                 {isEditMode ? (
                     <SharedCustomSelect
                       placeholder="작업경로를 선택하세요"
@@ -1255,30 +1524,42 @@ export default function ScheduleDetail({
                   <span className={styles.fieldError}>{fieldErrors.pathName}</span>
                 )}
 
-            <div className={styles.itemPathBox}>
-              <div className={styles.itemtitle}>경로순서</div>
-              <div className={styles.itemPath}>
-                <div className={styles.itemScroll}>{form.pathOrder || "-"}</div>
-              </div>
-            </div>
-            {isEditMode && (
-              <div className={styles.pathBoxFlex}>
-                <div></div>
-                <button
-                  type="button"
-                  className={styles.itemBoxBtn}
-                  onClick={() => router.push('/robots?tab=path')}
-                >
-                  경로 관리 →
-                </button>
-              </div>
-            )}
+                <FieldRow label="경로순서" lined>
+                  {form.pathOrder ? (
+                    <div className={styles.pathSteps}>
+                      {form.pathOrder.split(" - ").map((place, i, arr) => (
+                        <React.Fragment key={i}>
+                          <span className={styles.pathStep}>
+                            <span className={styles.pathStepDot}>{i + 1}</span>
+                            <span className={styles.pathStepName}>{place.trim()}</span>
+                          </span>
+                          {i < arr.length - 1 && <span className={styles.pathStepArrow}>→</span>}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={styles.detailPathOrder}>-</div>
+                  )}
+                </FieldRow>
 
-            {!isEditMode && modifiedAtText && (
-              <FieldRow label="수정 일시">
-                <ViewText value={modifiedAtText} />
-              </FieldRow>
-            )}
+                {isEditMode && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                    <button
+                      type="button"
+                      className={styles.detailLinkBtn}
+                      onClick={() => router.push('/mapManagement?tab=path')}
+                    >
+                      경로 관리 탭으로 이동 →
+                    </button>
+                  </div>
+                )}
+
+                {!isEditMode && modifiedAtText && (
+                  <FieldRow label="수정 일시" lined>
+                    <ViewText value={modifiedAtText} />
+                  </FieldRow>
+                )}
+            </div>
           </div>}
 
           {/* 에러 확인창 */}

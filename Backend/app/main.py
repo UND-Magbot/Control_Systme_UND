@@ -29,6 +29,9 @@ from app.navigation.send_move import (
     is_nav_active, get_current_target, get_nav_sent_time, check_and_clear_reset_flag,
     current_wp_index, waypoints_list, nav_loop_remaining
 )
+from app.scheduler.engine import (
+    scheduler_thread, on_navigation_complete, on_navigation_error, get_active_schedule_id
+)
 
 import os
 import time
@@ -216,7 +219,7 @@ def get_robot_position_once(timeout=1.0):
 # ======================================================
 # 초기 Pose 설정
 # ======================================================
-INIT_POSE = {"PosX": 3.635, "PosY": 0.144, "PosZ": 0.0, "Yaw": -0.042}
+INIT_POSE = {"PosX": 3.998, "PosY": -2.718, "PosZ": 0.0, "Yaw": -1.602}
 
 def send_init_pose():
     """로봇에 직접 init_pose 전송 + 위치 변화로 성공 확인"""
@@ -633,7 +636,7 @@ def startup_event():
         db.close()
 
     time.sleep(2)
-    # send_init_pose()
+    #send_init_pose()
     log_event("system", "system_startup", "서버 시작")
 
 
@@ -861,8 +864,10 @@ def nav_thread():
                     # 이미 목표 근처에 있으면 바로 도착 처리 (재전송 불필요)
                     target = get_current_target()
                     if target:
-                        dx = robot_position["x"] - target["x"]
-                        dy = robot_position["y"] - target["y"]
+                        rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+                        pos = runtime.get_position(rid) if rid else {"x": 0, "y": 0}
+                        dx = pos["x"] - target["x"]
+                        dy = pos["y"] - target["y"]
                         dist = (dx**2 + dy**2) ** 0.5
                         if dist < NEAR_SKIP_DISTANCE:
                             arrived = True
@@ -940,10 +945,15 @@ def nav_thread():
                 runtime.update_nav(rid, True, last_status, time.time())
             try:
                 navigation_send_next()
+                # 네비게이션이 완료되었으면 스케줄러 콜백 호출
+                if not is_nav_active() and get_active_schedule_id() is not None:
+                    on_navigation_complete()
             except Exception as e:
                 print(f"[ERR] navigation_send_next 실패: {e}")
                 log_event("error", "nav_error", f"네비게이션 다음 웨이포인트 전송 실패: {e}",
                           robot_id=get_robot_id(), robot_name=get_robot_name())
+                if get_active_schedule_id() is not None:
+                    on_navigation_error(str(e))
 
         time.sleep(NAV_POLL_INTERVAL)
 
@@ -954,6 +964,7 @@ def nav_thread():
 threading.Thread(target=position_thread, daemon=True).start()
 threading.Thread(target=status_thread, daemon=True).start()
 threading.Thread(target=nav_thread, daemon=True).start()
+threading.Thread(target=scheduler_thread, daemon=True).start()
 
 
 # ======================================================

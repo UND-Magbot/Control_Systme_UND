@@ -150,6 +150,48 @@ export default function RobotStatusList({
   const [deleteMode, setDeleteMode] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
+  // 진행 중인 스케줄 (5초 폴링)
+  type ActiveSchedule = {
+    id: number;
+    RobotName: string;
+    WorkName: string;
+    TaskType: string;
+    TaskStatus: string;
+    WayName: string;
+    StartDate: string;
+    EndDate: string;
+    Repeat: string;
+    Repeat_Day: string | null;
+    ScheduleMode?: string;
+    ExecutionTime?: string | null;
+    ActiveStartTime?: string | null;
+    ActiveEndTime?: string | null;
+    IntervalMinutes?: number | null;
+  };
+  const [activeSchedules, setActiveSchedules] = useState<ActiveSchedule[]>([]);
+
+  useEffect(() => {
+    const fetchActive = () => {
+      apiFetch(`/DB/schedule`)
+        .then((res) => res.json())
+        .then((data: ActiveSchedule[]) => {
+          setActiveSchedules(
+            Array.isArray(data)
+              ? data.filter((s) => s.TaskStatus === "진행중" || s.TaskStatus === "진행")
+              : []
+          );
+        })
+        .catch(() => setActiveSchedules([]));
+    };
+    fetchActive();
+    const timer = setInterval(fetchActive, 5_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const getActiveScheduleForRobot = (robotName: string): ActiveSchedule | null => {
+    return activeSchedules.find((s) => s.RobotName === robotName) ?? null;
+  };
+
   // 원격 모드 모달
   const [remoteModalOpen, setRemoteModalOpen] = useState(false);
   const [remoteTargetRobot, setRemoteTargetRobot] = useState<RobotRowData | null>(null);
@@ -437,7 +479,47 @@ export default function RobotStatusList({
                   <td><div>{r.no}</div></td>
                   <td><span className={`${styles.statusBadge} ${status.className}`}>{status.label}</span></td>
                   <td className={styles.locationCell}>{getRobotLocation(r)}</td>
-                  <td className={styles.taskCell}>{getRobotCurrentTask(r)}</td>
+                  <td className={styles.taskCell}>
+                    {(() => {
+                      const active = getActiveScheduleForRobot(r.no);
+                      if (!active) return getRobotCurrentTask(r);
+                      const mode = active.ScheduleMode || (active.Repeat === "Y" ? "weekly" : "once");
+                      const modeLabel = mode === "weekly" ? "요일반복" : mode === "interval" ? "주기반복" : "단일";
+                      const modeBadgeClass = mode === "weekly" ? styles.taskCellBadgeWeekly : mode === "interval" ? styles.taskCellBadgeInterval : styles.taskCellBadgeOnce;
+                      // 현재 실행 중인 시각 계산
+                      let time: string;
+                      if (mode === "weekly" && active.ExecutionTime) {
+                        const now = new Date();
+                        const nowMin = now.getHours() * 60 + now.getMinutes();
+                        const times = active.ExecutionTime.split(",").map((t: string) => {
+                          const [h, m] = t.trim().split(":").map(Number);
+                          return { min: h * 60 + m, str: `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}` };
+                        }).sort((a, b) => a.min - b.min);
+                        let current = times[0];
+                        for (let i = times.length - 1; i >= 0; i--) {
+                          if (times[i].min <= nowMin) { current = times[i]; break; }
+                        }
+                        time = current.str;
+                      } else if (mode === "interval") {
+                        time = active.ActiveStartTime || `${String(new Date(active.StartDate).getHours()).padStart(2,"0")}:${String(new Date(active.StartDate).getMinutes()).padStart(2,"0")}`;
+                      } else {
+                        const dt = new Date(active.StartDate);
+                        time = `${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;
+                      }
+                      return (
+                        <div className={styles.taskCellActive}>
+                          <div className={styles.taskCellRow}>
+                            <span className={styles.taskCellName}>{active.WorkName}</span>
+                          </div>
+                          <div className={styles.taskCellRow}>
+                            <span className={`${styles.taskCellBadge} ${modeBadgeClass}`}>{modeLabel}</span>
+                            <span className={`${styles.taskCellBadge} ${styles.taskCellBadgeType}`}>{active.TaskType}</span>
+                            <span className={styles.taskCellSub}>{time} 실행</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td>
                     {isDualBattery(r) ? (
                       <>
@@ -476,7 +558,7 @@ export default function RobotStatusList({
         </div>
 
         <RobotInsertModal isOpen={robotInsertModalOpen} onClose={() => setRobotInsertModalOpen(false)} />
-        <RobotDetailModal isOpen={robotDetailModalOpen} onClose={() => { setRobotDetailModalOpen(false); setRobotDetailEditMode(false); }} selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} initialEditMode={robotDetailEditMode} />
+        <RobotDetailModal isOpen={robotDetailModalOpen} onClose={() => { setRobotDetailModalOpen(false); setRobotDetailEditMode(false); }} selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} initialEditMode={robotDetailEditMode} activeSchedule={selectedRobot ? getActiveScheduleForRobot(selectedRobot.no) : null} />
         {remoteModalOpen && remoteTargetRobot && (
           <RemoteMapModal isOpen={remoteModalOpen} onClose={() => setRemoteModalOpen(false)} selectedRobots={remoteTargetRobot} robots={robots} video={video} camera={cameras} primaryView="map" />
         )}

@@ -23,6 +23,8 @@ type CustomSelectProps<T extends SelectOption = SelectOption> = {
   emptyMessage?: string;
   className?: string;
   overlay?: boolean;
+  /** true이면 드롭다운에 검색 input 표시 + 직접 입력 가능 */
+  searchable?: boolean;
 };
 
 export default function CustomSelect<T extends SelectOption = SelectOption>({
@@ -37,8 +39,10 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
   emptyMessage,
   className,
   overlay = false,
+  searchable = false,
 }: CustomSelectProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -91,12 +95,30 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
     };
   }, [overlay, isOpen]);
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredOptions = searchable && searchText
+    ? options.filter((o) => o.label.includes(searchText))
+    : options;
+
   const handleToggle = () => {
-    if (!disabled) setIsOpen((v) => !v);
+    if (disabled) return;
+    setIsOpen((v) => {
+      if (!v) setSearchText("");
+      return !v;
+    });
   };
+
+  // searchable: 열릴 때 input에 포커스
+  useEffect(() => {
+    if (isOpen && searchable) {
+      requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
+  }, [isOpen, searchable]);
 
   const handleSelect = (option: T) => {
     onChange(option);
+    setSearchText("");
     setIsOpen(false);
   };
 
@@ -139,14 +161,14 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
           : undefined
       }
     >
-      {options.length === 0 ? (
+      {filteredOptions.length === 0 ? (
         <div className={styles.emptyMessage}>
           {emptyMessage ?? "항목이 없습니다"}
         </div>
       ) : (
         <>
           <div ref={scrollRef} className={`${styles.scrollArea} ${(compact || overlay) && needsScroll ? styles.scrollAreaCompact : ""}`} role="listbox">
-            {options.map((option) => (
+            {filteredOptions.map((option) => (
               <div
                 key={option.id}
                 className={styles.option}
@@ -169,13 +191,43 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
 
   return (
     <div ref={wrapperRef} className={wrapperClasses} style={wrapperStyle}>
-      <div className={selectClasses} onClick={handleToggle}>
-        <span>{value?.label ?? placeholder}</span>
-        <img
-          src={isOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"}
-          alt=""
-        />
-      </div>
+      {searchable ? (
+        <div className={selectClasses} onClick={() => { if (!disabled && !isOpen) { setSearchText(""); setIsOpen(true); } }}>
+          <input
+            ref={searchInputRef}
+            className={styles.inlineInput}
+            type="text"
+            value={isOpen ? searchText : (value?.label ?? "")}
+            placeholder={placeholder}
+            onChange={(e) => {
+              setSearchText(e.target.value);
+              if (!isOpen) setIsOpen(true);
+            }}
+            onFocus={() => { setSearchText(""); setIsOpen(true); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && filteredOptions.length > 0) {
+                handleSelect(filteredOptions[0]);
+              } else if (e.key === "Escape") {
+                setIsOpen(false);
+                searchInputRef.current?.blur();
+              }
+            }}
+          />
+          <img
+            src={isOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"}
+            alt=""
+            onClick={(e) => { e.stopPropagation(); handleToggle(); }}
+          />
+        </div>
+      ) : (
+        <div className={selectClasses} onClick={handleToggle}>
+          <span>{value?.label ?? placeholder}</span>
+          <img
+            src={isOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"}
+            alt=""
+          />
+        </div>
+      )}
 
       {isOpen && (overlay ? createPortal(<div ref={portalRef}>{dropdownContent}</div>, document.body) : dropdownContent)}
     </div>

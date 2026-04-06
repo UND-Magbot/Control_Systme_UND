@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import type { RobotRowData, Floor } from '@/app/type';
 import WorkSchedule from './WorkSchedule';
 import styles from '../Schedules.module.css';
@@ -45,7 +45,9 @@ export default function SchedulePageClient({ floors }: SchedulePageClientProps) 
         </div>
       </div>
 
-      <WorkSchedule robots={robots} />
+      <Suspense>
+        <WorkSchedule robots={robots} />
+      </Suspense>
     </>
   );
 }

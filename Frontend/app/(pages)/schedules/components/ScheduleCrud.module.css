@@ -10,19 +10,21 @@
 
 
 .scheduleModalContainer {
-  width: 600px;
+  width: 560px;
   height: auto;
   max-height: 90vh;
   overflow-y: auto;
   border-radius: 14px;
+  background: var(--surface-3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  animation: slideUpDetail 0.25s ease;
+}
 
-  padding: 22px 28px 20px;
-
-  background: #292D43;
-
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-
-  position: relative;
+@keyframes slideUpDetail {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .scheduleModalContainer::-webkit-scrollbar {
@@ -38,27 +40,54 @@
   border-radius: 3px;
 }
 
+/* 헤더 */
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.detailHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detailHeaderIcon {
+  width: 20px;
+  height: 20px;
+  opacity: 0.8;
+}
+
+.detailHeaderLeft h2 {
+  margin: 0;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
 .CloseBtn {
     width: 28px;
     height: 28px;
-
     border: none;
-
     background: transparent;
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 20px;
-    line-height: 28px;
-
-    position: absolute;
-    top: 26px;
-    right: 28px;
-
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 18px;
     cursor: pointer;
-    transition: color 0.15s ease;
+    transition: color 0.15s ease, background 0.15s ease;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 
 .CloseBtn:hover {
     color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .Title {
@@ -68,8 +97,8 @@
 }
 
 .Title img {
-  width: 30px;
-  height: 30px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -85,13 +114,288 @@
 .itemContainer {
     width: 100%;
     height: auto;
+    padding: 16px 22px 8px;
+}
 
-    border-radius: 10px;
+/* ── 상세 모달 본문 ── */
+.detailBody {
+  padding: 8px 22px 8px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
 
-    background: #3B415F;
+.detailBody::-webkit-scrollbar {
+  width: 6px;
+}
 
-    margin-top: 14px;
-    padding: 16px 20px 6px;
+.detailBody::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.detailBody::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.detailSection {
+  margin-bottom: 10px;
+  padding: 14px 16px 10px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  overflow: visible;
+  position: relative;
+}
+
+.detailSectionTitle {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-accent, rgba(100, 180, 255, 0.85));
+  margin: 0 0 12px 0;
+}
+
+.detailSectionLine {
+  display: none;
+}
+
+.detailFieldRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+  min-height: 32px;
+  font-size: var(--font-size-md);
+}
+
+.detailFieldRowLine {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 0;
+  padding-bottom: 10px;
+  min-height: 32px;
+  font-size: var(--font-size-md);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.detailFieldRowLine:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.detailFieldRowLine + .detailFieldRowLine {
+  padding-top: 10px;
+}
+
+.detailFieldLabel {
+  min-width: 64px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: var(--font-size-md);
+  white-space: nowrap;
+}
+
+.detailFieldValue {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+}
+
+/* 수정 모드에서 input/select가 동일 너비 */
+.detailFieldValue > div:first-child {
+  width: 100%;
+}
+
+.detailFieldValue input {
+  width: 100%;
+  height: 34px;
+  background: var(--surface-5);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  padding: 0 12px;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.detailFieldValue input:focus {
+  border-color: var(--color-primary, #4a90ff);
+}
+
+.detailFieldValue input::placeholder {
+  color: var(--text-muted);
+}
+
+.detailViewText {
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+}
+
+.detailTitleText {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.detailRobotBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: rgba(160, 100, 255, 0.9);
+  background: rgba(160, 100, 255, 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.detailRobotIcon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+}
+
+.detailStatusBadge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.detailStatusBlue {
+  color: #00B0EE;
+  background: rgba(74, 144, 255, 0.15);
+}
+
+.detailStatusYellow {
+  color: #FFC635;
+  background: rgba(255, 193, 7, 0.15);
+}
+
+.detailStatusGreen {
+  color: #92D050;
+  background: rgba(76, 175, 80, 0.15);
+}
+
+.detailStatusRed {
+  color: #FF0000;
+  background: rgba(244, 67, 54, 0.15);
+}
+
+.detailPathOrderWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+/* ── 작업일시 수정 모드 ── */
+.detailDateRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+  min-height: 34px;
+}
+
+.detailDateControls {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.detailDatePicker {
+  width: 110px;
+  height: 34px;
+  line-height: 34px;
+  background: var(--surface-5);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.detailDatePicker img {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.detailPathOrder {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-5);
+  padding: 8px 10px;
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+.pathOrderText {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-5);
+  padding: 6px 10px;
+  border-radius: 6px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.detailPathOrderCollapsed {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detailPathOrderExpanded {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.detailPathToggle {
+  background: none;
+  border: none;
+  color: rgba(100, 180, 255, 0.8);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  align-self: flex-end;
+}
+
+.detailPathToggle:hover {
+  color: rgba(100, 180, 255, 1);
+  text-decoration: underline;
+}
+
+.detailLinkBtn {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.detailLinkBtn:hover {
+  color: var(--text-primary);
+  border-color: rgba(160, 100, 255, 0.5);
 }
 
 .itemBox {
@@ -99,10 +403,10 @@
     align-items: center;
     gap: 16px;
 
-    margin-bottom: 12px;
+    margin-bottom: 14px;
 
     width: 100%;
-    min-height: 32px;
+    min-height: 34px;
 
     font-size: 13px;
     color: #FFFFFF;
@@ -461,7 +765,7 @@
 
     flex: 1;
     min-width: 0;
-    height: 32px;
+    height: 34px;
 
     font-weight: 400;
     font-size: 12px;
@@ -469,7 +773,7 @@
 
 .itemDateBox .itemDate {
     width: 110px;
-    line-height: 32px;
+    line-height: 34px;
 
     background: var(--surface-5);
 
@@ -661,7 +965,9 @@
 
 .btnTotal {
   width: 100%;
-  margin-top: 14px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .btnLeftBox {
@@ -715,14 +1021,17 @@
 }
 
 .itemDetail {
-    width: 373px;
-    line-height: 32px;
+    flex: 1;
+    min-width: 0;
+    line-height: 34px;
+    color: var(--text-primary);
 }
 
 .itemtitle {
-    color: #B8B8BA;
-
-    font-weight: 600;
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 13px;
+    min-width: 64px;
 }
 
 .itemPathBox {
@@ -916,6 +1225,265 @@
   margin-bottom: unset;
 }
 
+/* ====== 스케줄 모드 라디오 그룹 ====== */
+.modeRadioGroup {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex: 1;
+}
+
+.modeRadioLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.modeRadioLabel:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.modeRadioLabel input[type="radio"] {
+  accent-color: #0E85B7;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* ====== 반복 요일 래퍼 ====== */
+.repeatDayWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.repeatDayBtns {
+  display: flex;
+  gap: 4px;
+}
+
+.repeatEveryday {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  font-size: 12px;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.repeatEveryday input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* ====== 유효 기간 ====== */
+.seriesDateWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  color: #ffffff;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.seriesDateRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seriesDateLabel {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.seriesDateInput {
+  width: 150px;
+  height: 32px;
+  background: var(--surface-5, #454B67);
+  border: 1px solid var(--border-subtle, #8AACC7);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.seriesDateInput::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
+.seriesDateInput.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.seriesEndOptions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.seriesEndOptions label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+
+
+.seriesEndOptions input[type="radio"] {
+  accent-color: #0E85B7;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.seriesEndRadio {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.seriesEndRadio input[type="radio"] {
+  accent-color: #0E85B7;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+
+/* ====== 주기 반복 간격 입력 ====== */
+.intervalInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.intervalUnit {
+  font-size: 13px;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.intervalPresets {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.intervalPresetBtn {
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #8AACC7);
+  background: var(--surface-5, #454B67);
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.intervalPresetBtn:hover {
+  background: #196189;
+}
+
+.intervalPresetActive {
+  background: #196189;
+  border-color: #0E85B7;
+}
+
+/* ====== 다중 실행 시각 ====== */
+.execTimeSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.execTimeList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.execTimeList::-webkit-scrollbar {
+  width: 4px;
+}
+
+.execTimeList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.execTimeRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.execTimeRemoveBtn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.execTimeRemoveBtn:hover {
+  background: #941621;
+  color: #ffffff;
+}
+
+.execTimeAddBtn {
+  align-self: flex-start;
+  border: 1px dashed var(--border-subtle, #8AACC7);
+  background: transparent;
+  color: var(--border-subtle, #8AACC7);
+  padding: 4px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.execTimeAddBtn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
 /* ====== 필드별 에러 메시지 ====== */
 .fieldError {
   color: var(--color-error-soft);
@@ -963,7 +1531,8 @@
 .byteInline {
   position: absolute;
   right: 10px;
-  top: 17px;
+  top: 50%;
+  transform: translateY(-50%);
   transform: translateY(-50%);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
@@ -1113,6 +1682,272 @@
 
 @keyframes detailSpin {
   to { transform: rotate(360deg); }
+}
+
+/* ====== 모드 뱃지 (보기 모드) ====== */
+.modeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.modeBadgeOnce {
+  color: #92D050;
+  background: rgba(146, 208, 80, 0.15);
+  border: 1px solid rgba(146, 208, 80, 0.3);
+}
+
+.modeBadgeWeekly {
+  color: #7EC8F0;
+  background: rgba(100, 180, 240, 0.15);
+  border: 1px solid rgba(100, 180, 240, 0.3);
+}
+
+.modeBadgeInterval {
+  color: #F0A030;
+  background: rgba(255, 160, 50, 0.15);
+  border: 1px solid rgba(255, 160, 50, 0.3);
+}
+
+.modeBadgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: modePulse 2s ease-in-out infinite;
+}
+
+@keyframes modePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ====== 시각 카드 (보기 모드) ====== */
+.timeCardWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.timeCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--surface-5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.timeCard:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: var(--surface-elevated);
+}
+
+.timeCardIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 176, 238, 0.12);
+  color: #7ecbf5;
+}
+
+.timeCardIconWeekly {
+  background: rgba(126, 200, 240, 0.12);
+  color: #7EC8F0;
+}
+
+.timeCardIconInterval {
+  background: rgba(240, 160, 48, 0.12);
+  color: #F0A030;
+}
+
+.timeCardBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.timeCardLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.timeCardValue {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeCardSub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ====== 다중 실행 시각 태그 ====== */
+.execTimeTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.execTimeTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #7EC8F0;
+  background: rgba(126, 200, 240, 0.1);
+  border: 1px solid rgba(126, 200, 240, 0.2);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.execTimeTag:hover {
+  background: rgba(126, 200, 240, 0.18);
+  border-color: rgba(126, 200, 240, 0.35);
+}
+
+.execTimeTagIndex {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(126, 200, 240, 0.6);
+  margin-right: 2px;
+}
+
+/* ====== 요일 칩 (보기 모드) ====== */
+.dowChips {
+  display: flex;
+  gap: 4px;
+}
+
+.dowChip {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-5);
+  color: var(--text-muted);
+}
+
+.dowChipActive {
+  background: rgba(126, 200, 240, 0.15);
+  border-color: rgba(126, 200, 240, 0.35);
+  color: #7EC8F0;
+}
+
+.dowChipActiveInterval {
+  background: rgba(240, 160, 48, 0.15);
+  border-color: rgba(240, 160, 48, 0.35);
+  color: #F0A030;
+}
+
+/* ====== 유효기간 카드 (보기 모드) ====== */
+.seriesCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--surface-5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.seriesCardIcon {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.seriesCardArrow {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.seriesCardInfinity {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ====== 경로 스텝 ====== */
+.pathSteps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  padding: 6px 0;
+}
+
+.pathStep {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 20px;
+  background: var(--surface-5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  transition: border-color 0.2s;
+  flex-shrink: 0;
+}
+
+.pathStep:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.pathStepDot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 176, 238, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #00B0EE;
+  flex-shrink: 0;
+}
+
+.pathStepName {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.pathStepArrow {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0 6px;
+  flex-shrink: 0;
 }
 
 /* ====== 삭제 버튼 (상세 모달용) ====== */
