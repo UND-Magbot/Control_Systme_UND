@@ -1,26 +1,36 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import styles from './VideoList.module.css';
 import Pagination from "@/app/components/pagination";
 import Calendar from "@/app/components/Calendar";
-import type { RobotRowData, Camera, Video, VideoItem, Period, LogItem, RobotType, DonutCommonInfo } from '@/app/type';
+import BaseCalendar from "@/app/components/calendar/BaseCalendar";
+import { useOutsideClick } from "@/app/hooks/useOutsideClick";
+import type { RobotRowData, Camera, Video, VideoItem, Period, LogItem, RobotType } from '@/app/type';
 import VideoPlayModal from '@/app/components/modal/VideoPlayModal';
 import { convertMinutesToText } from "@/app/utils/convertMinutesToText";
-import TotalDonutChart from "./TotalDonutChart";
-import ItemDonutChart from "./ItemDonutChart";
-import { buildRobotTypeDonut, buildTaskCountDonut, buildTimeDonut, buildErrorDonut } from '../../../utils/Charts';
+import HorizontalBarChart from "./HorizontalBarChart";
+import {
+  buildRobotTypeBarFromApi,
+  buildTaskBarFromApi,
+  buildTimeBarFromApi,
+  buildErrorBarFromApi,
+} from '../../../utils/Charts';
 import LogList from "./LogList";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
+import { getStatistics } from "@/app/lib/statisticsApi";
+import type { StatisticsResponse, StatisticsResult } from "@/app/lib/statisticsApi";
+import { getLogData } from "@/app/lib/logData";
 
 const PAGE_SIZE = 8;
 
 type VideoListProps = {
   cameras: Camera[];
-  statisticsData: RobotRowData[];
   video: Video[];
   videoData: VideoItem[];
   robotTypeData: RobotType[];
+  onDataReady?: () => void;
 }
 
 // 오늘 날짜만 필터하는 유틸
@@ -42,19 +52,18 @@ const filterTodayVideos = (videoData: VideoItem[]) => {
 
 export default function VideoList({
     videoData,
-    statisticsData,
     video,
     robotTypeData,
+    onDataReady,
 }:VideoListProps) {
 
-    const [robots, setRobots] = useState<RobotRowData[]>([]);
+    const { robots } = useRobotStatusContext();
     const [logData, setLogData] = useState<LogItem[]>([]);
     const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
     const [selectedRobot, setSelectedRobot] = useState<RobotRowData | null>(null);
 
     useEffect(() => {
-        import("@/app/lib/robotInfo").then((mod) => mod.default()).then(setRobots);
-        import("@/app/lib/logData").then((mod) => mod.getLogData({ size: 10000 })).then((res) => setLogData(res.items));
+        getLogData({ size: 10000 }).then((res) => setLogData(res.items));
     }, []);
     const [selectedPeriod, setSelectedPeriod] = useState<Period | null>(null);
 
@@ -68,7 +77,7 @@ export default function VideoList({
     const [searchFilterData, setSearchFilterData] = useState<VideoItem[] | null>(
       () => filterTodayVideos(videoData)
     );
-    
+
     const [videoPlayModalOpen, setVideoPlayModalOpen] = useState(false);
     const [playedVideoId, setPlayedVideoId] = useState<number | null>(null);
     const [playedVideo, setPlayedVideo] = useState<VideoItem | null>(null);
@@ -77,7 +86,20 @@ export default function VideoList({
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<"video" | "dt" | "log">("video");
 
+    // ── 통계 API 상태 ──
+    const [statsData, setStatsData] = useState<StatisticsResponse | null>(null);
 
+    // 통계 탭 전용 날짜 필터 (당일 기본값 — 영상 탭과 동일)
+    const todayInit = (() => { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,"0"); const dd = String(d.getDate()).padStart(2,"0"); return `${y}-${m}-${dd}`; })();
+    const [dtStartDate, setDtStartDate] = useState<string | null>(todayInit);
+    const [dtEndDate, setDtEndDate] = useState<string | null>(todayInit);
+    const [dtPeriod, setDtPeriod] = useState<Period | null>(null);
+
+    // 통계 탭 달력
+    const [dtCalendarOpen, setDtCalendarOpen] = useState(false);
+    const [dtActiveField, setDtActiveField] = useState<"start" | "end">("start");
+    const dtCalendarRef = useRef<HTMLDivElement>(null);
+    useOutsideClick(dtCalendarRef, useCallback(() => setDtCalendarOpen(false), []));
 
     // 탭별 페이지 상태
     const [videoPage, setVideoPage] = useState(1);
@@ -114,7 +136,7 @@ export default function VideoList({
 
     const handleTabClick = (tab: "video" | "dt" | "log") => {
         setActiveTab(tab);
-    
+
         if (tab === "video" && activeTab !== "video") {
             setVideoPage(1);
 
@@ -205,33 +227,59 @@ export default function VideoList({
         setExternalEndDate(periodFormatDate(today));
     };
 
+    // ── 통계 탭 기간 버튼 ──
+    const handleDtPeriodClick = (period: Period | null) => {
+        setDtPeriod(period);
+        const today = new Date();
+
+        if (period === "Total" || !period) {
+            const earliest = robots.length > 0
+                ? robots.reduce((min, r) => {
+                    const d = r.registrationDateTime;
+                    return d && d < min ? d : min;
+                  }, robots[0]?.registrationDateTime ?? "")
+                : "";
+            setDtStartDate(earliest ? earliest.slice(0, 10) : periodFormatDate(today));
+            setDtEndDate(periodFormatDate(today));
+            return;
+        }
+
+        const start = new Date(today);
+        if (period === "1week") start.setDate(start.getDate() - 7);
+        else if (period === "1month") start.setMonth(start.getMonth() - 1);
+        else if (period === "1year") start.setFullYear(start.getFullYear() - 1);
+
+        setDtStartDate(periodFormatDate(start));
+        setDtEndDate(periodFormatDate(today));
+    };
+
     const formatVideoTime = (time: string) => {
         const [hh, mm, ss] = time.split(":").map(Number);
-    
+
         let result = "";
-    
+
         if (hh > 0) result += `${hh}h `;
         if (mm > 0 || hh > 0) result += `${mm}m `;
         result += `${ss}s`;
-    
+
         return result.trim();
     };
 
     const videoFormatDate = (datetime: string) => {
         const date = new Date(datetime);
-    
+
         const yyyy = date.getFullYear();
         const MM = String(date.getMonth() + 1).padStart(2, "0");
         const dd = String(date.getDate()).padStart(2, "0");
-    
+
         const hh = String(date.getHours()).padStart(2, "0");
         const mm = String(date.getMinutes()).padStart(2, "0");
         const ss = String(date.getSeconds()).padStart(2, "0");
-    
+
         return `${yyyy}.${MM}.${dd} ${hh}:${mm}.${ss}`;
     };
 
-    
+
     function periodFormatDate(date: Date) {
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -257,7 +305,7 @@ export default function VideoList({
     setExternalEndDate(todayStr);
     }, [videoData]);
 
-    
+
     useEffect(() => {
         // 비디오 타입/로봇 선택이 바뀔 때마다 1페이지로 이동
         setVideoPage(1);
@@ -303,7 +351,38 @@ export default function VideoList({
         });
     }, []);
 
-    
+    // ── 통계 API 호출 ──
+    const pageReadyCalled = React.useRef(false);
+    useEffect(() => {
+        if (activeTab !== "dt") {
+            // 통계 탭이 아닐 때도 첫 진입 시 pageReady 호출 (영상/로그 탭 진입 시)
+            if (!pageReadyCalled.current && onDataReady) {
+                pageReadyCalled.current = true;
+                onDataReady();
+            }
+            return;
+        }
+        let cancelled = false;
+
+        getStatistics({
+            start_date: dtStartDate ?? undefined,
+            end_date: dtEndDate ?? undefined,
+            robot_type: selectedRobotType?.label,
+            robot_name: selectedRobot?.no,
+        }).then((result) => {
+            if (!cancelled) {
+                setStatsData(result.data);
+                if (result.error) console.error("[통계] API 오류:", result.error);
+                if (!pageReadyCalled.current && onDataReady) {
+                    pageReadyCalled.current = true;
+                    onDataReady();
+                }
+            }
+        });
+
+        return () => { cancelled = true; };
+    }, [activeTab, selectedRobotType, selectedRobot, dtStartDate, dtEndDate]);
+
     // 로봇 명 셀렉트 옵션: robots API 기반, 로봇 종류 필터 연동
     const robotNameItems = useMemo(() => {
         const source = selectedRobotType
@@ -326,38 +405,30 @@ export default function VideoList({
         HUMANOID: "휴머노이드",
     };
 
-    // ── 통계 데이터 필터 (statisticsData 기반) ──
-    const filteredStatistics = statisticsData.filter((r) => {
-        if (selectedRobotType) {
-            if (r.type !== selectedRobotType.label) return false;
-        }
-        if (selectedRobot) {
-            if (r.id !== selectedRobot.id) return false;
-        }
-        return true;
-    });
+    // ── 통계 차트 데이터 (필터 변경 시에만 재계산) ──
+    const robotTypeBar = useMemo(() => statsData ? buildRobotTypeBarFromApi(statsData.robot_types) : [], [statsData]);
+    const taskBar = useMemo(() => statsData ? buildTaskBarFromApi(statsData.tasks) : [], [statsData]);
+    const timeBar = useMemo(() => statsData ? buildTimeBarFromApi(statsData.time_minutes) : [], [statsData]);
+    const errorBar = useMemo(() => statsData ? buildErrorBarFromApi(statsData.errors) : [], [statsData]);
 
-    const hasAnyFilter = !!selectedRobotType || !!selectedRobot;
-    const baseStatistics = hasAnyFilter ? filteredStatistics : statisticsData;
-
-    const emptyDonut: DonutCommonInfo = { id: 0, label: "", value: 0, percent: 0, displayValue: "0" };
-
-    const robotTypeDonut = buildRobotTypeDonut({ robots: statisticsData });
-    const taskDonut = buildTaskCountDonut({ robots: baseStatistics });
-    const timeDonut = buildTimeDonut({ robots: baseStatistics });
-    const errorDonut = buildErrorDonut({ robots: baseStatistics });
-
-    const totalRobots = statisticsData.length;
-    const FilterTotalUnits = baseStatistics.length;
-
-    const totalTasks  = taskDonut.reduce((s, i) => s + i.value, 0);
-    const totalTimeMinutes = timeDonut.reduce((s, i) => s + i.value, 0);
-    const totalTimeStr = convertMinutesToText(totalTimeMinutes);
-    const parts = totalTimeStr.split(" ");
-    const hText = parts[0] ?? "0h";
-    const mText = parts[1] ?? "0m";
-    const totalErrors = errorDonut.reduce((s, i) => s + i.value, 0);
-
+    const { totalRobots, totalTasks, totalErrors, opHText, opMText, timeHText, timeMText } = useMemo(() => {
+        const robots = statsData?.robot_types.reduce((s, t) => s + t.count, 0) ?? 0;
+        const tasks = statsData ? Object.values(statsData.tasks).reduce((s, v) => s + v, 0) : 0;
+        const errors = statsData ? Object.values(statsData.errors).reduce((s, v) => s + v, 0) : 0;
+        // KPI "총 운행" = 운행시간만
+        const opMin = statsData?.time_minutes.operating ?? 0;
+        const opStr = convertMinutesToText(opMin);
+        const opParts = opStr.split(" ");
+        // 시간 통계 헤더 = 운행+충전+대기 합계 (온라인 시간)
+        const totalMin = statsData ? Object.values(statsData.time_minutes).reduce((s, v) => s + v, 0) : 0;
+        const totalStr = convertMinutesToText(totalMin);
+        const totalParts = totalStr.split(" ");
+        return {
+            totalRobots: robots, totalTasks: tasks, totalErrors: errors,
+            opHText: opParts[0] ?? "0h", opMText: opParts[1] ?? "0m",
+            timeHText: totalParts[0] ?? "0h", timeMText: totalParts[1] ?? "0m",
+        };
+    }, [statsData]);
 
     // 영상 다운로드(임시)
     const downloadSample = () => {
@@ -400,7 +471,6 @@ export default function VideoList({
                                         setSelectedVideo(null);
                                     }
                                 }}
-                                width={140}
                             />
                             <FilterSelectBox
                                 items={robots.map(r => ({ id: r.id, label: r.no }))}
@@ -415,7 +485,6 @@ export default function VideoList({
                                         setSelectedRobot(null);
                                     }
                                 }}
-                                width={140}
                             />
                         </div>
                         <div className={styles.videoPeriod}>
@@ -499,180 +568,206 @@ export default function VideoList({
         </div>
     )}
 
-    {/* Statistical Info 화면 */}
+    {/* ═══ Statistical Info 화면 ═══ */}
     {activeTab === "dt" && (
         <div className={styles.DT}>
-            {statisticsData.length === 0 && (
-                <div className={styles.emptyNotice}>
-                    현재 등록된 로봇이 없어 통계 데이터가 비어 있습니다
-                </div>
-            )}
+            {/* 헤더 + 필터 */}
             <div className={styles.videoListTopPosition}>
                 <h2>통계 관리</h2>
                 <div className={styles.dtSearch}>
-                    <FilterSelectBox
-                        items={robotTypeData.map(t => ({ id: t.id, label: robotTypeKorMap[t.label] ?? t.label }))}
-                        selectedLabel={selectedRobotType ? (robotTypeKorMap[selectedRobotType.label] ?? selectedRobotType.label) : null}
-                        placeholder="로봇 종류"
-                        showTotal={true}
-                        onSelect={(item) => {
-                            if (item) {
-                                const type = robotTypeData.find(t => (robotTypeKorMap[t.label] ?? t.label) === item.label);
-                                if (type) {
-                                    setSelectedRobotType(type);
-                                    if (selectedRobot && selectedRobot.type !== type.label) {
-                                        setSelectedRobot(null);
+                    <div className={styles.videoSelect}>
+                        <FilterSelectBox
+                            items={robotTypeData.map(t => ({ id: t.id, label: robotTypeKorMap[t.label] ?? t.label }))}
+                            selectedLabel={selectedRobotType ? (robotTypeKorMap[selectedRobotType.label] ?? selectedRobotType.label) : null}
+                            placeholder="로봇 종류"
+                            showTotal={true}
+                            onSelect={(item) => {
+                                if (item) {
+                                    const type = robotTypeData.find(t => (robotTypeKorMap[t.label] ?? t.label) === item.label);
+                                    if (type) {
+                                        setSelectedRobotType(type);
+                                        if (selectedRobot && selectedRobot.type !== type.label) setSelectedRobot(null);
                                     }
-                                }
-                            } else {
-                                setSelectedRobotType(null);
-                            }
-                        }}
-                        width={140}
-                    />
-                    <FilterSelectBox
-                        items={robotNameItems}
-                        selectedLabel={selectedRobot?.no ?? null}
-                        placeholder="로봇 명"
-                        showTotal={robots.length > 0}
-                        onSelect={(item) => {
-                            if (item) {
-                                // 통계 데이터에서 매칭 (차트 필터용)
-                                const statRobot = statisticsData.find(r => r.no === item.label);
-                                // robots API에서 매칭 (통계 데이터에 없는 경우 대비)
-                                const apiRobot = robots.find(r => r.no === item.label);
-                                const target = statRobot ?? apiRobot ?? null;
-                                if (target) {
-                                    setSelectedRobot(target);
-                                    if (selectedRobotType && selectedRobotType.label !== target.type) {
-                                        setSelectedRobotType(null);
-                                    }
-                                }
-                            } else {
-                                setSelectedRobot(null);
-                            }
-                        }}
-                        width={140}
-                    />
-                </div>
-            </div>
-
-            <div className={styles.donutContainerFlex}>
-                <div className={styles.dtDonutLeftBox}>
-                    <div className={styles.leftChart}>
-                        <TotalDonutChart
-                            data={robotTypeDonut}
-                            selectedRobotTypeLabel={selectedRobotType?.label ?? null}
-                            selectedRobotName={selectedRobot?.no ?? null}
-                            selectedRobotIconIndex={selectedRobot ? statisticsData.findIndex(r => r.id === selectedRobot.id) : null}
-                            FilterTotalUnits={FilterTotalUnits}
+                                } else { setSelectedRobotType(null); }
+                            }}
+                        />
+                        <FilterSelectBox
+                            items={robotNameItems}
+                            selectedLabel={selectedRobot?.no ?? null}
+                            placeholder="로봇 명"
+                            showTotal={robots.length > 0}
+                            onSelect={(item) => {
+                                if (item) {
+                                    const r = robots.find(r => r.no === item.label);
+                                    if (r) { setSelectedRobot(r); if (selectedRobotType && selectedRobotType.label !== r.type) setSelectedRobotType(null); }
+                                } else { setSelectedRobot(null); }
+                            }}
                         />
                     </div>
-                    <div className={styles.robotTypeTotal}>
-                        <div className={styles.legendHeader}>
-                            <span className={styles.legendTitle}>전체</span>
-                            <span className={styles.legendCount}>{totalRobots}<span>units</span></span>
-                        </div>
-                    {robotTypeDonut.map((item) => {
-                        const lower = item.label.toLowerCase();
-                        const hasTypeSelected = !!selectedRobotType;
-                        const hasRobotSelected = !!selectedRobot;
-                        const color = robotTypeColorMap[item.label] ?? "#5d6174";
-
-                        const isActiveType =
-                            (!hasTypeSelected && !hasRobotSelected) ||
-                            (!hasRobotSelected && hasTypeSelected && selectedRobotType!.label === item.label) ||
-                            (hasRobotSelected && selectedRobot!.type === item.label);
-
-                        if (hasTypeSelected && !hasRobotSelected && !isActiveType) {
-                            return null;
-                        }
-
-                        const iconSrc = isActiveType ? `/icon/${lower}-cg.png` : `/icon/${lower}-cg-w.png`;
-                        const isInactive = !isActiveType;
-                        const showCountBox =
-                            (!hasRobotSelected && !hasTypeSelected) ||
-                            (!hasRobotSelected && hasTypeSelected && isActiveType);
-
-                        return (
-                        <div key={item.id} className={`${styles.robotTypeOne} ${isInactive ? styles.robotTypeInactive : ""}`}>
-                            <div className={styles.robotTypeName}>
-                                <div className={styles.colorDot} style={{ backgroundColor: isActiveType ? color : "#464a5d" }} />
-                                <div className={styles.oneContentFs20} style={isInactive ? { color: "#464a5d" } : undefined}>
-                                    {robotTypeKorMap[item.label] ?? item.label}
-                                </div>
-                            </div>
-                            {showCountBox && (
-                            <div className={styles.oneContentCountBox}>
-                                <div className={styles.legendPercent} style={{ color }}>
-                                    {item.percent.toFixed(1)}<span>%</span>
-                                </div>
-                                <div className={styles.legendDivider} />
-                                <div className={styles.legendValue}>
-                                    {item.value}<span>units</span>
-                                </div>
-                            </div>
-                            )}
-                        </div>
-                        );
-                    })}
+                    <div className={styles.dtPeriod}>
+                        {([{ key: "Total", label: "전체" }, { key: "1week", label: "1주" }, { key: "1month", label: "1달" }, { key: "1year", label: "1년" }] as const).map(({ key, label }) => (
+                            <div key={key} className={`${styles.periodItem} ${dtPeriod === key ? styles.active : ""}`} onClick={() => handleDtPeriodClick(key)}>{label}</div>
+                        ))}
                     </div>
-                </div>
-                <div className={styles.dtDonutRightBox}>
-                    <div className={styles.itemBoxBg}>
-                        <div className={styles.itemTitleBox}>
-                            <h2>작업 통계</h2>
-                            <div className={styles.itemDataTotal}>
-                                <div className={styles.leftText}>Total</div>
-                                <div className={`${styles.middleText} ${styles.taskTextColor}`}>{totalTasks}</div>
-                                <div className={styles.rightText}>cases</div>
+                    {/* 기간 직접 선택 (달력) — 영상 탭과 동일 스타일 */}
+                    <div ref={dtCalendarRef} className={styles.dtDateRange}>
+                        <div
+                            className={`${styles.dtDateInput} ${dtActiveField === "start" && dtCalendarOpen ? styles.active : ""}`}
+                            onClick={() => { setDtActiveField("start"); setDtCalendarOpen(true); }}
+                        >
+                            <div>{dtStartDate ?? "시작일"}</div>
+                            <img src="/icon/search_calendar.png" alt="calendar" />
+                        </div>
+                        <div className={styles.dtDateSep}>~</div>
+                        <div
+                            className={`${styles.dtDateInput} ${dtActiveField === "end" && dtCalendarOpen ? styles.active : ""}`}
+                            onClick={() => { setDtActiveField("end"); setDtCalendarOpen(true); }}
+                        >
+                            <div>{dtEndDate ?? "종료일"}</div>
+                            <img src="/icon/search_calendar.png" alt="calendar" />
+                        </div>
+                        {dtCalendarOpen && (
+                            <div className={styles.dtCalendarDropdown}>
+                                <BaseCalendar
+                                    mode="range"
+                                    startDate={dtStartDate}
+                                    endDate={dtEndDate}
+                                    activeField={dtActiveField}
+                                    onRangeSelect={(field, date) => {
+                                        if (field === "start") {
+                                            setDtStartDate(date);
+                                            setDtActiveField("end");
+                                        } else {
+                                            setDtEndDate(date);
+                                            setDtCalendarOpen(false);
+                                        }
+                                        setDtPeriod(null);
+                                    }}
+                                    maxDate={periodFormatDate(new Date())}
+                                    showTodayButton
+                                />
                             </div>
-                        </div>
-                        <div className={styles.useItemDonutBox}>
-                            <ItemDonutChart title={"task1"} data={[taskDonut[0] ?? emptyDonut]} color="#77a251" />
-                            <ItemDonutChart title={"task2"} data={[taskDonut[1] ?? emptyDonut]} color="#77a251" />
-                            <ItemDonutChart title={"task3"} data={[taskDonut[2] ?? emptyDonut]} color="#77a251" />
-                            <ItemDonutChart title={"task4"} data={[taskDonut[3] ?? emptyDonut]} color="#77a251" />
-                        </div>
-                    </div>
-                    <div className={styles.itemBoxBg}>
-                        <div className={`${styles.itemTitleBox} ${styles.time}`}>
-                            <h2>시간 통계</h2>
-                            <div className={styles.itemDataTotal}>
-                                <div className={styles.leftText}>Total</div>
-                                <div className={`${styles.middleText} ${styles.timeTextColor}`}>{hText.replace("h", "")}<span>h</span></div>
-                                <div className={`${styles.rightText} ${styles.timeTextColor}`}>{mText.replace("m", "")}<span>m</span></div>
-                            </div>
-                        </div>
-                        <div className={styles.useItemDonutBox}>
-                            <ItemDonutChart isTime title={"사용시간"} data={[timeDonut[0] ?? emptyDonut]} color="#0e8ebf" />
-                            <ItemDonutChart isTime title={"대기시간"} data={[timeDonut[1] ?? emptyDonut]} color="#0e8ebf" />
-                            <ItemDonutChart isTime title={"충전시간"} data={[timeDonut[2] ?? emptyDonut]} color="#0e8ebf" />
-                            <ItemDonutChart isTime title={"도킹시간"} data={[timeDonut[3] ?? emptyDonut]} color="#0e8ebf" />
-                        </div>
-                    </div>
-                    <div className={styles.itemBoxBg}>
-                        <div className={styles.itemTitleBox}>
-                            <h2>에러 통계</h2>
-                            <div className={styles.itemDataTotal}>
-                                <div className={styles.leftText}>Total</div>
-                                <div className={`${styles.middleText} ${styles.errorTextColor}`}>{totalErrors}</div>
-                                <div className={styles.rightText}>cases</div>
-                            </div>
-                        </div>
-                        <div className={styles.useItemDonutBox}>
-                            <ItemDonutChart title={"네트워크"} data={[errorDonut[0] ?? emptyDonut]} color="#c2434c" />
-                            <ItemDonutChart title={"장애"} data={[errorDonut[1] ?? emptyDonut]} color="#c2434c" />
-                            <ItemDonutChart title={"위치"} data={[errorDonut[3] ?? emptyDonut]} color="#c2434c" />
-                            <ItemDonutChart title={"기타"} data={[errorDonut[2] ?? emptyDonut]} color="#c2434c" />
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>
 
-            <div className={styles.pagenationPosition}>
-                {/* <Pagination totalItems={totalItems} currentPage={currentPage} onPageChange={setCurrentPage} pageSize={PAGE_SIZE} blockSize={5} /> */}
+            {/* ── KPI 카드 (라벨 좌 | 숫자+단위 우) ── */}
+            <div className={styles.kpiRow}>
+                <div className={styles.kpiCard} style={{ animationDelay: "0s" }}>
+                    <span className={styles.kpiLabel}>총 로봇</span>
+                    <div className={styles.kpiRight}>
+                        <span className={styles.kpiNum} style={{ color: "#92d4f4" }}>{totalRobots}</span><span className={styles.kpiUnit}>units</span>
+                    </div>
+                    <div className={styles.kpiBar} style={{ background: "#92d4f4" }} />
+                </div>
+                <div className={styles.kpiCard} style={{ animationDelay: "0.06s" }}>
+                    <span className={styles.kpiLabel}>총 작업</span>
+                    <div className={styles.kpiRight}>
+                        <span className={styles.kpiNum} style={{ color: "#92ca60" }}>{totalTasks}</span><span className={styles.kpiUnit}>건</span>
+                    </div>
+                    <div className={styles.kpiBar} style={{ background: "#77a251" }} />
+                </div>
+                <div className={styles.kpiCard} style={{ animationDelay: "0.12s" }}>
+                    <span className={styles.kpiLabel}>총 에러</span>
+                    <div className={styles.kpiRight}>
+                        <span className={styles.kpiNum} style={{ color: totalErrors > 0 ? "#e06b73" : "#5d6174" }}>{totalErrors}</span><span className={styles.kpiUnit}>건</span>
+                    </div>
+                    <div className={styles.kpiBar} style={{ background: totalErrors > 0 ? "#c2434c" : "#5d6174" }} />
+                </div>
+                <div className={styles.kpiCard} style={{ animationDelay: "0.18s" }}>
+                    <span className={styles.kpiLabel}>총 운행</span>
+                    <div className={styles.kpiRight}>
+                        <span className={styles.kpiNum} style={{ color: "#4db8e8" }}>{opHText.replace("h","")}</span><span className={styles.kpiNumSub}>h</span>
+                        <span className={styles.kpiNum} style={{ color: "#4db8e8", marginLeft: 2 }}>{opMText.replace("m","")}</span><span className={styles.kpiNumSub}>m</span>
+                    </div>
+                    <div className={styles.kpiBar} style={{ background: "#0e8ebf" }} />
+                </div>
             </div>
+
+            {/* ── 통계 + 이벤트 영역 ── */}
+            <div className={styles.statsBody}>
+                {/* 좌: 2×2 통계 그리드 */}
+                <div className={styles.statsGrid}>
+                    {/* 좌상 — 로봇 타입 */}
+                    <div className={styles.statsCell}>
+                        <div className={styles.cellHead}>
+                            <div className={styles.cellDot} style={{ background: "#92d4f4" }} />
+                            <h3>로봇 타입</h3>
+                            <span className={styles.cellSum} style={{ color: "#92d4f4" }}>{totalRobots}<span>units</span></span>
+                        </div>
+                        <HorizontalBarChart items={robotTypeBar} color="#92d4f4" unit="대" />
+                    </div>
+
+                    {/* 우상 — 작업 통계 */}
+                    <div className={styles.statsCell}>
+                        <div className={styles.cellHead}>
+                            <div className={styles.cellDot} style={{ background: "#77a251" }} />
+                            <h3>작업 통계</h3>
+                            <span className={styles.cellSum} style={{ color: "#92ca60" }}>{totalTasks}<span>건</span></span>
+                        </div>
+                        <HorizontalBarChart items={taskBar} color="#77a251" unit="건" />
+                    </div>
+
+                    {/* 좌하 — 시간 통계 */}
+                    <div className={styles.statsCell}>
+                        <div className={styles.cellHead}>
+                            <div className={styles.cellDot} style={{ background: "#0e8ebf" }} />
+                            <h3>시간 통계</h3>
+                            <span className={styles.cellSum} style={{ color: "#4db8e8" }}>{timeHText.replace("h","")}<span>h</span> {timeMText.replace("m","")}<span>m</span></span>
+                        </div>
+                        <HorizontalBarChart items={timeBar} color="#0e8ebf" unit="m" />
+                    </div>
+
+                    {/* 우하 — 에러 통계 */}
+                    <div className={styles.statsCell}>
+                        <div className={styles.cellHead}>
+                            <div className={styles.cellDot} style={{ background: "#c2434c" }} />
+                            <h3>에러 통계</h3>
+                            <span className={styles.cellSum} style={{ color: "#e06b73" }}>{totalErrors}<span>건</span></span>
+                        </div>
+                        <HorizontalBarChart items={errorBar} color="#c2434c" unit="건" />
+                    </div>
+                </div>
+
+                {/* 우: 로봇별 요약 테이블 */}
+                <div className={styles.robotTable}>
+                    <div className={styles.cellHead}>
+                        <div className={styles.cellDot} style={{ background: "var(--color-accent)" }} />
+                        <h3>로봇별 현황</h3>
+                    </div>
+                    <div className={styles.rtHeader}>
+                        <span className={styles.rtHName}>로봇</span>
+                        <span className={styles.rtHTask}>작업<span>(완료/총)</span></span>
+                        <span className={styles.rtHNum}>에러</span>
+                        <span className={styles.rtHWide}>운행</span>
+                        <span className={styles.rtHWide}>충전</span>
+                    </div>
+                    <div className={styles.rtBody}>
+                        {(statsData?.per_robot ?? []).map((r) => {
+                            const opH = Math.floor(r.operating_minutes / 60);
+                            const opM = Math.round(r.operating_minutes % 60);
+                            const chH = Math.floor(r.charging_minutes / 60);
+                            const chM = Math.round(r.charging_minutes % 60);
+                            return (
+                                <div key={r.robot_id} className={styles.rtRow}>
+                                    <div className={styles.rtName}>
+                                        <span>{r.robot_name}</span>
+                                    </div>
+                                    <span className={styles.rtTask}>{r.tasks_completed}<span>/{r.tasks_total}</span></span>
+                                    <span className={`${styles.rtNum} ${r.errors_total > 0 ? styles.rtError : ""}`}>{r.errors_total}</span>
+                                    <span className={styles.rtWide}>{opH} <span>h</span> {opM} <span>m</span></span>
+                                    <span className={styles.rtWide}>{chH} <span>h</span> {chM} <span>m</span></span>
+                                </div>
+                            );
+                        })}
+                        {(!statsData?.per_robot || statsData.per_robot.length === 0) && (
+                            <div className={styles.rtEmpty}>등록된 로봇 없음</div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
         </div>
     )}
 

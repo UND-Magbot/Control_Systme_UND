@@ -7,6 +7,7 @@ import { type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
 import { getAlerts, markAlertRead, markAllAlertsRead, createNotice, updateNotice, deleteNotice, uploadNoticeFile } from '@/app/lib/alertData';
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from '@/app/config';
+import { usePageReady } from "@/app/context/PageLoadingContext";
 import Pagination from '@/app/components/pagination';
 import FilterSelectBox, { type FilterOption } from '@/app/components/button/FilterSelectBox';
 import NoticeForm, { type NoticeFormData } from './components/NoticeCrudModal';
@@ -58,6 +59,7 @@ export default function AlertsPage() {
   const searchParams = useSearchParams();
   const paramTab = searchParams.get('tab') as TabKey | null;
   const paramId = searchParams.get('id');
+  const setPageReady = usePageReady();
 
   const isAdmin = true;
   const [currentUserId, setCurrentUserId] = useState<number>(0);
@@ -67,11 +69,12 @@ export default function AlertsPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   // 현재 사용자 + 알림 목록 로드
-  const fetchAlerts = useCallback(async () => {
+  const fetchAlerts = useCallback(async (initial = false) => {
     const data = await getAlerts({ size: 10000 });
     setAlerts(data.items);
     setIsLoading(false);
-  }, []);
+    if (initial) setPageReady();
+  }, [setPageReady]);
 
   useEffect(() => {
     apiFetch(`/user/current`)
@@ -81,7 +84,7 @@ export default function AlertsPage() {
         setCurrentUserName(user.UserName ?? '');
       })
       .catch(() => {});
-    fetchAlerts();
+    fetchAlerts(true);
 
     const handleExternalRead = () => fetchAlerts();
     window.addEventListener('alert-read-changed', handleExternalRead);
@@ -353,7 +356,6 @@ export default function AlertsPage() {
           </div>
           <div className={styles.topActions}>
             <div className={styles.searchWrapper}>
-              <img src="/icon/search.png" alt="" className={styles.searchIcon} />
               <input
                 type="text"
                 className={styles.searchInput}

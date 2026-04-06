@@ -1,0 +1,340 @@
+/* ======================== ControlPanel (사이드바) ======================== */
+.controlSidebar {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.tabContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px 8px 0;
+}
+
+/* ======================== 공통 섹션 ======================== */
+.section {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: opacity 0.15s ease;
+}
+
+.section.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.controlLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.controlGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-bottom: 8px;
+}
+
+.controlGroup:first-child {
+  margin-top: 0;
+}
+
+.controlGroup:last-child {
+  padding-bottom: 0;
+}
+
+/* ======================== 세그먼트 버튼 (모드/속도) ======================== */
+.segmentGroup {
+  display: flex;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.segmentBtn {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.segmentBtn:not(:last-child) {
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+
+.segmentBtn.active {
+  background: var(--color-info);
+  color: #fff;
+  font-weight: 600;
+}
+
+.segmentBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ======================== 조명 (타이틀 + 토글 한 줄) ======================== */
+.lightingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lightingInline {
+  display: flex;
+  gap: 14px;
+}
+
+.lightingItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lightTag {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.lightLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.toggleSwitch {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  border-radius: 13px;
+  border: none;
+  background: var(--surface-4);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  padding: 0;
+}
+
+.toggleSwitch.toggleOn {
+  background: var(--color-success);
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.toggleOn .toggleThumb {
+  transform: translateX(22px);
+}
+
+.toggleSwitch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ======================== 위치관리 버튼 ======================== */
+.positionBtnGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.actionBtn {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+
+.actionBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dangerBtn {
+  border: none;
+  background: var(--color-error-border);
+  color: #fff;
+}
+
+.confirmingBtn {
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: #fff;
+  animation: confirmPulse 0.3s ease;
+}
+
+@keyframes confirmPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+/* ======================== 작업 자동화 패널 ======================== */
+.workPanel {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workStatusBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.workingDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-info);
+  animation: pulse 1.5s infinite;
+}
+
+.idleDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.workRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workRowLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.workDivider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.loopInputRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.loopInput {
+  width: 70px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.loopInput::-webkit-outer-spin-button,
+.loopInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.loopInput:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+.loopInput:disabled {
+  opacity: 0.5;
+}
+
+.loopUnit {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-right: 6px;
+}
+
+.workStartBtn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-info);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+
+.workStartBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.stopWorkBtn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-error);
+  color: #fff;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+
+.stopWorkBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

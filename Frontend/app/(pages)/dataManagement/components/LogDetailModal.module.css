@@ -10,7 +10,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 999;
+  z-index: 100;
   animation: fadeIn 0.2s ease-in;
   padding: 20px;
 }

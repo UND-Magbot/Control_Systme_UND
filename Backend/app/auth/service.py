@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.Database.models import UserInfo, UserPermission, MenuInfo, AuditLog
 from app.auth.password import hash_password, verify_password, validate_password_format
-from app.auth.jwt_handler import create_access_token, create_refresh_token, decode_token, hash_token
+from app.auth.jwt_handler import create_access_token, create_refresh_token, decode_token
 
 
 class AuthService:
@@ -36,14 +36,14 @@ class AuthService:
                                      detail=json.dumps({"reason": "WRONG_PASSWORD"}))
             raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다")
 
-        # 토큰 발급
-        access_token = create_access_token(user.id, user.LoginId, user.UserName, user.Permission)
-        refresh_token = create_refresh_token(user.id)
-
-        # DB에 리프레시 토큰 해시 저장 (1유저 1세션)
-        user.RefreshTokenHash = hash_token(refresh_token)
+        # 토큰 버전 증가 → 기존 refresh token 무효화
+        user.TokenVersion = (user.TokenVersion or 0) + 1
         user.LastLoginAt = datetime.now(timezone.utc)
         db.commit()
+
+        # 토큰 발급 (refresh token에 버전 내장)
+        access_token = create_access_token(user.id, user.LoginId, user.UserName, user.Permission)
+        refresh_token = create_refresh_token(user.id, user.TokenVersion)
 
         # 권한 목록 조회
         permissions = AuthService._get_permissions(db, user)
@@ -66,31 +66,32 @@ class AuthService:
 
     @staticmethod
     def refresh(db: Session, refresh_token: str) -> dict:
+        """JWT 서명+만료 검증 → 토큰 버전 비교 (정수 비교, 해시 아님)."""
         payload = decode_token(refresh_token)
         if not payload or payload.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="리프레시 토큰이 유효하지 않습니다")
 
         user_id = int(payload["sub"])
-        user = db.query(UserInfo).filter(UserInfo.id == user_id, UserInfo.DeletedAt.is_(None)).first()
+        token_version = payload.get("ver", 0)
+
+        user = (
+            db.query(UserInfo)
+            .filter(UserInfo.id == user_id, UserInfo.DeletedAt.is_(None))
+            .first()
+        )
 
         if not user or not user.IsActive:
             raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다")
 
-        # DB에 저장된 해시와 비교
-        if user.RefreshTokenHash != hash_token(refresh_token):
-            raise HTTPException(status_code=401, detail="리프레시 토큰이 유효하지 않습니다")
+        # 토큰 버전 비교 — JWT 안의 숫자 vs DB의 숫자
+        if token_version != (user.TokenVersion or 0):
+            raise HTTPException(status_code=401, detail="토큰이 무효화되었습니다")
 
-        # 새 토큰 쌍 발급
         new_access = create_access_token(user.id, user.LoginId, user.UserName, user.Permission)
-        new_refresh = create_refresh_token(user.id)
-        user.RefreshTokenHash = hash_token(new_refresh)
-        db.commit()
-
         permissions = AuthService._get_permissions(db, user)
 
         return {
             "access_token": new_access,
-            "refresh_token": new_refresh,
             "user": {
                 "id": user.id,
                 "login_id": user.LoginId,
@@ -106,9 +107,9 @@ class AuthService:
     def logout(db: Session, user_id: int, ip_address: str | None = None):
         user = db.query(UserInfo).filter(UserInfo.id == user_id).first()
         if user:
-            user.RefreshTokenHash = None
+            user.TokenVersion = (user.TokenVersion or 0) + 1
             db.commit()
-            AuthService._write_audit(db, user_id, "logout", ip_address=ip_address)
+        AuthService._write_audit(db, user_id, "logout", ip_address=ip_address)
 
     # ── 현재 사용자 정보 ──
 
@@ -145,7 +146,7 @@ class AuthService:
             raise HTTPException(status_code=400, detail="현재 비밀번호와 다른 비밀번호를 입력하세요")
 
         user.Password = hash_password(new_password)
-        user.RefreshTokenHash = None  # 강제 로그아웃
+        user.TokenVersion = (user.TokenVersion or 0) + 1  # 기존 세션 무효화
         db.commit()
 
         AuthService._write_audit(db, user_id, "password_changed", ip_address=ip_address)
@@ -172,7 +173,7 @@ class AuthService:
                 raise HTTPException(status_code=400, detail="마지막 관리자 계정은 삭제할 수 없습니다")
 
         user.DeletedAt = datetime.now(timezone.utc)
-        user.RefreshTokenHash = None
+        user.TokenVersion = (user.TokenVersion or 0) + 1
         db.commit()
 
         AuthService._write_audit(db, user_id, "account_deleted", target_type="user", target_id=user_id, ip_address=ip_address)

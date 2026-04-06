@@ -133,7 +133,9 @@
   font-size: var(--font-size-md);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: all 0.15s ease;
+  border-radius: 6px;
+  margin: 2px 6px;
 }
 
 .userItem:hover {
@@ -141,12 +143,44 @@
   color: var(--text-primary);
 }
 
+.userItem:has(.userCheckbox:checked) {
+  background: var(--color-info-selected);
+  color: var(--text-primary);
+}
+
 .userCheckbox {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--color-info);
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--text-muted);
+  border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
+  position: relative;
+  transition: all 0.15s ease;
+  background: transparent;
+}
+
+.userCheckbox:hover {
+  border-color: var(--color-info);
+}
+
+.userCheckbox:checked {
+  background: var(--color-info);
+  border-color: var(--color-info);
+}
+
+.userCheckbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 .userLabel {
@@ -218,14 +252,19 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 4px;
+  padding: 8px 8px;
   cursor: pointer;
-  transition: background 0.1s ease;
-  border-radius: 4px;
+  transition: background 0.15s ease;
+  border-radius: 6px;
+  margin: 1px 0;
 }
 
 .treeRow:hover {
   background: rgba(255, 255, 255, 0.04);
+}
+
+.treeRow:has(.checkbox:checked) {
+  background: rgba(59, 130, 246, 0.06);
 }
 
 .treeArrow {
@@ -254,11 +293,54 @@
   cursor: pointer;
 }
 
-/* ─── 체크박스 커스텀 ─── */
+/* ─── 체크박스 커스텀 (메뉴 트리) ─── */
 .checkbox {
+  appearance: none;
+  -webkit-appearance: none;
   width: 18px;
   height: 18px;
-  accent-color: var(--color-info);
+  border: 2px solid var(--text-muted);
+  border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
+  position: relative;
+  transition: all 0.15s ease;
+  background: transparent;
+}
+
+.checkbox:hover {
+  border-color: var(--color-info);
+}
+
+.checkbox:checked {
+  background: var(--color-info);
+  border-color: var(--color-info);
+}
+
+.checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.checkbox:indeterminate {
+  background: var(--color-info);
+  border-color: var(--color-info);
+}
+
+.checkbox:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  width: 8px;
+  height: 2px;
+  background: #fff;
+  border-radius: 1px;
 }

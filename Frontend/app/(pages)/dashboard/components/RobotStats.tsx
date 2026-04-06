@@ -1,29 +1,28 @@
 "use client";
 
-import React from "react";
 import styles from "./RobotStats.module.css";
-import type { RobotRowData } from "@/app/type";
+import type { PerRobotStats } from "@/app/lib/statisticsApi";
 
 type RobotStatsProps = {
-  robot: RobotRowData | null;
+  stats: PerRobotStats | null;
 };
 
 function formatTime(minutes: number): string {
   const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
+  const m = Math.round(minutes % 60);
   if (h === 0) return `${m}m`;
   return `${h}h${m}m`;
 }
 
-export default function RobotStats({ robot }: RobotStatsProps) {
-  const totalTasks = robot?.tasks.length ?? 0;
-  const doneTasks = robot?.tasks.filter((t) => t.taskType === "완료").length ?? 0;
-  const errors = robot?.errors.reduce((s, e) => s + e.count, 0) ?? 0;
+export default function RobotStats({ stats }: RobotStatsProps) {
+  const doneTasks = stats?.tasks_completed ?? 0;
+  const totalTasks = stats?.tasks_total ?? 0;
+  const errors = stats?.errors_total ?? 0;
+  const uptime = stats?.operating_minutes ?? 0;
 
   const fmt = (n: number) => n.toLocaleString();
-  const uptime = (robot?.chargingTime ?? 0) + (robot?.waitingTime ?? 0) + (robot?.dockingTime ?? 0);
 
-  const stats = [
+  const statItems = [
     {
       label: "작업 (완료/총)",
       value: `${fmt(doneTasks)}/${fmt(totalTasks)}건`,
@@ -58,7 +57,7 @@ export default function RobotStats({ robot }: RobotStatsProps) {
 
   return (
     <div className={styles.statsRow}>
-      {stats.map((s) => (
+      {statItems.map((s) => (
         <div key={s.label} className={styles.statCard}>
           <div className={styles.statTop}>
             <span className={styles.statLabel}>{s.label}</span>

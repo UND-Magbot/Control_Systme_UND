@@ -4,7 +4,9 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./ScheduleTimeline.module.css";
 import { apiFetch } from "@/app/lib/api";
-import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
+import dynamic from "next/dynamic";
+
+const BatteryPathModal = dynamic(() => import("@/app/components/modal/BatteryChargeModal"), { ssr: false });
 
 type DBSchedule = {
   id: number;
@@ -22,6 +24,7 @@ type DBSchedule = {
 
 type ScheduleTimelineProps = {
   robotName?: string;
+  canEditSchedule?: boolean;
 };
 
 function formatTime(dateStr: string): string {
@@ -42,7 +45,7 @@ const KOREAN_DAY_TO_JS: Record<string, number> = {
   "일": 0, "월": 1, "화": 2, "수": 3, "목": 4, "금": 5, "토": 6,
 };
 
-export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
+export default function ScheduleTimeline({ robotName, canEditSchedule = true }: ScheduleTimelineProps) {
   const [schedules, setSchedules] = useState<DBSchedule[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"onetime" | "repeat">("onetime");
@@ -193,7 +196,7 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
                     </div>
                     <div className={styles.cardRow}>
                       <span className={styles.cardLocation}>{s.WayName}</span>
-                      {!isDone && (
+                      {!isDone && canEditSchedule && (
                         <div className={styles.actionBtns}>
                           <button className={styles.actionBtn} onClick={() => router.push(`/schedules?id=${s.id}`)}>수정</button>
                           <button className={`${styles.actionBtn} ${styles.actionBtnCancel}`} onClick={() => setDeleteTarget(s.id)}>취소</button>

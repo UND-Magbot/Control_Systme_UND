@@ -1,0 +1,410 @@
+/* ═══════════════════════════════════════
+   ModuleManageModal — 카드 그리드 + 뷰 전환
+   ═══════════════════════════════════════ */
+
+/* ─── 카드 그리드 ─── */
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.cardGrid::-webkit-scrollbar {
+  width: 5px;
+}
+
+.cardGrid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cardGrid::-webkit-scrollbar-thumb {
+  background: var(--surface-5);
+  border-radius: 3px;
+}
+
+.cardGrid::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ─── 모듈 카드 ─── */
+.moduleCard {
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.moduleCard:hover {
+  border-color: var(--text-accent);
+  background: var(--surface-4);
+}
+
+.moduleCardInactive {
+  opacity: 0.45;
+}
+
+/* 카드 1줄 레이아웃 */
+.cardRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.moduleIconCircle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.moduleIconCircle.camera {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93bbfc;
+}
+
+.moduleIconCircle.arm {
+  background: rgba(234, 179, 8, 0.2);
+  color: #fbbf24;
+}
+
+.moduleIconCircle.gripper {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+}
+
+.moduleIconCircle.sensor {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.cardLabelGroup {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardLabel {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.cardType {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  display: block;
+  margin-top: 2px;
+}
+
+/* ─── 토글 스위치 ─── */
+.toggleSwitch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.toggleSwitch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggleSlider {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-5);
+  border-radius: 9px;
+  transition: background 0.2s;
+}
+
+.toggleSlider::before {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 2px;
+  bottom: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggleSwitch input:checked + .toggleSlider {
+  background: var(--color-success);
+}
+
+.toggleSwitch input:checked + .toggleSlider::before {
+  transform: translateX(14px);
+}
+
+/* ─── 추가 카드 (빈 슬롯) ─── */
+.addCard {
+  border: 1.5px dashed var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.addCard:hover {
+  border-color: var(--text-accent);
+  color: var(--text-accent);
+  background: rgba(146, 212, 244, 0.05);
+}
+
+/* ─── 빈 상태 ─── */
+.emptyState {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: 32px 0;
+}
+
+/* ═══════════════════════════════════════
+   상세 뷰 — 읽기 전용
+   ═══════════════════════════════════════ */
+
+.detailCard {
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.detailCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.detailCardHeaderInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.detailCardName {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+
+/* 상세 정보 값 색상 */
+.valueActive {
+  color: #86efac;
+}
+
+.valueInactive {
+  color: #fca5a5;
+}
+
+/* 상세 정보 그리드 */
+.detailInfoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 24px;
+  margin-top: 14px;
+}
+
+.detailInfoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.detailInfoRow:nth-last-child(1),
+.detailInfoRow:nth-last-child(2) {
+  border-bottom: none;
+}
+
+.detailInfoLabel {
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.detailInfoValue {
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+
+/* 하단 액션 버튼 */
+.detailActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.detailActions button {
+  flex: unset;
+}
+
+/* ═══════════════════════════════════════
+   폼 뷰 — 추가 / 수정
+   ═══════════════════════════════════════ */
+
+/* 헤더 뒤로가기 버튼 */
+.headerBackBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.headerBackBtn:hover {
+  background: var(--surface-4);
+  color: var(--text-primary);
+}
+
+/* 폼 상단: 수정 대상 요약 */
+.formTarget {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface-3);
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+
+.formTargetInfo {
+  flex: 1;
+}
+
+.formTargetLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.formTargetType {
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+/* 삭제 버튼 (폼 내) */
+.deleteBtnForm {
+  background: none;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: var(--font-size-2xs);
+  transition: background 0.15s;
+}
+
+.deleteBtnForm:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* 폼 그리드 */
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+}
+
+.formGrid > * {
+  min-width: 0;
+}
+
+.formRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.formRowFull {
+  grid-column: 1 / -1;
+}
+
+.formRow label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.formRow input,
+.formRow select {
+  font-size: var(--font-size-md);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  transition: border-color 0.15s;
+}
+
+/* CustomSelect가 폼 너비에 맞추도록 */
+.formRow > div {
+  width: 100% !important;
+}
+
+.formRow input:focus,
+.formRow select:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+.formRow select:disabled,
+.formRow input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.formNoConfig {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-align: center;
+  padding: 8px 0;
+}
+
+/* 폼 액션 */
+.formActionBar {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  justify-content: flex-end;
+}
+
+.formActionBar button {
+  flex: unset;
+}

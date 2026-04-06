@@ -3,6 +3,7 @@
 import styles from './Modal.module.css';
 import React, { useEffect, useState, useRef } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
+import ConfirmOnlyModal from '@/app/components/modal/ConfirmOnlyModal';
 import { apiFetch } from "@/app/lib/api";
 import { useBatterySlider } from '@/app/hooks/useBatterySlider';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
@@ -40,6 +41,9 @@ export default function RobotInsertModal({
     const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
     const typeDropdownRef = useRef<HTMLDivElement>(null);
     const ROBOT_TYPES = ["QUADRUPED", "COBOT", "AMR", "HUMANOID"];
+
+    // S/W 버전
+    const [swVersion, setSwVersion] = useState("");
 
     const [robotIP, setRobotIP] = useState("");
     const [robotPort, setRobotPort] = useState("30000");
@@ -92,6 +96,7 @@ export default function RobotInsertModal({
             robot_port: robotPort ? parseInt(robotPort) : 30000,
             limit_battery: battery.value,
             business_id: businessId,
+            sw_version: swVersion.trim() || undefined,
         };
         try {
             const res = await apiFetch(`/DB/RobotInsert`, {
@@ -131,6 +136,7 @@ export default function RobotInsertModal({
         setRobotType("");
         setRobotIP("");
         setRobotPort("30000");
+        setSwVersion("");
         setBusinessId(null);
         setBizDropdownOpen(false);
         setTypeDropdownOpen(false);
@@ -165,10 +171,9 @@ export default function RobotInsertModal({
         <>
             <div className={styles.modalOverlay} onClick={isSubmitting ? undefined : onClose}>
                 <div className={styles.insertModalContent} onClick={(e) => e.stopPropagation()}>
-                    <button className={styles.insertCloseBtn} onClick={handleCancel} disabled={isSubmitting} aria-label="닫기">✕</button>
-                    <div className={styles.insertTitle}>
-                        <img src="/icon/robot_status_w.png" alt="Robot Registeration" />
-                        <h2>로봇 등록</h2>
+                    <div className={styles.detailHeaderTop}>
+                      <h2 style={{ fontWeight: 600, fontSize: "var(--font-size-xl)", color: "var(--text-primary)", margin: 0 }}>로봇 등록</h2>
+                      <button className={styles.detailCloseBtn} onClick={handleCancel} disabled={isSubmitting} aria-label="닫기">✕</button>
                     </div>
                     <div className={styles.itemBoxContainer}>
                         <div className={styles.insertItemBox}>
@@ -306,6 +311,20 @@ export default function RobotInsertModal({
                                 {errors.robotType && <div className={styles.errorMessage}>필수 선택 항목입니다.</div>}
                             </div>
                         </div>
+                        {/* S/W 버전 */}
+                        <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>S/W 버전</div>
+                            <div className={styles.insertInputWrap}>
+                                <input
+                                    type="text"
+                                    maxLength={20}
+                                    value={swVersion}
+                                    onChange={(e) => setSwVersion(e.target.value)}
+                                    placeholder='예: 1.0.0'
+                                    aria-label="S/W 버전"
+                                />
+                            </div>
+                        </div>
                         {/* 복귀 배터리양 */}
                         <div className={styles.insertItemBox}>
                             <div className={styles.insertItemLabel}>복귀 배터리양 <span className={styles.batteryCurrentValue}>{battery.value}%</span></div>
@@ -393,21 +412,15 @@ export default function RobotInsertModal({
                 />
             )}
             {apiAlert.isOpen && (
-                <CancelConfirmModal
+                <ConfirmOnlyModal
                     message={apiAlert.message}
                     onConfirm={apiAlert.close}
-                    onCancel={apiAlert.close}
                 />
             )}
             {saveSuccessOpen && (
-                <CancelConfirmModal
+                <ConfirmOnlyModal
                     message="로봇이 등록되었습니다."
                     onConfirm={() => {
-                        setSaveSuccessOpen(false);
-                        onClose();
-                        window.location.reload();
-                    }}
-                    onCancel={() => {
                         setSaveSuccessOpen(false);
                         onClose();
                         window.location.reload();

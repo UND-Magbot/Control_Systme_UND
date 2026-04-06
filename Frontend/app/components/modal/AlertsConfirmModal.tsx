@@ -34,7 +34,7 @@ export default function AlertsConfirmModal({
     isOpen,
     onClose,
 }: AlertsConfirmModalProps) {
-    const { unreadAlerts, unreadCounts: ctxCounts, refresh, handleMarkRead } = useAlertContext();
+    const { unreadAlerts, unreadCounts: ctxCounts, refresh, handleMarkRead, handleMarkAllRead } = useAlertContext();
     const [activeTab, setActiveTab] = useState<ModalTabKey>('total');
 
     const router = useRouter();
@@ -147,12 +147,6 @@ export default function AlertsConfirmModal({
         setSelectedAlert(null);
     };
 
-    // 알림 페이지로 이동
-    const handleMoveToAlerts = () => {
-        onClose();
-        router.push('/alerts');
-    };
-
     // 알림 클릭 → 해당 항목 상세로 이동
     const handleAlertClick = (item: AlertMockData) => {
         const tabMap: Record<string, string> = { Robot: 'robot', Schedule: 'schedule', Notice: 'notice' };
@@ -176,21 +170,30 @@ export default function AlertsConfirmModal({
                         </button>
                     </div>
 
-                    {/* 탭 바 */}
-                    <div className={styles.alertsTabBar} role="tablist" aria-label="알림 카테고리">
-                        {tabs.map((tab) => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                role="tab"
-                                aria-selected={activeTab === tab.id}
-                                aria-controls="alerts-tabpanel"
-                                className={`${styles.alertsTab} ${activeTab === tab.id ? styles.alertsTabActive : ''}`}
-                                onClick={() => handleTabChange(tab.id)}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
+                    {/* 탭 바 + 전체 읽음 */}
+                    <div className={styles.alertsTabRow}>
+                        <div className={styles.alertsTabBar} role="tablist" aria-label="알림 카테고리">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={activeTab === tab.id}
+                                    aria-controls="alerts-tabpanel"
+                                    className={`${styles.alertsTab} ${activeTab === tab.id ? styles.alertsTabActive : ''}`}
+                                    onClick={() => handleTabChange(tab.id)}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            className={styles.alertsMarkAllReadBtn}
+                            onClick={handleMarkAllRead}
+                            disabled={unreadAlerts.length === 0}
+                        >
+                            전체 읽음
+                        </button>
                     </div>
 
                     {/* 알림 리스트 */}
@@ -271,13 +274,6 @@ export default function AlertsConfirmModal({
                         </div>
                     </div>
 
-                    {/* 하단 이동 버튼 */}
-                    <div className={styles.pgBtnDiv}>
-                        <button className={styles.alertsPgBtn} onClick={handleMoveToAlerts}>
-                            <span>알림 화면으로 이동 </span>
-                            <span>→</span>
-                        </button>
-                    </div>
                 </div>
             </div>
 

@@ -23,6 +23,16 @@ export default function Login() {
     const [loginForm, setLoginForm] = useState<LoginForm>({ userId: "", password: "" });
     const [errors, setErrors] = useState<LoginErrors>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSessionExpired, setIsSessionExpired] = useState(false);
+
+    // 세션 만료 쿼리 파라미터 감지 후 URL에서 제거
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("reason") === "session_expired") {
+            setIsSessionExpired(true);
+            window.history.replaceState({}, "", "/login");
+        }
+    }, []);
 
     // 이미 로그인 상태면 대시보드로 리다이렉트
     useEffect(() => {
@@ -34,6 +44,7 @@ export default function Login() {
         const value = e.target.value;
         setLoginForm((prev) => ({ ...prev, [key]: value }));
         setErrors((prev) => ({ ...prev, [key]: undefined }));
+        if (isSessionExpired) setIsSessionExpired(false);
         };
 
     const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -90,6 +101,13 @@ export default function Login() {
                     <img src="/images/und_logo.png" alt="UND 로고" />
                     <h1 id="login-title">로그인</h1>
                 </header>
+
+                {/* 세션 만료 안내 */}
+                {isSessionExpired && (
+                    <div className={styles.sessionExpiredBanner}>
+                        세션이 만료되었습니다. 다시 로그인해주세요.
+                    </div>
+                )}
 
                 {/* 로그인 폼 */}
                 <form onSubmit={onSubmit}>

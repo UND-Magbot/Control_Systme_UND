@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import { useOutsideClick } from "@/app/hooks/useOutsideClick";
 import selectStyles from "./SelectModern.module.css";
@@ -17,7 +17,8 @@ type FilterSelectBoxProps = {
   showTotal?: boolean;            // 기본 true
   onSelect: (item: FilterOption | null) => void; // null = 전체 선택
   className?: string;
-  width?: number | string;        // 기본 130, "100%" 등 문자열도 가능
+  width?: number | string;        // 기본 "auto" — 옵션 중 가장 긴 텍스트에 맞춤
+  minWidth?: number;              // 최소 너비 (px), 기본 100
 };
 
 export default function FilterSelectBox({
@@ -27,9 +28,22 @@ export default function FilterSelectBox({
   showTotal = true,
   onSelect,
   className,
-  width = 130,
+  width = "auto",
+  minWidth = 130,
 }: FilterSelectBoxProps) {
   const s = selectStyles;
+
+  // 옵션 텍스트 중 가장 긴 것 기준으로 너비 자동 계산
+  const resolvedWidth = useMemo(() => {
+    if (width !== "auto") return width;
+    const labels = items.map(i => i.label);
+    if (showTotal) labels.push("전체");
+    labels.push(placeholder);
+    const maxLen = Math.max(...labels.map(l => l.length));
+    // padding 42px (좌14+우14+gap8+arrow14) + 글자당 13px (한글 기준)
+    const estimated = maxLen * 13 + 42;
+    return Math.max(estimated, minWidth);
+  }, [width, items, showTotal, placeholder, minWidth]);
 
   const [isOpen, setIsOpen] = useState(false);
   const [totalClicked, setTotalClicked] = useState(false);
@@ -60,7 +74,7 @@ export default function FilterSelectBox({
       position: "fixed",
       top: rect.bottom + 6,
       left: rect.left,
-      width: rect.width,
+      minWidth: rect.width,
     });
   };
 
@@ -98,7 +112,7 @@ export default function FilterSelectBox({
   const displayText = isAllSelected ? "전체" : (selectedLabel ?? placeholder);
 
   return (
-    <div ref={wrapperRef} className={`${s.seletWrapper} ${className ?? ""}`} style={{ width }}>
+    <div ref={wrapperRef} className={`${s.seletWrapper} ${className ?? ""}`} style={{ width: resolvedWidth }}>
       <div ref={selectRef} className={s.selete} onClick={handleToggle}>
         <span>{displayText}</span>
         <img

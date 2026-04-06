@@ -5,10 +5,7 @@ import { useModalBehavior } from "@/app/hooks/useModalBehavior";
 import styles from "./MapPlaceCreateModal.module.css";
 import DropdownSelect from "@/app/components/button/DropdownSelect";
 
-const API_BASE =
-  typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? `http://${window.location.hostname}:8000`
-    : "http://localhost:8000";
+import { API_BASE } from "@/app/config";
 
 type DBRobot = { id: number; RobotName: string };
 

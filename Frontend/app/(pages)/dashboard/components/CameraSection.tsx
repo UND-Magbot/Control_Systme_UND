@@ -5,7 +5,9 @@ import type { Camera, RobotRowData, Video, VideoItem } from '@/app/type'
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import {RobotSelectBox} from '@/app/components/button';
-import RemoteMapModal from "@/app/components/modal/RemoteMapModal";
+import dynamic from "next/dynamic";
+
+const RemoteMapModal = dynamic(() => import("@/app/components/modal/RemoteMapModal"), { ssr: false });
 import { API_BASE } from "@/app/config";
 import SectionHeader from "./SectionHeader";
 import selectModernStyles from "@/app/components/button/SelectModern.module.css";
@@ -324,7 +326,7 @@ export default function CameraSection({
               <span>카메라 연결 실패</span>
               {activeCam && (
                 <button className={styles.retryBtn}
-                  onClick={() => handleCameraTab(cameraTabActiveIndex, activeCam)}>
+                  onClick={() => retryConnection()}>
                   재연결
                 </button>
               )}

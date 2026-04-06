@@ -1440,6 +1440,15 @@
   color: #6b7280;
 }
 
+/* 전원 Off / 미확인 행 비활성화 */
+.status tbody tr.rowInactive td {
+  opacity: 0.4;
+}
+
+.status tbody tr.rowInactive:hover td {
+  opacity: 0.55;
+}
+
 /* ─── 사업자 목록 레이아웃 ─── */
 /* ─── 영역 관리 모달 ─── */
 .areaModalOverlay {

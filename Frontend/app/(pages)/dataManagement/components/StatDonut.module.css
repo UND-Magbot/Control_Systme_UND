@@ -1,0 +1,26 @@
+.wrap {
+  flex-shrink: 0;
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.wrap.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.ring {
+  width: clamp(72px, 6vw, 110px);
+  height: clamp(72px, 6vw, 110px);
+  border-radius: 50%;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.hole {
+  display: none;
+}

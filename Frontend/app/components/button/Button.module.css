@@ -302,7 +302,7 @@
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  z-index: 9999;
+  z-index: 150;
   overflow: hidden;
   cursor: pointer;
 }

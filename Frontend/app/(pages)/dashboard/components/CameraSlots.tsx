@@ -5,7 +5,9 @@ import styles from "./CameraSlots.module.css";
 import dashStyles from "../dashboard.module.css";
 import type { Camera, RobotRowData, Video, VideoItem } from "@/app/type";
 import CameraSlot from "./CameraSlot";
-import CameraModal from "./CameraModal";
+import dynamic from "next/dynamic";
+
+const CameraModal = dynamic(() => import("./CameraModal"), { ssr: false });
 
 type CameraSlotsProps = {
   cameras: Camera[];

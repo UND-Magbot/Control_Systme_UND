@@ -14,14 +14,6 @@
     width: 50%;
 }
 
-.searchIcon {
-    position: absolute;
-    left: 10px;
-    width: 14px;
-    height: 14px;
-    opacity: 0.5;
-    pointer-events: none;
-}
 
 .searchInput {
     height: 34px;
@@ -687,7 +679,7 @@
 .imagePreviewOverlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 120;
   background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;

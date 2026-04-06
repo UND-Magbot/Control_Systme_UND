@@ -120,7 +120,7 @@ class UserService:
             changes["is_active"] = {"from": user.IsActive, "to": is_active}
             user.IsActive = is_active
             if is_active == 0:
-                user.RefreshTokenHash = None  # 비활성화 시 세션 무효화
+                user.TokenVersion = (user.TokenVersion or 0) + 1  # 기존 세션 무효화
 
         if changes:
             db.commit()
@@ -144,7 +144,7 @@ class UserService:
                 raise HTTPException(status_code=400, detail="마지막 관리자 계정은 삭제할 수 없습니다")
 
         user.DeletedAt = datetime.now(timezone.utc)
-        user.RefreshTokenHash = None
+        user.TokenVersion = (user.TokenVersion or 0) + 1
         db.commit()
 
         UserService._write_audit(db, admin_id, "user_deleted", "user", user_id, ip_address=ip_address,
@@ -162,7 +162,7 @@ class UserService:
             raise HTTPException(status_code=422, detail="영문, 숫자, 특수문자 조합 6~12자리로 입력하세요")
 
         user.Password = hash_password(new_password)
-        user.RefreshTokenHash = None
+        user.TokenVersion = (user.TokenVersion or 0) + 1  # 기존 세션 무효화
         db.commit()
 
         UserService._write_audit(db, admin_id, "password_reset", "user", user_id, ip_address=ip_address)

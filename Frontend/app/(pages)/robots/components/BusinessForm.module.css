@@ -1,0 +1,140 @@
+/* ═══════════════════════════════════════
+   BusinessForm — 수정/등록 폼 스타일
+   ═══════════════════════════════════════ */
+
+.formSection {
+  padding: 12px 16px;
+  background: var(--surface-5);
+  border-radius: 10px;
+}
+
+/* 2열 그리드 */
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px 24px;
+}
+
+/* 개별 필드 (label 위, input 아래) */
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.formFieldFull {
+  grid-column: 1 / -1;
+}
+
+/* 라벨 */
+.formLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.required {
+  color: var(--color-error-soft, #f87171);
+}
+
+/* 인풋 */
+.formInput {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: var(--font-size-md);
+  background: var(--surface-3);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  color: var(--text-primary);
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.formInput:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+.formInput::placeholder {
+  color: var(--text-muted);
+}
+
+.formInputError {
+  border-color: var(--color-error-soft, #f87171);
+}
+
+/* 읽기 전용 값 (등록일 등) */
+.formReadonly {
+  padding: 10px 12px;
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+/* 텍스트에어리어 */
+.formTextarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 12px;
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  background: var(--surface-3);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  color: var(--text-primary);
+  box-sizing: border-box;
+  resize: vertical;
+  transition: border-color 0.15s;
+}
+
+.formTextarea:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+.formTextarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* 주소 행 (우편번호 + 버튼) */
+.addressRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.addressBtn {
+  flex-shrink: 0;
+  padding: 10px 18px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--color-info);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.addressBtn:hover {
+  opacity: 0.85;
+}
+
+/* 에러 메시지 */
+.formError {
+  font-size: 11px;
+  color: var(--color-error-soft, #f87171);
+  margin-top: -2px;
+}
+
+/* 폼 바깥 하단 액션 버튼 */
+.footerActionBar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 24px 16px;
+}

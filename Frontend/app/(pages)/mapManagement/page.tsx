@@ -26,11 +26,11 @@ export default function MapManagementPage() {
   // ── PlaceList / PathList 용 데이터 ──
   const [tabRobots, setTabRobots] = useState<RobotRowData[]>([]);
   const [tabFloors] = useState<Floor[]>([
-    { id: "1", label: "B2" },
-    { id: "2", label: "B1" },
-    { id: "3", label: "1F" },
-    { id: "4", label: "2F" },
-    { id: "5", label: "3F" },
+    { id: 1, label: "B2" },
+    { id: 2, label: "B1" },
+    { id: 3, label: "1F" },
+    { id: 4, label: "2F" },
+    { id: 5, label: "3F" },
   ]);
 
   useEffect(() => {

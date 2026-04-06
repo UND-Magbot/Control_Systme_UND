@@ -14,6 +14,8 @@ import RobotStats from "./RobotStats";
 import ScheduleTimeline from "./ScheduleTimeline";
 import getRobots from "@/app/lib/robotInfo";
 import { getCamerasForRobot } from "@/app/lib/cameraView";
+import { getStatistics, type PerRobotStats } from "@/app/lib/statisticsApi";
+import { usePageReady } from "@/app/context/PageLoadingContext";
 
 type DashboardClientProps = {
   floors: Floor[];
@@ -27,8 +29,10 @@ export default function DashboardClient({
   const [robots, setRobots] = useState<RobotRowData[]>([]);
   const [selectedRobotId, setSelectedRobotId] = useState<number | null>(null);
   const [robotCameras, setRobotCameras] = useState<Camera[]>([]);
+  const [robotStats, setRobotStats] = useState<PerRobotStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const robotLocation = useRobotLocation();
+  const setPageReady = usePageReady();
 
   // 로봇 + 첫 번째 로봇의 카메라까지 로드 완료 후 로딩 해제
   useEffect(() => {
@@ -42,7 +46,8 @@ export default function DashboardClient({
         setRobotCameras(cams);
       }
       setIsLoading(false);
-    }).catch(() => setIsLoading(false));
+      setPageReady();
+    }).catch(() => { setIsLoading(false); setPageReady(); });
   }, []);
 
   const selectedRobot = useMemo(
@@ -60,14 +65,20 @@ export default function DashboardClient({
     getCamerasForRobot(selectedRobotId).then(setRobotCameras);
   }, [selectedRobotId]);
 
-  if (isLoading) {
-    return (
-      <div className={styles.dashboardLoading}>
-        <div className={styles.dashboardSpinner} />
-        <span>대시보드를 불러오는 중...</span>
-      </div>
-    );
-  }
+  // 선택된 로봇의 통계 데이터 로드
+  useEffect(() => {
+    if (!selectedRobot?.no) {
+      setRobotStats(null);
+      return;
+    }
+    let cancelled = false;
+    getStatistics({ robot_name: selectedRobot.no }).then((result) => {
+      if (!cancelled) setRobotStats(result.data.per_robot[0] ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [selectedRobot?.no]);
+
+  if (isLoading) return null;
 
   return (
     <div className={styles.dashboardGrid}>
@@ -104,7 +115,7 @@ export default function DashboardClient({
       {/* ── 중앙: 통계 + 맵 ── */}
       <div className={styles.centerColumn}>
         <div className={styles.infoRow}>
-          <RobotStats robot={selectedRobot} />
+          <RobotStats stats={robotStats} />
           <ScheduleTimeline robotName={selectedRobot?.no} />
         </div>
         <MapSection

@@ -4,7 +4,9 @@ import React from "react";
 import styles from "./CameraAllModal.module.css";
 import type { Camera, RobotRowData, Video } from "@/app/type";
 import CameraSlot from "./CameraSlot";
-import CameraExpandModal from "./CameraExpandModal";
+import dynamic from "next/dynamic";
+
+const CameraExpandModal = dynamic(() => import("./CameraExpandModal"), { ssr: false });
 
 type CameraAllModalProps = {
   isOpen: boolean;

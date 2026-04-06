@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import styles from "./RobotCardList.module.css";
 import type { RobotRowData, Floor, Camera, Video } from "@/app/type";
-import { useRobotStatus } from "@/app/hooks/useRobotStatus";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
 import RobotCard from "./RobotCard";
 import SectionHeader from "./SectionHeader";
 import RobotLegend from "@/app/components/common/RobotLegend";
@@ -22,6 +22,8 @@ type RobotCardListProps = {
   cameras: Camera[];
   videoStatus: Video[];
   robotLocation: RobotLocation;
+  canLinkRobots?: boolean;
+  canControlRobot?: boolean;
 };
 
 export default function RobotCardList({
@@ -32,8 +34,10 @@ export default function RobotCardList({
   cameras,
   videoStatus,
   robotLocation,
+  canLinkRobots = true,
+  canControlRobot = true,
 }: RobotCardListProps) {
-  const liveRobots = useRobotStatus(robots);
+  const { robots: liveRobots } = useRobotStatusContext();
   const [search, setSearch] = useState("");
 
   const visibleRobots = useMemo(() => {
@@ -61,9 +65,9 @@ export default function RobotCardList({
     return { total: liveRobots.length, operating, standby, charging, offline };
   }, [liveRobots]);
 
-  const headerRight = (
+  const headerRight = canLinkRobots ? (
     <Link href="/robots" className={styles.moreLink}>더보기 ›</Link>
-  );
+  ) : undefined;
 
   return (
     <>
@@ -115,6 +119,7 @@ export default function RobotCardList({
               video={videoStatus}
               cameras={cameras}
               robotLocation={robotLocation}
+              canControlRobot={canControlRobot}
             />
           ))}
         </div>

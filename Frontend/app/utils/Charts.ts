@@ -1,4 +1,5 @@
 import type { RobotRowData, DonutCommonInfo } from '@/app/type';
+import type { RobotTypeCount, TaskCounts, TimeMinutes, ErrorCounts } from '@/app/lib/statisticsApi';
 import { convertMinutesToText } from "@/app/utils/convertMinutesToText";
 
 
@@ -6,19 +7,40 @@ type DonutCommonProps = {
     robots : RobotRowData[];
 }
 
+export type BarChartItem = {
+  label: string;
+  value: number;
+  percent: number;
+  displayValue?: string;
+  color?: string;
+};
+
+/**
+ * Largest Remainder Method — 합계 100.0% 보장
+ */
 function makeFixedPercents(counts: number[]): number[] {
   const total = counts.reduce((sum, v) => sum + v, 0);
-
-  // 값이 없거나 합계가 0이면 모두 0%
   if (total <= 0 || counts.length === 0) {
     return counts.map(() => 0);
   }
 
-  // 각 값의 비율을 그대로 계산 (소수점 1자리까지)
-  return counts.map((v) => {
-    const percent = (v / total) * 100;
-    return Number(percent.toFixed(1));   // 예: 33.333 → 33.3
-  });
+  const raw = counts.map(v => (v / total) * 100);
+  const floored = raw.map(v => Math.floor(v * 10) / 10);
+
+  // 부족분을 0.1% 단위로 계산
+  let remainder = Math.round((100 - floored.reduce((s, v) => s + v, 0)) * 10);
+
+  // 나머지가 큰 순서로 0.1%씩 보정
+  const remainders = raw.map((v, i) => ({ i, r: v - floored[i] }));
+  remainders.sort((a, b) => b.r - a.r);
+
+  for (const { i } of remainders) {
+    if (remainder <= 0) break;
+    floored[i] = Math.round((floored[i] + 0.1) * 10) / 10;
+    remainder--;
+  }
+
+  return floored;
 }
 
 
@@ -141,7 +163,7 @@ export function buildTaskCountDonut({ robots }: DonutCommonProps): DonutCommonIn
       taskCounts[t.taskType] += 1;
     });
   });
-  
+
   const entries = Object.entries(taskCounts);
   const values = entries.map(([_, count]) => count);
   const percents = makeFixedPercents(values);
@@ -153,4 +175,140 @@ export function buildTaskCountDonut({ robots }: DonutCommonProps): DonutCommonIn
     percent: percents[idx],       // 1자리 소수, 합계 100.0
     displayValue: `${count}`,
   }));
+}
+
+
+// ══════════════════════════════════════════════════
+// API 응답 기반 변환 함수 (통계 페이지용)
+// ══════════════════════════════════════════════════
+
+const TASK_LABEL_KOR: Record<string, string> = {
+  completed: "완료",
+  failed: "오류",
+  cancelled: "취소",
+};
+
+const TASK_COLOR: Record<string, string> = {
+  completed: "#77a251",
+  failed: "#e06b73",
+  cancelled: "#8b8fa3",
+};
+
+const TASK_ORDER = ["completed", "failed", "cancelled"];
+
+const ERROR_LABEL_KOR: Record<string, string> = {
+  network: "네트워크",
+  navigation: "네비게이션",
+  battery: "배터리",
+  etc: "기타",
+};
+
+const TIME_LABEL_KOR: Record<string, string> = {
+  operating: "운행시간",
+  charging: "충전시간",
+  standby: "대기시간",
+};
+
+const ROBOT_TYPE_KOR: Record<string, string> = {
+  QUADRUPED: "4족 보행",
+  COBOT: "협동 로봇",
+  AMR: "자율주행",
+  HUMANOID: "휴머노이드",
+};
+
+export function buildRobotTypeDonutFromApi(types: RobotTypeCount[]): DonutCommonInfo[] {
+  if (!types || types.length === 0) {
+    return [
+      { id: 1, label: "QUADRUPED", value: 0, percent: 0, displayValue: "0" },
+      { id: 2, label: "COBOT",     value: 0, percent: 0, displayValue: "0" },
+      { id: 3, label: "AMR",       value: 0, percent: 0, displayValue: "0" },
+      { id: 4, label: "HUMANOID",  value: 0, percent: 0, displayValue: "0" },
+    ];
+  }
+
+  const values = types.map(t => t.count);
+  const percents = makeFixedPercents(values);
+
+  return types.map((t, idx) => ({
+    id: idx + 1,
+    label: t.type,
+    value: t.count,
+    percent: percents[idx],
+    displayValue: `${t.count}`,
+  }));
+}
+
+export function buildRobotTypeBarFromApi(types: RobotTypeCount[]): BarChartItem[] {
+  const allTypes = ["QUADRUPED", "COBOT", "AMR", "HUMANOID"];
+  const typeMap: Record<string, number> = {};
+  allTypes.forEach(t => { typeMap[t] = 0; });
+  (types ?? []).forEach(t => { typeMap[t.type] = t.count; });
+
+  const entries = allTypes.map(t => ({ key: t, value: typeMap[t] }));
+  const values = entries.map(e => e.value);
+  const percents = makeFixedPercents(values);
+
+  return entries
+    .map((e, idx) => ({
+      label: ROBOT_TYPE_KOR[e.key] ?? e.key,
+      value: e.value,
+      percent: percents[idx],
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+export function buildTaskBarFromApi(tasks: TaskCounts): BarChartItem[] {
+  const ordered = TASK_ORDER.map(key => ({ key, value: (tasks as Record<string, number>)[key] ?? 0 }));
+  const values = ordered.map(e => e.value);
+  const percents = makeFixedPercents(values);
+
+  return ordered.map((e, idx) => ({
+    label: TASK_LABEL_KOR[e.key] ?? e.key,
+    value: e.value,
+    percent: percents[idx],
+    color: TASK_COLOR[e.key],
+  }));
+}
+
+export function buildTimeDonutFromApi(time: TimeMinutes): DonutCommonInfo[] {
+  const entries = Object.entries(time) as [string, number][];
+  const values = entries.map(([, v]) => v);
+  const percents = makeFixedPercents(values);
+
+  return entries.map(([key, value], idx) => ({
+    id: idx + 1,
+    label: TIME_LABEL_KOR[key] ?? key,
+    value,
+    percent: percents[idx],
+    displayValue: convertMinutesToText(value),
+  }));
+}
+
+export function buildTimeBarFromApi(time: TimeMinutes): BarChartItem[] {
+  const entries = Object.entries(time) as [string, number][];
+  const values = entries.map(([, v]) => v);
+  const percents = makeFixedPercents(values);
+
+  return entries
+    .map(([key, value], idx) => ({
+      label: TIME_LABEL_KOR[key] ?? key,
+      value,
+      percent: percents[idx],
+      displayValue: convertMinutesToText(value),
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+export function buildErrorBarFromApi(errors: ErrorCounts): BarChartItem[] {
+  const entries = Object.entries(errors) as [string, number][];
+  const values = entries.map(([, v]) => v);
+  const percents = makeFixedPercents(values);
+
+  return entries
+    .map(([key, value], idx) => ({
+      label: ERROR_LABEL_KOR[key] ?? key,
+      value,
+      percent: percents[idx],
+    }))
+    .sort((a, b) => b.value - a.value);
 }

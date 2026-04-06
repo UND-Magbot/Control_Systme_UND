@@ -21,6 +21,7 @@ from app.businesses.routes import router as business_router
 from app.auth.routes import router as auth_router
 from app.users.routes import router as users_router
 from app.backup.routes import router as backup_router
+from app.statistics.routes import router as statistics_router
 from app.logs.service import log_event
 from app.robot_sender import send_to_robot
 from app.navigation.send_move import (
@@ -74,6 +75,7 @@ app.include_router(business_router)
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(backup_router)
+app.include_router(statistics_router)
 
 
 # ======================================================
@@ -631,7 +633,7 @@ def startup_event():
         db.close()
 
     time.sleep(2)
-    send_init_pose()
+    # send_init_pose()
     log_event("system", "system_startup", "서버 시작")
 
 
@@ -698,13 +700,18 @@ def send_heartbeat(sock):
     sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
 
 
+_was_online: dict[int, bool] = {}  # robot_id → 이전 온라인 상태
+
 def status_thread():
-    """receiver.py 경유로 배터리 상태 폴링"""
+    """receiver.py 경유로 배터리 상태 폴링 + 온라인/오프라인 전환 로그"""
     print(f"📡 상태 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
+
+    fail_count = 0
 
     while True:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(2.0)
+        success = False
         try:
             msg = json.dumps({"action": "STATUS"}).encode("utf-8")
             sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
@@ -717,15 +724,32 @@ def status_thread():
                 rid = runtime.get_robot_id_by_ip(ROBOT_IP)
                 if rid is not None:
                     runtime.update_status(rid, battery, time.time())
+                    success = True
+                    fail_count = 0
+
+                    # 오프라인 → 온라인 전환 감지
+                    if not _was_online.get(rid, False):
+                        _was_online[rid] = True
+                        log_event("robot", "robot_online", "로봇 온라인",
+                                  robot_id=get_robot_id(), robot_name=get_robot_name())
 
         except socket.timeout:
-            pass
+            fail_count += 1
         except Exception as e:
+            fail_count += 1
             print("[ERR STATUS]", e)
             log_event("error", "robot_connection_error", f"로봇 상태 수신 오류: {e}",
                       robot_id=get_robot_id(), robot_name=get_robot_name())
         finally:
             sock.close()
+
+        # 연속 3회 실패 시 온라인 → 오프라인 전환 로그
+        if not success and fail_count >= 3:
+            rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+            if rid is not None and _was_online.get(rid, False):
+                _was_online[rid] = False
+                log_event("robot", "robot_offline", "로봇 오프라인",
+                          robot_id=get_robot_id(), robot_name=get_robot_name())
 
         time.sleep(REQ_INTERVAL_HB)
 
@@ -946,7 +970,7 @@ def get_pos():
 def init_pose():
     rid = runtime.get_robot_id_by_ip(ROBOT_IP)
     before = runtime.get_position(rid) if rid else {}
-    send_init_pose()
+    # send_init_pose()
     after = runtime.get_position(rid) if rid else {}
     return {
         "status": "ok",

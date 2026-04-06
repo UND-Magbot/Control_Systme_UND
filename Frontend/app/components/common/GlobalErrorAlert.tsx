@@ -12,7 +12,6 @@ export default function GlobalErrorAlert() {
   const router = useRouter();
   const [alerts, setAlerts] = useState<AlertMockData[]>([]);
   const [dismissed, setDismissed] = useState(false);
-  const [seenIds, setSeenIds] = useState<Set<number>>(new Set());
 
   const fetchErrorAlerts = useCallback(async () => {
     try {
@@ -20,16 +19,21 @@ export default function GlobalErrorAlert() {
       const errors = data.items.filter(
         (a) => a.type === 'Robot' && a.status === 'error' && !a.isRead
       );
-      // 이전에 닫기로 넘긴 알림은 제외, 새 에러만 추출
-      const newErrors = errors.filter((a) => !seenIds.has(a.id));
-      if (newErrors.length > 0) {
-        setAlerts(newErrors);
-        setDismissed(false);
+      if (errors.length === 0) {
+        setAlerts([]);
+        return;
       }
+      // 신규 에러가 있으면 dismissed 해제하여 모달 재표시
+      setAlerts((prev) => {
+        const prevIds = new Set(prev.map((a) => a.id));
+        const hasNew = errors.some((e) => !prevIds.has(e.id));
+        if (hasNew) setDismissed(false);
+        return errors;
+      });
     } catch {
       // 실패 시 무시
     }
-  }, [seenIds]);
+  }, []);
 
   useEffect(() => {
     fetchErrorAlerts();
@@ -59,20 +63,14 @@ export default function GlobalErrorAlert() {
     setAlerts([]);
   };
 
-  // 상세 보기 — 해당 알림은 seenIds에 기록
+  // 상세 보기 — 모달 닫고 알림 상세로 이동
   const handleDetail = (id: number) => {
-    setSeenIds((prev) => new Set(prev).add(id));
     setDismissed(true);
     router.push(`/alerts?tab=robot&id=${id}`);
   };
 
-  // 닫기 — 현재 표시된 알림 ID를 seenIds에 기록
+  // 닫기 — 모달만 닫음 (신규 에러 발생 시 기존 미읽음과 함께 재표시)
   const handleDismiss = () => {
-    setSeenIds((prev) => {
-      const next = new Set(prev);
-      alerts.forEach((a) => next.add(a.id));
-      return next;
-    });
     setDismissed(true);
   };
 
@@ -93,7 +91,7 @@ export default function GlobalErrorAlert() {
             </div>
           </div>
 
-          <div className={styles.body}>
+          <div className={styles.body} onClick={() => handleDetail(current.id)} style={{ cursor: 'pointer' }}>
             {current.robotName && (
               <div className={styles.robotName}>{current.robotName}</div>
             )}

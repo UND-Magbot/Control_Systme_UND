@@ -11,6 +11,7 @@ import CancelConfirmModal from "@/app/components/modal/CancelConfirmModal";
 import { apiFetch } from "@/app/lib/api";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import RemoteMapModal from "@/app/components/modal/RemoteMapModal";
+import ModuleManageModal from "@/app/components/modal/ModuleManageModal";
 import {
   ROBOT_COLORS,
   getRobotIndexFromNo,
@@ -89,9 +90,9 @@ function batColorClass(level: number): string {
   return styles.batDanger;
 }
 
-/** 듀얼 배터리 여부 */
+/** 듀얼 배터리 여부 (4족이면 통신 여부와 무관하게 L/R 표시) */
 function isDualBattery(r: RobotRowData): boolean {
-  return r.type === "QUADRUPED" && r.batteryLeft != null && r.batteryRight != null;
+  return r.type === "QUADRUPED";
 }
 
 export default function RobotStatusList({
@@ -152,6 +153,10 @@ export default function RobotStatusList({
   // 원격 모드 모달
   const [remoteModalOpen, setRemoteModalOpen] = useState(false);
   const [remoteTargetRobot, setRemoteTargetRobot] = useState<RobotRowData | null>(null);
+
+  // 장치관리 모달
+  const [moduleModalOpen, setModuleModalOpen] = useState(false);
+  const [moduleTargetRobot, setModuleTargetRobot] = useState<RobotRowData | null>(null);
 
   // 페이지네이션
   const [robotsPage, setRobotsPage] = useState(1);
@@ -263,6 +268,9 @@ export default function RobotStatusList({
 
   // 원격 모드
   const handleRemoteClick = (robot: RobotRowData) => { setRemoteTargetRobot(robot); setRemoteModalOpen(true); };
+
+  // 장치관리
+  const handleModuleClick = (robot: RobotRowData) => { setModuleTargetRobot(robot); setModuleModalOpen(true); };
 
   // colSpan
   const colCount = 8 + (deleteMode ? 1 : 0);
@@ -433,9 +441,9 @@ export default function RobotStatusList({
                   <td>
                     {isDualBattery(r) ? (
                       <>
-                        <span className={batColorClass(r.batteryLeft!)}>L {r.batteryLeft}%</span>
+                        <span className={r.batteryLeft != null ? batColorClass(r.batteryLeft) : ""}>L {r.batteryLeft != null ? `${r.batteryLeft}%` : "-"}</span>
                         <span style={{ color: "var(--text-muted)" }}> / </span>
-                        <span className={batColorClass(r.batteryRight!)}>R {r.batteryRight}%</span>
+                        <span className={r.batteryRight != null ? batColorClass(r.batteryRight) : ""}>R {r.batteryRight != null ? `${r.batteryRight}%` : "-"}</span>
                         <span style={{ color: "var(--text-muted)" }}> ({r.return}%)</span>
                       </>
                     ) : (
@@ -449,6 +457,10 @@ export default function RobotStatusList({
                   <td>
                     <div className={styles.infoBtnGroup}>
                       <div className={styles["info-box"]} onClick={(e) => { e.stopPropagation(); ViewInfoClick(idx, r); }}>상세보기</div>
+                      <div
+                        className={styles["viewMap"]}
+                        onClick={(e) => { e.stopPropagation(); handleModuleClick(r); }}
+                      >장치관리</div>
                       <div
                         className={`${styles["viewMap"]} ${!admin || r.power !== "On" ? styles.btnDisabled : ""}`}
                         onClick={(e) => { e.stopPropagation(); if (admin && r.power === "On") handleRemoteClick(r); }}
@@ -467,6 +479,15 @@ export default function RobotStatusList({
         <RobotDetailModal isOpen={robotDetailModalOpen} onClose={() => { setRobotDetailModalOpen(false); setRobotDetailEditMode(false); }} selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} initialEditMode={robotDetailEditMode} />
         {remoteModalOpen && remoteTargetRobot && (
           <RemoteMapModal isOpen={remoteModalOpen} onClose={() => setRemoteModalOpen(false)} selectedRobots={remoteTargetRobot} robots={robots} video={video} camera={cameras} primaryView="map" />
+        )}
+        {moduleModalOpen && moduleTargetRobot && (
+          <ModuleManageModal
+            isOpen={moduleModalOpen}
+            onClose={() => setModuleModalOpen(false)}
+            robotId={moduleTargetRobot.id}
+            robotName={moduleTargetRobot.no}
+            isAdmin={admin}
+          />
         )}
         {deleteConfirmOpen && (
           <CancelConfirmModal

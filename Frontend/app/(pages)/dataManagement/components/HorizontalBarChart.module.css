@@ -1,0 +1,65 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 0.9vw, 16px);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 0.7vw, 12px);
+}
+
+.name {
+  width: clamp(72px, 6vw, 96px);
+  flex-shrink: 0;
+  font-size: clamp(12px, 0.95vw, 15px);
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.track {
+  flex: 1;
+  height: clamp(18px, 1.5vw, 26px);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0.8;
+}
+
+.valueGroup {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 3px;
+  min-width: clamp(50px, 4.5vw, 72px);
+  flex-shrink: 0;
+}
+
+.count {
+  font-size: clamp(12px, 1vw, 15px);
+  font-weight: 700;
+  font-family: 'Gmarket Sans';
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.unit {
+  font-size: clamp(10px, 0.8vw, 13px);
+  font-weight: 400;
+}
+
+.timeUnit {
+  font-size: clamp(10px, 0.8vw, 12px);
+  font-weight: 400;
+  margin: 0 2px;
+}

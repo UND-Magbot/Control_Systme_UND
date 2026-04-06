@@ -13,7 +13,11 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     // API 실패 시 raw는 빈 배열 유지
   }
 
-  const robots = raw.map((item: any): RobotRowData => ({
+  const robots = raw.map((item: any): RobotRowData => {
+    // 배터리 통합: QUADRUPED → 1=Left,2=Right / 기타 → 1=SOC
+    const isQuadruped = item.RobotType === "QUADRUPED";
+
+    return {
     id: item.id,
 
     // DB 컬럼명: RobotName (PascalCase)
@@ -23,14 +27,22 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     type: item.RobotType ?? "",
     info: item.RobotName ?? "",
 
-    // 상태 (실시간 폴링으로 덮어씌워짐 — 초기값은 "미확인")
-    battery: item.battery ?? 0,
-    batteryLeft: item.BatteryLeft ?? undefined,
-    batteryRight: item.BatteryRight ?? undefined,
+    // 상태 (DB 마지막 값 → 실시간 폴링으로 덮어씌워짐)
+    battery: isQuadruped ? 0 : (item.BatteryLevel1 ?? 0),
+    batteryLeft: isQuadruped ? (item.BatteryLevel1 ?? undefined) : undefined,
+    batteryRight: isQuadruped ? (item.BatteryLevel2 ?? undefined) : undefined,
+    voltageLeft: isQuadruped ? (item.Voltage1 ?? undefined) : undefined,
+    voltageRight: isQuadruped ? (item.Voltage2 ?? undefined) : undefined,
+    batteryTempLeft: isQuadruped ? (item.BatteryTemp1 ?? undefined) : undefined,
+    batteryTempRight: isQuadruped ? (item.BatteryTemp2 ?? undefined) : undefined,
+    chargeLeft: isQuadruped ? (item.IsCharging1 === 1 ? true : item.IsCharging1 === 0 ? false : undefined) : undefined,
+    chargeRight: isQuadruped ? (item.IsCharging2 === 1 ? true : item.IsCharging2 === 0 ? false : undefined) : undefined,
     return: item.LimitBattery ?? 30,
-    isCharging: item.is_charging ?? false,
-    network: "-",
-    power: "-",
+    isCharging: isQuadruped
+      ? !!(item.IsCharging1 || item.IsCharging2)
+      : !!(item.IsCharging1),
+    network: item.LastHeartbeat ? "Offline" : "-",
+    power: item.LastHeartbeat ? "Off" : "-",
     mark: item.mark ?? "No",
 
     // 배열 필드는 반드시 방어
@@ -49,7 +61,9 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     softwareVersion: item.SWversion ?? "",
     site: item.Site ?? "",
     registrationDateTime: item.CreatedAt ?? "",
-  }));
+    robotIP: item.RobotIP ?? undefined,
+    robotPort: item.RobotPort ?? undefined,
+  }});
 
   return robots;
 }

@@ -15,7 +15,11 @@ function formatDate(date: string): string {
   return `${datePart} ${timePart}${seconds}`;
 }
 
-export default function NoticeList() {
+type NoticeListProps = {
+  canLinkNotice?: boolean;
+};
+
+export default function NoticeList({ canLinkNotice = true }: NoticeListProps) {
   const router = useRouter();
   const [allNotices, setAllNotices] = useState<AlertMockData[]>([]);
 
@@ -58,7 +62,8 @@ export default function NoticeList() {
                 <div
                   key={notice.id}
                   className={itemClasses}
-                  onClick={() => router.push(`/alerts?tab=notice&id=${notice.id}`)}
+                  onClick={canLinkNotice ? () => router.push(`/alerts?tab=notice&id=${notice.id}`) : undefined}
+                  style={canLinkNotice ? undefined : { cursor: "default" }}
                   title={notice.content}
                 >
                   <div>

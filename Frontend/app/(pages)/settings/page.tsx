@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { usePageReady } from "@/app/context/PageLoadingContext";
 import styles from './Setting.module.css';
 import MenuPermissions from './components/MenuPermissions';
 import DbBackup from './components/DbBackup';
@@ -15,7 +16,10 @@ const tabs: { id: SettingTab; label: string }[] = [
 ];
 
 export default function Page() {
+  const setPageReady = usePageReady();
   const [activeTab, setActiveTab] = useState<SettingTab>("permissions");
+
+  useEffect(() => { setPageReady(); }, []);
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>

@@ -34,6 +34,7 @@ export const menuTree: MenuNode[] = [
         id: "map-management",
         label: "맵 관리",
         children: [
+          { id: "map-edit", label: "맵 편집" },
           { id: "place-list", label: "장소 목록" },
           { id: "path-list", label: "경로 목록" },
         ],
@@ -52,9 +53,8 @@ export const menuTree: MenuNode[] = [
         label: "알림",
         children: [
           { id: "alert-total", label: "전체" },
-          { id: "alert-schedule", label: "작업일정" },
-          { id: "alert-emergency", label: "긴급사항" },
-          { id: "alert-robot", label: "로봇상태" },
+          { id: "alert-schedule", label: "스케줄" },
+          { id: "alert-robot", label: "로봇" },
           { id: "alert-notice", label: "공지사항" },
         ],
       },

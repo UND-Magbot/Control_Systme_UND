@@ -10,8 +10,10 @@ import {
   isCriticalBattery,
 } from "@/app/constants/robotIcons";
 import { apiFetch } from "@/app/lib/api";
-import PlacePathModal from "@/app/components/modal/PlacePathModal";
-import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
+import dynamic from "next/dynamic";
+
+const PlacePathModal = dynamic(() => import("@/app/components/modal/PlacePathModal"), { ssr: false });
+const BatteryPathModal = dynamic(() => import("@/app/components/modal/BatteryChargeModal"), { ssr: false });
 
 type RobotLocation = {
   floor: string;
@@ -26,6 +28,7 @@ type RobotCardProps = {
   video: unknown[];
   cameras: unknown[];
   robotLocation: RobotLocation;
+  canControlRobot?: boolean;
 };
 
 const ROBOT_ICONS = [
@@ -35,7 +38,7 @@ const ROBOT_ICONS = [
   "/icon/robot_icon(4).png",
 ];
 
-export default function RobotCard({ robot, isSelected, onClick, robots, video, cameras, robotLocation }: RobotCardProps) {
+export default function RobotCard({ robot, isSelected, onClick, robots, video, cameras, robotLocation, canControlRobot = true }: RobotCardProps) {
   const typeIdx = ROBOT_TYPE_INDEX[robot.type] ?? 0;
   const dotClass = styles[`dot${robot.network}`] ?? styles.dotOffline;
   const badgeClass = styles[`badge${robot.network}`] ?? styles.badgeOffline;
@@ -107,11 +110,17 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
 
           <div className={styles.cardBottom}>
             <span className={isCriticalBattery(robot) ? styles.criticalBattery : ""}>
-              {robot.type === "QUADRUPED" && robot.batteryLeft != null && robot.batteryRight != null ? (
+              {robot.type === "QUADRUPED" ? (
                 <>
-                  <span style={{ color: "var(--text-primary)" }}>L </span><span style={{ color: getBatteryColor(robot.batteryLeft, robot.return) }}>{robot.batteryLeft}%</span>
+                  <span style={{ color: "var(--text-primary)" }}>L </span>
+                  {robot.batteryLeft != null ? (
+                    <span style={{ color: getBatteryColor(robot.batteryLeft, robot.return) }}>{robot.batteryLeft}%</span>
+                  ) : <span>-</span>}
                   <span style={{ color: "var(--text-muted)" }}> / </span>
-                  <span style={{ color: "var(--text-primary)" }}>R </span><span style={{ color: getBatteryColor(robot.batteryRight, robot.return) }}>{robot.batteryRight}%</span>
+                  <span style={{ color: "var(--text-primary)" }}>R </span>
+                  {robot.batteryRight != null ? (
+                    <span style={{ color: getBatteryColor(robot.batteryRight, robot.return) }}>{robot.batteryRight}%</span>
+                  ) : <span>-</span>}
                   <span style={{ color: "var(--text-muted)" }}> ({robot.return}%)</span>
                 </>
               ) : (
@@ -129,9 +138,13 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
           {/* 선택된 카드에만 액션 버튼 표시 */}
           {isSelected && (
             <div className={styles.actionRow}>
-              <button className={styles.actionBtn} onClick={handleScheduleReturn}>작업 복귀</button>
-              <button className={styles.actionBtn} onClick={handleChargeMove}>충전소 이동</button>
-              <button className={styles.actionBtn} onClick={handlePlaceMove}>장소 이동</button>
+              {canControlRobot && (
+                <>
+                  <button className={styles.actionBtn} onClick={handleScheduleReturn}>작업 복귀</button>
+                  <button className={styles.actionBtn} onClick={handleChargeMove}>충전소 이동</button>
+                  <button className={styles.actionBtn} onClick={handlePlaceMove}>장소 이동</button>
+                </>
+              )}
               <button className={`${styles.actionBtn} ${styles.actionBtnDanger}`} onClick={handleEmergencyStop}>긴급 정지</button>
             </div>
           )}

@@ -77,9 +77,10 @@ export default function CameraSlot({ camera, robotName, onExpand }: CameraSlotPr
     setHasError(false);
 
     const raw = camera.webrtcUrl;
-    const url = raw.startsWith("ws") || raw.startsWith("http")
+    const base = raw.startsWith("ws") || raw.startsWith("http")
       ? raw
       : `${API_BASE}${raw}`;
+    const url = base + (base.includes("?") ? "&" : "?") + "t=" + Date.now();
     setStreamUrl(url);
 
     timeoutRef.current = setTimeout(() => {

@@ -143,10 +143,12 @@ class MapSaveReq(BaseModel):
     AreaName: str
 
 @map_manage.get("/maps")
-def get_maps(area_id: Optional[int] = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_maps(area_id: Optional[int] = None, business_id: Optional[int] = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
     q = db.query(RobotMapInfo)
     if area_id is not None:
         q = q.filter(RobotMapInfo.AreaId == area_id)
+    if business_id is not None:
+        q = q.filter(RobotMapInfo.BusinessId == business_id)
     return q.order_by(RobotMapInfo.id.desc()).all()
 
 @map_manage.post("/maps")

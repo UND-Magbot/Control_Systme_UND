@@ -1,6 +1,7 @@
 from sqlalchemy import (
     Column,
     Integer,
+    SmallInteger,
     String,
     Double,
     Float,
@@ -140,7 +141,8 @@ class UserInfo(Base):
     UserName = Column(String(50), nullable=True)
     LoginId = Column(String(50), unique=True, nullable=True)
     Password = Column(String(255), nullable=True)                   # bcrypt 해시
-    RefreshTokenHash = Column(String(255), nullable=True)           # SHA-256 해시 (1유저=1세션)
+    RefreshTokenHash = Column(String(255), nullable=True)           # (미사용, 하위호환용)
+    TokenVersion = Column(Integer, default=0, nullable=False)       # 토큰 버전 (증가 시 기존 토큰 무효)
     IsActive = Column(Integer, default=1)                           # 1=활성, 0=정지
     BusinessId = Column(Integer, nullable=True)                     # 소속 사업자 FK
     LastLoginAt = Column(DateTime, nullable=True)
@@ -328,3 +330,30 @@ class ModuleCameraInfo(Base):
     Path = Column(String(100), nullable=True)                   # /video1, /video2
 
     module = relationship("RobotModule", back_populates="camera_info")
+
+
+# =========================
+# 로봇 마지막 상태 (로봇당 1행)
+# =========================
+class RobotLastStatus(Base):
+    __tablename__ = "robot_last_status"
+
+    RobotId = Column(Integer, ForeignKey("robot_info.id", ondelete="CASCADE"), primary_key=True)
+    # Battery (1=Left or SOC, 2=Right or NULL)
+    BatteryLevel1 = Column(SmallInteger, nullable=True)
+    BatteryLevel2 = Column(SmallInteger, nullable=True)
+    Voltage1 = Column(Float, nullable=True)
+    Voltage2 = Column(Float, nullable=True)
+    BatteryTemp1 = Column(Float, nullable=True)
+    BatteryTemp2 = Column(Float, nullable=True)
+    IsCharging1 = Column(SmallInteger, nullable=True)
+    IsCharging2 = Column(SmallInteger, nullable=True)
+    # Position
+    PosX = Column(Double, nullable=True)
+    PosY = Column(Double, nullable=True)
+    PosYaw = Column(Double, nullable=True)
+    AreaId = Column(Integer, nullable=True)
+    # Heartbeat
+    LastHeartbeat = Column(DateTime, nullable=True)
+    CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
+    UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

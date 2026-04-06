@@ -9,7 +9,7 @@ from app.Database.database import SessionLocal
 from app.Database.models import LocationInfo, WayInfo, UserInfo
 from app.logs.service import log_event
 from app.current_user import get_robot_id, get_robot_name
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 
 
 move = APIRouter(prefix="/nav")
@@ -62,7 +62,7 @@ def _signal_nav_reset(full=False):
     _nav_full_reset_flag = full
 
 @move.post("/startmove")
-def start_navigation(loop: int = 3, current_user: UserInfo = Depends(get_current_user)):
+def start_navigation(loop: int = 3, current_user: UserInfo = Depends(require_permission("robot-list"))):
 
     waypoints = load_waypoints()
 
@@ -157,7 +157,7 @@ def load_waypoints():
 
 
 @move.post("/placemove/{place_id}")
-def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("robot-list"))):
     place = db.query(LocationInfo).filter(LocationInfo.id == place_id).first()
 
     if not place:
@@ -176,7 +176,7 @@ def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: Us
 
 
 @move.post("/pathmove/{path_id}")
-def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("robot-list"))):
     global current_wp_index, waypoints_list, is_navigating
 
     path = db.query(WayInfo).filter(WayInfo.id == path_id).first()

@@ -1,7 +1,20 @@
+import time
+import threading
+import queue
+
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.Database.models import LogDataInfo, Alert
 from app.Database.database import SessionLocal
+
+# ── 중복 로그 억제 (쿨다운) ──
+_cooldown_lock = threading.Lock()
+_last_logged: dict[str, float] = {}       # action → 마지막 기록 시각
+_suppressed_counts: dict[str, int] = {}   # action → 억제된 횟수
+LOG_COOLDOWN_SEC = 30                     # 같은 action 반복 억제 시간(초)
+
+# ── 큐 기반 단일 Writer ──
+_log_queue: queue.Queue = queue.Queue(maxsize=500)
 
 # 로그 Action → 알림 자동 생성 규칙
 ALERT_TRIGGER_RULES = {
@@ -23,6 +36,8 @@ ALERT_TRIGGER_RULES = {
     "position_recv_error":     ("Robot", "error"),
     "robot_error_code":        ("Robot", "error"),
     "db_operation_error":      ("Robot", "error"),
+    "robot_online":            ("Robot", "event"),
+    "robot_offline":           ("Robot", "event"),
 }
 
 # 로그 Action → 알림 제목 매핑
@@ -46,6 +61,8 @@ ACTION_TITLES = {
     "nav_loop":                "네비게이션 반복",
     "place_move_start":        "장소 이동",
     "path_move_start":         "경로 이동",
+    "robot_online":            "로봇 온라인",
+    "robot_offline":           "로봇 오프라인",
     # System
     "system_startup":          "서버 시작",
 }
@@ -127,6 +144,50 @@ class LogService:
         return {"items": items, "total": total, "page": page, "size": size}
 
 
+# ── 큐 Writer 스레드 (세션 1개 재사용) ──
+def _log_writer():
+    """큐에서 로그를 꺼내 단일 세션으로 DB에 기록하는 전용 스레드"""
+    db = None
+    fail_count = 0
+
+    while True:
+        try:
+            item = _log_queue.get()  # 블로킹 대기
+
+            # 세션이 없거나 이전에 실패했으면 (재)생성
+            if db is None:
+                try:
+                    db = SessionLocal()
+                    fail_count = 0
+                except Exception as e:
+                    print(f"[ERR log_writer] DB 세션 생성 실패: {e}")
+                    fail_count += 1
+                    time.sleep(min(fail_count * 2, 30))
+                    continue
+
+            try:
+                LogService(db).create(**item)
+            except Exception as e:
+                print(f"[ERR log_writer] {e}")
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                # 세션이 깨졌으면 폐기 후 다음 루프에서 재생성
+                try:
+                    db.close()
+                except Exception:
+                    pass
+                db = None
+
+        except Exception as e:
+            print(f"[ERR log_writer] unexpected: {e}")
+
+
+# Writer 스레드 시작 (데몬 — 메인 프로세스 종료 시 같이 종료)
+threading.Thread(target=_log_writer, daemon=True, name="log-writer").start()
+
+
 def log_event(
     category: str,
     action: str,
@@ -136,20 +197,32 @@ def log_event(
     robot_name: str = None,
     error_json: str = None,
 ):
-    """스레드에서 안전하게 로그를 생성하는 유틸리티 함수"""
-    db = SessionLocal()
+    """스레드에서 안전하게 로그를 큐에 추가 (동일 action 30초 쿨다운)"""
+    now = time.time()
+
+    with _cooldown_lock:
+        last = _last_logged.get(action, 0)
+        if now - last < LOG_COOLDOWN_SEC:
+            _suppressed_counts[action] = _suppressed_counts.get(action, 0) + 1
+            return
+        # 쿨다운 해제 — 억제된 횟수가 있으면 요약 메시지에 포함
+        suppressed = _suppressed_counts.pop(action, 0)
+        _last_logged[action] = now
+
+    if suppressed > 0:
+        message = f"{message} (이전 {suppressed}건 동일 로그 생략됨)"
+
+    item = dict(
+        category=category,
+        action=action,
+        message=message,
+        detail=detail,
+        robot_id=robot_id,
+        robot_name=robot_name,
+        error_json=error_json,
+    )
+
     try:
-        LogService(db).create(
-            category=category,
-            action=action,
-            message=message,
-            detail=detail,
-            robot_id=robot_id,
-            robot_name=robot_name,
-            error_json=error_json,
-        )
-    except Exception as e:
-        print(f"[ERR log_event] {e}")
-        db.rollback()
-    finally:
-        db.close()
+        _log_queue.put_nowait(item)
+    except queue.Full:
+        print("[WARN log_event] 로그 큐 가득참 — 드롭")

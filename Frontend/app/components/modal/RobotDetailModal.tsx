@@ -1,8 +1,8 @@
 'use client';
 
 import styles from './Modal.module.css';
-import React, { useState, useEffect } from 'react';
-import type { RobotRowData, RobotModule } from '@/app/type';
+import React, { useState, useEffect, useRef } from 'react';
+import type { RobotRowData } from '@/app/type';
 import type { RobotDraft } from "@/app/(pages)/robots/components/RobotList";
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { apiFetch } from "@/app/lib/api";
@@ -68,6 +68,7 @@ export default function RobotDetailModal({
                     ...selectedRobot,
                     id: data.id ?? selectedRobot.id,
                     no: data.RobotName,
+                    type: data.RobotType ?? selectedRobot.type,
                     operator: data.ProductCompany ?? selectedRobot.operator,
                     serialNumber: data.SerialNumber ?? selectedRobot.serialNumber,
                     model: data.ModelName ?? selectedRobot.model,
@@ -76,6 +77,8 @@ export default function RobotDetailModal({
                     site: data.Site ?? selectedRobot.site,
                     registrationDateTime: data.Adddate ?? selectedRobot.registrationDateTime,
                     return: data.LimitBattery ?? selectedRobot.return ?? DEFAULT_RETURN_BATTERY,
+                    robotIP: data.RobotIP ?? selectedRobot.robotIP,
+                    robotPort: data.RobotPort ?? selectedRobot.robotPort,
                     };
 
                 setRobotDetail(detail);
@@ -144,6 +147,32 @@ export default function RobotDetailModal({
 
     const battery = useBatterySlider({ min: 15, max: 30, defaultValue: DEFAULT_RETURN_BATTERY });
 
+    // 운영사 드롭다운 (편집 모드)
+    const [bizList, setBizList] = useState<{ id: number; name: string }[]>([]);
+    const [bizDropdownOpen, setBizDropdownOpen] = useState(false);
+    const bizDropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!isEditMode) { setBizDropdownOpen(false); return; }
+        apiFetch(`/DB/businesses?size=10000`)
+            .then(res => { if (!res.ok) throw new Error(); return res.json(); })
+            .then(data => {
+                const items = (data.items ?? []).map((b: any) => ({ id: b.id, name: b.BusinessName }));
+                setBizList(items);
+            })
+            .catch(() => setBizList([]));
+    }, [isEditMode]);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (bizDropdownRef.current && !bizDropdownRef.current.contains(e.target as Node)) {
+                setBizDropdownOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
     // Action modal states
     const [workScheduleModalOpen, setWorkScheduleModalOpen] = useState(false);
     const [placePathModalOpen, setPlacePathModalOpen] = useState(false);
@@ -159,75 +188,17 @@ export default function RobotDetailModal({
     // Path data (lazy loaded)
     const [pathRows, setPathRows] = useState<any[]>([]);
 
-    // 장착 모듈
-    const [modules, setModules] = useState<RobotModule[]>([]);
-    const [modulesLoading, setModulesLoading] = useState(false);
-    const [showAddForm, setShowAddForm] = useState(false);
-    const [addForm, setAddForm] = useState({ moduleType: "camera", label: "", streamType: "rtsp", port: "8554", path: "", cameraIP: "" });
-
-    const fetchModules = () => {
-      if (!selectedRobotId) return;
-      setModulesLoading(true);
-      apiFetch(`/DB/robots/${selectedRobotId}/modules`)
-        .then(res => res.ok ? res.json() : { modules: [] })
-        .then(data => setModules(data.modules ?? []))
-        .catch(() => setModules([]))
-        .finally(() => setModulesLoading(false));
-    };
-
-    useEffect(() => {
-      if (isOpen && selectedRobotId) fetchModules();
-    }, [isOpen, selectedRobotId]);
-
-    const handleAddModule = async () => {
-      if (!selectedRobotId || !addForm.label.trim()) return;
-      const payload: Record<string, unknown> = {
-        moduleType: addForm.moduleType,
-        label: addForm.label,
-      };
-      if (addForm.moduleType === "camera") {
-        payload.streamType = addForm.streamType;
-        payload.port = parseInt(addForm.port) || 8554;
-        payload.path = addForm.path || null;
-        payload.cameraIP = addForm.cameraIP || null;
-      }
-      try {
-        const res = await apiFetch(`/DB/robots/${selectedRobotId}/modules`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) {
-          setShowAddForm(false);
-          setAddForm({ moduleType: "camera", label: "", streamType: "rtsp", port: "8554", path: "", cameraIP: "" });
-          fetchModules();
-        }
-      } catch (err) {
-        console.error("모듈 추가 실패:", err);
-      }
-    };
-
-    const handleDeleteModule = async (moduleId: number) => {
-      try {
-        const res = await apiFetch(`/DB/modules/${moduleId}`, { method: "DELETE" });
-        if (res.ok) fetchModules();
-        else {
-          const data = await res.json();
-          apiAlert.show(data.detail || "모듈 삭제 실패");
-        }
-      } catch (err) {
-        console.error("모듈 삭제 실패:", err);
-      }
-    };
-
-
     // B-9: ESC 키 동작 - 수정 모드에서는 보기 모드로 전환, 보기 모드에서는 모달 닫기
     useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 if (isSubmitting) return;
                 if (isEditMode) {
-                    handleCancel();
+                    if (initialEditMode) {
+                        onClose();
+                    } else {
+                        handleCancel();
+                    }
                 } else {
                     onClose();
                 }
@@ -292,6 +263,13 @@ export default function RobotDetailModal({
 
 
     const handleCancel = () => {
+    // 목록에서 수정 버튼으로 진입한 경우 → 모달 닫기
+    if (initialEditMode) {
+        onClose();
+        return;
+    }
+
+    // 상세보기에서 수정 진입한 경우 → 보기모드로 전환
     // 1) 선택 로봇 값으로 draft 되돌리기
     const rb =
         ((robotDetail ?? selectedRobot) as any)?.returnBattery ??
@@ -299,6 +277,7 @@ export default function RobotDetailModal({
         DEFAULT_RETURN_BATTERY;
 
     setDraft({
+        robotName: (robotDetail ?? selectedRobot)?.no ?? "",
         operator: (robotDetail ?? selectedRobot)?.operator ?? "",
         serialNumber: (robotDetail ?? selectedRobot)?.serialNumber ?? "",
         model: (robotDetail ?? selectedRobot)?.model ?? "",
@@ -479,16 +458,13 @@ export default function RobotDetailModal({
       setBatteryConfirmOpen(false);
     };
 
-    // B-5: 수정 불가 필드 식별용 클래스
-    const readonlyContentClass = `${styles.itemContentBox} ${isEditMode ? styles.readonlyField : ""}`;
-
     return (
         <>
         <div className={styles.modalOverlay} onClick={isSubmitting ? undefined : onClose}>
             <div className={styles.detailModalContent} onClick={(e) => e.stopPropagation()}>
 
                 {/* ── Header ── */}
-                <div className={styles.detailHeader}>
+                <div className={styles.detailHeader} style={isEditMode ? { paddingBottom: 0 } : undefined}>
                   <div className={styles.detailHeaderTop}>
                     <h2>{(robotDetail ?? selectedRobot)?.no ?? "로봇"} {isEditMode ? "수정" : "상세정보"}</h2>
                     <button className={styles.detailCloseBtn} onClick={onClose} disabled={isSubmitting} aria-label="닫기">✕</button>
@@ -496,7 +472,7 @@ export default function RobotDetailModal({
                 </div>
 
                 {/* ── Body ── */}
-                <div className={styles.detailBody}>
+                <div className={styles.detailBody} style={isEditMode ? { paddingTop: 0 } : undefined}>
 
                 {/* B-1: 로딩 상태 */}
                 {isLoading && (
@@ -524,6 +500,7 @@ export default function RobotDetailModal({
                                             ...selectedRobot,
                                             id: data.id ?? selectedRobot.id,
                                             no: data.RobotName,
+                                            type: data.RobotType ?? selectedRobot.type,
                                             operator: data.ProductCompany ?? selectedRobot.operator,
                                             serialNumber: data.SerialNumber ?? selectedRobot.serialNumber,
                                             model: data.ModelName ?? selectedRobot.model,
@@ -532,6 +509,8 @@ export default function RobotDetailModal({
                                             site: data.Site ?? selectedRobot.site,
                                             registrationDateTime: data.Adddate ?? selectedRobot.registrationDateTime,
                                             return: data.LimitBattery ?? selectedRobot.return ?? DEFAULT_RETURN_BATTERY,
+                                            robotIP: data.RobotIP ?? selectedRobot.robotIP,
+                                            robotPort: data.RobotPort ?? selectedRobot.robotPort,
                                         };
                                         setRobotDetail(detail);
                                         setDraft({
@@ -602,11 +581,15 @@ export default function RobotDetailModal({
                           <span className={styles.detailStatusLabel}>배터리</span>
                           <span className={styles.detailStatusValue}>
                             {isOffline ? "-" : (
-                              r.type === "QUADRUPED" && r.batteryLeft != null && r.batteryRight != null ? (
+                              r.type === "QUADRUPED" ? (
                                 <>
-                                  L <span style={{ color: getBatteryColor(r.batteryLeft, limitBat) }}>{r.batteryLeft}%</span>
+                                  L {r.batteryLeft != null ? (
+                                    <span style={{ color: getBatteryColor(r.batteryLeft, limitBat) }}>{r.batteryLeft}%</span>
+                                  ) : <span>-</span>}
                                   <span style={{ color: "var(--text-muted)" }}> / </span>
-                                  R <span style={{ color: getBatteryColor(r.batteryRight, limitBat) }}>{r.batteryRight}%</span>
+                                  R {r.batteryRight != null ? (
+                                    <span style={{ color: getBatteryColor(r.batteryRight, limitBat) }}>{r.batteryRight}%</span>
+                                  ) : <span>-</span>}
                                 </>
                               ) : (
                                 <span style={{ color: getBatteryColor(bat, limitBat) }}>{bat}%</span>
@@ -630,35 +613,152 @@ export default function RobotDetailModal({
                   const r = robotDetail ?? selectedRobot;
                   const isRobotOffline = r?.power === "Off";
 
-                  const requiredFieldKeys = ["robotName", "model", "serialNumber", "operator"];
+                  if (isEditMode) {
+                    return (
+                      <>
+                        <div className={styles.itemBoxContainer}>
+                          {/* 로봇명 */}
+                          <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>로봇명 <span className={styles.requiredMark}>*</span></div>
+                            <div className={styles.insertInputWrap}>
+                              <input type="text" maxLength={20} value={draft.robotName}
+                                onChange={e => { setDraft(p => ({...p, robotName: e.target.value})); if (fieldErrors.robotName) setFieldErrors(p => ({...p, robotName: false})); }}
+                                placeholder="20글자 이내로 작성해 주세요."
+                                className={fieldErrors.robotName ? styles.inputError : ""} />
+                              {fieldErrors.robotName && <div className={styles.errorMessage}>필수 입력 항목입니다.</div>}
+                            </div>
+                          </div>
+                          {/* 모델 */}
+                          <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>모델 <span className={styles.requiredMark}>*</span></div>
+                            <div className={styles.insertInputWrap}>
+                              <input type="text" maxLength={20} value={draft.model as string}
+                                onChange={e => { setDraft(p => ({...p, model: e.target.value})); if (fieldErrors.model) setFieldErrors(p => ({...p, model: false})); }}
+                                placeholder="20글자 이내로 작성해 주세요."
+                                className={fieldErrors.model ? styles.inputError : ""} />
+                              {fieldErrors.model && <div className={styles.errorMessage}>필수 입력 항목입니다.</div>}
+                            </div>
+                          </div>
+                          {/* 시리얼 번호 */}
+                          <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>시리얼 번호 <span className={styles.requiredMark}>*</span></div>
+                            <div className={styles.insertInputWrap}>
+                              <input type="text" maxLength={20} value={draft.serialNumber as string}
+                                onChange={e => { setDraft(p => ({...p, serialNumber: e.target.value})); if (fieldErrors.serialNumber) setFieldErrors(p => ({...p, serialNumber: false})); }}
+                                placeholder="20글자 이내로 작성해 주세요."
+                                className={fieldErrors.serialNumber ? styles.inputError : ""} />
+                              {fieldErrors.serialNumber && <div className={styles.errorMessage}>필수 입력 항목입니다.</div>}
+                            </div>
+                          </div>
+                          {/* 운영사 */}
+                          <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>운영사 <span className={styles.requiredMark}>*</span></div>
+                            <div className={styles.insertInputWrap}>
+                              <div ref={bizDropdownRef} className={styles.customSelectWrap}>
+                                <button
+                                  type="button"
+                                  className={`${styles.customSelectTrigger} ${fieldErrors.operator ? styles.inputError : ""}`}
+                                  onClick={() => setBizDropdownOpen(prev => !prev)}
+                                  aria-label="운영사"
+                                >
+                                  <span style={{ color: draft.operator ? "var(--text-primary)" : "var(--text-tertiary)" }}>
+                                    {draft.operator || "운영사를 선택하세요"}
+                                  </span>
+                                  <img className={styles.customSelectArrow} src={bizDropdownOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"} alt="" />
+                                </button>
+                                {bizDropdownOpen && (
+                                  <div className={styles.customSelectDropdown}>
+                                    {bizList.length === 0 ? (
+                                      <div className={styles.customSelectItem} style={{ color: "var(--text-muted)" }}>등록된 사업자가 없습니다</div>
+                                    ) : (
+                                      bizList.map((b) => (
+                                        <div
+                                          key={b.id}
+                                          className={`${styles.customSelectItem} ${draft.operator === b.name ? styles.customSelectItemActive : ""}`}
+                                          onClick={() => {
+                                            setDraft(p => ({ ...p, operator: b.name }));
+                                            setBizDropdownOpen(false);
+                                            if (fieldErrors.operator) setFieldErrors(p => ({ ...p, operator: false }));
+                                          }}
+                                        >
+                                          {b.name}
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              {fieldErrors.operator && <div className={styles.errorMessage}>필수 선택 항목입니다.</div>}
+                            </div>
+                          </div>
+                          {/* 사이트 (읽기 전용) */}
+                          <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>사이트</div>
+                            <div className={styles.insertInputWrap}>
+                              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", lineHeight: "36px" }}>{r?.site ?? "-"}</span>
+                            </div>
+                          </div>
+                          {/* S/W 버전 (읽기 전용) */}
+                          <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>S/W 버전</div>
+                            <div className={styles.insertInputWrap}>
+                              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", lineHeight: "36px" }}>{r?.softwareVersion ?? "-"}</span>
+                            </div>
+                          </div>
+                          {/* 복귀 배터리양 */}
+                          <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>복귀 배터리양 <span className={styles.batteryCurrentValue}>{battery.value}%</span></div>
+                            <div className={styles.batterySliderWrap}>
+                              <div className={styles.batterySliderTrackArea}>
+                                <input className={styles.batterySlider} type="range"
+                                  min={battery.min} max={battery.max} step={1}
+                                  value={battery.value} onChange={battery.handleSliderChange}
+                                  aria-label="복귀 배터리양 조정"
+                                  style={{ ['--percent' as any]: `${battery.sliderPercent}%` }} />
+                              </div>
+                              <div className={styles.batterySliderLabels}>
+                                <span>{battery.min}%</span>
+                                <span>{battery.max}%</span>
+                              </div>
+                            </div>
+                          </div>
+                          {/* 등록일시 (읽기 전용) */}
+                          <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>등록일시</div>
+                            <div className={styles.batterySliderWrap}>
+                              <div style={{ height: 20, display: "flex", alignItems: "center" }}>
+                                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>{r?.registrationDateTime?.replace("T", " ") ?? "-"}</span>
+                              </div>
+                              <div style={{ height: 18 }} />
+                            </div>
+                          </div>
+                        </div>
+                        {/* 버튼 - 등록 모달과 동일 스타일 */}
+                        <div className={styles.insertBtnTotal}>
+                          <button type="button" className={`${styles.insertConfrimBtn} ${styles.btnBgRed}`}
+                            onClick={handleCancel} disabled={isSubmitting}>
+                            <img src="/icon/close_btn.png" alt="cancel"/>
+                            <span>취소</span>
+                          </button>
+                          <button type="button" className={`${styles.insertConfrimBtn} ${styles.btnBgBlue} ${isSubmitting ? styles.btnDisabled : ""}`}
+                            onClick={handleSave} disabled={isSubmitting}>
+                            {isSubmitting ? <div className={styles.btnSpinner} /> : <img src="/icon/check.png" alt="save" style={{ verticalAlign: "middle", flexShrink: 0 }} />}
+                            <span style={{ lineHeight: 1 }}>{isSubmitting ? "저장 중..." : "저장"}</span>
+                          </button>
+                        </div>
+                      </>
+                    );
+                  }
 
+                  // 보기 모드
                   const infoField = (label: string, field: keyof typeof draft | null, value: string, readonly?: boolean) => {
-                    const isRequired = field != null && requiredFieldKeys.includes(field);
-                    const hasError = field != null && fieldErrors[field];
-
                     return (
                       <div className={styles.detailInfoRow}>
                         <span className={styles.detailInfoLabel}>
                           {label}
-                          {isEditMode && isRequired && !readonly && <span className={styles.requiredMark}> *</span>}
                         </span>
                         <span className={styles.detailInfoValue}>
-                          {isEditMode && field && !readonly ? (
-                            <div>
-                              <input
-                                className={`${styles.detailInfoInput} ${hasError ? styles.inputError : ""}`}
-                                type="text"
-                                maxLength={20}
-                                value={draft[field] as string}
-                                placeholder="입력"
-                                onChange={(e) => {
-                                  setDraft((p) => ({ ...p, [field]: e.target.value }));
-                                  if (fieldErrors[field]) setFieldErrors((p) => ({ ...p, [field]: false }));
-                                }}
-                              />
-                              {hasError && <span className={styles.errorMessage}>필수 입력 항목입니다</span>}
-                            </div>
-                          ) : value}
+                          {value}
                         </span>
                       </div>
                     );
@@ -676,37 +776,27 @@ export default function RobotDetailModal({
                           r?.serialNumber ?? "-")}
                         {infoField("운영사", "operator",
                           r?.operator ?? "-")}
+                        {infoField("로봇 타입", null,
+                          r?.type ?? "-", true)}
                         {infoField("사이트", "site",
                           r?.site ?? "-", true)}
                         {infoField("S/W 버전", "softwareVersion",
                           r?.softwareVersion ?? "-", true)}
+                        {infoField("로봇 IP", null,
+                          r?.robotIP ?? "-", true)}
+                        {infoField("로봇 Port", null,
+                          r?.robotPort != null ? String(r.robotPort) : "-", true)}
 
                         {/* 복귀 배터리 (좌) / 등록일시 (우) */}
                         <div className={styles.detailInfoRow}>
                           <span className={styles.detailInfoLabel}>복귀 배터리</span>
                           <span className={styles.detailInfoValue}>
-                            {isEditMode ? (
-                              <div className={styles.detailBatteryEdit}>
-                                <input
-                                  className={styles.detailBatterySlider}
-                                  type="range"
-                                  min={battery.min}
-                                  max={battery.max}
-                                  step={1}
-                                  value={battery.value}
-                                  onChange={battery.handleSliderChange}
-                                  style={{ ["--percent" as any]: `${battery.sliderPercent}%` }}
-                                />
-                                <span>{battery.value}%</span>
-                              </div>
-                            ) : (
-                              <div className={styles.detailBatteryView}>
-                                <span className={styles.detailBatteryBar}>
-                                  <span className={styles.detailBatteryFill} style={{ width: `${Math.min(draft.returnBattery, 100)}%` }} />
-                                </span>
-                                <span>{draft.returnBattery}%</span>
-                              </div>
-                            )}
+                            <div className={styles.detailBatteryView}>
+                              <span className={styles.detailBatteryBar}>
+                                <span className={styles.detailBatteryFill} style={{ width: `${Math.min(draft.returnBattery, 100)}%` }} />
+                              </span>
+                              <span>{draft.returnBattery}%</span>
+                            </div>
                           </span>
                         </div>
                         {infoField("등록일시", null,
@@ -714,42 +804,28 @@ export default function RobotDetailModal({
                       </div>
 
                       {/* 액션 버튼 (기본정보 섹션 내부) */}
-                      {!isEditMode && (
-                        <div className={styles.detailActionBar}>
-                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
-                            onClick={isRobotOffline ? undefined : openWorkScheduleModal} disabled={!!isRobotOffline}>
-                            <img src="/icon/robot_schedule_w.png" alt="" style={{ height: 13 }} />
-                            <span>작업 복귀</span>
-                          </button>
-                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
-                            onClick={isRobotOffline ? undefined : () => setPlacePathModalOpen(true)} disabled={!!isRobotOffline}>
-                            <MapPin size={14} />
-                            <span>장소 이동</span>
-                          </button>
-                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
-                            onClick={isRobotOffline ? undefined : openPathMoveModal} disabled={!!isRobotOffline}>
-                            <Route size={14} />
-                            <span>경로 이동</span>
-                          </button>
-                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
-                            onClick={isRobotOffline ? undefined : handleChargeMove} disabled={!!isRobotOffline}>
-                            <img src="/icon/robot_battery_place_w.png" alt="" style={{ height: 13 }} />
-                            <span>충전소 이동</span>
-                          </button>
-                        </div>
-                      )}
-                      {isEditMode && (
-                        <div className={styles.detailActionBar}>
-                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgRed}`}
-                            onClick={handleCancel} disabled={isSubmitting}>
-                            <span>취소</span>
-                          </button>
-                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgBlue} ${isSubmitting ? styles.btnDisabled : ""}`}
-                            onClick={handleSave} disabled={isSubmitting}>
-                            <span>{isSubmitting ? "저장 중..." : "저장"}</span>
-                          </button>
-                        </div>
-                      )}
+                      <div className={styles.detailActionBar}>
+                        <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
+                          onClick={isRobotOffline ? undefined : openWorkScheduleModal} disabled={!!isRobotOffline}>
+                          <img src="/icon/robot_schedule_w.png" alt="" style={{ height: 13 }} />
+                          <span>작업 복귀</span>
+                        </button>
+                        <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
+                          onClick={isRobotOffline ? undefined : () => setPlacePathModalOpen(true)} disabled={!!isRobotOffline}>
+                          <MapPin size={14} />
+                          <span>장소 이동</span>
+                        </button>
+                        <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
+                          onClick={isRobotOffline ? undefined : openPathMoveModal} disabled={!!isRobotOffline}>
+                          <Route size={14} />
+                          <span>경로 이동</span>
+                        </button>
+                        <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ""}`}
+                          onClick={isRobotOffline ? undefined : handleChargeMove} disabled={!!isRobotOffline}>
+                          <img src="/icon/robot_battery_place_w.png" alt="" style={{ height: 13 }} />
+                          <span>충전소 이동</span>
+                        </button>
+                      </div>
                     </div>
                   );
                 })()}
@@ -801,130 +877,6 @@ export default function RobotDetailModal({
                   );
                 })()}
 
-                {/* ── 장착 모듈 섹션 ── */}
-                {!isEditMode && (
-                  <div className={styles.detailModuleSection}>
-                    <div className={styles.detailModuleHeader}>
-                      <h3 className={styles.detailSectionTitle}>장착 모듈</h3>
-                      <button
-                        type="button"
-                        className={styles.detailModuleAddBtn}
-                        onClick={() => setShowAddForm(!showAddForm)}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                        모듈 추가
-                      </button>
-                    </div>
-
-                    {/* 인라인 추가 폼 */}
-                    {showAddForm && (
-                      <div className={styles.moduleAddForm}>
-                        <div className={styles.moduleAddFormRow}>
-                          <label>타입</label>
-                          <select value={addForm.moduleType} onChange={e => setAddForm(p => ({ ...p, moduleType: e.target.value }))}>
-                            <option value="camera">카메라</option>
-                            <option value="arm">암</option>
-                            <option value="gripper">그리퍼</option>
-                            <option value="sensor">센서</option>
-                          </select>
-                        </div>
-                        <div className={styles.moduleAddFormRow}>
-                          <label>라벨</label>
-                          <input
-                            type="text" maxLength={50} placeholder="예: 암 카메라"
-                            value={addForm.label}
-                            onChange={e => setAddForm(p => ({ ...p, label: e.target.value }))}
-                          />
-                        </div>
-                        {addForm.moduleType === "camera" && (
-                          <>
-                            <div className={styles.moduleAddFormRow}>
-                              <label>프로토콜</label>
-                              <select value={addForm.streamType} onChange={e => setAddForm(p => ({ ...p, streamType: e.target.value }))}>
-                                <option value="rtsp">RTSP</option>
-                                <option value="ws">WebSocket</option>
-                              </select>
-                            </div>
-                            <div className={styles.moduleAddFormRow}>
-                              <label>포트</label>
-                              <input type="text" inputMode="numeric" maxLength={5} placeholder="8554"
-                                value={addForm.port}
-                                onChange={e => setAddForm(p => ({ ...p, port: e.target.value.replace(/\D/g, "") }))}
-                              />
-                            </div>
-                            <div className={styles.moduleAddFormRow}>
-                              <label>경로</label>
-                              <input type="text" maxLength={100} placeholder="/video3"
-                                value={addForm.path}
-                                onChange={e => setAddForm(p => ({ ...p, path: e.target.value }))}
-                              />
-                            </div>
-                            <div className={styles.moduleAddFormRow}>
-                              <label>IP</label>
-                              <input type="text" maxLength={45} placeholder="비워두면 로봇 IP 사용"
-                                value={addForm.cameraIP}
-                                onChange={e => setAddForm(p => ({ ...p, cameraIP: e.target.value }))}
-                              />
-                            </div>
-                          </>
-                        )}
-                        <div className={styles.moduleAddFormActions}>
-                          <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgRed}`}
-                            onClick={() => setShowAddForm(false)} style={{ padding: "4px 12px", fontSize: "var(--font-size-xs)" }}>
-                            취소
-                          </button>
-                          <button type="button"
-                            className={`${styles.btnItemCommon} ${styles.btnBgBlue} ${!addForm.label.trim() ? styles.btnDisabled : ""}`}
-                            onClick={handleAddModule} disabled={!addForm.label.trim()}
-                            style={{ padding: "4px 12px", fontSize: "var(--font-size-xs)" }}>
-                            추가
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 모듈 목록 */}
-                    {modulesLoading ? (
-                      <div className={styles.detailModuleEmpty}>불러오는 중...</div>
-                    ) : modules.length === 0 ? (
-                      <div className={styles.detailModuleEmpty}>등록된 모듈이 없습니다</div>
-                    ) : (
-                      <div className={styles.detailModuleList}>
-                        {(() => {
-                          const renderModules = (items: RobotModule[], depth: number) =>
-                            items.map(m => (
-                              <React.Fragment key={m.id}>
-                                <div className={`${styles.detailModuleItem} ${depth > 0 ? styles.moduleChild : ""}`}>
-                                  <span className={`${styles.detailModuleTypeBadge} ${styles[m.type] ?? ""}`}>
-                                    {m.type}
-                                  </span>
-                                  <span className={styles.detailModuleLabel}>{m.label}</span>
-                                  {m.isBuiltIn && (
-                                    <span className={styles.detailModuleBuiltIn}>내장</span>
-                                  )}
-                                  {!m.isBuiltIn && (
-                                    <button
-                                      className={styles.detailModuleDeleteBtn}
-                                      onClick={() => handleDeleteModule(m.id)}
-                                      title="삭제"
-                                    >
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                                      </svg>
-                                    </button>
-                                  )}
-                                </div>
-                                {m.children?.length > 0 && renderModules(m.children, depth + 1)}
-                              </React.Fragment>
-                            ));
-                          return renderModules(modules, 0);
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 </>
                 )}

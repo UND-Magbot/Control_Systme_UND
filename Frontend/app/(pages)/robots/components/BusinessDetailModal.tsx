@@ -51,7 +51,7 @@ export default function BusinessDetailModal({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (isEditMode && mode === "view") resetToView();
+        if (isEditMode && mode === "view" && !initialEditMode) resetToView();
         else onClose();
       }
     };
@@ -251,7 +251,7 @@ export default function BusinessDetailModal({
       <div className={styles.detailModalContent} onClick={(e) => e.stopPropagation()}>
 
         {/* ── Header ── */}
-        <div className={styles.detailHeader}>
+        <div className={styles.detailHeader} style={isEditMode ? { paddingBottom: 0 } : undefined}>
           <div className={styles.detailHeaderTop}>
             <h2>
               {mode === "create" ? "사업장 등록"
@@ -262,109 +262,123 @@ export default function BusinessDetailModal({
         </div>
 
         {/* ── Body ── */}
-        <div className={styles.detailBody}>
-          <div className={styles.detailInfoSection}>
-            <h3 className={styles.detailSectionTitle}>기본 정보</h3>
-            <div className={styles.detailInfoGrid}>
-              {infoField("사업장명", "name", business?.businessName ?? "-")}
-              {infoField("대표명", "representName", business?.representName ?? "-")}
-
-              {/* 연락처 */}
-              <div className={styles.detailInfoRow}>
-                <span className={styles.detailInfoLabel}>연락처</span>
-                <span className={styles.detailInfoValue}>
-                  {isEditMode ? (
-                    <div>
-                      <input
-                        className={`${styles.detailInfoInput} ${fieldErrors.contact ? styles.inputError : ""}`}
-                        type="text"
-                        maxLength={13}
-                        value={contact}
-                        placeholder="010-1234-5678"
-                        onChange={(e) => handleContactChange(e.target.value)}
-                      />
-                      {contactError && <span className={styles.errorMessage}>{contactError}</span>}
+        <div className={styles.detailBody} style={isEditMode ? { paddingTop: 0 } : undefined}>
+          {isEditMode ? (
+            <>
+              <div className={styles.itemBoxContainer}>
+                {/* 사업장명 */}
+                <div className={styles.insertItemBox}>
+                  <div className={styles.insertItemLabel}>사업장명 <span className={styles.requiredMark}>*</span></div>
+                  <div className={styles.insertInputWrap}>
+                    <input type="text" maxLength={20} value={name}
+                      onChange={e => { setName(e.target.value); if (fieldErrors.name) setFieldErrors(p => ({...p, name: false})); }}
+                      placeholder="20글자 이내로 작성해 주세요."
+                      className={fieldErrors.name ? styles.inputError : ""} />
+                    {fieldErrors.name && <div className={styles.errorMessage}>필수 입력 항목입니다.</div>}
+                  </div>
+                </div>
+                {/* 대표명 */}
+                <div className={styles.insertItemBox}>
+                  <div className={styles.insertItemLabel}>대표명 <span className={styles.requiredMark}>*</span></div>
+                  <div className={styles.insertInputWrap}>
+                    <input type="text" maxLength={20} value={representName}
+                      onChange={e => { setRepresentName(e.target.value); if (fieldErrors.representName) setFieldErrors(p => ({...p, representName: false})); }}
+                      placeholder="20글자 이내로 작성해 주세요."
+                      className={fieldErrors.representName ? styles.inputError : ""} />
+                    {fieldErrors.representName && <div className={styles.errorMessage}>필수 입력 항목입니다.</div>}
+                  </div>
+                </div>
+                {/* 연락처 */}
+                <div className={styles.insertItemBox}>
+                  <div className={styles.insertItemLabel}>연락처</div>
+                  <div className={styles.insertInputWrap}>
+                    <input type="text" maxLength={13} value={contact}
+                      onChange={e => handleContactChange(e.target.value)}
+                      placeholder="예: 010-1234-5678"
+                      className={fieldErrors.contact ? styles.inputError : ""} />
+                    {contactError && <div className={styles.errorMessage}>{contactError}</div>}
+                  </div>
+                </div>
+                {/* 등록일 (수정 모드에서만 표시) */}
+                {mode === "view" && (
+                  <div className={styles.insertItemBox}>
+                    <div className={styles.insertItemLabel}>등록일</div>
+                    <div className={styles.insertInputWrap}>
+                      <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-secondary)", lineHeight: "36px" }}>{business?.createdAt ?? "-"}</span>
                     </div>
-                  ) : (business?.contact || "-")}
-                </span>
-              </div>
-
-              {/* 등록일 (읽기 전용) */}
-              {infoField("등록일", null, business?.createdAt ?? "-", true)}
-
-              {/* 주소 */}
-              <div className={`${styles.detailInfoRow} ${styles.detailInfoFull}`}>
-                <span className={styles.detailInfoLabel}>
-                  주소
-                  {isEditMode && <span className={styles.requiredMark}> *</span>}
-                </span>
-                <span className={styles.detailInfoValue}>
-                  {isEditMode ? (
+                  </div>
+                )}
+                {/* 주소 (full width) */}
+                <div className={styles.insertItemBox} style={{ gridColumn: "1 / -1" }}>
+                  <div className={styles.insertItemLabel}>주소 <span className={styles.requiredMark}>*</span></div>
+                  <div className={styles.insertInputWrap}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input
-                          className={`${styles.detailInfoInput}`}
-                          type="text" value={zipCode} placeholder="우편번호" readOnly
+                        <input type="text" value={zipCode} placeholder="우편번호" readOnly
                           onClick={handleAddressSearch}
-                          style={{ flex: "0 0 100px", cursor: "pointer" }}
-                        />
+                          style={{ flex: "0 0 100px", cursor: "pointer", height: 36, borderRadius: 6, padding: "5px 10px", border: "1px solid var(--border-default)", background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)" }} />
                         <button type="button" className={listStyles.placeAddBtn} onClick={handleAddressSearch} style={{ flexShrink: 0 }}>
                           주소 검색
                         </button>
                       </div>
-                      <input
-                        className={`${styles.detailInfoInput} ${fieldErrors.address ? styles.inputError : ""}`}
-                        type="text" value={address} placeholder="주소를 검색하세요" readOnly
-                        onClick={handleAddressSearch} style={{ cursor: "pointer" }}
-                      />
-                      <input
-                        className={styles.detailInfoInput}
-                        type="text" maxLength={100} value={addressDetail}
-                        placeholder="상세주소 입력 (선택)"
-                        onChange={(e) => setAddressDetail(e.target.value)}
-                      />
-                      {fieldErrors.address && <span className={styles.errorMessage}>주소를 검색해주세요</span>}
+                      <input type="text" value={address} placeholder="주소를 검색하세요" readOnly
+                        onClick={handleAddressSearch}
+                        className={fieldErrors.address ? styles.inputError : ""}
+                        style={{ cursor: "pointer", width: "100%", height: 36, borderRadius: 6, padding: "5px 10px", border: `1px solid ${fieldErrors.address ? "var(--color-error-soft)" : "var(--border-default)"}`, background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)" }} />
+                      <input type="text" maxLength={100} value={addressDetail}
+                        placeholder="상세주소 입력 (선택, 100자 이내)"
+                        onChange={e => setAddressDetail(e.target.value)}
+                        style={{ width: "100%", height: 36, borderRadius: 6, padding: "5px 10px", border: "1px solid var(--border-default)", background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)" }} />
                     </div>
-                  ) : fullAddressDisplay}
-                </span>
+                    {fieldErrors.address && <div className={styles.errorMessage}>주소를 검색해주세요</div>}
+                  </div>
+                </div>
+                {/* 회사 설명 (full width) */}
+                <div className={styles.insertItemBox} style={{ gridColumn: "1 / -1" }}>
+                  <div className={styles.insertItemLabel}>회사 설명</div>
+                  <div className={styles.insertInputWrap}>
+                    <textarea maxLength={200} value={description}
+                      placeholder="200자 이내로 작성해 주세요."
+                      onChange={e => setDescription(e.target.value)}
+                      style={{ width: "100%", minHeight: 60, resize: "vertical", borderRadius: 6, padding: "10px 10px", border: "1px solid var(--border-default)", background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)", fontFamily: "inherit" }} />
+                  </div>
+                </div>
               </div>
-
-              {/* 영역 수 / 로봇 수 (조회 모드에서만) */}
-              {!isEditMode && infoField("영역 수", null, `${business?.areaCount ?? 0}개`, true)}
-              {!isEditMode && infoField("로봇 수", null, `${business?.robotCount ?? 0}대`, true)}
-
-              {/* 회사 설명 */}
-              <div className={`${styles.detailInfoRow} ${styles.detailInfoFull}`}>
-                <span className={styles.detailInfoLabel}>회사 설명</span>
-                <span className={styles.detailInfoValue}>
-                  {isEditMode ? (
-                    <textarea
-                      className={styles.detailInfoInput}
-                      maxLength={200}
-                      value={description}
-                      placeholder="회사 설명을 입력하세요"
-                      onChange={(e) => setDescription(e.target.value)}
-                      style={{ minHeight: 60, resize: "vertical" }}
-                    />
-                  ) : (business?.description || "-")}
-                </span>
-              </div>
-            </div>
-
-            {/* 액션 버튼 (기본정보 섹션 내부) */}
-            {isEditMode && (
-              <div className={styles.detailActionBar}>
-                <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgRed}`}
-                  onClick={mode === "view" ? resetToView : onClose}>
+              {/* 버튼 - 등록 모달 스타일 */}
+              <div className={styles.insertBtnTotal}>
+                <button type="button" className={`${styles.insertConfrimBtn} ${styles.btnBgRed}`}
+                  onClick={mode === "create" || initialEditMode ? onClose : resetToView}>
+                  <img src="/icon/close_btn.png" alt="cancel"/>
                   <span>취소</span>
                 </button>
-                <button type="button" className={`${styles.btnItemCommon} ${styles.btnBgBlue}`}
+                <button type="button" className={`${styles.insertConfrimBtn} ${styles.btnBgBlue}`}
                   onClick={handleSave}>
-                  <span>{mode === "create" ? "등록" : "저장"}</span>
+                  <img src="/icon/check.png" alt="save" style={{ verticalAlign: "middle", flexShrink: 0 }} />
+                  <span style={{ lineHeight: 1 }}>{mode === "create" ? "등록" : "저장"}</span>
                 </button>
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <div className={styles.detailInfoSection}>
+              <h3 className={styles.detailSectionTitle}>기본 정보</h3>
+              <div className={styles.detailInfoGrid}>
+                {infoField("사업장명", null, business?.businessName ?? "-", true)}
+                {infoField("대표명", null, business?.representName ?? "-", true)}
+                {infoField("연락처", null, business?.contact || "-", true)}
+                {infoField("등록일", null, business?.createdAt ?? "-", true)}
+                <div className={`${styles.detailInfoRow} ${styles.detailInfoFull}`}>
+                  <span className={styles.detailInfoLabel}>주소</span>
+                  <span className={styles.detailInfoValue}>{fullAddressDisplay}</span>
+                </div>
+                {infoField("영역 수", null, `${business?.areaCount ?? 0}개`, true)}
+                {infoField("로봇 수", null, `${business?.robotCount ?? 0}대`, true)}
+                <div className={`${styles.detailInfoRow} ${styles.detailInfoFull}`}>
+                  <span className={styles.detailInfoLabel}>회사 설명</span>
+                  <span className={styles.detailInfoValue}>{business?.description || "-"}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
       </div>

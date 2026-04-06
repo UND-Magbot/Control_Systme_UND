@@ -1,10 +1,10 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 import styles from './SectionHeader.module.css';
 
 type SectionHeaderProps = {
     icon: string;
     title: string;
-    rightSlot?: React.ReactNode;
+    rightSlot?: ReactNode;
 };
 
 export default function SectionHeader({ icon, title, rightSlot }: SectionHeaderProps) {

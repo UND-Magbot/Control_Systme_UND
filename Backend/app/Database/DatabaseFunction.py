@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.Database.database import SessionLocal
-from app.Database.models import RobotInfo, LocationInfo, WayInfo, ScheduleInfo, UserInfo, RobotModule, ModuleCameraInfo, RouteInfo
+from app.Database.models import RobotInfo, LocationInfo, WayInfo, ScheduleInfo, UserInfo, RobotModule, ModuleCameraInfo, RouteInfo, RobotLastStatus, BusinessInfo
 from fastapi.encoders import jsonable_encoder
 
 from datetime import datetime
@@ -32,6 +32,7 @@ class RobotInsertReq(BaseModel):
     robot_port: Optional[int] = 30000
     limit_battery: int = 30
     business_id: Optional[int] = None
+    sw_version: Optional[str] = None
 
 @database.post("/RobotInsert")
 def insert_Robot(req: RobotInsertReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
@@ -57,6 +58,7 @@ def insert_Robot(req: RobotInsertReq, request: Request, db: Session = Depends(ge
         LimitBattery=req.limit_battery,
         SerialNumber=req.robot_id,
         BusinessId=req.business_id,
+        SWversion=req.sw_version,
     )
 
     db.add(robot)
@@ -89,26 +91,49 @@ def insert_Robot(req: RobotInsertReq, request: Request, db: Session = Depends(ge
 
 @database.get("/robots")
 def get_robots(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
-    robots = (
-        db.query(RobotInfo)
-        .order_by(RobotInfo.id.asc())   # ⭐ 중요 (순서 고정)
-        .all()                          # ⭐ 핵심
+    rows = (
+        db.query(RobotInfo, RobotLastStatus, BusinessInfo.BusinessName)
+        .outerjoin(RobotLastStatus, RobotInfo.id == RobotLastStatus.RobotId)
+        .outerjoin(BusinessInfo, RobotInfo.BusinessId == BusinessInfo.id)
+        .order_by(RobotInfo.id.asc())
+        .all()
     )
-    return robots
+    result = []
+    for robot, status, biz_name in rows:
+        data = jsonable_encoder(robot)
+        data["ProductCompany"] = biz_name or robot.ProductCompany
+        if status:
+            data["BatteryLevel1"] = status.BatteryLevel1
+            data["BatteryLevel2"] = status.BatteryLevel2
+            data["Voltage1"] = status.Voltage1
+            data["Voltage2"] = status.Voltage2
+            data["BatteryTemp1"] = status.BatteryTemp1
+            data["BatteryTemp2"] = status.BatteryTemp2
+            data["IsCharging1"] = status.IsCharging1
+            data["IsCharging2"] = status.IsCharging2
+            data["PosX"] = status.PosX
+            data["PosY"] = status.PosY
+            data["PosYaw"] = status.PosYaw
+            data["LastHeartbeat"] = status.LastHeartbeat.isoformat() if status.LastHeartbeat else None
+        result.append(data)
+    return result
 
 @database.get("/robots/{robot_id}")
 def get_robot_by_id(robot_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
-    robot = (
-        db.query(RobotInfo)
+    row = (
+        db.query(RobotInfo, BusinessInfo.BusinessName)
+        .outerjoin(BusinessInfo, RobotInfo.BusinessId == BusinessInfo.id)
         .filter(RobotInfo.id == robot_id)
         .first()
     )
 
-    if not robot:
+    if not row:
         raise HTTPException(status_code=404, detail="Robot not found")
 
-    print("✅ robot fetched from DB:", robot.id)  # 확인용
-    return robot
+    robot, biz_name = row
+    data = jsonable_encoder(robot)
+    data["ProductCompany"] = biz_name or robot.ProductCompany
+    return data
 
 
 class RobotPlaceInsertReq(BaseModel):
@@ -325,6 +350,7 @@ class RobotUpdateReq(BaseModel):
     softwareVersion: str | None = None
     site: str | None = None
     limit_battery: int | None = None
+    business_id: int | None = None
 
 @database.put("/robots/{robot_id}")
 def update_robot(
@@ -353,6 +379,7 @@ def update_robot(
         "SW버전": ("SWversion", req.softwareVersion),
         "사이트": ("Site", req.site),
         "배터리제한": ("LimitBattery", req.limit_battery),
+        "사업장": ("BusinessId", req.business_id),
     }
 
     for label, (attr, new_val) in field_map.items():
@@ -491,6 +518,7 @@ def _build_module_tree(modules: list[RobotModule], robot: RobotInfo) -> list[dic
             "isBuiltIn": bool(m.IsBuiltIn),
             "isActive": bool(m.IsActive),
             "sortOrder": m.SortOrder,
+            "createdAt": m.CreatedAt.strftime("%Y-%m-%d %H:%M") if m.CreatedAt else None,
             "config": None,
             "children": [],
         }
@@ -505,7 +533,7 @@ def _build_module_tree(modules: list[RobotModule], robot: RobotInfo) -> list[dic
             node["config"] = {
                 "streamType": ci.StreamType,
                 "streamUrl": stream_url,
-                "cameraIP": ci.CameraIP,
+                "cameraIP": ip,
                 "port": ci.Port,
                 "path": ci.Path,
             }

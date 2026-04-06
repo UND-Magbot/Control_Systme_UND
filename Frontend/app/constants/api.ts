@@ -1,1 +1,2 @@
-export const API_BASE = process.env.API_BASE ?? "http://localhost:8000";
+// config.ts와 동일한 로직 사용
+export { API_BASE } from "@/app/config";

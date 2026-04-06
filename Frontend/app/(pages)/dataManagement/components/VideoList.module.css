@@ -55,6 +55,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 /* 필터바 아래 콘텐츠 영역 */
@@ -87,10 +88,14 @@
     color: var(--text-secondary);
 }
 
-.videoSelect,
-.dtSearch {
+.videoSelect {
     display: flex;
     gap: 10px;
+}
+
+.dtSearch {
+    display: flex;
+    gap: 25px;
 }
 
 .videoPeriod {
@@ -302,266 +307,387 @@
     flex-shrink: 0;
 }
 
-/* donut */
-.donutContainerFlex {
+/* ── 통계 탭 날짜 필터 ── */
+.dtPeriod {
     display: flex;
+    width: 240px;
+    line-height: 30px;
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+}
+
+/* ── 통계 탭 달력 날짜 선택 (영상 탭과 동일 스타일) ── */
+.dtDateRange {
+    position: relative;
+    display: flex;
+    align-items: center;
     gap: 10px;
+}
+
+.dtDateInput {
+    width: 130px;
+    background: #34384d;
+    border: 2px solid #4c586e;
+    color: #dedee0;
+    padding: 5px 14px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: 13px;
+    height: 33px;
+}
+
+.dtDateInput img {
+    height: 60%;
+}
+
+.dtDateInput:hover {
+    border-color: var(--color-info-border);
+}
+
+.dtDateInput.active {
+    background-color: var(--surface-input);
+    border-color: var(--color-info-border);
+}
+
+.dtDateSep {
+    color: var(--text-tertiary);
+    font-size: var(--font-size-md);
+}
+
+.dtCalendarDropdown {
+    position: absolute;
+    top: 42px;
+    right: 0;
+    z-index: 200;
+}
+
+/* ═══════════════════════════════════════════
+   KPI 요약 카드
+   ═══════════════════════════════════════════ */
+.kpiRow {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+    flex-shrink: 0;
+}
+
+.kpiCard {
     flex: 1;
-    min-height: 0;
-}
-
-.dtDonutLeftBox {
-    width: 42%;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-}
-
-.leftChart {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-/* ── 범례 영역 ── */
-.robotTypeTotal {
-    width: 80%;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-}
-
-.legendHeader {
+    background: var(--surface-3);
+    border: 1px solid rgba(146, 212, 244, 0.08);
+    border-radius: 10px;
+    padding: clamp(10px, 0.8vw, 14px) clamp(14px, 1vw, 18px);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 4px 8px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    margin-bottom: 2px;
+    position: relative;
+    overflow: hidden;
 }
 
-.legendTitle {
-    font-size: clamp(11px, 0.85vw, 14px);
+.kpiLabel {
+    font-size: var(--font-size-md);
     font-weight: 600;
-    color: #b6b9c8;
-    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    white-space: nowrap;
 }
 
-.legendCount {
-    font-size: clamp(14px, 1.2vw, 20px);
-    font-weight: 700;
-    color: #e5e7eb;
-    font-family: 'Gmarket Sans';
-}
-
-.legendCount span {
-    font-size: clamp(9px, 0.7vw, 12px);
-    font-weight: 500;
-    color: #928b8b;
-    margin-left: 4px;
-}
-
-.robotTypeOne {
+.kpiRight {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: clamp(4px, 0.35vw, 8px) 4px;
+    align-items: baseline;
+    gap: 3px;
 }
 
-.robotTypeInactive {
-    opacity: 0.45;
-}
-
-.colorDot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    margin-right: 10px;
-}
-
-.robotTypeName {
-    display: flex;
-    align-items: center;
-}
-
-.robotTypeOne img {
-    width: 24px;
-    margin-right: 8px;
-}
-
-.robotTypeIconBox {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background-color: var(--surface-button);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-right: 8px;
-}
-
-.robotTypeIconBox img {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  object-fit: contain;
-}
-
-.oneContentFs20 {
-    font-size: clamp(12px, 1vw, 16px);
-    font-weight: 500;
-    color: #c8cad6;
-}
-
-.oneContentCountBox {
-    display: flex;
-    align-items: center;
-    gap: clamp(6px, 0.5vw, 10px);
-    margin-left: auto;
-}
-
-.legendPercent {
-    font-size: clamp(13px, 1.05vw, 18px);
-    font-family: 'Gmarket Sans';
+.kpiNum {
+    font-size: clamp(22px, 1.9vw, 32px);
     font-weight: 700;
-}
-
-.legendPercent span {
-    font-size: clamp(10px, 0.8vw, 13px);
-    font-weight: 500;
-}
-
-.legendDivider {
-    width: 1px;
-    height: clamp(10px, 0.9vw, 16px);
-    background: rgba(255,255,255,0.15);
-}
-
-.legendValue {
-    font-size: clamp(13px, 1.05vw, 18px);
     font-family: 'Gmarket Sans';
-    font-weight: 700;
-    color: #e5e7eb;
+    line-height: 1;
 }
 
-.legendValue span {
-    font-size: clamp(10px, 0.8vw, 13px);
+.kpiNumSub {
+    font-size: clamp(13px, 1.05vw, 17px);
     font-weight: 500;
-    color: #928b8b;
+    color: var(--text-tertiary);
+    margin: 0 1px;
+}
+
+.kpiUnit {
+    font-size: clamp(11px, 0.85vw, 14px);
+    font-weight: 500;
+    color: var(--text-tertiary);
     margin-left: 3px;
 }
 
-.dtDonutRightBox {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: clamp(6px, 0.5vw, 10px);
+.kpiBar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    opacity: 0.6;
 }
 
-.useItemDonutBox {
+/* ═══════════════════════════════════════════
+   2×2 통계 그리드
+   ═══════════════════════════════════════════ */
+/* 통계 + 이벤트 래퍼 */
+.statsBody {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
+}
+
+.statsGrid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    column-gap: 1px;
-    border: 1px solid #949bb7;
-    border-radius: 10px;
-    position: relative;
-    flex: 1;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    flex: 3;
     min-height: 0;
-    background:
-        linear-gradient(
-        to right,
-        transparent 0,
-        /* 1번째 선 */
-        transparent calc(25% - 0.5px),
-        rgba(255, 255, 255, 0.2) 25%,
-        transparent calc(25% + 0.5px),
-
-        /* 2번째 선 */
-        transparent calc(50% - 0.5px),
-        rgba(255, 255, 255, 0.2) 50%,
-        transparent calc(50% + 0.5px),
-
-        /* 3번째 선 */
-        transparent calc(75% - 0.5px),
-        rgba(255, 255, 255, 0.2) 75%,
-        transparent calc(75% + 0.5px)
-        );
-
-    background-size: 100% 65%;
-    background-repeat: no-repeat;
-    background-position: center;
 }
 
-
-.itemBoxBg {
-    width: 100%;
-    flex: 1;
-    min-height: 0;
+/* ── 로봇별 요약 테이블 ── */
+.robotTable {
+    flex: 2;
+    min-width: 0;
+    background: var(--surface-3);
+    border: 1px solid rgba(146, 212, 244, 0.08);
     border-radius: 10px;
-    background: var(--surface-4);
-    padding: clamp(8px, 0.7vw, 14px) clamp(10px, 0.9vw, 16px);
+    padding: clamp(12px, 0.9vw, 18px) clamp(14px, 1.1vw, 20px);
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
-.itemTitleBox {
+.rtHeader {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: clamp(6px, 0.6vw, 12px);
+    padding: clamp(6px, 0.5vw, 10px) 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex-shrink: 0;
 }
 
-.itemDataTotal {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 0 clamp(8px, 0.7vw, 14px);
-    height: clamp(22px, 1.8vw, 30px);
-    background: var(--surface-3);
-    border-radius: 50px;
-    font-size: clamp(10px, 0.8vw, 14px);
-    color: #dbd3ce;
-}
-
-.leftText {
-    margin-right: 8px;
-}
-
-.middleText {
-    margin-right: 4px;
-}
-
-.rightText {
-    font-size: 11px;
-    color: #8f8da1;
-}
-
-.taskTextColor {
-    color: #719851;
-}
-
-.timeTextColor {
-    color: #1984b1;
-}
-
-.time .timeTextColor span {
-    color: #8f8da1;
-}
-
-.errorTextColor {
-    color: #ae4653;
-}
-
-.dtDonutRightBox h2 {
-    margin: 0;
-    font-size: clamp(14px, 1.2vw, 20px);
+.rtHName {
+    flex: 1;
+    font-size: var(--font-size-sm);
     font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.rtHTask {
+    width: clamp(80px, 7vw, 105px);
+    flex-shrink: 0;
+    text-align: center;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.rtHTask span {
+    font-size: var(--font-size-2xs);
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: 2px;
+}
+
+.rtHNum {
+    width: clamp(44px, 3.5vw, 56px);
+    flex-shrink: 0;
+    text-align: center;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.rtHWide {
+    width: clamp(68px, 6vw, 90px);
+    flex-shrink: 0;
+    text-align: center;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.rtBody {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.rtBody::-webkit-scrollbar {
+    width: 3px;
+}
+
+.rtBody::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+}
+
+.rtRow {
+    display: flex;
+    align-items: center;
+    padding: clamp(7px, 0.6vw, 12px) 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    transition: background 0.15s ease;
+}
+
+
+.rtRow:last-child {
+    border-bottom: none;
+}
+
+.rtName {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.rtRobotDot {
+    width: 6px;
+    height: 6px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.rtName span {
+    font-size: var(--font-size-md);
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rtTask {
+    width: clamp(80px, 7vw, 105px);
+    flex-shrink: 0;
+    text-align: center;
+    font-size: var(--font-size-md);
+    font-weight: 700;
+    font-family: 'Gmarket Sans';
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.rtTask span {
+    font-size: var(--font-size-xs);
+    font-weight: 400;
+    color: var(--text-primary);
+}
+
+.rtNum {
+    width: clamp(44px, 3.5vw, 56px);
+    flex-shrink: 0;
+    text-align: center;
+    font-size: var(--font-size-md);
+    font-weight: 700;
+    font-family: 'Gmarket Sans';
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.rtNum span {
+    font-size: var(--font-size-xs);
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
+.rtWide {
+    width: clamp(68px, 6vw, 90px);
+    flex-shrink: 0;
+    text-align: center;
+    font-size: var(--font-size-md);
+    font-weight: 700;
+    font-family: 'Gmarket Sans';
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.rtWide span {
+    font-size: var(--font-size-xs);
+    font-weight: 400;
+    color: var(--text-secondary);
+    margin-left: 1px;
+    margin-right: 2px;
+}
+
+.rtError {
+    color: var(--color-error-soft);
+}
+
+.rtEmpty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+    padding: 20px 0;
+}
+
+.statsCell {
+    background: var(--surface-3);
+    border: 1px solid rgba(146, 212, 244, 0.08);
+    border-radius: 10px;
+    padding: clamp(12px, 0.9vw, 18px) clamp(14px, 1.1vw, 20px);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ── 셀 헤더 ── */
+.cellHead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: clamp(8px, 0.6vw, 12px);
+    flex-shrink: 0;
+    padding-bottom: clamp(8px, 0.6vw, 12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cellDot {
+    width: 3px;
+    height: clamp(14px, 1.1vw, 18px);
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.cellHead h3 {
+    margin: 0;
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.cellSum {
+    font-size: clamp(14px, 1.2vw, 20px);
+    font-weight: 700;
+    font-family: 'Gmarket Sans';
+    margin-left: auto;
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+}
+
+.cellSum span {
+    font-size: clamp(11px, 0.85vw, 14px);
+    font-weight: 500;
+    color: var(--text-tertiary);
 }
 
 /* Empty Notice (통계 탭 빈 데이터 안내) */
