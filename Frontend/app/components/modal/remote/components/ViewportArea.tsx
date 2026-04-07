@@ -206,6 +206,8 @@ export default function ViewportArea({
         </button>
       )}
 
+      {/* 녹화 버튼은 StatusBar로 이동 */}
+
       {/* ── 맵: icon / pip / expanded ── */}
       {mapState === 'icon' && (
         <button

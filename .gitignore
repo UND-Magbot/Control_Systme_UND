@@ -39,4 +39,11 @@ Backend/void
 Backend/{
 
 
+# Auto-downloaded binaries
+Backend/ffmpeg_bin/
+Backend/recordings/
+
+# Test scripts
+Backend/test_recording.py
+
 .claude/

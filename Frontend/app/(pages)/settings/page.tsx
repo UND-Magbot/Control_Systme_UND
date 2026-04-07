@@ -2,17 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { usePageReady } from "@/app/context/PageLoadingContext";
+import PermissionGuard from "@/app/components/common/PermissionGuard";
 import styles from './Setting.module.css';
 import MenuPermissions from './components/MenuPermissions';
 import DbBackup from './components/DbBackup';
-import PasswordChange from './components/PasswordChange';
 
-type SettingTab = "permissions" | "backup" | "password";
+type SettingTab = "permissions" | "backup";
 
 const tabs: { id: SettingTab; label: string }[] = [
   { id: "permissions", label: "메뉴 권한" },
   { id: "backup", label: "DB 백업" },
-  { id: "password", label: "비밀번호 변경" },
 ];
 
 export default function Page() {
@@ -22,6 +21,7 @@ export default function Page() {
   useEffect(() => { setPageReady(); }, []);
 
   return (
+    <PermissionGuard requiredPermissions={["menu-permissions", "db-backup"]}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div className="page-header-tab">
         <h1>설정</h1>
@@ -41,8 +41,8 @@ export default function Page() {
       <div className={styles.container}>
         {activeTab === "permissions" && <MenuPermissions />}
         {activeTab === "backup" && <DbBackup />}
-        {activeTab === "password" && <PasswordChange />}
       </div>
     </div>
+    </PermissionGuard>
   );
 }

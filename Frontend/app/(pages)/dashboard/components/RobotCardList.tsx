@@ -41,11 +41,10 @@ export default function RobotCardList({
   const [search, setSearch] = useState("");
 
   const visibleRobots = useMemo(() => {
-    const active = liveRobots.filter((r) => r.power !== "Off");
-    if (!search.trim()) return active;
+    if (!search.trim()) return liveRobots;
 
     const q = search.trim().toLowerCase();
-    return active.filter(
+    return liveRobots.filter(
       (r) =>
         r.no.toLowerCase().includes(q) ||
         r.serialNumber.toLowerCase().includes(q) ||

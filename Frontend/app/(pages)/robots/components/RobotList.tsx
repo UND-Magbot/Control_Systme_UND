@@ -108,7 +108,8 @@ export default function RobotStatusList({
   const [initialRobots, setInitialRobots] = useState<RobotRowData[]>([]);
   const robots = useRobotStatus(initialRobots);
   const router = useRouter();
-  const { isAdmin: admin } = useAuth();
+  const { user } = useAuth();
+  const admin = user?.role === 1 || user?.role === 2;
 
   useEffect(() => {
     import("@/app/lib/robotInfo").then((mod) => mod.default()).then(setInitialRobots);

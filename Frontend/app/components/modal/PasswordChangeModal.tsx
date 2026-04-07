@@ -1,24 +1,36 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import styles from './PasswordChange.module.css';
 import { apiFetch } from '@/app/lib/api';
+import formStyles from './PasswordChangeModal.module.css';
 
-const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,12}$/;
+const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,16}$/;
 
 type Errors = {
   currentPassword?: string;
   newPassword?: string;
 };
 
-export default function PasswordChange() {
+type Props = {
+  onClose: () => void;
+};
+
+export default function PasswordChangeModal({ onClose }: Props) {
   const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   const handleSubmit = async () => {
     const newErrors: Errors = {};
@@ -31,7 +43,7 @@ export default function PasswordChange() {
     if (!newPassword) {
       newErrors.newPassword = "새 비밀번호를 입력하세요";
     } else if (!PASSWORD_REGEX.test(newPassword)) {
-      newErrors.newPassword = "영문, 숫자, 특수문자 조합 6~12자리로 입력하세요";
+      newErrors.newPassword = "영문, 숫자, 특수문자 조합 6~16자리로 입력하세요";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -73,15 +85,23 @@ export default function PasswordChange() {
   };
 
   return (
-    <div className={styles.wrapper}>
-      <div className={styles.card}>
-        <h2 className={styles.title}>비밀번호 변경</h2>
+    <div className={formStyles.overlay} onMouseDown={onClose}>
+      <div
+        className={formStyles.box}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className={formStyles.header}>
+          <h2 className={formStyles.title}>비밀번호 변경</h2>
+          <button className={formStyles.closeBtn} onClick={onClose}>
+            <img src="/icon/close_btn.png" alt="닫기" />
+          </button>
+        </div>
 
-        <div className={styles.field}>
-          <label className={styles.label}>현재 비밀번호</label>
+        <div className={formStyles.field}>
+          <label className={formStyles.label}>현재 비밀번호</label>
           <input
             type="password"
-            className={`${styles.input} ${errors.currentPassword ? styles.inputError : ""}`}
+            className={`${formStyles.input} ${errors.currentPassword ? formStyles.inputError : ""}`}
             placeholder="현재 비밀번호를 입력해주세요"
             value={currentPassword}
             onChange={(e) => {
@@ -92,16 +112,16 @@ export default function PasswordChange() {
             autoComplete="off"
           />
           {errors.currentPassword && (
-            <span className={styles.errorMsg}>{errors.currentPassword}</span>
+            <span className={formStyles.errorMsg}>{errors.currentPassword}</span>
           )}
         </div>
 
-        <div className={styles.field}>
-          <label className={styles.label}>새 비밀번호</label>
+        <div className={formStyles.field}>
+          <label className={formStyles.label}>새 비밀번호</label>
           <input
             type="password"
-            className={`${styles.input} ${errors.newPassword ? styles.inputError : ""}`}
-            placeholder="영문 + 숫자 + 특수문자, 6~12자"
+            className={`${formStyles.input} ${errors.newPassword ? formStyles.inputError : ""}`}
+            placeholder="영문 + 숫자 + 특수문자, 6~16자"
             value={newPassword}
             onChange={(e) => {
               setNewPassword(e.target.value);
@@ -111,15 +131,20 @@ export default function PasswordChange() {
             autoComplete="off"
           />
           {errors.newPassword && (
-            <span className={styles.errorMsg}>{errors.newPassword}</span>
+            <span className={formStyles.errorMsg}>{errors.newPassword}</span>
           )}
         </div>
 
         {successMessage && (
-          <div className={styles.successMsg}>{successMessage}</div>
+          <div className={formStyles.successMsg}>{successMessage}</div>
         )}
 
-        <button type="button" className={styles.submitBtn} onClick={handleSubmit} disabled={isSubmitting}>
+        <button
+          type="button"
+          className={formStyles.submitBtn}
+          onClick={handleSubmit}
+          disabled={isSubmitting}
+        >
           {isSubmitting ? "변경 중..." : "비밀번호 변경"}
         </button>
       </div>

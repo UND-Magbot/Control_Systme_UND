@@ -6,7 +6,7 @@ from app.Database.database import SessionLocal
 from app.Database.models import UserInfo
 from app.alerts.schemas import AlertListResponse, UnreadCountResponse
 from app.alerts.service import AlertService
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_any_permission
 from app.current_user import get_user_id
 
 router = APIRouter(prefix="/DB", tags=["alerts"])
@@ -34,7 +34,7 @@ def get_alerts(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=10000),
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_any_permission("alert-total", "alert-schedule", "alert-robot", "alert-notice")),
 ):
     return AlertService(db).get_list(
         alert_type=type,
@@ -52,7 +52,7 @@ def mark_alert_read(
     alert_id: int,
     UserId: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_any_permission("alert-total", "alert-schedule", "alert-robot", "alert-notice")),
 ):
     AlertService(db).mark_read(alert_id, _resolve_user(UserId))
     return {"status": "ok"}
@@ -61,10 +61,11 @@ def mark_alert_read(
 @router.put("/alerts/read-all")
 def mark_all_alerts_read(
     UserId: Optional[int] = Query(None),
+    type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_any_permission("alert-total", "alert-schedule", "alert-robot", "alert-notice")),
 ):
-    AlertService(db).mark_all_read(_resolve_user(UserId))
+    AlertService(db).mark_all_read(_resolve_user(UserId), alert_type=type)
     return {"status": "ok"}
 
 

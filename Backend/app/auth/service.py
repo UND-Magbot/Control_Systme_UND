@@ -42,7 +42,7 @@ class AuthService:
         db.commit()
 
         # 토큰 발급 (refresh token에 버전 내장)
-        access_token = create_access_token(user.id, user.LoginId, user.UserName, user.Permission)
+        access_token = create_access_token(user.id, user.LoginId, user.UserName, user.Permission, user.TokenVersion or 0)
         refresh_token = create_refresh_token(user.id, user.TokenVersion)
 
         # 권한 목록 조회
@@ -87,7 +87,7 @@ class AuthService:
         if token_version != (user.TokenVersion or 0):
             raise HTTPException(status_code=401, detail="토큰이 무효화되었습니다")
 
-        new_access = create_access_token(user.id, user.LoginId, user.UserName, user.Permission)
+        new_access = create_access_token(user.id, user.LoginId, user.UserName, user.Permission, user.TokenVersion or 0)
         permissions = AuthService._get_permissions(db, user)
 
         return {
@@ -140,7 +140,7 @@ class AuthService:
             raise HTTPException(status_code=400, detail="현재 비밀번호가 일치하지 않습니다")
 
         if not validate_password_format(new_password):
-            raise HTTPException(status_code=422, detail="영문, 숫자, 특수문자 조합 6~12자리로 입력하세요")
+            raise HTTPException(status_code=422, detail="영문, 숫자, 특수문자 조합 6~16자리로 입력하세요")
 
         if verify_password(new_password, user.Password):
             raise HTTPException(status_code=400, detail="현재 비밀번호와 다른 비밀번호를 입력하세요")

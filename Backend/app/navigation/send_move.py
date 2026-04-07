@@ -68,6 +68,11 @@ def start_navigation(loop: int = 3, current_user: UserInfo = Depends(require_per
 
     global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining
 
+    # 직접 주행: name 없으면 좌표로 표시
+    for wp in waypoints:
+        if "name" not in wp:
+            wp["name"] = f"x:{wp['x']:.1f}, y:{wp['y']:.1f}"
+
     waypoints_list = waypoints
     current_wp_index = 0
     is_navigating = True
@@ -76,10 +81,18 @@ def start_navigation(loop: int = 3, current_user: UserInfo = Depends(require_per
     # nav_thread 상태 리셋 (last_status, zero_count, retry_count 초기화)
     _signal_nav_reset(full=True)
 
+    route_detail = " → ".join(wp.get("name", f"WP{i+1}") for i, wp in enumerate(waypoints_list))
     print(f"🚗 NAV START — 총 {len(waypoints_list)}개 웨이포인트, 반복: {loop}회")
     log_event("schedule", "nav_start",
               f"네비게이션 시작 ({len(waypoints_list)}개 웨이포인트, {loop}회 반복)",
+              detail=f"경로: {route_detail}",
               robot_id=get_robot_id(), robot_name=get_robot_name())
+
+    try:
+        from app.recording.manager import start_auto_recording
+        start_auto_recording(get_robot_id())
+    except Exception as e:
+        print(f"[WARN] 자동 녹화 시작 실패: {e}")
 
     navigation_send_next()
     return {"status": "ok", "msg": f"네비게이션 명령 전송 완료 ({loop}회)"}
@@ -92,6 +105,13 @@ def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
     current_wp_index = 0
     nav_loop_remaining = 0
     _signal_nav_reset(full=True)
+
+    try:
+        from app.recording.manager import stop_all_recording
+        stop_all_recording(get_robot_id())
+    except Exception as e:
+        print(f"[WARN] 녹화 정지 실패: {e}")
+
     print(f"🛑 NAV STOP (was_active={was_active})")
     return {"status": "ok", "msg": "네비게이션 정지 완료"}
 
@@ -121,15 +141,26 @@ def navigation_send_next():
         if nav_loop_remaining > 0:
             nav_loop_remaining -= 1
             current_wp_index = 0
-            print(f"🔄 반복 시작 (남은 횟수: {nav_loop_remaining + 1})")
+            print(f"[SYNC] 반복 시작 (남은 횟수: {nav_loop_remaining + 1})")
             log_event("schedule", "nav_loop",
                       f"반복 시작 (남은 횟수: {nav_loop_remaining + 1})",
                       robot_id=get_robot_id(), robot_name=get_robot_name())
         else:
+            route_summary = " → ".join(
+                wp.get("name", f"WP{i+1}") for i, wp in enumerate(waypoints_list)
+            )
             print("🎉 모든 웨이포인트 이동 완료!")
             log_event("schedule", "nav_complete", "모든 웨이포인트 이동 완료",
+                      detail=f"경로: {route_summary}",
                       robot_id=get_robot_id(), robot_name=get_robot_name())
             is_navigating = False
+
+            try:
+                from app.recording.manager import stop_all_recording
+                stop_all_recording(get_robot_id())
+            except Exception as e:
+                print(f"[WARN] 녹화 정지 실패: {e}")
+
             return
 
     wp = waypoints_list[current_wp_index]
@@ -210,7 +241,7 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
             # 마지막 포인트: 저장된 yaw 사용
             yaw = place.Yaw or 0.0
 
-        waypoints.append({"x": x, "y": y, "yaw": round(yaw, 3)})
+        waypoints.append({"x": x, "y": y, "yaw": round(yaw, 3), "name": place.LacationName})
 
     # 기존 웨이포인트 순차 이동 시스템 활용
     waypoints_list = waypoints
@@ -221,9 +252,17 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
     print(f"🛤 경로 이동 시작: {path.WayName} — 총 {len(waypoints)}개 포인트")
     for i, wp in enumerate(waypoints):
         print(f"  [{i+1}] {place_names[i]} → x={wp['x']}, y={wp['y']}, yaw={wp['yaw']}")
+    route_names = " → ".join(place_names)
     log_event("schedule", "path_move_start",
               f"경로 이동 시작: {path.WayName} ({len(waypoints)}개 포인트)",
+              detail=f"경로: {route_names}",
               robot_id=get_robot_id(), robot_name=get_robot_name())
+
+    try:
+        from app.recording.manager import start_auto_recording
+        start_auto_recording(get_robot_id())
+    except Exception as e:
+        print(f"[WARN] 자동 녹화 시작 실패: {e}")
 
     navigation_send_next()
     return {"status": "ok", "msg": f"경로 '{path.WayName}' 이동 시작 ({len(waypoints)}개 포인트)"}

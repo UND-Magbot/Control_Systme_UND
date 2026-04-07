@@ -45,7 +45,7 @@ def send_nav_to_robot(idx, x, y, yaw):
         else:
             print(f"[NAV ACK] 예상치 못한 응답: {ack}")
     except socket.timeout:
-        print(f"[NAV ACK] ⚠️ receiver 응답 없음 (WP{idx}) — 명령 유실 가능")
+        print(f"[NAV ACK] [WARN] receiver 응답 없음 (WP{idx}) — 명령 유실 가능")
     except Exception as e:
         print(f"[NAV ACK] 오류: {e}")
     finally:

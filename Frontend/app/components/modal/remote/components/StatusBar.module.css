@@ -129,6 +129,129 @@
   color: var(--text-primary);
 }
 
+/* ======================== 녹화 ======================== */
+
+/* ── 대기: 수동 녹화 시작 버튼 ── */
+.recStartBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(229, 57, 53, 0.35);
+  background: transparent;
+  color: #e57373;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.recStartBtn:hover:not(:disabled) {
+  background: rgba(229, 57, 53, 0.1);
+  border-color: rgba(229, 57, 53, 0.5);
+  color: #ef5350;
+}
+
+.recStartBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.recIcon {
+  flex-shrink: 0;
+}
+
+/* ── 수동 녹화 중: 중지 버튼 ── */
+.recStopBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(229, 57, 53, 0.4);
+  background: rgba(229, 57, 53, 0.12);
+  color: #ef5350;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 0 8px rgba(229, 57, 53, 0.15);
+}
+
+.recStopBtn:hover:not(:disabled) {
+  background: rgba(229, 57, 53, 0.2);
+  border-color: rgba(229, 57, 53, 0.6);
+  box-shadow: 0 0 12px rgba(229, 57, 53, 0.25);
+}
+
+.recStopBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.recStopLabel {
+  letter-spacing: 0.3px;
+}
+
+/* ● 빨간 점 (pulse) — 수동 녹화 중 */
+.recDotLive {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef5350;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(229, 57, 53, 0.6);
+  animation: recPulse 1.2s ease-in-out infinite;
+}
+
+/* ── 자동 녹화 표시 (클릭 불가) ── */
+.recAutoIndicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(229, 57, 53, 0.2);
+  background: rgba(229, 57, 53, 0.06);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.recDotAuto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e57373;
+  flex-shrink: 0;
+  animation: recPulse 1.5s ease-in-out infinite;
+}
+
+.recAutoLabel {
+  color: var(--text-muted);
+}
+
+/* 경과 시간 */
+.recTimer {
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: var(--font-size-sm);
+  color: inherit;
+  min-width: 38px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+@keyframes recPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+
 .observerBanner {
   padding: 3px 12px;
   border-radius: 5px;

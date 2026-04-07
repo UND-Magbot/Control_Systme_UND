@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.auth.dependencies import get_db, get_current_user
+from app.auth.dependencies import get_db, require_permission
 from app.Database.models import UserInfo
 from app.statistics.schemas import StatisticsResponse
 from app.statistics.service import StatisticsService
@@ -22,7 +22,7 @@ def get_statistics(
     robot_type: Optional[str] = Query(None, description="로봇 타입 (QUADRUPED/COBOT/AMR/HUMANOID)"),
     robot_name: Optional[str] = Query(None, description="로봇 이름"),
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("statistics")),
 ):
     # ── 입력 검증 ──
     if start_date and not _DATE_RE.match(start_date):

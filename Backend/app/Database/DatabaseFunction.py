@@ -8,7 +8,7 @@ from app.Database.models import RobotInfo, LocationInfo, WayInfo, ScheduleInfo, 
 from fastapi.encoders import jsonable_encoder
 
 from datetime import datetime
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission, require_any_permission
 from app.auth.audit import write_audit, get_client_ip
 
 database = APIRouter(prefix="/DB")
@@ -35,7 +35,7 @@ class RobotInsertReq(BaseModel):
     sw_version: Optional[str] = None
 
 @database.post("/RobotInsert")
-def insert_Robot(req: RobotInsertReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def insert_Robot(req: RobotInsertReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("robot-list"))):
     exists = (
         db.query(RobotInfo)
         .filter(RobotInfo.SerialNumber == req.robot_id)
@@ -90,7 +90,7 @@ def insert_Robot(req: RobotInsertReq, request: Request, db: Session = Depends(ge
     return {"status": "ok"}
 
 @database.get("/robots")
-def get_robots(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_robots(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("dashboard", "robot-list", "schedule-list"))):
     rows = (
         db.query(RobotInfo, RobotLastStatus, BusinessInfo.BusinessName)
         .outerjoin(RobotLastStatus, RobotInfo.id == RobotLastStatus.RobotId)
@@ -119,7 +119,7 @@ def get_robots(db: Session = Depends(get_db), current_user: UserInfo = Depends(g
     return result
 
 @database.get("/robots/{robot_id}")
-def get_robot_by_id(robot_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_robot_by_id(robot_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("dashboard", "robot-list"))):
     row = (
         db.query(RobotInfo, BusinessInfo.BusinessName)
         .outerjoin(BusinessInfo, RobotInfo.BusinessId == BusinessInfo.id)
@@ -151,7 +151,7 @@ def insert_robot_place(
     req: RobotPlaceInsertReq,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit")),
 ):
     place = LocationInfo(
         UserId=current_user.id,
@@ -176,7 +176,7 @@ def insert_robot_place(
     return place
 
 @database.get("/places")
-def get_places(map_id: int | None = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_places(map_id: int | None = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit", "schedule-list"))):
     q = db.query(LocationInfo)
     if map_id is not None:
         q = q.filter(LocationInfo.MapId == map_id)
@@ -190,7 +190,7 @@ class PathInsertReq(BaseModel):
     WayPoints: str
 
 @database.post("/path")
-def insert_path(req: PathInsertReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def insert_path(req: PathInsertReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit"))):
     path = WayInfo(
         UserId=current_user.id,
         RobotName=req.RobotName,
@@ -210,7 +210,7 @@ def insert_path(req: PathInsertReq, request: Request, db: Session = Depends(get_
 # 경로 목록 조회
 # =========================
 @database.get("/paths")
-def get_paths(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_paths(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit", "schedule-list"))):
     paths = (
         db.query(WayInfo)
         .order_by(WayInfo.id.desc())
@@ -232,13 +232,13 @@ class PathRes(BaseModel):
         from_attributes = True
         
 @database.get("/getpath")
-def get_paths_legacy(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_paths_legacy(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit", "schedule-list"))):
     paths = db.query(WayInfo).all()
     return jsonable_encoder(paths)
 
 
 @database.get("/way-names")
-def get_way_names(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_way_names(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit", "schedule-list"))):
     paths = (
         db.query(
             WayInfo.id,
@@ -429,7 +429,7 @@ def insert_schedule(
     req: ScheduleInsertReq,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("schedule-list")),
 ):
     from datetime import date as date_type
 
@@ -491,7 +491,7 @@ def insert_schedule(
     return {"status": "ok", "id": schedule.id}
 
 @database.get("/schedule")
-def get_schedules(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_schedules(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("schedule-list"))):
     schedules = (
         db.query(ScheduleInfo)
         .order_by(ScheduleInfo.StartDate.asc())
@@ -532,7 +532,7 @@ def get_active_schedule():
     return {"active_schedule_id": active_id}
 
 @database.get("/schedule/{schedule_id}")
-def get_schedule_detail(schedule_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_schedule_detail(schedule_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("schedule-list"))):
     schedule = (
         db.query(ScheduleInfo)
         .filter(ScheduleInfo.id == schedule_id)
@@ -596,7 +596,7 @@ def update_schedule(
     req: ScheduleUpdateReq,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("schedule-list")),
 ):
     sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule_id).first()
     if not sched:
@@ -684,7 +684,7 @@ def delete_schedule(
     schedule_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("schedule-list")),
 ):
     sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule_id).first()
     if not sched:
@@ -718,7 +718,7 @@ def update_robot(
     req: RobotUpdateReq,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("robot-list")),
 ):
     robot = (
         db.query(RobotInfo)
@@ -760,7 +760,7 @@ def update_robot(
     return {"status": "ok"}
 
 @database.delete("/robots/{robot_id}")
-def delete_robot(robot_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def delete_robot(robot_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("robot-list"))):
     robot = (
         db.query(RobotInfo)
         .filter(RobotInfo.id == robot_id)
@@ -782,7 +782,7 @@ def delete_robot(robot_id: int, request: Request, db: Session = Depends(get_db),
 
 
 @database.put("/places/{place_id}")
-def update_place(place_id: int, req: RobotPlaceInsertReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def update_place(place_id: int, req: RobotPlaceInsertReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit"))):
     place = db.query(LocationInfo).filter(LocationInfo.id == place_id).first()
 
     if not place:
@@ -817,7 +817,7 @@ def update_place(place_id: int, req: RobotPlaceInsertReq, request: Request, db: 
 
 
 @database.delete("/places/{place_id}")
-def delete_place(place_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def delete_place(place_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit"))):
     place = (
         db.query(LocationInfo)
         .filter(LocationInfo.id == place_id)
@@ -839,7 +839,7 @@ def delete_place(place_id: int, request: Request, db: Session = Depends(get_db),
 
 
 @database.delete("/path/{path_id}")
-def delete_path(path_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def delete_path(path_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit"))):
     path = (
         db.query(WayInfo)
         .filter(WayInfo.id == path_id)
@@ -914,7 +914,7 @@ def _build_module_tree(modules: list[RobotModule], robot: RobotInfo) -> list[dic
 def get_robot_modules(
     robot_id: int,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("robot-list")),
 ):
     robot = db.query(RobotInfo).filter(RobotInfo.id == robot_id).first()
     if not robot:
@@ -948,7 +948,7 @@ def create_module(
     req: ModuleCreateReq,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("robot-list")),
 ):
     robot = db.query(RobotInfo).filter(RobotInfo.id == robot_id).first()
     if not robot:
@@ -1008,7 +1008,7 @@ def update_module(
     req: ModuleUpdateReq,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("robot-list")),
 ):
     module = db.query(RobotModule).filter(RobotModule.id == module_id).first()
     if not module:
@@ -1045,7 +1045,7 @@ def delete_module(
     module_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("robot-list")),
 ):
     module = db.query(RobotModule).filter(RobotModule.id == module_id).first()
     if not module:

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import PermissionGuard from "@/app/components/common/PermissionGuard";
 import styles from "./mapManagement.module.css";
 import PlaceList from "@/app/(pages)/schedules/components/PlaceList";
 import PathList from "@/app/(pages)/schedules/components/PathList";
@@ -1329,6 +1330,7 @@ export default function MapManagementPage() {
   };
 
   return (
+    <PermissionGuard requiredPermissions={["map-edit", "place-list", "path-list"]}>
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {/* 페이지 헤더 + 탭 */}
       <div className="page-header-tab">
@@ -2885,5 +2887,6 @@ export default function MapManagementPage() {
 
 
     </div>
+    </PermissionGuard>
   );
 }

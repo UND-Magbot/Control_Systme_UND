@@ -9,7 +9,7 @@ import app.main
 from app.Database.database import SessionLocal
 from app.Database.models import LocationInfo, UserInfo
 from app.current_user import get_user_id
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import require_any_permission
 
 point = APIRouter(prefix="/nav")
 
@@ -45,7 +45,7 @@ def _next_cur_name(db: Session) -> str:
 
 
 @point.post("/savepoint")
-def save_current_waypoint(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def save_current_waypoint(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit"))):
 
     # runtime에서 현재 로봇 위치 조회
     import app.robot_runtime as runtime
@@ -102,7 +102,7 @@ def save_current_waypoint(db: Session = Depends(get_db), current_user: UserInfo 
     }
 
 @point.post("/clearpoints")
-def clear_waypoints(current_user: UserInfo = Depends(get_current_user)):
+def clear_waypoints(current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit"))):
     with open(WAYPOINT_FILE, "w") as f:
         json.dump([], f, indent=4)
     return {"status": "ok", "msg": "웨이포인트 초기화 완료"}

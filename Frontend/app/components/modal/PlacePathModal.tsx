@@ -38,9 +38,6 @@ type DBPlace = {
 export default function RobotDetailModal({
     isOpen,
     onClose,
-    // selectedRobotId,
-    // selectedRobot,
-    // robots
 }:WorkModalProps ){
 
 

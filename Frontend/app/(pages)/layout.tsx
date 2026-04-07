@@ -21,9 +21,8 @@ const WARNING_BEFORE_MS = 5 * 60 * 1000;   // 25분에 경고 표시
 
 export default function PagesLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, isLoading, logout, refreshUser } = useAuth();
+  const { isAuthenticated, isLoading, isManualLogout, logout, refreshUser } = useAuth();
   const [alertsOpen, setAlertsOpen] = useState(false);
-  const [showSessionExpired, setShowSessionExpired] = useState(false);
 
   const handleTimeout = useCallback(async () => {
     await logout();
@@ -43,52 +42,24 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
       enabled: isAuthenticated,
     });
 
-  // 미인증 시 로그인 페���지로 (세션 만료 여부 구분)
+  // 미인증 시 로그인 페이지로 (로그아웃/세션 만료 구분)
   const wasAuthenticated = React.useRef(false);
   useEffect(() => {
     if (isAuthenticated) {
       wasAuthenticated.current = true;
     }
     if (!isLoading && !isAuthenticated) {
-      if (wasAuthenticated.current) {
-        // 세션 만료 알림을 먼저 표시 후 리다이렉트
-        setShowSessionExpired(true);
-        const timer = setTimeout(() => {
-          router.replace("/login?reason=session_expired");
-        }, 2000);
-        return () => clearTimeout(timer);
+      if (wasAuthenticated.current && !isManualLogout.current) {
+        // 세션 만료: 로그인 페이지 상단 배너로 표시
+        router.replace("/login?reason=session_expired");
       } else {
+        // 자발적 로그아웃 또는 미인증 상태
         router.replace("/login");
       }
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoading, isAuthenticated, isManualLogout, router]);
 
-  // 세션 만료 알림 표시 중
-  if (showSessionExpired) {
-    return (
-      <div style={{
-        position: "fixed", inset: 0,
-        background: "rgba(0, 0, 0, 0.6)",
-        backdropFilter: "blur(4px)",
-        display: "flex", justifyContent: "center", alignItems: "center",
-        zIndex: 9999,
-      }}>
-        <div style={{
-          background: "var(--surface-3)",
-          borderLeft: "3px solid var(--color-error)",
-          borderRadius: "8px",
-          padding: "20px 32px",
-          color: "var(--text-primary)",
-          fontSize: "var(--font-size-md)",
-          boxShadow: "0 4px 24px rgba(0, 0, 0, 0.4)",
-        }}>
-          세션이 만료되었습니다. 다시 로그인해주세요.
-        </div>
-      </div>
-    );
-  }
-
-  // 로딩 중 또는 미��증
+  // 로딩 중 또는 미인증
   if (isLoading || !isAuthenticated) return null;
 
   return (

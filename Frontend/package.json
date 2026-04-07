@@ -9,9 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@headlessui/react": "^2.2.9",
     "@tailwindcss/postcss": "^4.2.2",
-    "axios": "^1.13.2",
     "lucide-react": "^1.0.1",
     "next": "^15.5.7",
     "react": "^18.2.0",

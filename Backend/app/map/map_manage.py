@@ -8,7 +8,7 @@ import re
 
 from app.Database.database import SessionLocal
 from app.Database.models import BusinessInfo, AreaInfo, RobotMapInfo, UserInfo, LocationInfo, RouteInfo, WayInfo
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.auth.audit import write_audit, get_client_ip
 
 map_manage = APIRouter(prefix="/map")
@@ -30,7 +30,7 @@ class BusinessReq(BaseModel):
     Address: Optional[str] = None
 
 @map_manage.get("/businesses")
-def get_businesses(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_businesses(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     rows = db.query(BusinessInfo).order_by(BusinessInfo.id.asc()).all()
     # 영역 수 / 로봇 수를 한 번에 조회
     area_counts = dict(
@@ -50,7 +50,7 @@ def get_businesses(db: Session = Depends(get_db), current_user: UserInfo = Depen
     ]
 
 @map_manage.post("/businesses")
-def create_business(req: BusinessReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def create_business(req: BusinessReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     biz = BusinessInfo(BusinessName=req.BusinessName, Address=req.Address)
     db.add(biz)
     db.commit()
@@ -61,7 +61,7 @@ def create_business(req: BusinessReq, request: Request, db: Session = Depends(ge
     return biz
 
 @map_manage.put("/businesses/{biz_id}")
-def update_business(biz_id: int, req: BusinessReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def update_business(biz_id: int, req: BusinessReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     biz = db.query(BusinessInfo).filter(BusinessInfo.id == biz_id).first()
     if not biz:
         raise HTTPException(status_code=404, detail="Business not found")
@@ -82,7 +82,7 @@ def update_business(biz_id: int, req: BusinessReq, request: Request, db: Session
     return biz
 
 @map_manage.delete("/businesses/{biz_id}")
-def delete_business(biz_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def delete_business(biz_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     biz = db.query(BusinessInfo).filter(BusinessInfo.id == biz_id).first()
     if not biz:
         raise HTTPException(status_code=404, detail="Business not found")
@@ -104,14 +104,14 @@ class AreaReq(BaseModel):
     FloorName: str
 
 @map_manage.get("/areas")
-def get_areas(business_id: Optional[int] = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_areas(business_id: Optional[int] = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     q = db.query(AreaInfo)
     if business_id is not None:
         q = q.filter(AreaInfo.BusinessId == business_id)
     return q.order_by(AreaInfo.id.asc()).all()
 
 @map_manage.post("/areas")
-def create_area(req: AreaReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def create_area(req: AreaReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     area = AreaInfo(BusinessId=req.BusinessId, FloorName=req.FloorName)
     db.add(area)
     db.commit()
@@ -122,7 +122,7 @@ def create_area(req: AreaReq, request: Request, db: Session = Depends(get_db), c
     return area
 
 @map_manage.delete("/areas/{area_id}")
-def delete_area(area_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def delete_area(area_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     area = db.query(AreaInfo).filter(AreaInfo.id == area_id).first()
     if not area:
         raise HTTPException(status_code=404, detail="Area not found")
@@ -143,7 +143,7 @@ class MapSaveReq(BaseModel):
     AreaName: str
 
 @map_manage.get("/maps")
-def get_maps(area_id: Optional[int] = None, business_id: Optional[int] = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_maps(area_id: Optional[int] = None, business_id: Optional[int] = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     q = db.query(RobotMapInfo)
     if area_id is not None:
         q = q.filter(RobotMapInfo.AreaId == area_id)
@@ -152,7 +152,7 @@ def get_maps(area_id: Optional[int] = None, business_id: Optional[int] = None, d
     return q.order_by(RobotMapInfo.id.desc()).all()
 
 @map_manage.post("/maps")
-def save_map(req: MapSaveReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def save_map(req: MapSaveReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     # 파일 경로 생성 (매핑 완료 후 저장될 경로)
     pgm_path = f"./static/maps/{req.AreaName}.pgm"
     yaml_path = f"./static/maps/{req.AreaName}.yaml"
@@ -173,7 +173,7 @@ def save_map(req: MapSaveReq, request: Request, db: Session = Depends(get_db), c
     return robot_map
 
 @map_manage.get("/maps/{map_id}/meta")
-def get_map_meta(map_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_map_meta(map_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     """맵의 yaml 파싱해서 origin, resolution 반환"""
     m = db.query(RobotMapInfo).filter(RobotMapInfo.id == map_id).first()
     if not m:
@@ -213,7 +213,7 @@ def get_map_meta(map_id: int, db: Session = Depends(get_db), current_user: UserI
     }
 
 @map_manage.delete("/maps/{map_id}")
-def delete_map(map_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def delete_map(map_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     m = db.query(RobotMapInfo).filter(RobotMapInfo.id == map_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Map not found")

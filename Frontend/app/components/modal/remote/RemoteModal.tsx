@@ -11,6 +11,7 @@ import { useCameraStream } from './hooks/useCameraStream';
 import { useWorkAutomation } from './hooks/useWorkAutomation';
 import { useRemoteCommand } from './hooks/useRemoteCommand';
 import { useKeyboardControls } from './hooks/useKeyboardControls';
+import { useRecording } from './hooks/useRecording';
 
 import StatusBar from './components/StatusBar';
 import ViewportArea from './components/ViewportArea';
@@ -84,6 +85,7 @@ export default function RemoteModal({
   const work = useWorkAutomation(isOpen, { onAlert: showAlert });
   const { position: robotPos, isReady: robotConnected, hasError: positionError } = useRobotPosition(isOpen);
   const moveCmd = useRemoteCommand({ debounceMs: 100, onError: showAlert });
+  const recording = useRecording(isOpen, selectedRobot?.id);
 
   // 연결 끊김 감지
   const errorCountRef = useRef(0);
@@ -145,6 +147,14 @@ export default function RemoteModal({
           selectedRobot={selectedRobot}
           onClose={handleClose}
           controlledBy={readOnly ? controlledBy : undefined}
+          isRecording={recording.isRecording}
+          recordType={recording.recordType}
+          isNavigating={recording.isNavigating}
+          onToggleRecording={() => {
+            const camId = robotCameras[cam.cameraTabActiveIndex]?.id;
+            if (camId) recording.toggleRecording(camId);
+          }}
+          recordingDisabled={recording.isPending || isDisconnected}
         />
 
         <div className={styles.mainLayout}>

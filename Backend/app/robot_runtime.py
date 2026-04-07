@@ -33,22 +33,26 @@ def init_runtime(robots) -> None:
                 "robot_port": r.RobotPort or 30000,
                 "position": {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0},
                 "battery": {},
+                "charge_state": {"state": 0, "error_code": 0, "timestamp": 0},
                 "last_heartbeat": 0,
                 "nav": {"arrived": False, "last_state": None, "timestamp": 0},
             }
-        print(f"✅ robot_runtime 초기화 완료: {len(_runtime)}대")
+        print(f"[OK] robot_runtime 초기화 완료: {len(_runtime)}대")
 
 
 # ── 상태 업데이트 ─────────────────────────────────────
 
-def update_status(robot_id: int, battery: dict, timestamp: float) -> None:
-    """heartbeat 수신 시 배터리 및 타임스탬프 갱신."""
+def update_status(robot_id: int, battery: dict, timestamp: float,
+                   charge_state: dict | None = None) -> None:
+    """heartbeat 수신 시 배터리, 충전 상태 및 타임스탬프 갱신."""
     with _lock:
         entry = _runtime.get(robot_id)
         if not entry:
             return
         entry["battery"] = battery
         entry["last_heartbeat"] = timestamp
+        if charge_state:
+            entry["charge_state"] = charge_state
 
 
 def update_position(robot_id: int, x: float, y: float, yaw: float) -> None:
@@ -125,11 +129,36 @@ def get_all_statuses() -> list[dict]:
         return [_build_status(entry) for entry in _runtime.values()]
 
 
+_CHARGE_STATE_LABEL = {
+    0: "대기",
+    1: "부두로 이동",
+    2: "충전 중",
+    3: "부두에서 나가기",
+    4: "로봇 오류",
+    5: "부두에 있지만 전류가 흐르지 않음",
+}
+
+_CHARGE_ERROR_MSG = {
+    0:    "재설정 작업/초기화",
+    1:    "작전 성공",
+    4098: "도킹 대상 지점 검색 중 시간 초과 발생(반사판 가림 시간 초과)",
+    4099: "반사경 위치 지정 알고리즘을 시작하는 데 실패했습니다",
+    4100: "도킹 목표 지점을 찾지 못했습니다(반사판 목표 지점 없음)",
+    4101: "도킹 타임아웃",
+    4102: "도킹 해제 시간 초과",
+    4103: "충전 도크에서 전류가 흐르지 않습니다",
+    4104: "소프트 비상 정지 작동됨",
+}
+
+
 def _build_status(entry: dict) -> dict:
     """내부 엔트리를 API 응답 형태로 변환."""
     network = _derive_network(entry["last_heartbeat"])
     power = _derive_power(network)
     battery = entry["battery"]
+    cs = entry.get("charge_state", {})
+    charge_st = cs.get("state", 0)
+    charge_err = cs.get("error_code", 0)
     return {
         "robot_id": entry["robot_id"],
         "robot_name": entry["robot_name"],
@@ -137,7 +166,11 @@ def _build_status(entry: dict) -> dict:
         "battery": battery,
         "network": network,
         "power": power,
-        "is_charging": battery.get("Charging", False),
+        "is_charging": charge_st == 2,
+        "charge_state": charge_st,
+        "charge_state_label": _CHARGE_STATE_LABEL.get(charge_st, f"알 수 없음({charge_st})"),
+        "charge_error_code": charge_err,
+        "charge_error_msg": _CHARGE_ERROR_MSG.get(charge_err, f"알 수 없는 오류(0x{charge_err:04X})") if charge_st == 4 else None,
         "timestamp": entry["last_heartbeat"],
         "position": entry["position"],
     }

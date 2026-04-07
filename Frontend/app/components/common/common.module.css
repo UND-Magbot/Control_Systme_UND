@@ -26,6 +26,34 @@
     background: transparent;
 }
 
+.stopAllBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 6px 14px;
+    background-color: var(--color-error, #e53e3e) !important;
+    color: #fff;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    transition: opacity 0.15s ease;
+}
+
+.stopAllBtn:hover {
+    opacity: 0.8;
+}
+
+.stopAllBtnDisabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.stopAllBtnDisabled:hover {
+    opacity: 0.4;
+}
+
 .alarmBegs {
     width: 15px;
     max-width: 20px;

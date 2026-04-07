@@ -41,6 +41,10 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     isCharging: isQuadruped
       ? !!(item.IsCharging1 || item.IsCharging2)
       : !!(item.IsCharging1),
+    chargeState: 0,
+    chargeStateLabel: "대기",
+    chargeErrorCode: 0,
+    chargeErrorMsg: null,
     network: item.LastHeartbeat ? "Offline" : "-",
     power: item.LastHeartbeat ? "Off" : "-",
     mark: item.mark ?? "No",

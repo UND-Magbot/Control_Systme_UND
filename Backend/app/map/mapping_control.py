@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from app.Database.database import SessionLocal
 from app.Database.models import RobotMapInfo, UserInfo
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 
 import paramiko
 import os
@@ -110,7 +110,7 @@ class MappingStartReq(BaseModel):
 
 
 @mapping_ctrl.post("/start")
-def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(get_current_user)):
+def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require_permission("map-edit"))):
     if mapping_state["is_running"]:
         raise HTTPException(status_code=409, detail="이미 매핑이 진행 중입니다.")
 
@@ -165,7 +165,7 @@ class MappingEndReq(BaseModel):
 
 
 @mapping_ctrl.post("/end")
-def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     client = None
 
     try:
@@ -238,7 +238,7 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
             cv2.imwrite(local_png, img)
             print(f"🖼️ PGM → PNG 변환 완료: {local_png}")
         else:
-            print(f"⚠️ PGM 읽기 실패, PNG 변환 건너뜀")
+            print(f"[WARN] PGM 읽기 실패, PNG 변환 건너뜀")
 
         # 5. SSH 연결 종료
         client.close()
@@ -267,7 +267,7 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
         mapping_state["business_id"] = None
         mapping_state["area_id"] = None
 
-        print(f"✅ 매핑 완료 & 저장: {req.AreaName}")
+        print(f"[OK] 매핑 완료 & 저장: {req.AreaName}")
         return {
             "status": "ok",
             "message": "매핑이 완료되고 저장되었습니다.",
@@ -288,7 +288,7 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
 # 매핑 취소 (저장 없이 종료)
 # ══════════════════════════════════════
 @mapping_ctrl.post("/cancel")
-def mapping_cancel(current_user: UserInfo = Depends(get_current_user)):
+def mapping_cancel(current_user: UserInfo = Depends(require_permission("map-edit"))):
     area_name = mapping_state.get("area_name")
     client = None
 
@@ -319,7 +319,7 @@ def mapping_cancel(current_user: UserInfo = Depends(get_current_user)):
 # 매핑 상태 조회
 # ══════════════════════════════════════
 @mapping_ctrl.get("/status")
-def mapping_status(current_user: UserInfo = Depends(get_current_user)):
+def mapping_status(current_user: UserInfo = Depends(require_permission("map-edit"))):
     return {
         "is_running": mapping_state["is_running"],
         "area_name": mapping_state["area_name"],

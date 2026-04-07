@@ -8,7 +8,9 @@ import BaseCalendar from "@/app/components/calendar/BaseCalendar";
 import { useOutsideClick } from "@/app/hooks/useOutsideClick";
 import type { RobotRowData, Camera, Video, VideoItem, Period, LogItem, RobotType } from '@/app/type';
 import VideoPlayModal from '@/app/components/modal/VideoPlayModal';
+import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { convertMinutesToText } from "@/app/utils/convertMinutesToText";
+import { apiFetch } from "@/app/lib/api";
 import HorizontalBarChart from "./HorizontalBarChart";
 import {
   buildRobotTypeBarFromApi,
@@ -31,6 +33,8 @@ type VideoListProps = {
   videoData: VideoItem[];
   robotTypeData: RobotType[];
   onDataReady?: () => void;
+  initialTab?: "video" | "dt" | "log";
+  initialSearch?: string;
 }
 
 // 오늘 날짜만 필터하는 유틸
@@ -55,6 +59,8 @@ export default function VideoList({
     video,
     robotTypeData,
     onDataReady,
+    initialTab,
+    initialSearch,
 }:VideoListProps) {
 
     const { robots } = useRobotStatusContext();
@@ -63,7 +69,9 @@ export default function VideoList({
     const [selectedRobot, setSelectedRobot] = useState<RobotRowData | null>(null);
 
     useEffect(() => {
-        getLogData({ size: 10000 }).then((res) => setLogData(res.items));
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+        getLogData({ start_date: todayStr, end_date: todayStr }).then((res) => setLogData(res.items));
     }, []);
     const [selectedPeriod, setSelectedPeriod] = useState<Period | null>(null);
 
@@ -84,7 +92,13 @@ export default function VideoList({
     const [videoThumbnail, setVideoThumbnail] = useState<string | null>(null);
 
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState<"video" | "dt" | "log">("video");
+    const [activeTab, setActiveTab] = useState<"video" | "dt" | "log">(initialTab || "video");
+
+    // ── 선택 삭제 모드 ──
+    const [selectMode, setSelectMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // ── 통계 API 상태 ──
     const [statsData, setStatsData] = useState<StatisticsResponse | null>(null);
@@ -254,10 +268,13 @@ export default function VideoList({
     };
 
     const formatVideoTime = (time: string) => {
-        const [hh, mm, ss] = time.split(":").map(Number);
+        const parts = time.split(":").map(Number);
+        // "mm:ss" 또는 "hh:mm:ss" 모두 처리
+        const hh = parts.length >= 3 ? (parts[0] || 0) : 0;
+        const mm = parts.length >= 3 ? (parts[1] || 0) : (parts[0] || 0);
+        const ss = parts.length >= 3 ? (parts[2] || 0) : (parts[1] || 0);
 
         let result = "";
-
         if (hh > 0) result += `${hh}h `;
         if (mm > 0 || hh > 0) result += `${mm}m `;
         result += `${ss}s`;
@@ -431,6 +448,68 @@ export default function VideoList({
     }, [statsData]);
 
     // 영상 다운로드(임시)
+    // ── 선택 삭제 핸들러 ──
+    const toggleSelectMode = () => {
+        if (selectMode) {
+            setSelectedIds(new Set());
+        }
+        setSelectMode(!selectMode);
+    };
+
+    const toggleSelect = (groupId: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(groupId)) next.delete(groupId);
+            else next.add(groupId);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        const currentGroupIds = videoCurrentItems.map(r => r.group_id || String(r.id));
+        const allSelected = currentGroupIds.every(id => selectedIds.has(id));
+        if (allSelected) {
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                currentGroupIds.forEach(id => next.delete(id));
+                return next;
+            });
+        } else {
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                currentGroupIds.forEach(id => next.add(id));
+                return next;
+            });
+        }
+    };
+
+    const handleDeleteSelected = async () => {
+        if (selectedIds.size === 0) return;
+        setIsDeleting(true);
+        try {
+            const res = await apiFetch("/api/recordings/delete-groups", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ group_ids: Array.from(selectedIds) }),
+            });
+            if (res.ok) {
+                // 삭제된 항목을 로컬 데이터에서 제거
+                if (searchFilterData) {
+                    setSearchFilterData(
+                        searchFilterData.filter(v => !selectedIds.has(v.group_id || String(v.id)))
+                    );
+                }
+                setSelectedIds(new Set());
+                setSelectMode(false);
+            }
+        } catch (e) {
+            console.error("[VideoList] 삭제 실패:", e);
+        } finally {
+            setIsDeleting(false);
+            setDeleteConfirmOpen(false);
+        }
+    };
+
     const downloadSample = () => {
         const a = document.createElement("a");
         a.href = "/videos/control_system_sample.mp4";
@@ -512,6 +591,27 @@ export default function VideoList({
                                   externalStartDate={externalStartDate}
                                   externalEndDate={externalEndDate}
                         />
+                        <div className={styles.videoDeleteArea}>
+                            {!selectMode ? (
+                                <div className={styles.videoWorkBtn} onClick={toggleSelectMode}>
+                                    <img src="/icon/delete_icon.png" alt="delete" />
+                                    삭제
+                                </div>
+                            ) : (
+                                <>
+                                    <div
+                                        className={`${styles.videoDeleteConfirmBtn} ${selectedIds.size === 0 ? styles.btnDisabled : ""}`}
+                                        onClick={() => { if (selectedIds.size > 0) setDeleteConfirmOpen(true); }}
+                                    >
+                                        <img src="/icon/delete_icon.png" alt="" />
+                                        <span>삭제 확인 ({selectedIds.size})</span>
+                                    </div>
+                                    <div className={styles.videoWorkBtn} onClick={toggleSelectMode}>
+                                        취소
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
                 <div className={styles.contentArea}>
@@ -521,18 +621,31 @@ export default function VideoList({
                         </div>
                     ) : (
                         <div className={styles.videoViewContainer}>
-                            {videoCurrentItems.map((r, idx) => (
-                                <div key={r.id} className={styles.videoViewItem}>
-                                    {videoThumbnail && (
-                                        <div className={styles.videoViewBox} onClick={() => { VideoPlayClick(idx, r) }}>
-                                            <div className={styles.videoView}>
-                                                <img src={videoThumbnail} alt="thumbnail" />
-                                            </div>
-                                            <div className={styles.videoViewIcon} onMouseEnter={() => setHoveredIndex(idx)} onMouseLeave={() => setHoveredIndex(null)}>
-                                                <img src={ hoveredIndex === idx ? `/icon/video_hover_icon.png` : `/icon/video_icon.png`} alt="play" />
-                                            </div>
+                            {videoCurrentItems.map((r, idx) => {
+                                const itemKey = r.group_id || String(r.id);
+                                return (
+                                <div key={itemKey} className={`${styles.videoViewItem} ${selectMode && selectedIds.has(itemKey) ? styles.videoViewItemSelected : ""}`}>
+                                    <div className={styles.videoViewBox} onClick={() => {
+                                        if (selectMode) { toggleSelect(itemKey); }
+                                        else { VideoPlayClick(idx, r); }
+                                    }}>
+                                        <div className={styles.videoView}>
+                                            <img
+                                              src={r.thumbnail_url || videoThumbnail || '/icon/video_placeholder.png'}
+                                              alt="thumbnail"
+                                            />
+                                            {r.record_type && (
+                                              <span className={`${styles.recordBadge} ${
+                                                r.record_type === '자동' ? styles.recordBadgeAuto : styles.recordBadgeManual
+                                              }`}>
+                                                {r.record_type}
+                                              </span>
+                                            )}
                                         </div>
-                                    )}
+                                        <div className={styles.videoViewIcon} onMouseEnter={() => setHoveredIndex(idx)} onMouseLeave={() => setHoveredIndex(null)}>
+                                            <img src={ hoveredIndex === idx ? `/icon/video_hover_icon.png` : `/icon/video_icon.png`} alt="play" />
+                                        </div>
+                                    </div>
                                     <div className={styles.videoMeta}>
                                         <div className={styles.metaRow1}>
                                             <span className={styles.metaPrimary}>{r.robotNo} · {r.cameraNo}</span>
@@ -544,16 +657,23 @@ export default function VideoList({
                                         <div className={styles.metaRow2}>
                                             <span className={styles.metaType}>
                                                 <span className={styles.cameratypeIcon}></span>
-                                                {r.cameraType}
+                                                {r.work_name || r.cameraType}
                                             </span>
                                             <span className={styles.metaDot}>·</span>
                                             <span>{videoFormatDate(r.date)}</span>
                                             <span className={styles.metaDot}>·</span>
                                             <span className={styles.metaAccent}>{formatVideoTime(r.videoTime)}</span>
+                                            {r.segment_count && r.segment_count > 1 && (
+                                              <>
+                                                <span className={styles.metaDot}>·</span>
+                                                <span>{r.segment_count}개 세그먼트</span>
+                                              </>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
-                            ))}
+                            );
+                            })}
                         </div>
                     )}
                 </div>
@@ -565,6 +685,13 @@ export default function VideoList({
                 blockSize={5} />
             </div>
             <VideoPlayModal isOpen={videoPlayModalOpen} onClose={() => setVideoPlayModalOpen(false)} playedVideo={playedVideo} />
+            {deleteConfirmOpen && (
+                <CancelConfirmModal
+                    message={`선택한 영상 ${selectedIds.size}건을 삭제하시겠습니까?`}
+                    onConfirm={handleDeleteSelected}
+                    onCancel={() => setDeleteConfirmOpen(false)}
+                />
+            )}
         </div>
     )}
 
@@ -775,7 +902,7 @@ export default function VideoList({
     {/* Log History 화면 */}
     {activeTab === "log" && (
         <div className={styles.DT}>
-            <LogList logData={logData} />
+            <LogList logData={logData} initialSearch={initialSearch} />
         </div>
     )}
     </>

@@ -10,6 +10,7 @@ import {
 import type { MenuNode } from '@/app/mock/settings_data';
 import { apiFetch } from '@/app/lib/api';
 import { useAuth } from '@/app/context/AuthContext';
+import UserRegisterModal from './UserRegisterModal';
 
 type ApiUser = {
   id: number;
@@ -19,11 +20,6 @@ type ApiUser = {
   is_active: number;
 };
 
-type UserGroup = {
-  id: string;
-  label: string;
-  users: ApiUser[];
-};
 
 /** 트리에서 노드의 체크 상태를 계산 */
 type CheckState = "checked" | "unchecked" | "indeterminate";
@@ -164,7 +160,6 @@ export default function MenuPermissions() {
 
   // 사용자 선택 상태
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["admin-group", "user-group"]));
   const [userSearch, setUserSearch] = useState("");
   const [menuSearch, setMenuSearch] = useState("");
 
@@ -197,15 +192,8 @@ export default function MenuPermissions() {
     })();
   }, [isAdmin]);
 
-  // API 사용자를 그룹으로 분류
-  const userGroups: UserGroup[] = useMemo(() => {
-    const admins = apiUsers.filter((u) => u.permission === 1);
-    const users = apiUsers.filter((u) => u.permission === 2);
-    return [
-      { id: "admin-group", label: "관리자", users: admins },
-      { id: "user-group", label: "사용자", users: users },
-    ];
-  }, [apiUsers]);
+
+
 
   // 메뉴 트리 접이식 상태 (기본 모두 펼침, menuTree 로드 후 갱신)
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
@@ -223,6 +211,20 @@ export default function MenuPermissions() {
     setExpandedNodes(ids);
   }, [menuTree]);
 
+  // 사용자 등록 모달
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+
+  // 사용자 등록 성공 후 목록 새로고침
+  const refreshUserList = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/users?size=100");
+      if (res.ok) {
+        const data = await res.json();
+        setApiUsers(data.items);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   // 권한 상태
   const [leafStates, setLeafStates] = useState<Record<string, boolean>>({});
   const [originalStates, setOriginalStates] = useState<Record<string, boolean>>({});
@@ -230,12 +232,8 @@ export default function MenuPermissions() {
 
   // 선택된 사용자 객체
   const selectedUser = useMemo(() => {
-    for (const group of userGroups) {
-      const user = group.users.find((u) => u.id === selectedUserId);
-      if (user) return user;
-    }
-    return null;
-  }, [selectedUserId, userGroups]);
+    return apiUsers.find((u) => u.id === selectedUserId) ?? null;
+  }, [selectedUserId, apiUsers]);
 
   // 사용자 선택 시 권한 API 로드
   const handleSelectUser = useCallback(
@@ -266,16 +264,6 @@ export default function MenuPermissions() {
       return next;
     });
   }, []);
-
-  // 그룹 토글
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
-    });
-  };
 
   // 체크박스 토글
   const handleToggleNode = useCallback(
@@ -332,18 +320,17 @@ export default function MenuPermissions() {
 
   // 사용자 검색 필터
   const searchLower = userSearch.toLowerCase();
-  const filteredGroups = useMemo(() => {
-    if (!searchLower) return userGroups;
-    return userGroups
-      .map((group) => ({
-        ...group,
-        users: group.users.filter((u) =>
-          (u.user_name ?? "").toLowerCase().includes(searchLower) ||
-          (u.login_id ?? "").toLowerCase().includes(searchLower)
-        ),
-      }))
-      .filter((group) => group.users.length > 0);
-  }, [searchLower, userGroups]);
+  const sortedUsers = useMemo(() => {
+    const visible = isAdmin ? apiUsers : apiUsers.filter((u) => u.permission !== 1);
+    return [...visible].sort((a, b) => a.permission - b.permission);
+  }, [apiUsers, isAdmin]);
+  const filteredUsers = useMemo(() => {
+    if (!searchLower) return sortedUsers;
+    return sortedUsers.filter((u) =>
+      (u.user_name ?? "").toLowerCase().includes(searchLower) ||
+      (u.login_id ?? "").toLowerCase().includes(searchLower)
+    );
+  }, [searchLower, sortedUsers]);
 
   const menuSearchLower = menuSearch.toLowerCase();
 
@@ -352,7 +339,17 @@ export default function MenuPermissions() {
     <div className={styles.wrapper}>
       {/* 왼쪽: 사용자 선택 */}
       <div className={styles.leftPanel}>
-        <h3 className={styles.panelTitle}>사용자 선택</h3>
+        <div className={styles.leftHeader}>
+          <h3 className={styles.panelTitle}>사용자 선택</h3>
+          {isAdmin && (
+            <button
+              className={styles.registerBtn}
+              onClick={() => setShowRegisterModal(true)}
+            >
+              + 사용자 등록
+            </button>
+          )}
+        </div>
 
         <input
           type="text"
@@ -363,38 +360,24 @@ export default function MenuPermissions() {
         />
 
         <div className={styles.userList}>
-          {filteredGroups.length === 0 ? (
+          {filteredUsers.length === 0 ? (
             <div className={styles.emptyState}>검색 결과가 없습니다</div>
           ) : (
-            filteredGroups.map((group) => (
-              <div key={group.id}>
-                <div
-                  className={styles.groupHeader}
-                  onClick={() => toggleGroup(group.id)}
-                >
-                  <span className={styles.groupArrow}>
-                    {expandedGroups.has(group.id) ? "▾" : "▸"}
-                  </span>
-                  <span className={styles.groupLabel}>{group.label}</span>
-                  <span className={styles.groupCount}>{group.users.length}</span>
-                </div>
-
-                {expandedGroups.has(group.id) &&
-                  group.users.map((user) => (
-                    <label
-                      key={user.id}
-                      className={styles.userItem}
-                    >
-                      <input
-                        type="checkbox"
-                        className={styles.userCheckbox}
-                        checked={selectedUserId === user.id}
-                        onChange={() => handleSelectUser(user)}
-                      />
-                      <span className={styles.userLabel}>{user.user_name ?? user.login_id}</span>
-                    </label>
-                  ))}
-              </div>
+            filteredUsers.map((user) => (
+              <label
+                key={user.id}
+                className={styles.userItem}
+              >
+                <input
+                  type="checkbox"
+                  className={styles.userCheckbox}
+                  checked={selectedUserId === user.id}
+                  onChange={() => handleSelectUser(user)}
+                />
+                <span className={styles.userLabel}>
+                  {user.user_name ?? user.login_id}
+                </span>
+              </label>
             ))
           )}
         </div>
@@ -463,6 +446,12 @@ export default function MenuPermissions() {
         )}
       </div>
     </div>
+
+    <UserRegisterModal
+      isOpen={showRegisterModal}
+      onClose={() => setShowRegisterModal(false)}
+      onSuccess={refreshUserList}
+    />
 
     {confirmMessage && (
       <div className={modalStyles.confirmOverlay}>

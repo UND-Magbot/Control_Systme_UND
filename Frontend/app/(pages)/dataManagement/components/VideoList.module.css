@@ -91,6 +91,85 @@
 .videoSelect {
     display: flex;
     gap: 10px;
+    align-items: center;
+}
+
+/* ── 삭제 영역 (필터 맨 우측) ── */
+.videoDeleteArea {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto;
+}
+
+/* 기본 버튼 (삭제/취소) — robotWorkCommonBtn 통일 */
+.videoWorkBtn {
+    height: 32px;
+    border-radius: 6px;
+    padding: 0 14px;
+    background: var(--surface-button);
+    border: 1px solid var(--border-subtle);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+    transition: background 0.2s ease, transform 0.1s ease;
+    box-sizing: border-box;
+}
+
+.videoWorkBtn:hover {
+    background: var(--surface-elevated);
+}
+
+.videoWorkBtn:active {
+    transform: scale(0.97);
+}
+
+.videoWorkBtn img {
+    height: 11px;
+    width: auto;
+}
+
+/* 삭제 확인 버튼 (파란 강조) — placePrimaryBtn 통일 */
+.videoDeleteConfirmBtn {
+    min-width: 120px;
+    height: 35px;
+    border-radius: 8px;
+    padding: 8px 14px;
+    background: var(--color-info-selected);
+    color: var(--text-primary);
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.videoDeleteConfirmBtn:hover {
+    background: var(--color-info-bg);
+}
+
+.videoDeleteConfirmBtn:active {
+    transform: scale(0.97);
+}
+
+.videoDeleteConfirmBtn img {
+    width: 11px;
+    height: 11px;
+}
+
+.btnDisabled {
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 .dtSearch {
@@ -172,6 +251,27 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    border: 2px solid transparent;
+    transition: border-color 0.15s ease;
+}
+
+.videoViewItemSelected {
+    border-color: var(--color-info, #1e88e5);
+}
+
+/* 선택 모드 체크박스 (미사용, 예비) */
+.selectCheckbox {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 3;
+}
+
+.selectCheckbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-info, #1e88e5);
+    cursor: pointer;
 }
 
 .videoViewBox {
@@ -188,12 +288,47 @@
     height: 100%;
     border-radius: 10px;
     overflow: hidden;
+    position: relative;
 }
 
 .videoView img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+}
+
+/* 녹화 유형 뱃지 */
+.recordBadge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    z-index: 2;
+}
+
+.recordBadgeAuto {
+    background: var(--color-info);
+}
+
+.recordBadgeManual {
+    background: #43a047;
+}
+
+.recordBadgeError {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--color-error, #e53935);
+    z-index: 2;
 }
 
 .videoViewIcon {
