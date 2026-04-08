@@ -10,13 +10,22 @@ router = APIRouter()
 FRONT_CAM = "rtsp://10.21.31.103:8554/video1"
 REAR_CAM  = "rtsp://10.21.31.103:8554/video2"
 
+# URL → 카메라 식별명 매핑
+CAM_NAMES = {
+    FRONT_CAM: "전방 카메라",
+    REAR_CAM: "후방 카메라",
+}
+
 
 def stream_generator(rtsp_url):
     cap = cv2.VideoCapture(rtsp_url)
 
     if not cap.isOpened():
-        print("⚠️ RTSP 연결 실패:", rtsp_url)
-        log_event("error", "rtsp_error", f"카메라 스트림 연결 실패: {rtsp_url}",
+        cam_name = CAM_NAMES.get(rtsp_url, "카메라")
+        print(f"[WARN] RTSP 연결 실패: {cam_name} ({rtsp_url})")
+        log_event("error", "rtsp_error",
+                  f"카메라 영상 연결 실패 ({cam_name})",
+                  error_json=f'{{"rtsp_url": "{rtsp_url}"}}',
                   robot_id=get_robot_id(), robot_name=get_robot_name())
         return
 

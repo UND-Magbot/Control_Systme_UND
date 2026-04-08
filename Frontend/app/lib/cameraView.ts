@@ -34,14 +34,6 @@ function extractCameras(modules: RobotModule[]): Camera[] {
 }
 
 /**
- * @deprecated 로봇별 카메라 로딩으로 전환됨 — getCamerasForRobot() 사용
- * 기존 페이지 호환용 빈 배열 반환
- */
-export default function getCameras(): Camera[] {
-  return [];
-}
-
-/**
  * 로봇 ID로 해당 로봇의 카메라 목록을 가져옴
  */
 export async function getCamerasForRobot(robotId: number): Promise<Camera[]> {

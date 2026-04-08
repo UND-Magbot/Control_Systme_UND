@@ -1,4 +1,4 @@
-import { API_BASE } from "@/app/constants/api";
+import { API_BASE } from "@/app/config";
 
 // ── refresh 결과 타입 ──
 // "success"  : 갱신 성공
@@ -114,7 +114,7 @@ export async function apiFetch(
       res = await fetch(url, fetchOptions);
     } else if (result === "invalid") {
       // refresh token 자체가 무효 → 진짜 세션 만료
-      console.error("[Auth] 세션 만료: refresh token 무효");
+      console.log("[Auth] 세션 만료: refresh token 무효");
       window.dispatchEvent(new CustomEvent("auth:session-expired"));
     }
     // result === "error" → 네트워크 문제, 세션은 건드리지 않음

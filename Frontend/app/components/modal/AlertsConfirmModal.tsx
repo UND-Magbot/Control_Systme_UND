@@ -112,6 +112,12 @@ export default function AlertsConfirmModal({
         return null;
     };
 
+    const statusLabel: Record<string, string> = {
+        error: '오류',
+        info: '정보',
+        event: '이벤트',
+    };
+
     // 커스텀 스크롤바 (필터된 리스트 길이에 따라 재계산)
     useCustomScrollbar({
         enabled: isOpen,
@@ -165,12 +171,12 @@ export default function AlertsConfirmModal({
                             <img src="/icon/alerts_w.png" alt="" />
                             <h2>알림</h2>
                         </div>
-                        <button onClick={onClose} aria-label="닫기">
-                            <img src="/icon/close_btn.png" alt="" />
+                        <button className={styles.alertsCloseBtn} onClick={onClose} aria-label="닫기">
+                            <img src="/icon/close_btn.png" alt="닫기" />
                         </button>
                     </div>
 
-                    {/* 탭 바 + 전체 읽음 */}
+                    {/* 탭 바 */}
                     <div className={styles.alertsTabRow}>
                         <div className={styles.alertsTabBar} role="tablist" aria-label="알림 카테고리">
                             {tabs.map((tab) => (
@@ -187,6 +193,10 @@ export default function AlertsConfirmModal({
                                 </button>
                             ))}
                         </div>
+                    </div>
+                    {/* 알림 건수 + 전체 읽음 */}
+                    <div className={styles.alertsSubRow}>
+                        <span className={styles.alertsTabCount}>{tabCounts[activeTab]}건의 알림</span>
                         <button
                             className={styles.alertsMarkAllReadBtn}
                             onClick={handleMarkAllRead}
@@ -235,16 +245,23 @@ export default function AlertsConfirmModal({
                                                                 : styles.statusEvent
                                                             }`}
                                                         >
-                                                            {displayStatus}
+                                                            {statusLabel[displayStatus]}
                                                         </div>
                                                     ) : (
                                                         <div className={styles.aletsStatusEmpty} />
                                                     )}
 
-                                                    <div className={styles.aletsContent}>{item.content}</div>
+                                                    <div className={styles.aletsContent}>
+                                                        {item.robotName && (
+                                                            <span className={styles.aletsRobotName}>{item.robotName}</span>
+                                                        )}
+                                                        {item.content}
+                                                    </div>
                                                 </div>
                                                 {item.detail && (
-                                                    <div className={styles.aletsDetail}>{item.detail}</div>
+                                                    <div className={styles.aletsDetail}>
+                                                        {item.detail.split('\n').filter(Boolean).slice(-2).join(' → ')}
+                                                    </div>
                                                 )}
                                                 <div className={styles.bottomContents}>
                                                     <div className={styles.aletsDate}>{item.date}</div>

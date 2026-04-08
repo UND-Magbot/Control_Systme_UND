@@ -289,7 +289,7 @@
   text-align: center;
 }
 
-.actionBtn:hover {
+.actionBtn:hover:not(:disabled) {
   background: var(--surface-elevated);
 }
 
@@ -299,8 +299,14 @@
   color: var(--text-primary);
 }
 
-.actionBtnDanger:hover {
+.actionBtnDanger:hover:not(:disabled) {
   background: var(--color-error-hover);
+}
+
+.actionBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ── 빈 상태 ── */

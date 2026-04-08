@@ -11,6 +11,7 @@ import type { FilterOption } from "@/app/components/button/FilterSelectBox";
 import { BaseCalendar, getTodayStr, parseYMD } from "@/app/components/calendar/index";
 import type { LogItem, LogCategory } from "@/app/type";
 import { LOG_CATEGORY_LABELS } from "@/app/type";
+import { getLogData } from "@/app/lib/logData";
 import * as XLSX from "xlsx";
 
 const THEAD_HEIGHT = 44;
@@ -53,11 +54,12 @@ function formatDateTime(iso: string): string {
 
 type LogListProps = {
   logData: LogItem[];
+  initialSearch?: string;
 };
 
-export default function LogList({ logData }: LogListProps) {
+export default function LogList({ logData, initialSearch }: LogListProps) {
   // 필터 상태
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(initialSearch || "");
   const [selectedLogType, setSelectedLogType] = useState<LogCategory | null>(null);
   const [startDate, setStartDate] = useState(getToday());
   const [endDate, setEndDate] = useState(getToday());
@@ -87,16 +89,16 @@ export default function LogList({ logData }: LogListProps) {
     return () => ro.disconnect();
   }, []);
 
-  // 필터된 데이터 (초기: 오늘 날짜 기준 필터링)
-  const [filteredData, setFilteredData] = useState<LogItem[]>(() => {
+  // 필터된 데이터
+  const [filteredData, setFilteredData] = useState<LogItem[]>(logData);
+
+  // 초기 로드: 서버에서 오늘 데이터 조회
+  useEffect(() => {
     const today = getToday();
-    const start = new Date(`${today}T00:00:00`);
-    const end = new Date(`${today}T23:59:59`);
-    return logData.filter((log) => {
-      const d = new Date(log.CreatedAt);
-      return d >= start && d <= end;
-    });
-  });
+    getLogData({ start_date: today, end_date: today, size: 10000 })
+      .then((res) => setFilteredData(res.items))
+      .catch(() => setFilteredData(logData));
+  }, []);
 
   // 알림 모달
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
@@ -134,19 +136,10 @@ export default function LogList({ logData }: LogListProps) {
     setCalendarField(null);
   };
 
-  // 필터 적용
-  const applyFilters = useCallback(() => {
-    let filtered = [...logData];
+  // 필터 적용 (서버 API 호출)
+  const [isLoading, setIsLoading] = useState(false);
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter((log) => log.Message.toLowerCase().includes(q));
-    }
-
-    if (selectedLogType) {
-      filtered = filtered.filter((log) => log.Category === selectedLogType);
-    }
-
+  const applyFilters = useCallback(async () => {
     const start = new Date(`${startDate}T${startTime}:00`);
     const end = new Date(`${endDate}T${endTime}:59`);
 
@@ -155,20 +148,34 @@ export default function LogList({ logData }: LogListProps) {
       return;
     }
 
-    filtered = filtered.filter((log) => {
-      const d = new Date(log.CreatedAt);
-      return d >= start && d <= end;
-    });
+    setIsLoading(true);
+    try {
+      const res = await getLogData({
+        start_date: startDate,
+        end_date: endDate,
+        category: selectedLogType ?? undefined,
+        search: searchQuery.trim() || undefined,
+        size: 10000,
+      });
 
-    setFilteredData(filtered);
-    setLogPage(1);
-  }, [logData, searchQuery, selectedLogType, startDate, endDate, startTime, endTime]);
+      // 시간 필터는 클라이언트에서 적용 (API는 날짜 단위)
+      const filtered = res.items.filter((log) => {
+        const d = new Date(log.CreatedAt);
+        return d >= start && d <= end;
+      });
 
-  // 초기화 (초기 진입과 동일하게 오늘 날짜 기준 필터)
-  const handleReset = () => {
+      setFilteredData(filtered);
+      setLogPage(1);
+    } catch {
+      setAlertMessage("로그 조회에 실패했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchQuery, selectedLogType, startDate, endDate, startTime, endTime]);
+
+  // 초기화 (오늘 날짜 기준으로 서버에서 다시 조회)
+  const handleReset = async () => {
     const today = getToday();
-    const start = new Date(`${today}T00:00:00`);
-    const end = new Date(`${today}T23:59:59`);
 
     setSearchQuery("");
     setSelectedLogType(null);
@@ -176,12 +183,16 @@ export default function LogList({ logData }: LogListProps) {
     setEndDate(today);
     setStartTime("00:00");
     setEndTime("23:59");
-    setFilteredData(
-      logData.filter((log) => {
-        const d = new Date(log.CreatedAt);
-        return d >= start && d <= end;
-      })
-    );
+
+    setIsLoading(true);
+    try {
+      const res = await getLogData({ start_date: today, end_date: today, size: 10000 });
+      setFilteredData(res.items);
+    } catch {
+      setFilteredData([]);
+    } finally {
+      setIsLoading(false);
+    }
     setLogPage(1);
   };
 

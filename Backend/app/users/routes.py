@@ -75,7 +75,10 @@ def list_users(
 @router.post("", response_model=UserDetailResponse)
 def create_user(body: UserCreateRequest, request: Request, admin: UserInfo = Depends(require_admin), db: Session = Depends(get_db)):
     ip = get_client_ip(request)
-    result = UserService.create_user(db, body.login_id, body.password, body.user_name, body.permission, admin.id, ip_address=ip)
+    result = UserService.create_user(
+        db, body.login_id, body.password, body.user_name, body.permission, admin.id,
+        ip_address=ip, business_id=body.business_id, menu_ids=body.menu_ids,
+    )
     return result
 
 

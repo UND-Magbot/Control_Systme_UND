@@ -31,6 +31,12 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
 
   const hasFloors = floors.length > 0;
   const hasRobots = robots.length > 0;
+  const hasRunningTask = robots.some(r => r.tasks.length > 0);
+
+  const handleStopAll = useCallback(() => {
+    // TODO: 전체 정지 API 연동
+    console.log("전체 정지 클릭");
+  }, []);
 
   const isRobotOnCurrentFloor = selectedFloor?.label === robotFloor;
 
@@ -108,6 +114,15 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
         {hasRobots && hasFloors && robotPosError && (
           <div className={styles.posErrorBadge}>위치 수신 불가</div>
         )}
+
+        <button
+          type="button"
+          className={`${styles.stopAllBtn} ${!hasRunningTask ? styles.stopAllBtnDisabled : ""}`}
+          onClick={handleStopAll}
+          disabled={!hasRunningTask}
+        >
+          로봇 전체 정지
+        </button>
 
         {/* 층 선택 세로 버튼 리스트 (높은 층 → 낮은 층) */}
         {hasFloors && (

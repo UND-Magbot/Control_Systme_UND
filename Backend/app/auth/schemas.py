@@ -12,7 +12,7 @@ class LoginRequest(BaseModel):
 
 class PasswordChangeRequest(BaseModel):
     current_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=6, max_length=12)
+    new_password: str = Field(..., min_length=6, max_length=16)
 
 
 class AccountDeleteRequest(BaseModel):

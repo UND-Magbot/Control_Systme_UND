@@ -1,7 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { API_BASE } from "@/app/constants/api";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { API_BASE } from "@/app/config";
 
 export type AuthUser = {
   id: number;
@@ -16,6 +16,7 @@ type AuthContextType = {
   isAuthenticated: boolean;
   isAdmin: boolean;
   isLoading: boolean;
+  isManualLogout: React.MutableRefObject<boolean>;
   hasPermission: (menuId: string) => boolean;
   login: (loginId: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -27,6 +28,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const isManualLogout = useRef(false);
 
   const isAuthenticated = user !== null;
   const isAdmin = user?.role === 1;
@@ -100,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 로그아웃
   const logout = useCallback(async () => {
+    isManualLogout.current = true;
     try {
       await fetch(`${API_BASE}/api/auth/logout`, {
         method: "POST",
@@ -122,7 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated, isAdmin, isLoading, hasPermission, login, logout, refreshUser }}
+      value={{ user, isAuthenticated, isAdmin, isLoading, isManualLogout, hasPermission, login, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

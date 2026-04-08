@@ -2132,6 +2132,15 @@ button.workPopoverItem:hover {
   font-size: var(--font-size-md);
 }
 
+.vpErrorReason {
+  color: var(--text-quaternary, #888);
+  font-size: var(--font-size-sm);
+  margin-top: 6px;
+  text-align: center;
+  max-width: 80%;
+  line-height: 1.4;
+}
+
 .vpRetryBtn {
   padding: 6px 20px;
   border-radius: 6px;
@@ -2365,9 +2374,21 @@ button.workPopoverItem:hover {
   border-radius: 17px;
   background: var(--surface-3);
 
-  padding: 35px 19px 35px 27px;
+  padding: 28px 24px;
 
   box-shadow: 10px 12px 20px rgba(0, 0, 0, 0.4);
+  animation: alertsSlideIn 0.2s ease-out;
+}
+
+@keyframes alertsSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 
@@ -2393,33 +2414,47 @@ button.workPopoverItem:hover {
   margin: 0;
 }
 
-.alertsModalTop button {
+.alertsCloseBtn {
   background: transparent;
   border: none;
 
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
 
-  display: flex;
+  display: flex !important;
   align-items: center;
   justify-content: center;
 
   cursor: pointer;
   color: var(--text-primary);
   font-size: var(--font-size-xl);
+  flex-shrink: 0;
 }
 
-.alertsModalTop button img {
-  width: 16px;
-  height: 16px;
+.alertsCloseBtn img {
+  width: 18px;
+  height: 18px;
+  filter: brightness(0) invert(1);
 }
 
 /* 탭 행: 탭 바 + 전체 읽음 버튼 */
 .alertsTabRow {
   display: flex;
   align-items: center;
+  margin-bottom: 10px;
+}
+
+/* 알림 건수 + 전체 읽음 행 */
+.alertsSubRow {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+}
+
+.alertsTabCount {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* 탭 바 */
@@ -2454,8 +2489,8 @@ button.workPopoverItem:hover {
 }
 
 .alertsTab {
-  height: 30px;
-  padding: 0 14px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: 15px;
   border: 1px solid var(--border-default);
   background: transparent;
@@ -2471,7 +2506,8 @@ button.workPopoverItem:hover {
 
 .alertsTabActive {
   background: var(--color-info-bg);
-  color: var(--text-primary);
+  color: #fff;
+  font-weight: 600;
   border-color: var(--color-info-border);
 }
 
@@ -2500,7 +2536,7 @@ button.workPopoverItem:hover {
 .alertsContents {
   width: 100%;
   height: auto;
-  max-height: 335px;
+  max-height: 300px;
 
   position: relative;
   overflow: hidden;
@@ -2510,7 +2546,7 @@ button.workPopoverItem:hover {
 .alertsScroll {
   max-height: inherit;
   overflow-y: scroll;
-  padding-right: 3px; /* 오른쪽 커스텀 스크롤바 공간 */
+  padding-right: 14px; /* 오른쪽 커스텀 스크롤바 공간 */
   padding-bottom: 10px;
   box-sizing: border-box;
 
@@ -2519,6 +2555,11 @@ button.workPopoverItem:hover {
 }
 .alertsScroll::-webkit-scrollbar {
   display: none; /* Chrome/Edge */
+}
+
+.alertsInner {
+  display: flex;
+  flex-direction: column;
 }
 
 .scrollTrack {
@@ -2545,7 +2586,7 @@ button.workPopoverItem:hover {
 }
 
 .alertsItem {
-  width: 398px;
+  width: 100%;
 
   background: var(--surface-5);
   border-radius: 5px;
@@ -2560,7 +2601,7 @@ button.workPopoverItem:hover {
 }
 
 .alertsItem:not(:last-child) {
-  margin-bottom: 9px;
+  margin-bottom: 8px;
 }
 
 .alertsItem .topContents {
@@ -2656,6 +2697,20 @@ button.workPopoverItem:hover {
 
 .aletsStatusEmpty {
   width: 0;
+}
+
+.aletsRobotName {
+  color: #38bdf8;
+  margin-right: 5px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.aletsRobotName::after {
+  content: '|';
+  margin-left: 6px;
+  color: rgba(255, 255, 255, 0.15);
+  font-weight: 400;
 }
 
 .aletsContent {

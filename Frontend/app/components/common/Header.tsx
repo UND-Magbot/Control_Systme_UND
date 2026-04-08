@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useSidebar } from "@/app/context/SidebarContext";
 import { useAlertContext } from "@/app/context/AlertContext";
 import { useAuth } from "@/app/context/AuthContext";
+import PasswordChangeModal from "@/app/components/modal/PasswordChangeModal";
 
 type HeaderProps = {
   onAlertClick?: () => void;
@@ -22,6 +23,7 @@ export default function Header({ onAlertClick }: HeaderProps) {
     const [time, setTime] = useState("");
     const router = useRouter();
     const [isAdminOpen, setIsAdminOpen] = useState(false);
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
     const adminRef = useRef<HTMLDivElement>(null);
     const adminBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -123,6 +125,17 @@ export default function Header({ onAlertClick }: HeaderProps) {
                                 <button
                                     role="menuitem"
                                     className={styles.adminMenuItem}
+                                    onClick={() => {
+                                        setIsAdminOpen(false);
+                                        setIsPasswordModalOpen(true);
+                                    }}
+                                >
+                                    <img src="/icon/setting_w.png" alt="" className={styles.adminMenuIcon} />
+                                    <span>비밀번호 변경</span>
+                                </button>
+                                <button
+                                    role="menuitem"
+                                    className={styles.adminMenuItem}
                                     onClick={handleLogout}
                                 >
                                     <img src="/icon/log_out_w.png" alt="" className={styles.adminMenuIcon} />
@@ -133,6 +146,10 @@ export default function Header({ onAlertClick }: HeaderProps) {
                     </div>
                 </div>
             </div>
+
+            {isPasswordModalOpen && (
+                <PasswordChangeModal onClose={() => setIsPasswordModalOpen(false)} />
+            )}
         </header>
     )
 }

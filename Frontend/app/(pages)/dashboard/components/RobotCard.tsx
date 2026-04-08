@@ -42,15 +42,22 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
   const typeIdx = ROBOT_TYPE_INDEX[robot.type] ?? 0;
   const dotClass = styles[`dot${robot.network}`] ?? styles.dotOffline;
   const badgeClass = styles[`badge${robot.network}`] ?? styles.badgeOffline;
+  const isOnline = robot.network === "Online";
 
   // 작업 상태 파생
   const taskStatus = (() => {
-    if (robot.power === "-") return { label: "미확인", className: styles.taskIdle };
-    if (robot.network === "Error") return { label: "오류", className: styles.taskError };
-    if (robot.isCharging) return { label: "충전 중", className: styles.taskCharging };
-    if (robot.dockingTime > 0) return { label: "도킹 중", className: styles.taskDocking };
-    if (robot.tasks.length > 0) return { label: "작업 중", className: styles.taskWorking };
-    return { label: "대기 중", className: styles.taskIdle };
+    if (robot.power === "-") return { label: "미확인", className: styles.taskIdle, tooltip: "" };
+    if (robot.network === "Offline") return { label: "-", className: styles.taskIdle, tooltip: "" };
+    if (robot.network === "Error") return { label: "오류", className: styles.taskError, tooltip: "" };
+    // 충전 관련 상태 (chargeState: 1=부두 이동, 2=충전 중, 3=나가기, 4=오류, 5=전류 없음)
+    if (robot.chargeState === 4) return { label: "충전 오류", className: styles.taskError, tooltip: robot.chargeErrorMsg ?? "" };
+    if (robot.chargeState === 5) return { label: "전류 없음", className: styles.taskError, tooltip: "부두에 있지만 전류가 흐르지 않음" };
+    if (robot.chargeState === 1) return { label: "부두로 이동", className: styles.taskDocking, tooltip: "" };
+    if (robot.chargeState === 2) return { label: "충전 중", className: styles.taskCharging, tooltip: "" };
+    if (robot.chargeState === 3) return { label: "부두에서 나가기", className: styles.taskDocking, tooltip: "" };
+    if (robot.dockingTime > 0) return { label: "도킹 중", className: styles.taskDocking, tooltip: "" };
+    if (robot.tasks.length > 0) return { label: "작업 중", className: styles.taskWorking, tooltip: "" };
+    return { label: "대기 중", className: styles.taskIdle, tooltip: "" };
   })();
 
   const [placeModalOpen, setPlaceModalOpen] = useState(false);
@@ -132,7 +139,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
             <span className={styles.floorLabel}>
               {robotLocation.floor}{robotLocation.placeName ? ` · ${robotLocation.placeName}` : ""}
             </span>
-            <span className={`${styles.taskBadge} ${taskStatus.className}`}>{taskStatus.label}</span>
+            <span className={`${styles.taskBadge} ${taskStatus.className}`} title={taskStatus.tooltip || undefined}>{taskStatus.label}</span>
           </div>
 
           {/* 선택된 카드에만 액션 버튼 표시 */}
@@ -140,12 +147,12 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
             <div className={styles.actionRow}>
               {canControlRobot && (
                 <>
-                  <button className={styles.actionBtn} onClick={handleScheduleReturn}>작업 복귀</button>
-                  <button className={styles.actionBtn} onClick={handleChargeMove}>충전소 이동</button>
-                  <button className={styles.actionBtn} onClick={handlePlaceMove}>장소 이동</button>
+                  <button className={styles.actionBtn} onClick={handleScheduleReturn} disabled={!isOnline}>작업 복귀</button>
+                  <button className={styles.actionBtn} onClick={handleChargeMove} disabled={!isOnline}>충전소 이동</button>
+                  <button className={styles.actionBtn} onClick={handlePlaceMove} disabled={!isOnline}>장소 이동</button>
                 </>
               )}
-              <button className={`${styles.actionBtn} ${styles.actionBtnDanger}`} onClick={handleEmergencyStop}>긴급 정지</button>
+              <button className={`${styles.actionBtn} ${styles.actionBtnDanger}`} onClick={handleEmergencyStop} disabled={!isOnline}>긴급 정지</button>
             </div>
           )}
         </div>

@@ -12,13 +12,14 @@ from app.auth.constants import (
 )
 
 
-def create_access_token(user_id: int, login_id: str, username: str, role: int) -> str:
+def create_access_token(user_id: int, login_id: str, username: str, role: int, token_version: int = 0) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
         "login_id": login_id,
         "username": username,
         "role": role,
+        "ver": token_version,
         "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         "iat": now,
         "jti": uuid.uuid4().hex,

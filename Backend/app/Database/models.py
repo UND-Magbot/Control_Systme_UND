@@ -47,7 +47,7 @@ class LocationInfo(Base):
     UserId = Column(Integer)
     RobotName = Column(String(100))
     LacationName = Column(String(100))
-    Floor = Column(String(50))
+    FloorId = Column(Integer, nullable=False)
     LocationX = Column(Double)
     LocationY = Column(Double)
     Yaw = Column(Double, default=0.0)
@@ -251,8 +251,8 @@ class RobotMapInfo(Base):
     __tablename__ = "robot_map_info"
     id = Column(Integer, primary_key=True, index=True)
     BusinessId = Column(Integer, nullable=False)
-    AreaId = Column(Integer, nullable=False)
-    AreaName = Column(String(100), nullable=False)   # 영역 이름 (사용자 입력)
+    FloorId = Column(Integer, nullable=False)
+    MapName = Column(String(100), nullable=False)   # 영역 이름 (사용자 입력)
     PgmFilePath = Column(String(300))
     YamlFilePath = Column(String(300))
     ImgFilePath = Column(String(300))
@@ -328,6 +328,7 @@ class RobotModule(Base):
     parent = relationship("RobotModule", remote_side="RobotModule.id", uselist=False)
     children = relationship("RobotModule", back_populates="parent", cascade="all, delete-orphan")
     camera_info = relationship("ModuleCameraInfo", back_populates="module", uselist=False, cascade="all, delete-orphan")
+    recordings = relationship("RecordingInfo", back_populates="module", cascade="all, delete-orphan")
 
 
 # =========================
@@ -366,8 +367,35 @@ class RobotLastStatus(Base):
     PosX = Column(Double, nullable=True)
     PosY = Column(Double, nullable=True)
     PosYaw = Column(Double, nullable=True)
-    AreaId = Column(Integer, nullable=True)
+    CurrentFloorId = Column(Integer, nullable=True)
     # Heartbeat
     LastHeartbeat = Column(DateTime, nullable=True)
     CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
     UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# =========================
+# 녹화 정보
+# =========================
+class RecordingInfo(Base):
+    __tablename__ = "recording_info"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    RobotId       = Column(Integer, ForeignKey("robot_info.id", ondelete="CASCADE"), nullable=False)
+    ModuleId      = Column(Integer, ForeignKey("robot_module.id", ondelete="CASCADE"), nullable=False)
+    ScheduleId    = Column(Integer, ForeignKey("schedule_info.id", ondelete="SET NULL"), nullable=True)
+    GroupId       = Column(String(36), nullable=False, index=True)   # UUID — 같은 녹화 세션 묶음
+    RecordType    = Column(String(10), nullable=False)               # "auto" | "manual"
+    VideoPath     = Column(String(500), nullable=True)
+    ThumbnailPath = Column(String(500), nullable=True)
+    VideoSize     = Column(Integer, nullable=True)                   # bytes
+    Status        = Column(String(20), nullable=False, default="recording")  # recording|completed|error|archived
+    ErrorReason   = Column(String(200), nullable=True)               # 에러 시 사유
+    RecordStart   = Column(DateTime, nullable=False)
+    RecordEnd     = Column(DateTime, nullable=True)
+    CreatedAt     = Column(DateTime, server_default=func.now(), nullable=False)
+    DeletedAt     = Column(DateTime, nullable=True, default=None)    # soft delete
+
+    module   = relationship("RobotModule", back_populates="recordings")
+    robot    = relationship("RobotInfo")
+    schedule = relationship("ScheduleInfo")

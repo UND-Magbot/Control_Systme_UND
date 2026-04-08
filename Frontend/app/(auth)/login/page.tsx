@@ -15,7 +15,7 @@ type LoginErrors = {
   password?: string;
 };
 
-const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,12}$/;
+const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,16}$/;
 
 export default function Login() {
     const router = useRouter();
@@ -60,7 +60,7 @@ export default function Login() {
 
         // 비밀번호 정규식 검증 (빈 값이 아닐 때만)
         if (password && !PASSWORD_REGEX.test(password)) {
-            newErrors.password = "영문, 숫자, 특수문자 조합 6~12자리로 입력하세요";
+            newErrors.password = "영문, 숫자, 특수문자 조합 6~16자리로 입력하세요";
         }
 
         if (Object.keys(newErrors).length > 0) {

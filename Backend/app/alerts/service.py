@@ -116,16 +116,18 @@ class AlertService:
             self.db.add(read_status)
             self.db.commit()
 
-    def mark_all_read(self, UserId: int = 0):
-        unread_alerts = (
+    def mark_all_read(self, UserId: int = 0, alert_type: str = None):
+        query = (
             self.db.query(Alert.id)
             .outerjoin(
                 AlertReadStatus,
                 (AlertReadStatus.AlertId == Alert.id) & (AlertReadStatus.UserId == UserId),
             )
             .filter(Alert.DeletedAt.is_(None), AlertReadStatus.id.is_(None))
-            .all()
         )
+        if alert_type:
+            query = query.filter(Alert.Type == alert_type)
+        unread_alerts = query.all()
 
         for (alert_id,) in unread_alerts:
             self.db.add(AlertReadStatus(AlertId=alert_id, UserId=UserId))

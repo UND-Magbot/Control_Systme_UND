@@ -239,7 +239,6 @@
 
 .badgeNotice   { background-color: var(--color-success-bg); }
 .badgeSchedule { background-color: var(--color-warning-badge); }
-.badgeEmerg    { background-color: var(--color-error-badge); }
 .badgeRobot    { background-color: var(--color-info-badge); }
 
 /* 상태 태그 */
@@ -284,6 +283,21 @@
     line-height: 1.5;
     font-size: var(--font-size-md);
     margin: 0;
+}
+
+/* 리스트 로봇명 */
+.alertRobotName {
+    color: #38bdf8;
+    margin-right: 6px;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
+
+.alertRobotName::after {
+    content: '|';
+    margin-left: 6px;
+    color: rgba(255, 255, 255, 0.15);
+    font-weight: 400;
 }
 
 /* 리스트 타이틀 (볼드) */
@@ -423,11 +437,6 @@
     white-space: pre-wrap;
 }
 
-.detailRobotName {
-    color: var(--text-muted);
-    font-size: var(--font-size-md);
-}
-
 .detailNoticeBody {
     font-size: var(--font-size-md);
     color: var(--text-secondary);
@@ -438,6 +447,226 @@
     background: var(--surface-3);
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* 프로그레스 바 */
+.progressBar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.progressInfo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.progressStatusActive {
+    color: var(--color-info);
+    font-weight: 600;
+}
+
+.progressStatusDone {
+    color: #4ade80;
+    font-weight: 600;
+}
+
+.progressStatusError {
+    color: #f87171;
+    font-weight: 600;
+}
+
+.progressTrack {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progressFill {
+    height: 100%;
+    background: var(--color-info);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    min-width: 2px;
+}
+
+.progressFillDone {
+    background: #4ade80;
+}
+
+.progressFillError {
+    background: #f87171;
+}
+
+/* 스케줄 타임라인 */
+.scheduleTimeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.timelineItem {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.timelineItem:last-child {
+    border-bottom: none;
+}
+
+.timelineDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-info-badge);
+    flex-shrink: 0;
+    margin-top: 6px;
+}
+
+.timelineError {
+    color: #f87171;
+    font-weight: 600;
+}
+
+.timelineDotError {
+    background: var(--color-error-badge);
+}
+
+/* 타임라인 헤더 */
+.timelineHeader {
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* 경로 스텝 */
+.routeSteps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.routeStep {
+    display: flex;
+    gap: 12px;
+    min-height: 48px;
+}
+
+.routeStepIndicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+    width: 28px;
+}
+
+.routeStepDot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.routeStepDotDone {
+    background: #4ade80;
+    color: #000;
+}
+
+.routeStepDotError {
+    background: #f87171;
+    color: #fff;
+    font-size: 14px;
+    animation: pulse-error 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-error {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
+}
+
+.routeStepDotPending {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.routeStepLine {
+    width: 2px;
+    flex: 1;
+    min-height: 16px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.routeStepLineDone {
+    background: #4ade80;
+}
+
+.routeStepContent {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0 12px;
+    flex: 1;
+}
+
+.routeStepContentError {
+    font-weight: 600;
+}
+
+.routeStepContentPending {
+    opacity: 0.45;
+}
+
+.routeStepName {
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+}
+
+.routeStepBadgeDone {
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: rgba(74, 222, 128, 0.15);
+    color: #4ade80;
+    font-weight: 600;
+}
+
+.routeStepBadgeError {
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: rgba(248, 113, 113, 0.15);
+    color: #f87171;
+    font-weight: 600;
+}
+
+.routeErrorDetail {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    border-radius: 8px;
+    color: #f87171;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
 }
 
 .detailMetaLabel {
@@ -588,6 +817,25 @@
   gap: 8px;
 }
 
+.viewLogBtn {
+  height: 28px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 6px;
+  color: #f87171;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.viewLogBtn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
 /* 상세 - 중요도 뱃지 */
 .importanceBadge {
   display: inline-flex;
@@ -656,58 +904,9 @@
   color: var(--color-info);
 }
 
-.attachmentThumbnail {
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 6px;
-  cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  transition: opacity 0.15s;
-  flex-shrink: 0;
-}
-
-.attachmentThumbnail:hover {
-  opacity: 0.8;
-}
-
 .attachmentNoFile {
   color: var(--text-muted);
   font-size: var(--font-size-xs);
-}
-
-.imagePreviewOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  background: rgba(0, 0, 0, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.imagePreviewImg {
-  max-width: 90vw;
-  max-height: 85vh;
-  object-fit: contain;
-  border-radius: 8px;
-}
-
-.imagePreviewClose {
-  position: absolute;
-  top: 16px;
-  right: 20px;
-  background: none;
-  border: none;
-  color: #fff;
-  font-size: 24px;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.imagePreviewClose:hover {
-  opacity: 0.7;
 }
 
 /* === 애니메이션 === */

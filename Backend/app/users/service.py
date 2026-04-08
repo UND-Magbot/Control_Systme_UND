@@ -69,28 +69,34 @@ class UserService:
     # ── 사용자 생성 ──
 
     @staticmethod
-    def create_user(db: Session, login_id: str, password: str, user_name: str, permission: int, admin_id: int, ip_address: str | None = None) -> dict:
+    def create_user(db: Session, login_id: str, password: str, user_name: str, permission: int, admin_id: int,
+                    ip_address: str | None = None, business_id: int | None = None, menu_ids: list[str] | None = None) -> dict:
         # 중복 체크
         existing = db.query(UserInfo).filter(UserInfo.LoginId == login_id, UserInfo.DeletedAt.is_(None)).first()
         if existing:
             raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다")
 
         if not validate_password_format(password):
-            raise HTTPException(status_code=422, detail="영문, 숫자, 특수문자 조합 6~12자리로 입력하세요")
+            raise HTTPException(status_code=422, detail="영문, 숫자, 특수문자 조합 6~16자리로 입력하세요")
 
         user = UserInfo(
             LoginId=login_id,
             Password=hash_password(password),
             UserName=user_name,
             Permission=permission,
+            BusinessId=business_id,
             IsActive=1,
         )
         db.add(user)
         db.commit()
         db.refresh(user)
 
+        # 메뉴 권한 자동 설정
+        if menu_ids:
+            UserService.set_permissions(db, user.id, menu_ids, admin_id, ip_address=ip_address)
+
         UserService._write_audit(db, admin_id, "user_created", "user", user.id, ip_address=ip_address,
-                                  detail=json.dumps({"login_id": login_id, "user_name": user_name, "permission": permission}, ensure_ascii=False))
+                                  detail=json.dumps({"login_id": login_id, "user_name": user_name, "permission": permission, "business_id": business_id}, ensure_ascii=False))
 
         return {"id": user.id, "login_id": user.LoginId, "user_name": user.UserName, "permission": user.Permission}
 
@@ -159,7 +165,7 @@ class UserService:
             raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
 
         if not validate_password_format(new_password):
-            raise HTTPException(status_code=422, detail="영문, 숫자, 특수문자 조합 6~12자리로 입력하세요")
+            raise HTTPException(status_code=422, detail="영문, 숫자, 특수문자 조합 6~16자리로 입력하세요")
 
         user.Password = hash_password(new_password)
         user.TokenVersion = (user.TokenVersion or 0) + 1  # 기존 세션 무효화
@@ -222,6 +228,8 @@ class UserService:
                 db.add(UserPermission(UserId=user_id, MenuId=menu_id))
 
         if to_add or to_remove:
+            # 대상 사용자의 토큰 무효화 → 다음 API 호출 시 자동 리프레시로 새 권한 반영
+            user.TokenVersion = (user.TokenVersion or 0) + 1
             db.commit()
 
             # audit 로그 (MenuKey 기반)

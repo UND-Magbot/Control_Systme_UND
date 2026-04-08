@@ -134,8 +134,11 @@ export async function markAlertRead(alertId: number, UserId?: number): Promise<v
   await apiFetch(`/DB/alerts/${alertId}/read${q}`, { method: "PUT" });
 }
 
-export async function markAllAlertsRead(UserId?: number): Promise<void> {
-  const q = UserId != null ? `?UserId=${UserId}` : '';
+export async function markAllAlertsRead(UserId?: number, type?: string): Promise<void> {
+  const params = new URLSearchParams();
+  if (UserId != null) params.set('UserId', String(UserId));
+  if (type) params.set('type', type);
+  const q = params.toString() ? `?${params.toString()}` : '';
   await apiFetch(`/DB/alerts/read-all${q}`, { method: "PUT" });
 }
 

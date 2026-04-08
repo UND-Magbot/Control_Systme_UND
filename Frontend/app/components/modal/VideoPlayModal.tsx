@@ -4,6 +4,7 @@ import styles from './Modal.module.css';
 import React, { useState, useEffect, useRef } from 'react';
 import type { VideoItem } from '@/app/type';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
+import { API_BASE } from '@/app/config';
 
 
 type VideoPlayModalProps = {
@@ -23,6 +24,10 @@ export default function VideoPlayModal({
     const controlsRef = useRef<HTMLDivElement | null>(null);
     const progressBarRef = useRef<HTMLInputElement | null>(null);
     const hideControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // 세그먼트 연속 재생
+    const [segmentIndex, setSegmentIndex] = useState(0);
+    const segments = playedVideo?.segments || [];
 
     // 재생
     const [isPlaying, setIsPlaying] = useState(false);
@@ -147,8 +152,17 @@ export default function VideoPlayModal({
         setIsMuted(nextMuted);
     };
 
-    // 재생 끝났을 때 상태 초기화
+    // 재생 끝났을 때: 다음 세그먼트가 있으면 연속 재생
     const handleEnded = () => {
+        if (segments.length > 1 && segmentIndex < segments.length - 1) {
+            const nextIdx = segmentIndex + 1;
+            setSegmentIndex(nextIdx);
+            if (videoRef.current) {
+                videoRef.current.src = segments[nextIdx].stream_url;
+                videoRef.current.play().catch(() => {});
+            }
+            return;
+        }
         setIsPlaying(false);
         setCurrentTime(0);
         setShowPlayButton(true);
@@ -331,7 +345,7 @@ export default function VideoPlayModal({
                     <video className={styles.videoView}
                             ref={videoRef}
                             autoPlay
-                            src={"/videos/control_system_sample.mp4"}
+                            src={playedVideo?.streamUrl || `${API_BASE}/api/recordings/${playedVideo?.id}/stream`}
                             onLoadedMetadata={handleLoadedMetadata}
                             onTimeUpdate={handleTimeUpdate}
                             onEnded={handleEnded}
@@ -351,8 +365,17 @@ export default function VideoPlayModal({
                     {/* 에러 상태 */}
                     {hasError && (
                         <div className={styles.vpOverlay} onClick={(e) => e.stopPropagation()}>
-                            <span className={styles.vpErrorText}>영상을 불러올 수 없습니다</span>
-                            <button className={styles.vpRetryBtn} onClick={handleRetry}>재시도</button>
+                            <span className={styles.vpErrorText}>
+                                {playedVideo?.status === "error"
+                                    ? "녹화 실패"
+                                    : "영상을 불러올 수 없습니다"}
+                            </span>
+                            {playedVideo?.error_reason && (
+                                <span className={styles.vpErrorReason}>{playedVideo.error_reason}</span>
+                            )}
+                            {playedVideo?.status !== "error" && (
+                                <button className={styles.vpRetryBtn} onClick={handleRetry}>재시도</button>
+                            )}
                         </div>
                     )}
 

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import PermissionGuard from "@/app/components/common/PermissionGuard";
 import styles from './Alerts.module.css';
 import { type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
 import { getAlerts, markAlertRead, markAllAlertsRead, createNotice, updateNotice, deleteNotice, uploadNoticeFile } from '@/app/lib/alertData';
@@ -48,6 +49,12 @@ function getDisplayStatus(item: AlertMockData): 'error' | 'info' | 'event' | nul
   return null;
 }
 
+const statusLabel: Record<string, string> = {
+  error: '오류',
+  info: '정보',
+  event: '이벤트',
+};
+
 function formatAlertDate(date: string): string {
   const datePart = date.slice(2, 10);   // YY-MM-DD
   const timePart = date.slice(11);      // HH:mm
@@ -60,6 +67,7 @@ export default function AlertsPage() {
   const paramTab = searchParams.get('tab') as TabKey | null;
   const paramId = searchParams.get('id');
   const setPageReady = usePageReady();
+  const router = useRouter();
 
   const isAdmin = true;
   const [currentUserId, setCurrentUserId] = useState<number>(0);
@@ -215,8 +223,12 @@ export default function AlertsPage() {
 
   const handleMarkAllRead = async () => {
     try {
-      await markAllAlertsRead();
-      setAlerts(prev => prev.map(a => ({ ...a, isRead: true })));
+      const filterType = tabTypeMap[activeTab] ?? undefined;
+      await markAllAlertsRead(undefined, filterType ?? undefined);
+      setAlerts(prev => prev.map(a => {
+        if (!filterType || a.type === filterType) return { ...a, isRead: true };
+        return a;
+      }));
       window.dispatchEvent(new Event('alert-read-changed'));
     } catch {
       // API 실패 시 상태 변경하지 않음
@@ -323,6 +335,7 @@ export default function AlertsPage() {
   };
 
   return (
+    <PermissionGuard requiredPermissions={["alert-total", "alert-schedule", "alert-robot", "alert-notice"]}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div className="page-header">
         <h1>알림 관리</h1>
@@ -425,10 +438,13 @@ export default function AlertsPage() {
                           : displayStatus === 'info' ? styles.statusInfo
                           : styles.statusEvent
                         }`}>
-                          {displayStatus}
+                          {statusLabel[displayStatus]}
                         </span>
                       )}
                       <p className={styles.alertContent}>
+                        {item.robotName && (
+                          <span className={styles.alertRobotName}>{item.robotName}</span>
+                        )}
                         {item.title && item.title !== item.content && (
                           <span className={styles.alertTitle}>{item.title}</span>
                         )}
@@ -477,12 +493,20 @@ export default function AlertsPage() {
                         : status === 'info' ? styles.statusInfo
                         : styles.statusEvent
                       }`}>
-                        {status}
+                        {statusLabel[status]}
                       </span>
                     ) : null;
                   })()}
                 </div>
                 <div className={styles.detailHeaderBtns}>
+                  {selectedAlert.status === 'error' && (
+                    <button
+                      className={styles.viewLogBtn}
+                      onClick={() => router.push(`/dataManagement?tab=log&search=${encodeURIComponent(selectedAlert.robotName || '')}`)}
+>
+                      상세 로그
+                    </button>
+                  )}
                   {isAdmin && selectedAlert.type === 'Notice' && (
                     <>
                       <button className={styles.noticeEditBtn} onClick={handleOpenEditNotice}>
@@ -583,7 +607,118 @@ export default function AlertsPage() {
 
                 {selectedAlert.detail && (
                   <div className={styles.detailNoticeBody}>
-                    {selectedAlert.detail}
+                    {selectedAlert.type === 'Schedule' ? (() => {
+                      const lines = selectedAlert.detail.split('\n').filter(Boolean);
+                      const arrivals = lines.filter(l => l.includes('도착'));
+                      const totalMatch = lines[0]?.match(/(\d+)개 포인트/);
+                      const total = totalMatch ? Number(totalMatch[1]) : 0;
+                      const arrived = arrivals.length;
+                      const hasError = lines.some(l => l.startsWith('❌'));
+                      const errorLine = lines.find(l => l.startsWith('❌'));
+                      const isComplete = selectedAlert.content === '네비게이션 완료';
+
+                      // "경로: A → B → C" 라인에서 장소명 추출
+                      const routeLine = lines.find(l => l.startsWith('경로:'));
+                      const routeNames = routeLine
+                        ? routeLine.replace('경로:', '').trim().split('→').map(s => s.trim())
+                        : [];
+
+                      // 도착한 장소명 목록 (로그에서 추출)
+                      const arrivedNames = arrivals.map(l => l.replace(/\s*도착.*$/, '').trim());
+
+                      // 오류 발생 장소 인덱스 (도착한 다음 지점)
+                      const errorAtIndex = hasError ? arrived : -1;
+
+                      return (
+                        <>
+                          {/* 첫 줄: 스케줄/경로 제목 */}
+                          <div className={styles.timelineHeader}>
+                            {lines[0]}
+                          </div>
+
+                          {total > 0 && (
+                            <div className={styles.progressBar}>
+                              <div className={styles.progressInfo}>
+                                <span>{arrived}/{total} 완료</span>
+                                <span className={
+                                  hasError ? styles.progressStatusError
+                                  : isComplete ? styles.progressStatusDone
+                                  : styles.progressStatusActive
+                                }>
+                                  {hasError ? '오류 중단' : isComplete ? '완료' : '진행 중'}
+                                </span>
+                              </div>
+                              <div className={styles.progressTrack}>
+                                <div
+                                  className={`${styles.progressFill} ${hasError ? styles.progressFillError : isComplete ? styles.progressFillDone : ''}`}
+                                  style={{ width: `${total > 0 ? (arrived / total) * 100 : 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 경로 전체 스텝 표시 */}
+                          {routeNames.length > 0 ? (
+                            <div className={styles.routeSteps}>
+                              {routeNames.map((name, i) => {
+                                const isDone = arrivedNames.includes(name) || i < arrived;
+                                const isErrorPoint = i === errorAtIndex;
+                                const isPending = !isDone && !isErrorPoint;
+
+                                return (
+                                  <div key={i} className={styles.routeStep}>
+                                    <div className={styles.routeStepIndicator}>
+                                      <span className={`${styles.routeStepDot} ${
+                                        isErrorPoint ? styles.routeStepDotError
+                                        : isDone ? styles.routeStepDotDone
+                                        : styles.routeStepDotPending
+                                      }`}>
+                                        {isErrorPoint ? '!' : isDone ? '✓' : (i + 1)}
+                                      </span>
+                                      {i < routeNames.length - 1 && (
+                                        <span className={`${styles.routeStepLine} ${
+                                          isDone && !isErrorPoint ? styles.routeStepLineDone : ''
+                                        }`} />
+                                      )}
+                                    </div>
+                                    <div className={`${styles.routeStepContent} ${
+                                      isErrorPoint ? styles.routeStepContentError
+                                      : isPending ? styles.routeStepContentPending : ''
+                                    }`}>
+                                      <span className={styles.routeStepName}>{name}</span>
+                                      {isDone && <span className={styles.routeStepBadgeDone}>도착</span>}
+                                      {isErrorPoint && <span className={styles.routeStepBadgeError}>오류 중단</span>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            /* 경로 정보 없는 기존 로그: 기존 타임라인 방식 */
+                            <div className={styles.scheduleTimeline}>
+                              {lines.map((line, i) => {
+                                const isError = line.startsWith('❌');
+                                return (
+                                  <div key={i} className={`${styles.timelineItem} ${isError ? styles.timelineError : ''}`}>
+                                    <span className={`${styles.timelineDot} ${isError ? styles.timelineDotError : ''}`} />
+                                    <span>{line}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* 오류 상세 표시 */}
+                          {errorLine && (
+                            <div className={styles.routeErrorDetail}>
+                              {errorLine}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })() : (
+                      selectedAlert.detail
+                    )}
                   </div>
                 )}
 
@@ -622,5 +757,6 @@ export default function AlertsPage() {
         />
       )}
     </div>
+    </PermissionGuard>
   );
 }

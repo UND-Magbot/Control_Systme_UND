@@ -15,6 +15,10 @@ type StatusEntry = {
   network: "Online" | "Offline" | "Error" | "-";
   power: "On" | "Off" | "-";
   is_charging: boolean;
+  charge_state: number;
+  charge_state_label: string;
+  charge_error_code: number;
+  charge_error_msg: string | null;
   timestamp: number;
   position: { x: number; y: number; yaw: number; timestamp: number };
 };
@@ -83,6 +87,10 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
               serialLeft: (bat.serialLeft as string) ?? r.serialLeft,
               serialRight: (bat.serialRight as string) ?? r.serialRight,
               isCharging: match.is_charging ?? r.isCharging,
+              chargeState: match.charge_state ?? r.chargeState,
+              chargeStateLabel: match.charge_state_label ?? r.chargeStateLabel,
+              chargeErrorCode: match.charge_error_code ?? r.chargeErrorCode,
+              chargeErrorMsg: match.charge_error_msg ?? r.chargeErrorMsg,
               network: match.network,
               power: match.power,
             };
@@ -93,6 +101,10 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
             ...r,
             battery: soc ?? r.battery,
             isCharging: match.is_charging ?? r.isCharging,
+            chargeState: match.charge_state ?? r.chargeState,
+            chargeStateLabel: match.charge_state_label ?? r.chargeStateLabel,
+            chargeErrorCode: match.charge_error_code ?? r.chargeErrorCode,
+            chargeErrorMsg: match.charge_error_msg ?? r.chargeErrorMsg,
             network: match.network,
             power: match.power,
           };

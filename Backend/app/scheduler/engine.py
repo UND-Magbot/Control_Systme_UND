@@ -221,7 +221,8 @@ def _execute_schedule(schedule: ScheduleInfo) -> bool:
         if not path:
             print(f"[SCHEDULER] 경로 '{schedule.WayName}'을 찾을 수 없음 — 스케줄 #{schedule.id}")
             log_event("error", "nav_error",
-                      f"스케줄 실행 실패: 경로 '{schedule.WayName}' 없음",
+                      "스케줄 실행 실패: 경로를 찾을 수 없습니다",
+                      error_json=f'{{"wayName": "{schedule.WayName}"}}',
                       robot_id=get_robot_id(), robot_name=get_robot_name())
             # 상태를 오류로 변경
             sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule.id).first()
@@ -242,7 +243,8 @@ def _execute_schedule(schedule: ScheduleInfo) -> bool:
             if not place:
                 print(f"[SCHEDULER] 장소 '{name}' 없음 — 스케줄 #{schedule.id}")
                 log_event("error", "nav_error",
-                          f"스케줄 실행 실패: 장소 '{name}' 없음",
+                          "스케줄 실행 실패: 등록되지 않은 장소입니다",
+                          error_json=f'{{"placeName": "{name}"}}',
                           robot_id=get_robot_id(), robot_name=get_robot_name())
                 sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule.id).first()
                 if sched:
@@ -262,7 +264,7 @@ def _execute_schedule(schedule: ScheduleInfo) -> bool:
                 yaw = math.atan2(ny - y, nx - x)
             else:
                 yaw = place.Yaw or 0.0
-            waypoints.append({"x": x, "y": y, "yaw": round(yaw, 3)})
+            waypoints.append({"x": x, "y": y, "yaw": round(yaw, 3), "name": place.LacationName})
 
         # 네비게이션 시작 (send_move 모듈의 전역 변수 직접 설정)
         nav_mod.waypoints_list = waypoints
@@ -270,9 +272,11 @@ def _execute_schedule(schedule: ScheduleInfo) -> bool:
         nav_mod.is_navigating = True
         _signal_nav_reset(full=True)
 
+        route_names = " → ".join(place_names)
         print(f"[SCHEDULER] 스케줄 #{schedule.id} 실행: {schedule.WayName} ({len(waypoints)}개 포인트)")
         log_event("schedule", "path_move_start",
                   f"스케줄 실행: {schedule.WorkName} — 경로 {schedule.WayName} ({len(waypoints)}개 포인트)",
+                  detail=f"경로: {route_names}",
                   robot_id=get_robot_id(), robot_name=get_robot_name())
 
         # 스케줄 상태 업데이트 + 실행 시작 시점에 LastRunDate 선점 기록 (중복 트리거 방지)
@@ -282,13 +286,21 @@ def _execute_schedule(schedule: ScheduleInfo) -> bool:
             sched.LastRunDate = datetime.now()
             db.commit()
 
+        # 자동 녹화 시작
+        try:
+            from app.recording.manager import start_auto_recording
+            start_auto_recording(get_robot_id())
+        except Exception as e:
+            print(f"[SCHEDULER] 자동 녹화 시작 실패: {e}")
+
         # 첫 웨이포인트 전송
         navigation_send_next()
         return True
 
     except Exception as e:
         print(f"[SCHEDULER ERR] 스케줄 #{schedule.id} 실행 실패: {e}")
-        log_event("error", "nav_error", f"스케줄 실행 오류: {e}",
+        log_event("error", "nav_error", "스케줄 실행 중 오류 발생",
+                  error_json=str(e),
                   robot_id=get_robot_id(), robot_name=get_robot_name())
         db.rollback()
         return False
@@ -345,8 +357,13 @@ def on_navigation_complete():
 
         db.commit()
         print(f"[SCHEDULER] 스케줄 #{schedule_id} 완료 → 상태: {sched.TaskStatus} (실행 {sched.RunCount}회)")
+        import app.navigation.send_move as nav_mod
+        route_summary = " → ".join(
+            wp.get("name", f"WP{i+1}") for i, wp in enumerate(nav_mod.waypoints_list)
+        ) if nav_mod.waypoints_list else ""
         log_event("schedule", "nav_complete",
                   f"스케줄 완료: {sched.WorkName} (실행 {sched.RunCount}회)",
+                  detail=f"경로: {route_summary}" if route_summary else None,
                   robot_id=get_robot_id(), robot_name=get_robot_name())
 
     except Exception as e:
