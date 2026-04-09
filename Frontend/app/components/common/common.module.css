@@ -21,7 +21,7 @@
     position: relative;
 }
 
-.alarm-icon button {
+.alarm-icon > button {
     border: none;
     background: transparent;
 }
@@ -137,6 +137,10 @@
     align-items: center;
     gap: 8px;
     opacity: 0.7;
+}
+
+.alertWrapper {
+    position: relative;
 }
 
 .adminWrapper {

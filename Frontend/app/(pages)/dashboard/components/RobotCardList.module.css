@@ -9,7 +9,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--surface-2);
   border: 1px solid var(--border-subtle);
   margin-bottom: 10px;
@@ -270,12 +270,14 @@
 /* ── 액션 버튼 (선택된 카드) ── */
 .actionRow {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 6px;
 }
 
 .actionBtn {
-  flex: 1;
+  flex: 1 1 calc(50% - 2px);
+  min-width: 0;
   padding: 5px 2px;
   border: 1px solid var(--border-subtle);
   border-radius: 6px;

@@ -56,7 +56,6 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
     isPanning,
     onMouseDown,
     onMouseMove,
-    onWheel,
     endPan,
     handleZoom,
     worldToPixelScreen,
@@ -146,7 +145,6 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
       onMouseMove={handleMouseMove}
       onMouseUp={endPan}
       onMouseLeave={endPan}
-      onWheel={onWheel}
       onClick={handleClick}
     >
       <div

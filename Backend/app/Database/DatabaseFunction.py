@@ -907,6 +907,12 @@ def _build_module_tree(modules: list[RobotModule], robot: RobotInfo) -> list[dic
         else:
             roots.append(node)
 
+    sort_key = lambda n: (n["sortOrder"], n["id"])
+    roots.sort(key=sort_key)
+    for node in by_id.values():
+        if node["children"]:
+            node["children"].sort(key=sort_key)
+
     return roots
 
 
@@ -923,7 +929,7 @@ def get_robot_modules(
     modules = (
         db.query(RobotModule)
         .filter(RobotModule.RobotId == robot_id)
-        .order_by(RobotModule.SortOrder)
+        .order_by(RobotModule.SortOrder, RobotModule.id)
         .all()
     )
 

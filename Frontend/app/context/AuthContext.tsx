@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { API_BASE } from "@/app/config";
+import { resetSessionExpired } from "@/app/lib/api";
 
 export type AuthUser = {
   id: number;
@@ -18,7 +19,7 @@ type AuthContextType = {
   isLoading: boolean;
   isManualLogout: React.MutableRefObject<boolean>;
   hasPermission: (menuId: string) => boolean;
-  login: (loginId: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (loginId: string, password: string, autoLogin?: boolean) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -73,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 로그인
   const login = useCallback(
-    async (loginId: string, password: string) => {
+    async (loginId: string, password: string, autoLogin: boolean = false) => {
       try {
         const res = await fetch(`${API_BASE}/api/auth/login`, {
           method: "POST",
@@ -82,11 +83,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             "Content-Type": "application/json",
             "X-Requested-With": "XMLHttpRequest",
           },
-          body: JSON.stringify({ login_id: loginId, password }),
+          body: JSON.stringify({ login_id: loginId, password, auto_login: autoLogin }),
         });
 
         if (res.ok) {
           const data = await res.json();
+          resetSessionExpired();
           setUser(data.user);
           return { success: true };
         }
@@ -115,13 +117,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  // 앱 시작 시 인증 확인
+  // 앱 시작 시 인증 확인 (1회만 실행)
   useEffect(() => {
     (async () => {
       await refreshUser();
       setIsLoading(false);
     })();
-  }, [refreshUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AuthContext.Provider

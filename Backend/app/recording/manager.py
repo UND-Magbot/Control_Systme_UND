@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from app.Database.database import SessionLocal
-from app.Database.models import RecordingInfo
+from app.Database.models import RecordingInfo, RobotInfo
 from app.recording.worker import CameraRecordingWorker
 from app.recording import service as rec_service
 
@@ -13,7 +13,8 @@ from app.recording import service as rec_service
 _sessions: dict[tuple, dict] = {}   # (robot_id, module_id) → SessionInfo
 _lock = threading.Lock()
 
-RECORDINGS_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "recordings")
+RECORDINGS_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "recordings")
+print(f"[REC] RECORDINGS_BASE = {RECORDINGS_BASE}")
 
 
 def _build_output_dir(robot_id: int) -> str:
@@ -62,13 +63,16 @@ def start_auto_recording(robot_id: int):
         group_id = str(uuid.uuid4())
         schedule_id = _get_current_schedule_id()
 
+        # 로봇 정보 1회 조회 후 재사용 (모듈별 중복 조회 방지)
+        robot = db.query(RobotInfo).filter(RobotInfo.id == robot_id).first()
+
         for module in modules:
             key = (robot_id, module.id)
             with _lock:
                 if key in _sessions:
                     continue  # 이미 녹화 중
 
-            rtsp_url = rec_service.build_rtsp_url(db, module)
+            rtsp_url = rec_service.build_rtsp_url(db, module, robot=robot)
             if not rtsp_url:
                 reason = f"RTSP URL 생성 실패 (CameraIP/RobotIP 미설정)"
                 print(f"[REC] module_id={module.id}: {reason}")
@@ -109,12 +113,15 @@ def start_auto_recording(robot_id: int):
         db.close()
 
 
-def stop_all_recording(robot_id: int):
-    """네비게이션 종료 시 호출 — 해당 로봇의 모든 녹화 세션 중지"""
+def stop_all_recording(robot_id: int = None):
+    """네비게이션 종료 시 호출 — 해당 로봇(또는 전체)의 모든 녹화 세션 중지"""
     db = SessionLocal()
     try:
         with _lock:
-            keys = [k for k in _sessions if k[0] == robot_id]
+            if robot_id:
+                keys = [k for k in _sessions if k[0] == robot_id]
+            else:
+                keys = list(_sessions.keys())
         for key in keys:
             _stop_session(key, db)
         if keys:
@@ -141,7 +148,8 @@ def start_manual_recording(robot_id: int, module_id: int) -> dict:
         if not module:
             return {"error": "카메라 모듈을 찾을 수 없습니다"}
 
-        rtsp_url = rec_service.build_rtsp_url(db, module)
+        robot = db.query(RobotInfo).filter(RobotInfo.id == robot_id).first()
+        rtsp_url = rec_service.build_rtsp_url(db, module, robot=robot)
         if not rtsp_url:
             return {"error": "RTSP URL 생성 실패"}
 
@@ -249,13 +257,19 @@ def _stop_session(key: tuple, db):
     worker.stop()
 
     try:
-        # 실제 녹화 파일이 생성되었는지 확인
+        # 실제 녹화 파일이 생성되었는지 확인 (이 세션의 file_prefix로 정확히 매칭)
         rec = db.query(RecordingInfo).filter(RecordingInfo.id == info["db_record_id"]).first()
         has_files = False
         total_size = 0
+        prefix = worker.file_prefix  # e.g. "10_cam2_auto_20260408_145901"
         if rec and rec.VideoPath and os.path.isdir(rec.VideoPath):
-            mp4_files = [f for f in os.listdir(rec.VideoPath)
-                         if f.endswith(".mp4") and f"cam{key[1]}" in f]
+            if prefix:
+                mp4_files = [f for f in os.listdir(rec.VideoPath)
+                             if f.endswith(".mp4") and f.startswith(prefix)]
+            else:
+                # fallback: prefix 없으면 cam 기준
+                mp4_files = [f for f in os.listdir(rec.VideoPath)
+                             if f.endswith(".mp4") and f"cam{key[1]}" in f]
             has_files = len(mp4_files) > 0
             total_size = sum(
                 os.path.getsize(os.path.join(rec.VideoPath, f))

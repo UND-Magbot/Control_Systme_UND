@@ -40,3 +40,11 @@ def get_statistics(
         robot_type=robot_type,
         robot_name=robot_name,
     )
+
+
+@router.get("/statistics/earliest-date")
+def get_earliest_date(
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_permission("statistics")),
+):
+    return StatisticsService(db).get_earliest_date()

@@ -9,6 +9,7 @@ type NoticeDetail = {
   UserName: string | null;
   AttachmentName: string | null;
   AttachmentUrl: string | null;
+  AttachmentSize: number | null;
 };
 
 type AlertApiItem = {
@@ -54,8 +55,8 @@ function toAlertMockData(item: AlertApiItem): AlertMockData {
 
   if (isNotice) {
     title = item.notice?.Title ?? undefined;
-    content = item.notice?.Title ?? item.Content;
-    detail = item.notice?.Content ?? item.Detail ?? undefined;
+    content = item.notice?.Content ?? item.Content;
+    detail = undefined;
   } else {
     if (item.Detail) {
       // 신규 포맷: Content = 짧은 타이틀, Detail = 상세 메시지
@@ -95,6 +96,7 @@ function toAlertMockData(item: AlertApiItem): AlertMockData {
     importance: (item.notice?.Importance as "high" | "normal") ?? undefined,
     attachmentName: item.notice?.AttachmentName ?? undefined,
     attachmentUrl: item.notice?.AttachmentUrl ?? undefined,
+    attachmentSize: item.notice?.AttachmentSize ?? undefined,
     noticeId: item.NoticeId ?? undefined,
   };
 }
@@ -149,7 +151,7 @@ export async function getUnreadCount(UserId?: number): Promise<UnreadCount> {
   return res.json();
 }
 
-export async function uploadNoticeFile(file: File): Promise<{ original_name: string; stored_name: string; url: string }> {
+export async function uploadNoticeFile(file: File): Promise<{ original_name: string; stored_name: string; url: string; size: number }> {
   const formData = new FormData();
   formData.append("file", file);
   const res = await apiFetch(`/DB/notices/upload`, {
@@ -170,6 +172,7 @@ export async function createNotice(data: {
   UserId?: number;
   AttachmentName?: string;
   AttachmentUrl?: string;
+  AttachmentSize?: number;
 }): Promise<{ status: string; id: number }> {
   const res = await apiFetch(`/DB/notices`, {
     method: "POST",
@@ -189,6 +192,7 @@ export async function updateNotice(noticeId: number, data: {
   Importance?: string;
   AttachmentName?: string;
   AttachmentUrl?: string;
+  AttachmentSize?: number;
 }): Promise<void> {
   const res = await apiFetch(`/DB/notices/${noticeId}`, {
     method: "PUT",

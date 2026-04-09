@@ -162,7 +162,7 @@ export type LogItem = {
     CreatedAt: string;
 }
 
-export type Period = 'today' | '1week' | '1month' | '1year' | 'Total' | null;
+export type Period = 'today' | '3days' | '1week' | '1month' | '1year' | 'Total' | null;
 
 // 도넛 차트에 쓸 공통 타입
 export type RobotType = { 

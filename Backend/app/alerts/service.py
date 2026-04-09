@@ -61,6 +61,16 @@ class AlertService:
             )
             read_set = {r.AlertId for r in read_rows}
 
+        # 공지 작성자 벌크 조회 (N+1 방지)
+        notice_user_ids = {
+            a.notice.UserId for a in alerts
+            if a.Type == "Notice" and a.notice and a.notice.DeletedAt is None and a.notice.UserId
+        }
+        notice_users = (
+            {u.id: u for u in self.db.query(UserInfo).filter(UserInfo.id.in_(notice_user_ids)).all()}
+            if notice_user_ids else {}
+        )
+
         items = []
         for alert in alerts:
             item = {
@@ -77,7 +87,7 @@ class AlertService:
                 "notice": None,
             }
             if alert.Type == "Notice" and alert.notice and alert.notice.DeletedAt is None:
-                user = self.db.query(UserInfo).filter(UserInfo.id == alert.notice.UserId).first()
+                user = notice_users.get(alert.notice.UserId)
                 item["notice"] = {
                     "Title": alert.notice.Title,
                     "Content": alert.notice.Content,
@@ -86,6 +96,7 @@ class AlertService:
                     "UserName": user.UserName if user else None,
                     "AttachmentName": alert.notice.AttachmentName,
                     "AttachmentUrl": alert.notice.AttachmentUrl,
+                    "AttachmentSize": alert.notice.AttachmentSize,
                 }
             items.append(item)
 

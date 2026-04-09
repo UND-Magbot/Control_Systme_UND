@@ -6,6 +6,7 @@ export type LogListResponse = {
   total: number;
   page: number;
   size: number;
+  earliest_date: string | null;
 };
 
 export async function getLogData(params?: {
@@ -29,7 +30,7 @@ export async function getLogData(params?: {
   });
 
   if (!res.ok) {
-    return { items: [], total: 0, page: 1, size: 20 };
+    return { items: [], total: 0, page: 1, size: 20, earliest_date: null };
   }
 
   return res.json();

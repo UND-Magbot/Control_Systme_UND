@@ -31,3 +31,4 @@ class LogListResponse(BaseModel):
     total: int
     page: int
     size: int
+    earliest_date: Optional[str] = None

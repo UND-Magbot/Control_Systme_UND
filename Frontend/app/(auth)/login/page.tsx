@@ -21,6 +21,7 @@ export default function Login() {
     const router = useRouter();
     const { isAuthenticated, isLoading, login } = useAuth();
     const [loginForm, setLoginForm] = useState<LoginForm>({ userId: "", password: "" });
+    const [autoLogin, setAutoLogin] = useState(false);
     const [errors, setErrors] = useState<LoginErrors>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSessionExpired, setIsSessionExpired] = useState(false);
@@ -70,7 +71,7 @@ export default function Login() {
 
         // API 로그인
         setIsSubmitting(true);
-        const result = await login(userId.trim(), password);
+        const result = await login(userId.trim(), password, autoLogin);
         setIsSubmitting(false);
 
         if (!result.success) {
@@ -141,6 +142,21 @@ export default function Login() {
                         />
                         {errors.password && <span className={styles.errorMsg}>{errors.password}</span>}
                     </div>
+
+                    {/* 자동 로그인 */}
+                    <label className={styles.autoLogin}>
+                        <input
+                            type="checkbox"
+                            checked={autoLogin}
+                            onChange={(e) => setAutoLogin(e.target.checked)}
+                        />
+                        <span className={styles.checkbox}>
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </span>
+                        <span>자동 로그인</span>
+                    </label>
 
                     {/* 로그인 버튼 */}
                     <button type="submit" className={styles.loginButton} disabled={isSubmitting}>

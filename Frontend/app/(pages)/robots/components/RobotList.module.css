@@ -129,7 +129,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--surface-2);
   border: 1px solid var(--border-default);
   height: 32px;
@@ -206,6 +206,42 @@
     font-size: var(--font-size-md);
     font-weight: 600;
     letter-spacing: -0.01em;
+}
+
+/* No column */
+.status th:nth-child(1),
+.status td:nth-child(1) {
+    width: 5%;
+}
+
+/* 상태 column */
+.status th:nth-child(3),
+.status td:nth-child(3) {
+    width: 8%;
+}
+
+/* 현재 작업 column 넓게 */
+.status th:nth-child(5),
+.status td:nth-child(5) {
+    width: 20%;
+}
+
+/* 배터리(복귀) column */
+.status th:nth-child(6),
+.status td:nth-child(6) {
+    width: 15%;
+}
+
+/* 전원 column */
+.status th:nth-child(7),
+.status td:nth-child(7) {
+    width: 8%;
+}
+
+/* 정보 column */
+.status th:nth-child(8),
+.status td:nth-child(8) {
+    width: 15%;
 }
 
 .status thead th img {
@@ -1340,6 +1376,29 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: auto;
+}
+
+.pathListBox::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.pathListBox::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pathListBox::-webkit-scrollbar-thumb {
+  background: var(--surface-5);
+  border-radius: 3px;
+}
+
+.pathListBox::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.pathListBox::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .pathPagination {
@@ -1394,12 +1453,14 @@
 }
 
 /* 경로 테이블 컬럼 폭 (이미지 기준) */
+.pathTable { min-width: 580px; }
 .pathTable th:nth-child(1) { width: 15%; }  /* 로봇명 */
 .pathTable th:nth-child(2) { width: 13%; }  /* 작업유형 */
 .pathTable th:nth-child(3) { width: 17%; }  /* 경로명 */
 .pathTable th:nth-child(4) { width: 55%; }  /* 경로순서 */
 
 /* 삭제 모드: 체크박스 컬럼 추가 */
+.pathTableDelete { min-width: 620px; }
 .pathTableDelete th:nth-child(1) { width: 5%; }   /* 체크 */
 .pathTableDelete th:nth-child(2) { width: 13%; }  /* 로봇명 */
 .pathTableDelete th:nth-child(3) { width: 12%; }  /* 작업유형 */

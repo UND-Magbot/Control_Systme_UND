@@ -14,6 +14,7 @@ from app.auth.schemas import (
 from app.auth.audit import get_client_ip
 from app.auth.service import AuthService
 from app.auth.constants import REFRESH_TOKEN_EXPIRE_DAYS
+from app.auth.jwt_handler import decode_token_allow_expired
 from app.Database.models import UserInfo
 
 router = APIRouter(prefix="/api/auth", tags=["인증"])
@@ -21,19 +22,19 @@ router = APIRouter(prefix="/api/auth", tags=["인증"])
 
 REFRESH_MAX_AGE = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600  # 7일
 
-def _set_token_cookies(response: Response, access_token: str, refresh_token: str):
+def _set_token_cookies(response: Response, access_token: str, refresh_token: str, remember: bool = False):
     """HttpOnly 쿠키에 토큰 설정.
-    access_token 쿠키 수명은 refresh_token과 동일하게 7일.
-    실제 만료 판단은 JWT exp 클레임이 담당하고,
-    쿠키 max_age는 '브라우저가 쿠키를 보관하는 기간'만 의미한다.
+    remember=False: 세션 쿠키 → 브라우저 닫으면 만료
+    remember=True: max_age=7일 → 자동 로그인
     """
+    max_age = REFRESH_MAX_AGE if remember else None
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
         samesite="lax",
         path="/",
-        max_age=REFRESH_MAX_AGE,
+        max_age=max_age,
     )
     response.set_cookie(
         key="refresh_token",
@@ -41,7 +42,7 @@ def _set_token_cookies(response: Response, access_token: str, refresh_token: str
         httponly=True,
         samesite="lax",
         path="/",
-        max_age=REFRESH_MAX_AGE,
+        max_age=max_age,
     )
 
 
@@ -49,7 +50,6 @@ def _clear_token_cookies(response: Response):
     """인증 쿠키 삭제."""
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
-    # 기존 path="/api/auth" 쿠키가 브라우저에 남아있을 수 있으므로 함께 삭제
     response.delete_cookie("refresh_token", path="/api/auth")
 
 
@@ -58,10 +58,8 @@ def _clear_token_cookies(response: Response):
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     ip = get_client_ip(request)
-    result = AuthService.login(db, body.login_id, body.password, ip_address=ip)
-    # 이전 path="/api/auth" 쿠키가 남아있으면 충돌하므로 먼저 삭제
-    response.delete_cookie("refresh_token", path="/api/auth")
-    _set_token_cookies(response, result["access_token"], result["refresh_token"])
+    result = AuthService.login(db, body.login_id, body.password, ip_address=ip, remember=body.auto_login)
+    _set_token_cookies(response, result["access_token"], result["refresh_token"], remember=body.auto_login)
     return LoginResponse(user=UserResponse(**result["user"]))
 
 
@@ -72,19 +70,22 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         _clear_token_cookies(response)
-        from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="리프레시 토큰이 없습니다")
 
+    # refresh_token payload에서 remember 여부 확인
+    payload = decode_token_allow_expired(refresh_token)
+    remember = payload.get("remember", False) if payload else False
+
     result = AuthService.refresh(db, refresh_token)
-    response.delete_cookie("refresh_token", path="/api/auth")
-    # access_token 쿠키만 갱신 (refresh_token은 로그인 시 발급된 것 유지)
+    # access_token 쿠키 갱신 (remember에 따라 max_age 설정)
+    max_age = REFRESH_MAX_AGE if remember else None
     response.set_cookie(
         key="access_token",
         value=result["access_token"],
         httponly=True,
         samesite="lax",
         path="/",
-        max_age=REFRESH_MAX_AGE,
+        max_age=max_age,
     )
     return LoginResponse(user=UserResponse(**result["user"]))
 
@@ -103,9 +104,6 @@ def logout(request: Request, response: Response, current_user: UserInfo = Depend
 
 @router.get("/me")
 def get_me(request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")
-    if not token:
-        return {"user": None}
     try:
         current_user = get_current_user(request, db)
     except HTTPException:

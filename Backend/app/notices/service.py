@@ -10,7 +10,7 @@ class NoticeService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create(self, title: str, content: str, importance: str, user_id: str, attachment_name: str = None, attachment_url: str = None) -> Notice:
+    def create(self, title: str, content: str, importance: str, user_id: str, attachment_name: str = None, attachment_url: str = None, attachment_size: int = None) -> Notice:
         notice = Notice(
             Title=title,
             Content=content,
@@ -18,6 +18,7 @@ class NoticeService:
             UserId=user_id,
             AttachmentName=attachment_name,
             AttachmentUrl=attachment_url,
+            AttachmentSize=attachment_size,
         )
         self.db.add(notice)
         self.db.flush()
@@ -36,7 +37,7 @@ class NoticeService:
         return notice
 
     def update(self, notice_id: int, title: str = None, content: str = None,
-               importance: str = None, attachment_name: str = None, attachment_url: str = None):
+               importance: str = None, attachment_name: str = None, attachment_url: str = None, attachment_size: int = None):
         notice = self.db.query(Notice).filter(
             Notice.id == notice_id,
             Notice.DeletedAt.is_(None),
@@ -51,6 +52,7 @@ class NoticeService:
             "중요도": ("Importance", importance),
             "첨부파일명": ("AttachmentName", attachment_name),
             "첨부파일URL": ("AttachmentUrl", attachment_url),
+            "첨부파일크기": ("AttachmentSize", attachment_size),
         }
 
         for label, (attr, new_val) in field_map.items():

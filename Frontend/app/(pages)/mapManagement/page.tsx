@@ -873,10 +873,16 @@ export default function MapManagementPage() {
     ctx.drawImage(offscreen, 0, 0);
   }, [mappingCloudPoints, mappingOdom]);
 
-  // ── SVG 마우스 휠 줌 ──
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    setZoom((prev) => Math.max(0.1, Math.min(10, prev * (e.deltaY < 0 ? 1.1 : 0.9))));
+  // ── SVG 마우스 휠 줌 (passive: false로 등록해야 preventDefault 가능) ──
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoom((prev) => Math.max(0.1, Math.min(10, prev * (e.deltaY < 0 ? 1.1 : 0.9))));
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
   }, []);
 
   // ── SVG 드래그 팬 ──
@@ -1464,7 +1470,6 @@ export default function MapManagementPage() {
                 ref={svgRef}
                 className={styles.mapSvg}
                 style={draggingPlace ? { cursor: "grabbing" } : isPlaceMode ? { cursor: "crosshair" } : (isDeleteMode || isRouteMode || isPathBuildMode) ? { cursor: "pointer" } : undefined}
-                onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}

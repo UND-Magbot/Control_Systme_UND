@@ -52,8 +52,8 @@ export default function NoticeForm({ mode, initial, existingTitles, onClose, onS
   // 폼 초기화
   useEffect(() => {
     if (mode === 'edit' && initial) {
-      setTitle(initial.title ?? initial.content ?? '');
-      setContent(initial.detail ?? '');
+      setTitle(initial.title ?? '');
+      setContent(initial.content ?? '');
       setImportance(initial.importance ?? 'normal');
       setAttachment(null);
       setExistingAttachmentName(initial.attachmentName ?? null);
@@ -77,8 +77,8 @@ export default function NoticeForm({ mode, initial, existingTitles, onClose, onS
     if (mode === 'create') {
       return title !== '' || content !== '' || importance !== 'normal' || attachment !== null;
     }
-    return title !== (initial?.title ?? initial?.content ?? '') ||
-           content !== (initial?.detail ?? '') ||
+    return title !== (initial?.title ?? '') ||
+           content !== (initial?.content ?? '') ||
            importance !== (initial?.importance ?? 'normal') ||
            attachment !== null;
   }, [title, content, importance, attachment, mode, initial]);

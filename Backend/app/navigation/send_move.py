@@ -6,7 +6,7 @@ import math
 import app.main
 from app.robot_sender import send_nav_to_robot
 from app.Database.database import SessionLocal
-from app.Database.models import LocationInfo, WayInfo, UserInfo
+from app.Database.models import LocationInfo, WayInfo, UserInfo, RobotInfo
 from app.logs.service import log_event
 from app.current_user import get_robot_id, get_robot_name
 from app.auth.dependencies import get_current_user, require_permission
@@ -90,7 +90,14 @@ def start_navigation(loop: int = 3, current_user: UserInfo = Depends(require_per
 
     try:
         from app.recording.manager import start_auto_recording
-        start_auto_recording(get_robot_id())
+        rid = get_robot_id()
+        if not rid:
+            db = SessionLocal()
+            robot = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+            rid = robot.id if robot else None
+            db.close()
+        if rid:
+            start_auto_recording(rid)
     except Exception as e:
         print(f"[WARN] 자동 녹화 시작 실패: {e}")
 
@@ -260,7 +267,14 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
 
     try:
         from app.recording.manager import start_auto_recording
-        start_auto_recording(get_robot_id())
+        rid = get_robot_id()
+        if not rid:
+            _db = SessionLocal()
+            _robot = _db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+            rid = _robot.id if _robot else None
+            _db.close()
+        if rid:
+            start_auto_recording(rid)
     except Exception as e:
         print(f"[WARN] 자동 녹화 시작 실패: {e}")
 

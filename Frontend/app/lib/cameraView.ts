@@ -30,6 +30,7 @@ function extractCameras(modules: RobotModule[]): Camera[] {
   }
 
   walk(modules);
+  cameras.sort((a, b) => a.id - b.id);
   return cameras;
 }
 

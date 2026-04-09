@@ -10,6 +10,7 @@ import NoticeList from "./NoticeList";
 import SectionHeader from "./SectionHeader";
 import Link from "next/link";
 import { useRobotLocation } from "@/app/hooks/useRobotLocation";
+import type { POIItem } from "@/app/components/map/types";
 import RobotStats from "./RobotStats";
 import ScheduleTimeline from "./ScheduleTimeline";
 import getRobots from "@/app/lib/robotInfo";
@@ -32,21 +33,34 @@ export default function DashboardClient({
   const [robotStats, setRobotStats] = useState<PerRobotStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const robotLocation = useRobotLocation();
+
+  // useRobotLocation에서 가져온 places를 MapSection용 POIItem으로 변환
+  const mapPlaces = useMemo<POIItem[]>(
+    () => robotLocation.places.map((p) => ({
+      id: p.id,
+      name: p.name,
+      x: p.x,
+      y: p.y,
+      floor: p.floor,
+      category: "work" as const,
+    })),
+    [robotLocation.places]
+  );
   const setPageReady = usePageReady();
 
-  // 로봇 + 첫 번째 로봇의 카메라까지 로드 완료 후 로딩 해제
+  // 로봇 목록 + 첫 번째 로봇 카메라 병렬 로드
   useEffect(() => {
     setIsLoading(true);
-    getRobots().then(async (fetched) => {
+    getRobots().then((fetched) => {
       setRobots(fetched);
       const firstId = fetched[0]?.id ?? null;
       setSelectedRobotId(firstId);
-      if (firstId) {
-        const cams = await getCamerasForRobot(firstId);
-        setRobotCameras(cams);
-      }
       setIsLoading(false);
       setPageReady();
+      // 카메라는 UI 차단 없이 백그라운드 로드
+      if (firstId) {
+        getCamerasForRobot(firstId).then(setRobotCameras);
+      }
     }).catch(() => { setIsLoading(false); setPageReady(); });
   }, []);
 
@@ -126,6 +140,7 @@ export default function DashboardClient({
           selectedRobotId={selectedRobotId}
           selectedRobotName={selectedRobot?.no}
           robotFloor={robotLocation.floor}
+          initialPlaces={mapPlaces}
         />
       </div>
 

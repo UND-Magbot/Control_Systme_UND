@@ -22,6 +22,20 @@ def get_db():
         db.close()
 
 
+# ── 현재 녹화 세션 (/{record_id} 패턴보다 앞에 등록해야 함) ──
+@router.get("/active")
+def get_active_sessions(
+    robot_id: Optional[int] = Query(None),
+    current_user: UserInfo = Depends(require_permission("video")),
+):
+    from app.navigation.send_move import is_nav_active
+    sessions = rec_manager.get_active_sessions(robot_id)
+    return {
+        "sessions": sessions,
+        "is_navigating": is_nav_active(),
+    }
+
+
 # ── 녹화 목록 (GroupId 묶음) ──
 @router.get("")
 def list_recordings(
@@ -38,6 +52,35 @@ def list_recordings(
         db, robot_id=robot_id, record_type=record_type,
         start_date=start_date, end_date=end_date,
         page=page, size=size,
+    )
+
+
+# ── 영상 다운로드 (Content-Disposition: attachment) ──
+@router.get("/download/{record_id}")
+def download_recording(
+    record_id: int,
+    filename: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_permission("video")),
+):
+    rec = rec_service.get_recording_by_id(db, record_id)
+    if not rec or not rec.VideoPath:
+        return JSONResponse({"error": "녹화를 찾을 수 없습니다"}, status_code=404)
+
+    video_file = _find_segment_file(rec, db)
+    if not video_file or not os.path.exists(video_file):
+        return JSONResponse({"error": "영상 파일을 찾을 수 없습니다"}, status_code=404)
+
+    download_name = filename or os.path.basename(video_file)
+    from urllib.parse import quote
+    encoded_name = quote(download_name)
+    return FileResponse(
+        video_file,
+        media_type="video/mp4",
+        filename=download_name,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
+        },
     )
 
 
@@ -133,20 +176,6 @@ def stop_recording(
     if "error" in result:
         return {"status": "error", "msg": result["error"]}
     return {"status": "ok"}
-
-
-# ── 현재 녹화 세션 ──
-@router.get("/active")
-def get_active_sessions(
-    robot_id: Optional[int] = Query(None),
-    current_user: UserInfo = Depends(require_permission("video")),
-):
-    from app.navigation.send_move import is_nav_active
-    sessions = rec_manager.get_active_sessions(robot_id)
-    return {
-        "sessions": sessions,
-        "is_navigating": is_nav_active(),
-    }
 
 
 # ── 녹화 삭제 (soft delete) ──

@@ -3,8 +3,9 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import styles from './VideoList.module.css';
 import Pagination from "@/app/components/pagination";
-import Calendar from "@/app/components/Calendar";
+import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import BaseCalendar from "@/app/components/calendar/BaseCalendar";
+import { formatDateToYMD, parseYMD } from "@/app/components/calendar/index";
 import { useOutsideClick } from "@/app/hooks/useOutsideClick";
 import type { RobotRowData, Camera, Video, VideoItem, Period, LogItem, RobotType } from '@/app/type';
 import VideoPlayModal from '@/app/components/modal/VideoPlayModal';
@@ -37,22 +38,6 @@ type VideoListProps = {
   initialSearch?: string;
 }
 
-// 오늘 날짜만 필터하는 유틸
-const filterTodayVideos = (videoData: VideoItem[]) => {
-  const today = new Date();
-  const start = new Date(today);
-  start.setHours(0, 0, 0, 0);
-
-  const end = new Date(today);
-  end.setHours(23, 59, 59, 999);
-
-  return videoData.filter((item) => {
-    const itemDate = new Date(item.date);
-    if (isNaN(itemDate.getTime())) return false;
-    return itemDate >= start && itemDate <= end;
-  });
-};
-
 
 export default function VideoList({
     videoData,
@@ -73,18 +58,22 @@ export default function VideoList({
         const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
         getLogData({ start_date: todayStr, end_date: todayStr }).then((res) => setLogData(res.items));
     }, []);
-    const [selectedPeriod, setSelectedPeriod] = useState<Period | null>(null);
+    const [selectedPeriod, setSelectedPeriod] = useState<Period | null>("today");
 
-    const [externalStartDate, setExternalStartDate] = useState<string | null>(null);
-    const [externalEndDate, setExternalEndDate] = useState<string | null>(null);
+    // 영상 탭 날짜 상태 (Calendar 컴포넌트 대체)
+    const todayStr = useMemo(() => { const d = new Date(); return formatDateToYMD(d); }, []);
+    const [videoStartDate, setVideoStartDate] = useState(todayStr);
+    const [videoEndDate, setVideoEndDate] = useState(todayStr);
+    const [videoCalendarOpen, setVideoCalendarOpen] = useState(false);
+    const [videoActiveField, setVideoActiveField] = useState<"start" | "end" | null>(null);
+    const videoCalendarRef = useRef<HTMLDivElement>(null);
+    useOutsideClick(videoCalendarRef, useCallback(() => { setVideoCalendarOpen(false); setVideoActiveField(null); }, []));
 
     // 선택된 로봇 타입 (Total Robots = null)
     const [selectedRobotType, setSelectedRobotType] = useState<RobotType | null>(null);
 
-    // 기본값 "당일 영상"
-    const [searchFilterData, setSearchFilterData] = useState<VideoItem[] | null>(
-      () => filterTodayVideos(videoData)
-    );
+    // 필터링된 영상 데이터 (useEffect에서 자동 관리)
+    const [searchFilterData, setSearchFilterData] = useState<VideoItem[] | null>(null);
 
     const [videoPlayModalOpen, setVideoPlayModalOpen] = useState(false);
     const [playedVideoId, setPlayedVideoId] = useState<number | null>(null);
@@ -107,7 +96,16 @@ export default function VideoList({
     const todayInit = (() => { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,"0"); const dd = String(d.getDate()).padStart(2,"0"); return `${y}-${m}-${dd}`; })();
     const [dtStartDate, setDtStartDate] = useState<string | null>(todayInit);
     const [dtEndDate, setDtEndDate] = useState<string | null>(todayInit);
-    const [dtPeriod, setDtPeriod] = useState<Period | null>(null);
+    const [dtPeriod, setDtPeriod] = useState<Period | null>("today");
+
+    // 가장 이른 데이터 날짜 (마운트 시 1회 조회, "전체" 즉시 반영용)
+    const [dtEarliestDate, setDtEarliestDate] = useState<string | null>(null);
+    useEffect(() => {
+        apiFetch("/DB/statistics/earliest-date")
+            .then((res) => res.ok ? res.json() : null)
+            .then((data) => { if (data?.earliest_date) setDtEarliestDate(data.earliest_date); })
+            .catch(() => {});
+    }, []);
 
     // 통계 탭 달력
     const [dtCalendarOpen, setDtCalendarOpen] = useState(false);
@@ -115,34 +113,50 @@ export default function VideoList({
     const dtCalendarRef = useRef<HTMLDivElement>(null);
     useOutsideClick(dtCalendarRef, useCallback(() => setDtCalendarOpen(false), []));
 
-    // 탭별 페이지 상태
-    const [videoPage, setVideoPage] = useState(1);
-    const [dtPage, setDtPage] = useState(1);
-    const [logPage, setLogPage] = useState(1);
+    // 영상 탭: 비디오 타입/로봇/날짜 범위 클라이언트 필터링 (Calendar 컴포넌트에서 이관)
+    useEffect(() => {
+        const baseFiltered = videoData.filter((item) => {
+            const matchVideo = selectedVideo ? item.cameraType === selectedVideo.label : true;
+            const matchRobot = selectedRobot ? item.robotNo === selectedRobot.no : true;
+            return matchVideo && matchRobot;
+        });
 
-    // 현재 탭에 따라 참조할 데이터/페이지 선택
-    let currentPage: number;
-    let currentData: unknown[];
+        if (!videoStartDate || !videoEndDate) {
+            setSearchFilterData(baseFiltered);
+            return;
+        }
 
-    switch (activeTab) {
-    case "video":
-        currentPage = videoPage;
-        currentData = searchFilterData === null ? videoData : searchFilterData; // 전체보기
-        break;
-    case "dt":
-        currentPage = dtPage;
-        currentData = robots;
-        break;
-    case "log":
-        currentPage = logPage;
-        currentData = logData;
-        break;
-    }
+        const filtered = baseFiltered.filter((item) => {
+            const itemDate = new Date(item.date);
+            if (isNaN(itemDate.getTime())) return false;
+            let start = new Date(videoStartDate);
+            let end = new Date(videoEndDate);
+            if (start > end) { const tmp = start; start = end; end = tmp; }
+            end.setHours(23, 59, 59, 999);
+            return itemDate >= start && itemDate <= end;
+        });
 
-    // 현재 탭 기준으로 totalItems 계산
-    const totalItems = currentData.length;
-    const startIndex = (currentPage - 1) * PAGE_SIZE;
-    const currentItems = currentData.slice(startIndex, startIndex + PAGE_SIZE);
+        setSearchFilterData(filtered);
+    }, [videoData, selectedVideo, selectedRobot, videoStartDate, videoEndDate]);
+
+    // 탭별 데이터
+    const videoItems = useMemo(() => searchFilterData === null ? videoData : searchFilterData, [searchFilterData, videoData]);
+
+    // 탭별 페이지네이션
+    const videoPagination = usePaginatedList(videoItems, {
+      pageSize: PAGE_SIZE,
+      resetDeps: [selectedVideo, selectedRobot, searchFilterData],
+    });
+    const dtPagination = usePaginatedList(robots, {
+      pageSize: PAGE_SIZE,
+      resetDeps: [selectedRobotType],
+    });
+
+    // 현재 탭 기준
+    const currentPage = activeTab === "video" ? videoPagination.currentPage : dtPagination.currentPage;
+    const totalItems = activeTab === "video" ? videoPagination.totalItems : dtPagination.totalItems;
+    const currentItems = activeTab === "video" ? videoPagination.pagedItems : dtPagination.pagedItems;
+    const currentSetPage = activeTab === "video" ? videoPagination.setPage : dtPagination.setPage;
 
     // video 탭에서 사용할 전용 배열 (타입을 VideoItem[] 으로 고정)
     const videoCurrentItems: VideoItem[] =
@@ -152,44 +166,25 @@ export default function VideoList({
         setActiveTab(tab);
 
         if (tab === "video" && activeTab !== "video") {
-            setVideoPage(1);
-
-            // 필터 상태 초기화
             setSelectedVideo(null);
             setSelectedRobot(null);
 
-            // 리스트 당일 기준
-            setSearchFilterData(filterTodayVideos(videoData));
-
-            // 달력 당일 기준
             const today = new Date();
-            const todayStr = periodFormatDate(today);
-            setExternalStartDate(todayStr);
-            setExternalEndDate(todayStr);
-
-            setSelectedPeriod(null);
+            const t = periodFormatDate(today);
+            setVideoStartDate(t);
+            setVideoEndDate(t);
+            setSelectedPeriod("today");
 
         } else if (tab === "dt" && activeTab !== "dt") {
-            setDtPage(1);
-
-            // 로봇 이름/타입 선택 초기화
             setSelectedRobot(null);
             setSelectedRobotType(null);
+            setDtStartDate(periodFormatDate(new Date()));
+            setDtEndDate(periodFormatDate(new Date()));
+            setDtPeriod("today");
         } else if (tab === "log") {
-            setLogPage(1);
         }
     };
 
-    const getPageSetter = () => {
-        switch (activeTab) {
-            case "video":
-                return setVideoPage;
-            case "dt":
-                return setDtPage;
-            case "log":
-                return setLogPage;
-        }
-    };
 
     // videoData에서 가장 오래된 날짜 찾기
     const getEarliestVideoDate = () => {
@@ -203,42 +198,27 @@ export default function VideoList({
         }, null);
     };
 
-    // 기간 버튼 클릭 처리 (전체 / 1주 / 1달 / 1년)
+    // 기간 버튼 클릭 처리 (전체 / 당일 / 3일 / 1주)
     const handlePeriodClick = (period: Period | null) => {
         setSelectedPeriod(period);
-
         const today = new Date();
 
-        // 전체(= period === null)일 때
         if (period === "Total") {
             const earliest = getEarliestVideoDate();
-
             if (earliest) {
-                // 캘린더에 "처음 데이터 날짜 ~ 오늘"로 표시되도록 전달
-                setExternalStartDate(periodFormatDate(earliest));
-                setExternalEndDate(periodFormatDate(today));
-            } else {
-                // 데이터 없을 때 안전 처리
-                setExternalStartDate(null);
-                setExternalEndDate(null);
+                setVideoStartDate(periodFormatDate(earliest));
+                setVideoEndDate(periodFormatDate(today));
             }
             return;
         }
 
-        // 1주 / 1달 / 1년
         const start = new Date(today);
+        if (period === "today") { /* start = today */ }
+        else if (period === "3days") start.setDate(start.getDate() - 3);
+        else if (period === "1week") start.setDate(start.getDate() - 7);
 
-        if (period === "1week") {
-            start.setDate(start.getDate() - 7);
-        } else if (period === "1month") {
-            start.setMonth(start.getMonth() - 1);
-        } else if (period === "1year") {
-            start.setFullYear(start.getFullYear() - 1);
-        }
-        // 'today'는 start = today 유지
-
-        setExternalStartDate(periodFormatDate(start));
-        setExternalEndDate(periodFormatDate(today));
+        setVideoStartDate(periodFormatDate(start));
+        setVideoEndDate(periodFormatDate(today));
     };
 
     // ── 통계 탭 기간 버튼 ──
@@ -247,19 +227,14 @@ export default function VideoList({
         const today = new Date();
 
         if (period === "Total" || !period) {
-            const earliest = robots.length > 0
-                ? robots.reduce((min, r) => {
-                    const d = r.registrationDateTime;
-                    return d && d < min ? d : min;
-                  }, robots[0]?.registrationDateTime ?? "")
-                : "";
-            setDtStartDate(earliest ? earliest.slice(0, 10) : periodFormatDate(today));
+            setDtStartDate(dtEarliestDate);
             setDtEndDate(periodFormatDate(today));
             return;
         }
 
         const start = new Date(today);
-        if (period === "1week") start.setDate(start.getDate() - 7);
+        if (period === "today") { /* start = today */ }
+        else if (period === "1week") start.setDate(start.getDate() - 7);
         else if (period === "1month") start.setMonth(start.getMonth() - 1);
         else if (period === "1year") start.setFullYear(start.getFullYear() - 1);
 
@@ -313,35 +288,8 @@ export default function VideoList({
         console.log("선택된 로봇 (Location 클릭):", videoData.id, videoData.filename);
     };
 
-    useEffect(() => {
-    setSearchFilterData(filterTodayVideos(videoData));
-
-    const today = new Date();
-    const todayStr = periodFormatDate(today);
-    setExternalStartDate(todayStr);
-    setExternalEndDate(todayStr);
-    }, [videoData]);
 
 
-    useEffect(() => {
-        // 비디오 타입/로봇 선택이 바뀔 때마다 1페이지로 이동
-        setVideoPage(1);
-    }, [selectedVideo, selectedRobot]);
-
-    useEffect(() => {
-        // DT 탭 필터 변경 시 1페이지로 이동
-        if (activeTab === "dt") {
-            setDtPage(1);
-        }
-    }, [selectedRobotType]);
-
-    useEffect(() => {
-        // 필터 적용 후 현재 페이지가 범위를 초과하면 1페이지로 리셋
-        const maxPage = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
-        if (currentPage > maxPage) {
-            getPageSetter()(1);
-        }
-    }, [totalItems]);
 
 
     // 썸네일 생성
@@ -368,36 +316,45 @@ export default function VideoList({
         });
     }, []);
 
-    // ── 통계 API 호출 ──
+    // ── 통계 API 호출 (디바운스 적용) ──
     const pageReadyCalled = React.useRef(false);
+    const dtDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const dtFetchIdRef = useRef(0);
+
     useEffect(() => {
         if (activeTab !== "dt") {
-            // 통계 탭이 아닐 때도 첫 진입 시 pageReady 호출 (영상/로그 탭 진입 시)
             if (!pageReadyCalled.current && onDataReady) {
                 pageReadyCalled.current = true;
                 onDataReady();
             }
             return;
         }
-        let cancelled = false;
 
-        getStatistics({
-            start_date: dtStartDate ?? undefined,
-            end_date: dtEndDate ?? undefined,
-            robot_type: selectedRobotType?.label,
-            robot_name: selectedRobot?.no,
-        }).then((result) => {
-            if (!cancelled) {
-                setStatsData(result.data);
-                if (result.error) console.error("[통계] API 오류:", result.error);
-                if (!pageReadyCalled.current && onDataReady) {
-                    pageReadyCalled.current = true;
-                    onDataReady();
+        if (dtDebounceRef.current) clearTimeout(dtDebounceRef.current);
+
+        dtDebounceRef.current = setTimeout(() => {
+            const id = ++dtFetchIdRef.current;
+
+            getStatistics({
+                start_date: dtStartDate ?? undefined,
+                end_date: dtEndDate ?? undefined,
+                robot_type: selectedRobotType?.label,
+                robot_name: selectedRobot?.no,
+            }).then((result) => {
+                if (id === dtFetchIdRef.current) {
+                    setStatsData(result.data);
+                    if (result.error) console.error("[통계] API 오류:", result.error);
+                    if (!pageReadyCalled.current && onDataReady) {
+                        pageReadyCalled.current = true;
+                        onDataReady();
+                    }
                 }
-            }
-        });
+            });
+        }, 400);
 
-        return () => { cancelled = true; };
+        return () => {
+            if (dtDebounceRef.current) clearTimeout(dtDebounceRef.current);
+        };
     }, [activeTab, selectedRobotType, selectedRobot, dtStartDate, dtEndDate]);
 
     // 로봇 명 셀렉트 옵션: robots API 기반, 로봇 종류 필터 연동
@@ -510,13 +467,30 @@ export default function VideoList({
         }
     };
 
-    const downloadSample = () => {
-        const a = document.createElement("a");
-        a.href = "/videos/control_system_sample.mp4";
-        a.download = "control_system_sample.mp4"; // 저장 파일명
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+    const downloadVideo = async (video: VideoItem) => {
+        if (!video.id) return;
+
+        // 파일명: 로봇명_카메라_타입_날짜시간.mp4
+        const dateStr = video.record_start
+            ? new Date(video.record_start).toISOString().replace(/[-:T]/g, "").slice(0, 15)
+            : "unknown";
+        const filename = `${video.robotNo}_${video.cameraNo}_${video.record_type || ""}_${dateStr}.mp4`;
+
+        try {
+            const res = await apiFetch(`/api/recordings/download/${video.id}?filename=${encodeURIComponent(filename)}`);
+            if (!res.ok) return;
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error("[VideoList] 다운로드 실패:", e);
+        }
     };
 
   return (
@@ -569,9 +543,9 @@ export default function VideoList({
                         <div className={styles.videoPeriod}>
                             {([
                                 { key: "Total", label: "전체" },
+                                { key: "today", label: "당일" },
+                                { key: "3days", label: "3일" },
                                 { key: "1week", label: "1주" },
-                                { key: "1month", label: "1달" },
-                                { key: "1year", label: "1년" },
                             ] as const).map(({ key, label }) => (
                                 <div
                                     key={key}
@@ -582,15 +556,49 @@ export default function VideoList({
                                 </div>
                             ))}
                         </div>
-                        <Calendar videoData={videoData}
-                                  selectedVideo={selectedVideo}
-                                  selectedRobot={selectedRobot}
-                                  onFilteredChange={setSearchFilterData}
-                                  selectedPeriod={selectedPeriod}
-                                  onChangePeriod={setSelectedPeriod}
-                                  externalStartDate={externalStartDate}
-                                  externalEndDate={externalEndDate}
-                        />
+                        <div ref={videoCalendarRef} className={styles.dtDateRange}>
+                            <div
+                                className={`${styles.dtDateInput} ${videoActiveField === "start" && videoCalendarOpen ? styles.active : ""}`}
+                                onClick={() => { setVideoActiveField("start"); setVideoCalendarOpen(true); }}
+                            >
+                                <div>{videoStartDate}</div>
+                                <img src="/icon/search_calendar.png" alt="calendar" />
+                            </div>
+                            <div className={styles.dtDateSep}>~</div>
+                            <div
+                                className={`${styles.dtDateInput} ${videoActiveField === "end" && videoCalendarOpen ? styles.active : ""}`}
+                                onClick={() => { setVideoActiveField("end"); setVideoCalendarOpen(true); }}
+                            >
+                                <div>{videoEndDate}</div>
+                                <img src="/icon/search_calendar.png" alt="calendar" />
+                            </div>
+                            {videoCalendarOpen && videoActiveField && (
+                                <div className={styles.dtCalendarDropdown}>
+                                    <BaseCalendar
+                                        mode="range"
+                                        startDate={videoStartDate}
+                                        endDate={videoEndDate}
+                                        activeField={videoActiveField}
+                                        onRangeSelect={(field, date) => {
+                                            if (field === "start") {
+                                                setVideoStartDate(date);
+                                                if (date > videoEndDate) setVideoEndDate(date);
+                                                setVideoActiveField("end");
+                                            } else {
+                                                setVideoEndDate(date);
+                                                if (date < videoStartDate) setVideoStartDate(date);
+                                                setVideoCalendarOpen(false);
+                                                setVideoActiveField(null);
+                                            }
+                                            setSelectedPeriod(null);
+                                        }}
+                                        showTodayButton
+                                        maxDate={periodFormatDate(new Date())}
+                                        initialViewDate={videoActiveField === "start" ? parseYMD(videoStartDate) : parseYMD(videoEndDate)}
+                                    />
+                                </div>
+                            )}
+                        </div>
                         <div className={styles.videoDeleteArea}>
                             {!selectMode ? (
                                 <div className={styles.videoWorkBtn} onClick={toggleSelectMode}>
@@ -634,13 +642,6 @@ export default function VideoList({
                                               src={r.thumbnail_url || videoThumbnail || '/icon/video_placeholder.png'}
                                               alt="thumbnail"
                                             />
-                                            {r.record_type && (
-                                              <span className={`${styles.recordBadge} ${
-                                                r.record_type === '자동' ? styles.recordBadgeAuto : styles.recordBadgeManual
-                                              }`}>
-                                                {r.record_type}
-                                              </span>
-                                            )}
                                         </div>
                                         <div className={styles.videoViewIcon} onMouseEnter={() => setHoveredIndex(idx)} onMouseLeave={() => setHoveredIndex(null)}>
                                             <img src={ hoveredIndex === idx ? `/icon/video_hover_icon.png` : `/icon/video_icon.png`} alt="play" />
@@ -649,7 +650,7 @@ export default function VideoList({
                                     <div className={styles.videoMeta}>
                                         <div className={styles.metaRow1}>
                                             <span className={styles.metaPrimary}>{r.robotNo} · {r.cameraNo}</span>
-                                            <div className={styles.videoExport} onClick={downloadSample}>
+                                            <div className={styles.videoExport} onClick={(e) => { e.stopPropagation(); downloadVideo(r); }}>
                                                 <img src="/icon/download.png" alt="download" />
                                                 <span>다운로드</span>
                                             </div>
@@ -680,7 +681,7 @@ export default function VideoList({
             <div className={styles.pagenationPosition}>
                 <Pagination   totalItems={totalItems}
                 currentPage={currentPage}
-                onPageChange={getPageSetter()}
+                onPageChange={currentSetPage}
                 pageSize={PAGE_SIZE}
                 blockSize={5} />
             </div>
@@ -732,7 +733,7 @@ export default function VideoList({
                         />
                     </div>
                     <div className={styles.dtPeriod}>
-                        {([{ key: "Total", label: "전체" }, { key: "1week", label: "1주" }, { key: "1month", label: "1달" }, { key: "1year", label: "1년" }] as const).map(({ key, label }) => (
+                        {([{ key: "Total", label: "전체" }, { key: "today", label: "당일" }, { key: "1week", label: "1주" }, { key: "1month", label: "1달" }, { key: "1year", label: "1년" }] as const).map(({ key, label }) => (
                             <div key={key} className={`${styles.periodItem} ${dtPeriod === key ? styles.active : ""}`} onClick={() => handleDtPeriodClick(key)}>{label}</div>
                         ))}
                     </div>
@@ -763,9 +764,11 @@ export default function VideoList({
                                     onRangeSelect={(field, date) => {
                                         if (field === "start") {
                                             setDtStartDate(date);
+                                            if (dtEndDate && date > dtEndDate) setDtEndDate(date);
                                             setDtActiveField("end");
                                         } else {
                                             setDtEndDate(date);
+                                            if (dtStartDate && date < dtStartDate) setDtStartDate(date);
                                             setDtCalendarOpen(false);
                                         }
                                         setDtPeriod(null);

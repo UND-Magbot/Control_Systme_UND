@@ -396,6 +396,17 @@ def _auto_migrate():
                 ))
             print("[OK] recording_info ErrorReason 컬럼 추가 완료")
 
+    # notice_info: AttachmentSize 컬럼 추가
+    if "notice_info" in inspector.get_table_names():
+        ni_cols = {col["name"] for col in inspector.get_columns("notice_info")}
+        if "AttachmentSize" not in ni_cols:
+            print("[SYNC] notice_info AttachmentSize 컬럼 추가 중...")
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE notice_info ADD COLUMN AttachmentSize INT NULL AFTER AttachmentUrl"
+                ))
+            print("[OK] notice_info AttachmentSize 컬럼 추가 완료")
+
     # user_permission 테이블이 기존 VARCHAR MenuId로 존재하면 재생성
     if "user_permission" in inspector.get_table_names():
         up_cols = {col["name"]: col for col in inspector.get_columns("user_permission")}
@@ -446,7 +457,8 @@ def startup_event():
         ("alert-notice",     "공지사항",    "alerts",          4),
         ("settings",         "설정",        None,              7),
         ("menu-permissions", "메뉴 권한",   "settings",        1),
-        ("db-backup",        "DB 백업",     "settings",        2),
+        ("password-change",  "비밀번호 변경","settings",       2),
+        ("db-backup",        "DB 백업",     "settings",        3),
     ]
 
     existing_keys = {r.MenuKey for r in db.query(MenuInfo.MenuKey).all()}

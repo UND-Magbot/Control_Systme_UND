@@ -14,8 +14,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 20px 24px 0;
 }
 
 .title {
@@ -51,10 +50,10 @@
 
 /* ─── 본문 ─── */
 .body {
-  padding: 20px 24px;
+  padding: 16px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .field {
@@ -84,7 +83,7 @@
 }
 
 .input::placeholder {
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   font-weight: 300;
 }
 
@@ -118,10 +117,58 @@
   color: var(--text-secondary);
 }
 
-.roleHint {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  line-height: 1.4;
+.labelRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tooltipWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltipIcon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--text-secondary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tooltipWrap:hover .tooltipIcon {
+  border-color: var(--color-info);
+  color: var(--color-info);
+}
+
+.tooltipBox {
+  display: none;
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 300;
+  line-height: 1.6;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+}
+
+.tooltipWrap:hover .tooltipBox {
+  display: block;
 }
 
 .error {
@@ -136,8 +183,7 @@
 /* ─── 하단 버튼 ─── */
 .footer {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 10px;
-  padding: 16px 24px 20px;
-  border-top: 1px solid var(--border-subtle);
+  padding: 12px 24px 20px;
 }

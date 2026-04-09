@@ -20,15 +20,14 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> UserInf
     if not token:
         raise HTTPException(status_code=401, detail="인증이 필요합니다")
 
-    # 만료 여부 구분을 위해 먼저 만료 허용 디코딩
-    payload_any = decode_token_allow_expired(token)
-    if not payload_any or payload_any.get("type") != "access":
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다")
-
     # 정상 디코딩 (만료 체크 포함)
     payload = decode_token(token)
     if not payload:
-        raise HTTPException(status_code=401, detail="토큰이 만료되었습니다")
+        # 만료 vs 변조 구분
+        payload_any = decode_token_allow_expired(token)
+        if payload_any and payload_any.get("type") == "access":
+            raise HTTPException(status_code=401, detail="토큰이 만료되었습니다")
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다")
 
     user_id = int(payload["sub"])
     user = db.query(UserInfo).filter(UserInfo.id == user_id, UserInfo.DeletedAt.is_(None)).first()

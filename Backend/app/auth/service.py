@@ -14,7 +14,7 @@ class AuthService:
     # ── 로그인 ──
 
     @staticmethod
-    def login(db: Session, login_id: str, password: str, ip_address: str | None = None) -> dict:
+    def login(db: Session, login_id: str, password: str, ip_address: str | None = None, remember: bool = False) -> dict:
         user = (
             db.query(UserInfo)
             .filter(UserInfo.LoginId == login_id, UserInfo.DeletedAt.is_(None))
@@ -43,7 +43,7 @@ class AuthService:
 
         # 토큰 발급 (refresh token에 버전 내장)
         access_token = create_access_token(user.id, user.LoginId, user.UserName, user.Permission, user.TokenVersion or 0)
-        refresh_token = create_refresh_token(user.id, user.TokenVersion)
+        refresh_token = create_refresh_token(user.id, user.TokenVersion, remember=remember)
 
         # 권한 목록 조회
         permissions = AuthService._get_permissions(db, user)

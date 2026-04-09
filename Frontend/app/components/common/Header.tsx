@@ -8,12 +8,9 @@ import { useSidebar } from "@/app/context/SidebarContext";
 import { useAlertContext } from "@/app/context/AlertContext";
 import { useAuth } from "@/app/context/AuthContext";
 import PasswordChangeModal from "@/app/components/modal/PasswordChangeModal";
+import AlertsConfirmModal from "@/app/components/modal/AlertsConfirmModal";
 
-type HeaderProps = {
-  onAlertClick?: () => void;
-};
-
-export default function Header({ onAlertClick }: HeaderProps) {
+export default function Header() {
 
     const { toggle, close, isOpen } = useSidebar();
     const { unreadCounts } = useAlertContext();
@@ -23,9 +20,11 @@ export default function Header({ onAlertClick }: HeaderProps) {
     const [time, setTime] = useState("");
     const router = useRouter();
     const [isAdminOpen, setIsAdminOpen] = useState(false);
+    const [alertsOpen, setAlertsOpen] = useState(false);
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
     const adminRef = useRef<HTMLDivElement>(null);
     const adminBtnRef = useRef<HTMLButtonElement>(null);
+    const alertRef = useRef<HTMLDivElement>(null);
 
     // 클라이언트에서만 시간 갱신 (hydration mismatch 방지)
     useEffect(() => {
@@ -44,6 +43,9 @@ export default function Header({ onAlertClick }: HeaderProps) {
         const handleOutsideClick = (e: MouseEvent) => {
             if (adminRef.current && !adminRef.current.contains(e.target as Node)) {
                 setIsAdminOpen(false);
+            }
+            if (alertRef.current && !alertRef.current.contains(e.target as Node)) {
+                setAlertsOpen(false);
             }
         };
         document.addEventListener("mousedown", handleOutsideClick);
@@ -90,8 +92,15 @@ export default function Header({ onAlertClick }: HeaderProps) {
                 </div>
 
                 <div className={`${styles.lrDivFlex} ${styles.rAlign}`}>
-                    <nav className={styles["alarm-icon"]} aria-label="상단 유틸리티 메뉴">
-                        <button type='button' className={styles.alarm} onClick={onAlertClick} aria-label="알림 열기">
+                    <div className={`${styles["alarm-icon"]} ${styles.alertWrapper}`} ref={alertRef}>
+                        <button
+                            type='button'
+                            className={styles.alarm}
+                            onClick={() => { setAlertsOpen(prev => !prev); setIsAdminOpen(false); }}
+                            aria-expanded={alertsOpen}
+                            aria-haspopup="dialog"
+                            aria-label="알림 열기"
+                        >
                             <img src="/icon/bell_zero.png" alt="알림" />
                             {unreadAlarmCount > 0 && (
                                 <div className={styles.alarmBegs}>
@@ -99,7 +108,11 @@ export default function Header({ onAlertClick }: HeaderProps) {
                                 </div>
                             )}
                         </button>
-                    </nav>
+                        <AlertsConfirmModal
+                            isOpen={alertsOpen}
+                            onClose={() => setAlertsOpen(false)}
+                        />
+                    </div>
 
                     <div className={styles["new-time"]}>
                         <time>{date}</time>
@@ -110,7 +123,7 @@ export default function Header({ onAlertClick }: HeaderProps) {
                         <button
                             ref={adminBtnRef}
                             className={styles.admin}
-                            onClick={() => setIsAdminOpen(prev => !prev)}
+                            onClick={() => { setIsAdminOpen(prev => !prev); setAlertsOpen(false); }}
                             aria-expanded={isAdminOpen}
                             aria-haspopup="menu"
                         >

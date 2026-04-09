@@ -13,7 +13,7 @@ from datetime import datetime, date, timedelta
 
 from sqlalchemy.orm import Session
 from app.Database.database import SessionLocal
-from app.Database.models import ScheduleInfo, WayInfo, LocationInfo
+from app.Database.models import ScheduleInfo, WayInfo, LocationInfo, RobotInfo
 from app.robot_sender import send_nav_to_robot
 from app.logs.service import log_event
 from app.current_user import get_robot_id, get_robot_name
@@ -216,6 +216,12 @@ def _execute_schedule(schedule: ScheduleInfo) -> bool:
 
     db = SessionLocal()
     try:
+        # 스케줄 객체 1회 조회 후 재사용 (중복 조회 방지)
+        sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule.id).first()
+        if not sched:
+            print(f"[SCHEDULER] 스케줄 #{schedule.id} DB에서 찾을 수 없음")
+            return False
+
         # WayName으로 경로 조회
         path = db.query(WayInfo).filter(WayInfo.WayName == schedule.WayName).first()
         if not path:
@@ -224,11 +230,8 @@ def _execute_schedule(schedule: ScheduleInfo) -> bool:
                       "스케줄 실행 실패: 경로를 찾을 수 없습니다",
                       error_json=f'{{"wayName": "{schedule.WayName}"}}',
                       robot_id=get_robot_id(), robot_name=get_robot_name())
-            # 상태를 오류로 변경
-            sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule.id).first()
-            if sched:
-                sched.TaskStatus = "오류"
-                db.commit()
+            sched.TaskStatus = "오류"
+            db.commit()
             return False
 
         place_names = [name.strip() for name in path.WayPoints.split(" - ")]
@@ -236,20 +239,26 @@ def _execute_schedule(schedule: ScheduleInfo) -> bool:
             print(f"[SCHEDULER] 경로에 장소 2개 미만 — 스케줄 #{schedule.id}")
             return False
 
-        # 장소명으로 좌표 조회
+        # 장소명으로 좌표 벌크 조회 (N+1 방지)
+        place_rows = (
+            db.query(LocationInfo)
+            .filter(LocationInfo.LacationName.in_(place_names))
+            .all()
+        )
+        place_map = {p.LacationName: p for p in place_rows}
+
+        # 순서 유지하며 매핑 + 누락 장소 검증
         places = []
         for name in place_names:
-            place = db.query(LocationInfo).filter(LocationInfo.LacationName == name).first()
+            place = place_map.get(name)
             if not place:
                 print(f"[SCHEDULER] 장소 '{name}' 없음 — 스케줄 #{schedule.id}")
                 log_event("error", "nav_error",
                           "스케줄 실행 실패: 등록되지 않은 장소입니다",
                           error_json=f'{{"placeName": "{name}"}}',
                           robot_id=get_robot_id(), robot_name=get_robot_name())
-                sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule.id).first()
-                if sched:
-                    sched.TaskStatus = "오류"
-                    db.commit()
+                sched.TaskStatus = "오류"
+                db.commit()
                 return False
             places.append(place)
 
@@ -280,16 +289,19 @@ def _execute_schedule(schedule: ScheduleInfo) -> bool:
                   robot_id=get_robot_id(), robot_name=get_robot_name())
 
         # 스케줄 상태 업데이트 + 실행 시작 시점에 LastRunDate 선점 기록 (중복 트리거 방지)
-        sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule.id).first()
-        if sched:
-            sched.TaskStatus = "진행중"
-            sched.LastRunDate = datetime.now()
-            db.commit()
+        sched.TaskStatus = "진행중"
+        sched.LastRunDate = datetime.now()
+        db.commit()
 
-        # 자동 녹화 시작
+        # 자동 녹화 시작 (스케줄의 RobotName으로 로봇 ID 조회)
         try:
             from app.recording.manager import start_auto_recording
-            start_auto_recording(get_robot_id())
+            sched_robot = db.query(RobotInfo).filter(RobotInfo.RobotName == schedule.RobotName).first()
+            rec_robot_id = sched_robot.id if sched_robot else get_robot_id()
+            if rec_robot_id:
+                start_auto_recording(rec_robot_id)
+            else:
+                print(f"[SCHEDULER] 자동 녹화 건너뜀: 로봇 ID를 확인할 수 없음 (RobotName={schedule.RobotName})")
         except Exception as e:
             print(f"[SCHEDULER] 자동 녹화 시작 실패: {e}")
 

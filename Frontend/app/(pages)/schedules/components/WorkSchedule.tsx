@@ -345,7 +345,6 @@ export default function Page({ robots }: RobotScheduleProps) {
                 const res = await apiFetch(`/DB/schedule`);
                 if (!res.ok) throw new Error("서버 응답 오류");
                 const data = await res.json();
-                console.log("[SCHEDULE] API 응답:", data);
                 setSchedules(Array.isArray(data) ? data : []);
             }
         } catch (e) {

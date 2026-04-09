@@ -23,13 +23,13 @@
     border: 1px solid var(--border-default);
     border-radius: 6px;
     color: var(--text-primary);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-md);
     outline: none;
     transition: border-color 0.15s ease;
 }
 
 .searchInput::placeholder {
-    color: var(--text-muted);
+    color: var(--text-tertiary);
 }
 
 .searchInput:focus {
@@ -49,12 +49,7 @@
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s ease;
     white-space: nowrap;
-}
-
-.markAllReadBtn:hover {
-    background: var(--color-info-hover);
 }
 
 .searchBtn {
@@ -67,13 +62,7 @@
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease;
     white-space: nowrap;
-}
-
-.searchBtn:hover {
-    background: var(--color-info-bg);
-    border-color: var(--color-info-border);
 }
 
 /* === Pill 탭 (컨테이너 안쪽) === */
@@ -215,7 +204,7 @@
 /* 배지 + 상태 + 내용 + 날짜 */
 .alertRow1 {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
     min-width: 0;
 }
@@ -333,15 +322,24 @@
 .detailHeader {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding-bottom: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    justify-content: flex-end;
+    padding-bottom: 4px;
 }
 
 .detailHeaderLeft {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.detailHeaderLeft .badge {
+    height: 28px;
+    font-size: var(--font-size-md);
+}
+
+.detailHeaderLeft .statusTag {
+    height: 28px;
+    font-size: var(--font-size-md);
 }
 
 .markReadBtn {
@@ -351,15 +349,10 @@
     border: 1px solid var(--border-default);
     border-radius: 6px;
     color: var(--text-secondary);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-md);
+    font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease;
     white-space: nowrap;
-}
-
-.markReadBtn:hover {
-    background: var(--surface-5);
-    border-color: var(--color-info-border);
 }
 
 .markReadBtnDone {
@@ -367,19 +360,14 @@
     cursor: default;
 }
 
-.markReadBtnDone:hover {
-    background: transparent;
-    border-color: var(--border-default);
-}
-
 /* 상세 본문 */
 .detailBody {
     flex: 1;
     min-height: 0;
-    padding-top: 20px;
+    padding-top: 14px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 14px;
     overflow-y: auto;
 }
 
@@ -400,14 +388,24 @@
     background: rgba(255, 255, 255, 0.25);
 }
 
+/* 제목 행 */
+.detailTitleRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0 16px;
+    border-bottom: 1px solid var(--border-default);
+    flex-shrink: 0;
+}
+
+/* 메타 행 (작성자, 날짜 등) */
 .detailMetaInline {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: var(--font-size-md);
-    color: var(--text-secondary);
-    padding: 16px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    padding: 14px 0;
     flex-shrink: 0;
 }
 
@@ -422,27 +420,40 @@
     opacity: 0.4;
 }
 
+.detailMainContent {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
 .detailTitleText {
     font-size: 18px;
     font-weight: 700;
     color: var(--text-primary);
-    line-height: 1.5;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .detailContentText {
-    font-size: var(--font-size-lg, 16px);
+    font-size: 15px;
     color: var(--text-secondary);
-    line-height: 1.7;
+    line-height: 1.8;
     word-wrap: break-word;
     white-space: pre-wrap;
 }
 
 .detailNoticeBody {
     font-size: var(--font-size-md);
-    color: var(--text-secondary);
-    line-height: 1.8;
+    color: var(--text-tertiary);
+    line-height: 1.7;
     white-space: pre-wrap;
     word-wrap: break-word;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
     padding: 16px;
     background: var(--surface-3);
     border-radius: 8px;
@@ -670,12 +681,14 @@
 }
 
 .detailMetaLabel {
-    color: var(--text-muted);
+    color: var(--text-tertiary);
+    font-weight: 500;
     flex-shrink: 0;
 }
 
 .detailMetaValue {
-    color: var(--text-secondary);
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 /* 에러 JSON 블록 */
@@ -761,15 +774,9 @@
   border-radius: 6px;
   color: var(--text-primary);
   font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
-}
-
-.noticeCreateBtn:hover {
-  background: rgba(74, 222, 128, 0.2);
-  border-color: rgba(74, 222, 128, 0.6);
 }
 
 /* 공지 수정 버튼 (detailHeader) */
@@ -777,18 +784,13 @@
   height: 28px;
   padding: 0 14px;
   background: transparent;
-  border: 1px solid rgba(74, 222, 128, 0.4);
+  border: 1px solid var(--border-default);
   border-radius: 6px;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
-}
-
-.noticeEditBtn:hover {
-  background: rgba(74, 222, 128, 0.1);
-  border-color: rgba(74, 222, 128, 0.6);
 }
 
 /* 공지 삭제 버튼 (detailHeader) */
@@ -796,19 +798,13 @@
   height: 28px;
   padding: 0 14px;
   background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  border: 1px solid var(--border-default);
   border-radius: 6px;
   color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
-}
-
-.noticeDeleteBtn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.6);
-  color: #f87171;
 }
 
 .detailHeaderBtns {
@@ -824,39 +820,48 @@
   border: 1px solid rgba(239, 68, 68, 0.4);
   border-radius: 6px;
   color: #f87171;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
   white-space: nowrap;
 }
 
-.viewLogBtn:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.6);
-}
-
-/* 상세 - 중요도 뱃지 */
-.importanceBadge {
+/* 리스트 - 중요 뱃지 (statusTag와 동일 크기) */
+.listImportanceBadge {
   display: inline-flex;
   align-items: center;
-  padding: 0 8px;
-  height: 22px;
-  border-radius: 4px;
-  font-size: 11px;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0 6px;
+  min-width: 34px;
+  height: 24px;
+  border-radius: 5px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  background: transparent;
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.6);
+}
+
+/* 리스트 - 첨부파일 아이콘 */
+.listAttachIcon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+/* 상세 - 중요도 텍스트 */
+.importanceBadge {
+  font-size: var(--font-size-md);
   font-weight: 600;
 }
 
 .importanceHigh {
-  background: rgba(239, 68, 68, 0.15);
   color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 .importanceNormal {
-  background: rgba(56, 189, 248, 0.1);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: var(--text-secondary);
 }
 
 .importanceLow {
@@ -871,16 +876,24 @@
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
+  margin-bottom: 6px;
   background: var(--surface-3);
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  font-size: var(--font-size-md);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+.detailAttachmentSize {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .detailAttachmentIcon {
-  font-size: 14px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
+  color: var(--text-tertiary);
 }
 
 .detailAttachmentName {

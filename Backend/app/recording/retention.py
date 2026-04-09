@@ -9,12 +9,12 @@ from app.Database.database import SessionLocal
 from app.Database.models import RecordingInfo
 from app.logs.service import log_event
 
-RETENTION_DAYS = 30
+RETENTION_DAYS = 7
 CHECK_INTERVAL = 3600  # 1시간
 STORAGE_WARN_PERCENT = 10   # 잔여 10% 미만 → 경고 로그
 STORAGE_CRITICAL_PERCENT = 5  # 잔여 5% 미만 → 녹화 일시 중지
 
-RECORDINGS_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "recordings")
+RECORDINGS_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "recordings")
 
 
 def retention_thread():

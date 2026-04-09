@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import styles from './RobotList.module.css';
 import Pagination from "@/app/components/pagination";
+import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import BusinessDetailModal from './BusinessDetailModal';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { apiFetch } from "@/app/lib/api";
@@ -51,11 +52,6 @@ export default function BusinessList() {
   const [deleteMode, setDeleteMode] = useState(false);
 
   // 페이지네이션
-  const [page, setPage] = useState(1);
-  const handlePageChange = (p: number) => {
-    setPage(p);
-    setCheckedBusinessIds([]);
-  };
 
   const fetchBusinessList = async () => {
     setLoading(true);
@@ -94,7 +90,6 @@ export default function BusinessList() {
   // 조회
   const handleSearch = () => {
     setAppliedQuery(searchQuery);
-    setPage(1);
   };
 
   const filteredRows = useMemo(() => {
@@ -106,9 +101,15 @@ export default function BusinessList() {
     );
   }, [businessRows, appliedQuery]);
 
-  const totalItems = filteredRows.length;
-  const startIdx = (page - 1) * BUSINESS_PAGE_SIZE;
-  const currentItems = filteredRows.slice(startIdx, startIdx + BUSINESS_PAGE_SIZE);
+  const { currentPage: page, setPage, pagedItems: currentItems, totalItems } = usePaginatedList(filteredRows, {
+    pageSize: BUSINESS_PAGE_SIZE,
+    resetDeps: [appliedQuery],
+  });
+
+  const handlePageChange = (p: number) => {
+    setPage(p);
+    setCheckedBusinessIds([]);
+  };
 
   // 체크 토글
   const toggleCheck = (id: number, checked: boolean) => {
@@ -254,7 +255,7 @@ export default function BusinessList() {
                 <tr><td colSpan={colCount} className={styles.emptyState}>등록된 사업장이 없습니다.</td></tr>
               )}
               {currentItems.map((b, idx) => {
-                const rowNum = startIdx + idx + 1;
+                const rowNum = (page - 1) * BUSINESS_PAGE_SIZE + idx + 1;
                 const isSelected = selectedBusinessId === b.id;
                 const isChecked = checkedBusinessIds.includes(b.id);
 

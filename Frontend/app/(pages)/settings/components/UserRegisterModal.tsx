@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import styles from "./UserRegisterModal.module.css";
 import modalStyles from "@/app/components/modal/Modal.module.css";
 import { apiFetch } from "@/app/lib/api";
+import CustomSelect, { type SelectOption } from "@/app/components/select/CustomSelect";
 
 type RolePreset = "admin" | "user";
 
@@ -43,6 +44,16 @@ export default function UserRegisterModal({ isOpen, onClose, onSuccess }: Props)
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  const roleOptions: SelectOption[] = [
+    { id: "admin", label: "관리자" },
+    { id: "user", label: "일반 사용자" },
+  ];
+
+  const businessOptions: SelectOption[] = useMemo(
+    () => businesses.map((b) => ({ id: b.id, label: b.BusinessName })),
+    [businesses]
+  );
 
   // 사업장 목록 로드
   useEffect(() => {
@@ -147,7 +158,7 @@ export default function UserRegisterModal({ isOpen, onClose, onSuccess }: Props)
             <input
               type="text"
               className={styles.input}
-              placeholder="3자 이상 입력"
+              placeholder="아이디를 입력하세요"
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
               maxLength={50}
@@ -169,34 +180,35 @@ export default function UserRegisterModal({ isOpen, onClose, onSuccess }: Props)
 
           {/* 권한 */}
           <div className={styles.field}>
-            <label className={styles.label}>권한</label>
-            <select
-              className={styles.select}
-              value={role}
-              onChange={(e) => setRole(e.target.value as RolePreset)}
-            >
-              <option value="admin">관리자</option>
-              <option value="user">일반 사용자</option>
-            </select>
-            <span className={styles.roleHint}>
-              {role === "admin" && "DB 백업 제외 전체 메뉴"}
-              {role === "user" && "대시보드, 작업관리, 데이터(로그 제외), 알림, 비밀번호 변경"}
-            </span>
+            <div className={styles.labelRow}>
+              <label className={styles.label}>권한</label>
+              <span className={styles.tooltipWrap}>
+                <span className={styles.tooltipIcon}>?</span>
+                <span className={styles.tooltipBox}>
+                  <strong>관리자</strong>: DB 백업 제외 전체 메뉴<br />
+                  <strong>일반 사용자</strong>: 대시보드, 작업관리, 데이터(로그 제외), 알림
+                </span>
+              </span>
+            </div>
+            <CustomSelect
+              options={roleOptions}
+              value={roleOptions.find((o) => o.id === role) ?? null}
+              onChange={(o) => setRole(o.id as RolePreset)}
+              placeholder="권한을 선택하세요"
+              overlay
+            />
           </div>
 
           {/* 사업장 */}
           <div className={styles.field}>
             <label className={styles.label}>사업장</label>
-            <select
-              className={styles.select}
-              value={businessId}
-              onChange={(e) => setBusinessId(e.target.value ? Number(e.target.value) : "")}
-            >
-              <option value="">사업장을 선택하세요</option>
-              {businesses.map((b) => (
-                <option key={b.id} value={b.id}>{b.BusinessName}</option>
-              ))}
-            </select>
+            <CustomSelect
+              options={businessOptions}
+              value={businessOptions.find((o) => o.id === businessId) ?? null}
+              onChange={(o) => setBusinessId(o.id as number)}
+              placeholder="사업장을 선택하세요"
+              overlay
+            />
           </div>
 
           {/* 에러 메시지 */}

@@ -44,7 +44,6 @@ export default function NoticeList({ canLinkNotice = true }: NoticeListProps) {
       <div className={`${styles["notice-list"]} ${styles.fadeIn}`}>
         {notices.length === 0 ? (
           <div className={styles.emptyState}>
-            <img src="/icon/notice_w.png" alt="" className={styles.emptyIcon} />
             <span>등록된 공지사항이 없습니다</span>
             <span className={styles.emptyStateSub}>새로운 공지가 등록되면 여기에 표시됩니다</span>
           </div>

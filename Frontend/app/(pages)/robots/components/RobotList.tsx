@@ -1,17 +1,20 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import styles from './RobotList.module.css';
 import Pagination from "@/app/components/pagination";
+import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import type { RobotRowData, BatteryItem, Camera, Floor, Video, NetworkItem, PowerItem, LocationItem } from '@/app/type';
-import RobotInsertModal from "@/app/components/modal/RobotInsertModal";
-import RobotDetailModal from "@/app/components/modal/RobotDetailModal";
-import CancelConfirmModal from "@/app/components/modal/CancelConfirmModal";
 import { apiFetch } from "@/app/lib/api";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
-import RemoteMapModal from "@/app/components/modal/RemoteMapModal";
-import ModuleManageModal from "@/app/components/modal/ModuleManageModal";
+
+const RobotInsertModal = dynamic(() => import("@/app/components/modal/RobotInsertModal"), { ssr: false });
+const RobotDetailModal = dynamic(() => import("@/app/components/modal/RobotDetailModal"), { ssr: false });
+const CancelConfirmModal = dynamic(() => import("@/app/components/modal/CancelConfirmModal"), { ssr: false });
+const RemoteMapModal = dynamic(() => import("@/app/components/modal/RemoteMapModal"), { ssr: false });
+const ModuleManageModal = dynamic(() => import("@/app/components/modal/ModuleManageModal"), { ssr: false });
 import {
   ROBOT_COLORS,
   getRobotIndexFromNo,
@@ -201,16 +204,8 @@ export default function RobotStatusList({
   const [moduleModalOpen, setModuleModalOpen] = useState(false);
   const [moduleTargetRobot, setModuleTargetRobot] = useState<RobotRowData | null>(null);
 
-  // 페이지네이션
-  const [robotsPage, setRobotsPage] = useState(1);
-  const handleRobotsPageChange = (page: number) => {
-    setRobotsPage(page);
-    setCheckedRobotIds([]);
-  };
-  const resetCurrentPage = () => setRobotsPage(1);
-
-  // ─── 필터 로직 ───
-  const filteredRobots = robots.filter((robot) => {
+  // ─── 필터 로직 (메모이제이션) ───
+  const filteredRobots = useMemo(() => robots.filter((robot) => {
     let matchSearch = true;
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -231,11 +226,18 @@ export default function RobotStatusList({
     }
 
     return matchSearch && matchStatus && matchPower;
+  }), [robots, searchQuery, selectedStatus, selectedPower]);
+
+  // 페이지네이션
+  const { currentPage: robotsPage, setPage: setRobotsPage, resetPage: resetCurrentPage, pagedItems: currentItems, totalItems } = usePaginatedList(filteredRobots, {
+    pageSize: ROBOT_PAGE_SIZE,
+    resetDeps: [searchQuery, selectedStatus, selectedPower],
   });
 
-  const totalItems = filteredRobots.length;
-  const startIndex = (robotsPage - 1) * ROBOT_PAGE_SIZE;
-  const currentItems = filteredRobots.slice(startIndex, startIndex + ROBOT_PAGE_SIZE);
+  const handleRobotsPageChange = (page: number) => {
+    setRobotsPage(page);
+    setCheckedRobotIds([]);
+  };
 
   // ─── 체크 핸들러 ───
   const toggleRobotChecked = (robotId: number, checked: boolean) => {
@@ -342,10 +344,10 @@ export default function RobotStatusList({
                 className={styles.searchInput}
                 placeholder="로봇명, 시리얼, 사이트 검색"
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); resetCurrentPage(); }}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
               {searchQuery && (
-                <button className={styles.searchClear} onClick={() => { setSearchQuery(""); resetCurrentPage(); }}>✕</button>
+                <button className={styles.searchClear} onClick={() => setSearchQuery("")}>✕</button>
               )}
             </div>
 
@@ -354,7 +356,7 @@ export default function RobotStatusList({
               selectedLabel={selectedStatus}
               placeholder="상태"
               width={130}
-              onSelect={(item) => { setSelectedStatus(item?.label ?? null); resetCurrentPage(); }}
+              onSelect={(item) => setSelectedStatus(item?.label ?? null)}
             />
 
             <FilterSelectBox
@@ -362,7 +364,7 @@ export default function RobotStatusList({
               selectedLabel={selectedPower}
               placeholder="전원"
               width={130}
-              onSelect={(item) => { setSelectedPower(item?.label ?? null); resetCurrentPage(); }}
+              onSelect={(item) => setSelectedPower(item?.label ?? null)}
             />
           </div>
 
@@ -476,7 +478,7 @@ export default function RobotStatusList({
                       />
                     </td>
                   )}
-                  <td>{startIndex + idx + 1}</td>
+                  <td>{(robotsPage - 1) * ROBOT_PAGE_SIZE + idx + 1}</td>
                   <td><div>{r.no}</div></td>
                   <td><span className={`${styles.statusBadge} ${status.className}`}>{status.label}</span></td>
                   <td className={styles.locationCell}>{getRobotLocation(r)}</td>
