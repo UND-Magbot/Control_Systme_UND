@@ -113,9 +113,9 @@
   line-height: 29px;
 
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   color: #ffffff;
-  
+
   border: 1px solid #CCCDD1;
   border-radius: 6px;
 

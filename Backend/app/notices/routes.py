@@ -52,6 +52,7 @@ def create_notice(req: NoticeCreateReq, request: Request, db: Session = Depends(
         user_id=req.UserId,
         attachment_name=req.AttachmentName,
         attachment_url=req.AttachmentUrl,
+        attachment_size=req.AttachmentSize,
     )
     write_audit(db, current_user.id, "notice_created", "notice", notice.id,
                 detail=f"제목: {req.Title}, 중요도: {req.Importance}",
@@ -68,6 +69,7 @@ def update_notice(notice_id: int, req: NoticeUpdateReq, request: Request, db: Se
         importance=req.Importance,
         attachment_name=req.AttachmentName,
         attachment_url=req.AttachmentUrl,
+        attachment_size=req.AttachmentSize,
     )
     detail = ", ".join(changes) if changes else None
     write_audit(db, current_user.id, "notice_updated", "notice", notice_id, detail=detail,
@@ -107,6 +109,7 @@ async def upload_notice_file(file: UploadFile = File(...), current_user: UserInf
         "original_name": file.filename,
         "stored_name": stored_name,
         "url": f"/DB/notices/files/{stored_name}",
+        "size": len(contents),
     }
 
 

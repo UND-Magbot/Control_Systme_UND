@@ -238,9 +238,8 @@
 .videoViewContainer {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    grid-template-rows: 1fr 1fr;
+    grid-auto-rows: min-content;
     gap: 14px;
-    height: 100%;
 }
 
 .videoViewItem {
@@ -336,13 +335,26 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, transform 0.2s ease;
 }
 
 .videoViewIcon img {
-    width: 32px;
-    height: 32px;
-    opacity: 0.8;
-    transition: opacity 0.15s ease;
+    width: 24px;
+    height: 24px;
+    opacity: 0.9;
+    transition: opacity 0.2s ease;
+}
+
+.videoViewBox:hover .videoViewIcon {
+    background: rgba(0, 0, 0, 0.65);
+    transform: translate(-50%, -50%) scale(1.08);
 }
 
 .videoViewBox:hover .videoViewIcon img {

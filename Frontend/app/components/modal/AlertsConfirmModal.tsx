@@ -6,7 +6,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
 import { useCustomScrollbar } from '@/app/hooks/useCustomScrollbar';
-import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { useAlertContext } from '@/app/context/AlertContext';
 
 type AlertsConfirmModalProps = {
@@ -56,8 +55,15 @@ export default function AlertsConfirmModal({
         }
     }, [isOpen, refresh]);
 
-    // ESC 키로 모달 닫기 (CancelConfirmModal 스택 충돌 방지)
-    useModalBehavior({ isOpen, onClose, disabled: showConfirm });
+    // ESC 키로 패널 닫기 (CancelConfirmModal 열려 있으면 무시)
+    useEffect(() => {
+        if (!isOpen || showConfirm) return;
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleEsc);
+        return () => document.removeEventListener('keydown', handleEsc);
+    }, [isOpen, onClose, showConfirm]);
 
     // 탭별 미읽음 카운트 (Context의 카운트를 모달 탭 키로 매핑)
     const tabCounts = useMemo<Record<ModalTabKey, number>>(() => ({
@@ -163,17 +169,25 @@ export default function AlertsConfirmModal({
 
     return (
         <>
-            <div className={styles.modalOverlay} onClick={onClose}>
                 <div className={styles.alertsModalContent} onClick={(e) => e.stopPropagation()}>
-                    {/* 헤더 */}
+                    {/* 헤더: 알림 / 전체 보기 + 전체 읽음 */}
                     <div className={styles.alertsModalTop}>
-                        <div className={styles.alertsModalTitle}>
-                            <img src="/icon/alerts_w.png" alt="" />
-                            <h2>알림</h2>
+                        <h2 className={styles.alertsModalTitle}>알림</h2>
+                        <div className={styles.alertsTopActions}>
+                            <button
+                                className={styles.alertsMarkAllReadBtn}
+                                onClick={handleMarkAllRead}
+                                disabled={unreadAlerts.length === 0}
+                            >
+                                모두 읽음
+                            </button>
+                            <button
+                                className={styles.alertsViewAllBtn}
+                                onClick={() => { onClose(); router.push('/alerts'); }}
+                            >
+                                전체 보기
+                            </button>
                         </div>
-                        <button className={styles.alertsCloseBtn} onClick={onClose} aria-label="닫기">
-                            <img src="/icon/close_btn.png" alt="닫기" />
-                        </button>
                     </div>
 
                     {/* 탭 바 */}
@@ -193,17 +207,6 @@ export default function AlertsConfirmModal({
                                 </button>
                             ))}
                         </div>
-                    </div>
-                    {/* 알림 건수 + 전체 읽음 */}
-                    <div className={styles.alertsSubRow}>
-                        <span className={styles.alertsTabCount}>{tabCounts[activeTab]}건의 알림</span>
-                        <button
-                            className={styles.alertsMarkAllReadBtn}
-                            onClick={handleMarkAllRead}
-                            disabled={unreadAlerts.length === 0}
-                        >
-                            전체 읽음
-                        </button>
                     </div>
 
                     {/* 알림 리스트 */}
@@ -225,60 +228,50 @@ export default function AlertsConfirmModal({
                                         const displayStatus = getDisplayStatus(item);
                                         const isError = item.type === 'Robot' && item.status === 'error';
 
+                                        const itemTypeClass = isError ? styles.alertsItemError : '';
+
                                         return (
                                             <div
                                                 key={item.id}
-                                                className={`${styles.alertsItem} ${isError ? styles.alertsItemError : ''}`}
+                                                className={`${styles.alertsItem} ${itemTypeClass}`}
                                                 onClick={() => handleAlertClick(item)}
                                                 style={{ cursor: 'pointer' }}
                                             >
                                                 <div className={styles.topContents}>
-                                                    <div className={`${styles.aletsType} ${styles[`badge--${toTypeSlug(item.type)}`]}`}>
-                                                        {typeLabel[item.type] ?? item.type}
-                                                    </div>
-
-                                                    {displayStatus ? (
-                                                        <div
-                                                            className={`${styles.aletsStatus} ${
-                                                                displayStatus === 'error' ? styles.statusError
-                                                                : displayStatus === 'info' ? styles.statusInfo
-                                                                : styles.statusEvent
-                                                            }`}
-                                                        >
-                                                            {statusLabel[displayStatus]}
+                                                    <div className={styles.topLeft}>
+                                                        <div className={`${styles.aletsType} ${styles[`badge--${toTypeSlug(item.type)}`]}`}>
+                                                            {typeLabel[item.type] ?? item.type}
                                                         </div>
-                                                    ) : (
-                                                        <div className={styles.aletsStatusEmpty} />
-                                                    )}
 
-                                                    <div className={styles.aletsContent}>
+                                                        {displayStatus && (
+                                                            <div
+                                                                className={`${styles.aletsStatus} ${
+                                                                    displayStatus === 'error' ? styles.statusError
+                                                                    : displayStatus === 'info' ? styles.statusInfo
+                                                                    : styles.statusEvent
+                                                                }`}
+                                                            >
+                                                                {statusLabel[displayStatus]}
+                                                            </div>
+                                                        )}
+
                                                         {item.robotName && (
                                                             <span className={styles.aletsRobotName}>{item.robotName}</span>
                                                         )}
-                                                        {item.content}
                                                     </div>
-                                                </div>
-                                                {item.detail && (
-                                                    <div className={styles.aletsDetail}>
-                                                        {item.detail.split('\n').filter(Boolean).slice(-2).join(' → ')}
-                                                    </div>
-                                                )}
-                                                <div className={styles.bottomContents}>
-                                                    <div className={styles.aletsDate}>{item.date}</div>
-
                                                     <div className={styles.aletsActions} onClick={(e) => e.stopPropagation()}>
-                                                        {/* 로그 전송: 외부 통합관제시스템 연동 시 활성화 예정 */}
-                                                        {/* {isError && (
-                                                            <button className={styles.aletsSendLogBtn} onClick={() => handleSendLog(item)}>
-                                                                <img src="/icon/alerts_send_w.png" alt="" />
-                                                                <span>로그 전송</span>
-                                                            </button>
-                                                        )} */}
                                                         <button className={styles.aletsReadBtn} onClick={() => handleMarkRead(item.id)}>
                                                             읽음
                                                         </button>
                                                     </div>
                                                 </div>
+                                                <div className={styles.aletsContent}>{item.content}</div>
+                                                {item.detail && (
+                                                    <div className={styles.aletsDetail}>
+                                                        {item.detail.split('\n').filter(Boolean).slice(-2).join(' → ')}
+                                                    </div>
+                                                )}
+                                                <div className={styles.aletsDate}>{item.date}</div>
                                             </div>
                                         );
                                     })
@@ -292,7 +285,6 @@ export default function AlertsConfirmModal({
                     </div>
 
                 </div>
-            </div>
 
             {/* 로그 전송 확인 모달 */}
             {showConfirm && (

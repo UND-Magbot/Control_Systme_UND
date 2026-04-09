@@ -1,4 +1,3 @@
-import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -28,11 +27,12 @@ def create_access_token(user_id: int, login_id: str, username: str, role: int, t
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def create_refresh_token(user_id: int, token_version: int = 0) -> str:
+def create_refresh_token(user_id: int, token_version: int = 0, remember: bool = False) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
         "ver": token_version,
+        "remember": remember,
         "exp": now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         "iat": now,
         "jti": uuid.uuid4().hex,
@@ -57,6 +57,3 @@ def decode_token_allow_expired(token: str) -> dict | None:
         return None
 
 
-def hash_token(token: str) -> str:
-    """리프레시 토큰을 SHA-256 해시로 변환."""
-    return hashlib.sha256(token.encode()).hexdigest()

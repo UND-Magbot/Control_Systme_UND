@@ -19,12 +19,13 @@ type MapSectionProps = {
   selectedRobotId?: number | null;
   selectedRobotName?: string;
   robotFloor?: string;
+  initialPlaces?: POIItem[];
 };
 
-export default function MapSection({ floors, robots, video, cameras, selectedRobotId, selectedRobotName, robotFloor = "1F" }: MapSectionProps) {
+export default function MapSection({ floors, robots, video, cameras, selectedRobotId, selectedRobotName, robotFloor = "1F", initialPlaces }: MapSectionProps) {
   const [floorActiveIndex, setFloorActiveIndex] = useState<number>(0);
   const [selectedFloor, setSelectedFloor] = useState<Floor | null>(null);
-  const [places, setPlaces] = useState<POIItem[]>([]);
+  const [places, setPlaces] = useState<POIItem[]>(initialPlaces ?? []);
 
   const mapRef = useRef<CanvasMapHandle>(null);
   const { position: robotPos, hasError: robotPosError, isReady: robotPosReady } = useRobotPosition(true);
@@ -52,23 +53,12 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
     }
   }, [floors, robotFloor]);
 
-  // 장소 데이터 fetch
+  // initialPlaces가 업데이트되면 반영
   useEffect(() => {
-    apiFetch(`/DB/places`)
-      .then((res) => res.ok ? res.json() : [])
-      .then((data: any[]) => {
-        const mapped: POIItem[] = data.map((p) => ({
-          id: p.id,
-          name: p.LacationName ?? "",
-          x: p.LocationX ?? 0,
-          y: p.LocationY ?? 0,
-          floor: p.Floor ?? "",
-          category: "work" as const,
-        }));
-        setPlaces(mapped);
-      })
-      .catch(() => setPlaces([]));
-  }, []);
+    if (initialPlaces && initialPlaces.length > 0) {
+      setPlaces(initialPlaces);
+    }
+  }, [initialPlaces]);
 
   // 선택된 층의 장소만 필터
   const floorPois = selectedFloor

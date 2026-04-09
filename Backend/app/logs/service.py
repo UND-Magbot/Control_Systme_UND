@@ -4,7 +4,7 @@ import queue
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from app.Database.models import LogDataInfo, Alert
 from app.Database.database import SessionLocal
 
@@ -138,7 +138,11 @@ class LogService:
             .all()
         )
 
-        return {"items": items, "total": total, "page": page, "size": size}
+        # 가장 이른 로그 날짜 조회
+        min_dt = self.db.query(func.min(LogDataInfo.CreatedAt)).scalar()
+        earliest = min_dt.strftime("%Y-%m-%d") if min_dt else None
+
+        return {"items": items, "total": total, "page": page, "size": size, "earliest_date": earliest}
 
 
 # ── 큐 Writer 스레드 (세션 1개 재사용) ──

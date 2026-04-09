@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styles from '@/app/(pages)/robots/components/RobotList.module.css';
 import Pagination from "@/app/components/pagination";
+import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import type { RobotRowData, Floor } from '@/app/type';
 import type { PlaceRow } from "@/app/mock/robotPlace_data";
 import PlaceCrudModal, { type PlaceRowData } from "@/app/(pages)/robots/components/PlaceCrudModal";
@@ -33,8 +34,6 @@ export default function PlaceList({ robots, floors, hideActions }: PlaceListProp
   const [placeCreateOpen, setPlaceCreateOpen] = useState(false);
   const [placeEditOpen, setPlaceEditOpen] = useState(false);
   const [placeDeleteConfirmOpen, setPlaceDeleteConfirmOpen] = useState(false);
-
-  const [placePage, setPlacePage] = useState(1);
 
   // ── 버튼 정책 ──
   const isPlaceCreateEnabled = placeCheckedCount === 0;
@@ -115,12 +114,10 @@ export default function PlaceList({ robots, floors, hideActions }: PlaceListProp
   }, [selectedPlaceId, filteredPlaceRows]);
 
   // ── 페이지네이션 ──
-  const placeTotalItems = filteredPlaceRows.length;
-  const placeStartIndex = (placePage - 1) * PLACE_PAGE_SIZE;
-  const currentPlaceItems = filteredPlaceRows.slice(
-    placeStartIndex,
-    placeStartIndex + PLACE_PAGE_SIZE
-  );
+  const { currentPage: placePage, setPage: setPlacePage, pagedItems: currentPlaceItems, totalItems: placeTotalItems } = usePaginatedList(filteredPlaceRows, {
+    pageSize: PLACE_PAGE_SIZE,
+    resetDeps: [selectedPlaceRobot, selectedPlaceFloor],
+  });
 
   const handlePlacePageChange = (page: number) => {
     setPlacePage(page);

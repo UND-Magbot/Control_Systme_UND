@@ -85,6 +85,7 @@ class Notice(Base):
     UserId = Column(Integer, nullable=False, comment="작성자 ID")
     AttachmentName = Column(String(255), nullable=True)
     AttachmentUrl = Column(String(500), nullable=True)
+    AttachmentSize = Column(Integer, nullable=True, comment="첨부파일 크기(bytes)")
     CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
     UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     DeletedAt = Column(DateTime, nullable=True, default=None)
@@ -256,9 +257,6 @@ class RobotMapInfo(Base):
     PgmFilePath = Column(String(300))
     YamlFilePath = Column(String(300))
     ImgFilePath = Column(String(300))
-    InitPosX = Column(Float)
-    InitPosY = Column(Float)
-    InitYaw = Column(Float)
     Adddate = Column(DateTime, server_default=func.now())
 
 

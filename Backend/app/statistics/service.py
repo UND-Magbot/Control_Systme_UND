@@ -71,6 +71,11 @@ class StatisticsService:
     def __init__(self, db: Session):
         self.db = db
 
+    def get_earliest_date(self) -> dict:
+        """가장 이른 로그 날짜 반환 (경량 쿼리)"""
+        min_dt = self.db.query(func.min(LogDataInfo.CreatedAt)).scalar()
+        return {"earliest_date": min_dt.strftime("%Y-%m-%d") if min_dt else None}
+
     def get_all(
         self,
         start_date: str | None = None,

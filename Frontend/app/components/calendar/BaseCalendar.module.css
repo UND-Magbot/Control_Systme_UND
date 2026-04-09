@@ -128,10 +128,11 @@
 
 /* 날짜 셀 */
 .dayBtn {
-  height: 23px;
+  height: 28px;
   border-radius: 5px;
   border: none;
   background: transparent;
+  position: relative;
   color: #9f9fa6;
   cursor: pointer;
   font-size: 12px;
@@ -142,29 +143,47 @@
   color: #9f9fa6;
 }
 
+/* 선택된 날짜 (시작일 or 종료일) */
 .daySelected {
   background: var(--accent, #00B0EE);
   color: #ffffff;
   font-weight: 600;
 }
 
+/* 오늘: 텍스트 아래 dot으로 표시 (선택 상태와 혼동 방지) */
 .dayToday {
   background: transparent;
-  color: #e5e7eb;
+  color: #ffffff;
   font-weight: 700;
-  box-shadow: inset 0 0 0 1.5px #ffffff;
+  position: relative;
+}
+
+.dayToday::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent, #00B0EE);
 }
 
 /* 오늘 + 선택 동시 */
 .daySelected.dayToday {
   background: var(--accent, #00B0EE);
   color: #ffffff;
-  box-shadow: inset 0 0 0 1.5px #ffffff;
 }
 
+.daySelected.dayToday::after {
+  background: #ffffff;
+}
+
+/* 범위 사이 날짜 */
 .dayInRange {
-  background: transparent;
-  color: #9f9fa6;
+  background: rgba(0, 176, 238, 0.12);
+  color: #b0d4e8;
 }
 
 .dayDisabled {
@@ -176,6 +195,7 @@
 .dayMinDisabled {
   color: #707070;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .dayOutside {

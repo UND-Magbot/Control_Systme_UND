@@ -413,15 +413,17 @@ export function useMapCanvas(
     panStartRef.current = null;
   }, []);
 
-  // wheel zoom
-  const onWheel = useCallback(
-    (e: React.WheelEvent) => {
-      if (!interactive) return;
+  // wheel zoom (passive: false로 등록해야 preventDefault 가능)
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el || !interactive) return;
+    const handler = (e: WheelEvent) => {
       e.preventDefault();
       handleZoom(e.deltaY < 0 ? "in" : "out");
-    },
-    [interactive, handleZoom]
-  );
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [interactive, handleZoom]);
 
   // 스케일 변경 시 translate 보정
   useEffect(() => {
@@ -440,7 +442,6 @@ export function useMapCanvas(
     hasMapError,
     onMouseDown,
     onMouseMove,
-    onWheel,
     endPan,
     handleZoom,
     worldToPixelScreen,

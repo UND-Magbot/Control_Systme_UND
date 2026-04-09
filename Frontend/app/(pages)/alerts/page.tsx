@@ -74,40 +74,9 @@ export default function AlertsPage() {
   const [currentUserName, setCurrentUserName] = useState<string>('');
 
   const [alerts, setAlerts] = useState<AlertMockData[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 현재 사용자 + 알림 목록 로드
-  const fetchAlerts = useCallback(async (initial = false) => {
-    const data = await getAlerts({ size: 10000 });
-    setAlerts(data.items);
-    setIsLoading(false);
-    if (initial) setPageReady();
-  }, [setPageReady]);
-
-  useEffect(() => {
-    apiFetch(`/user/current`)
-      .then(res => res.json())
-      .then(user => {
-        setCurrentUserId(user.id ?? 0);
-        setCurrentUserName(user.UserName ?? '');
-      })
-      .catch(() => {});
-    fetchAlerts(true);
-
-    const handleExternalRead = () => fetchAlerts();
-    window.addEventListener('alert-read-changed', handleExternalRead);
-    return () => window.removeEventListener('alert-read-changed', handleExternalRead);
-  }, [fetchAlerts]);
-
-  // URL 파라미터 id로 상세 패널 열기 (데이터 로드 후 적용)
-  useEffect(() => {
-    if (paramId && alerts.length > 0) {
-      const id = Number(paramId);
-      if (alerts.some(a => a.id === id)) {
-        setSelectedAlertId(id);
-      }
-    }
-  }, [paramId, alerts]);
   const [activeTab, setActiveTab] = useState<TabKey>(paramTab && ['total', 'schedule', 'robot', 'notice'].includes(paramTab) ? paramTab : 'total');
   const [noticeFormOpen, setNoticeFormOpen] = useState(false);
   const [noticeFormMode, setNoticeFormMode] = useState<'create' | 'edit'>('create');
@@ -121,8 +90,19 @@ export default function AlertsPage() {
   const [selectedAlertId, setSelectedAlertId] = useState<number | null>(paramId ? Number(paramId) : null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
+  const [unreadCounts, setUnreadCounts] = useState<Record<TabKey, number>>({ total: 0, schedule: 0, robot: 0, notice: 0 });
   const listRef = useRef<HTMLDivElement>(null);
   const ROW_HEIGHT = 48;
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
+  const currentPageRef = useRef(currentPage);
+  currentPageRef.current = currentPage;
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  const appliedSearchRef = useRef(appliedSearch);
+  appliedSearchRef.current = appliedSearch;
+  const appliedStatusRef = useRef(appliedStatus);
+  appliedStatusRef.current = appliedStatus;
 
   const calcPageSize = useCallback(() => {
     if (listRef.current) {
@@ -138,19 +118,60 @@ export default function AlertsPage() {
     return () => window.removeEventListener('resize', calcPageSize);
   }, [calcPageSize]);
 
-  // 미읽음 카운트 (탭 라벨용)
-  const unreadCounts = useMemo(() => {
-    const counts: Record<TabKey, number> = { total: 0, schedule: 0, robot: 0, notice: 0 };
-    for (const a of alerts) {
-      if (!a.isRead) {
-        counts.total++;
-        if (a.type === 'Schedule') counts.schedule++;
-        else if (a.type === 'Robot') counts.robot++;
-        else if (a.type === 'Notice') counts.notice++;
+  // 서버에서 현재 페이지 데이터 가져오기
+  const fetchAlerts = useCallback(async (opts?: { initial?: boolean }) => {
+    const filterType = tabTypeMap[activeTabRef.current];
+    const params: Parameters<typeof getAlerts>[0] = {
+      page: currentPageRef.current,
+      size: pageSizeRef.current,
+    };
+    if (filterType) params.type = filterType;
+    if (appliedStatusRef.current === 'read') params.is_read = 'true';
+    if (appliedStatusRef.current === 'unread') params.is_read = 'false';
+    if (appliedSearchRef.current.trim()) params.search = appliedSearchRef.current.trim();
+
+    const data = await getAlerts(params);
+    setAlerts(data.items);
+    setTotalItems(data.total);
+    setUnreadCounts({
+      total: data.unread_count.total,
+      schedule: data.unread_count.schedule,
+      robot: data.unread_count.robot,
+      notice: data.unread_count.notice,
+    });
+    setIsLoading(false);
+    if (opts?.initial) setPageReady();
+  }, [setPageReady]);
+
+  useEffect(() => {
+    apiFetch(`/user/current`)
+      .then(res => res.json())
+      .then(user => {
+        setCurrentUserId(user.id ?? 0);
+        setCurrentUserName(user.UserName ?? '');
+      })
+      .catch(() => {});
+    fetchAlerts({ initial: true });
+
+    const handleExternalRead = () => fetchAlerts();
+    window.addEventListener('alert-read-changed', handleExternalRead);
+    return () => window.removeEventListener('alert-read-changed', handleExternalRead);
+  }, []);
+
+  // 페이지, 탭, 필터 변경 시 서버에서 다시 가져오기
+  useEffect(() => {
+    if (!isLoading) fetchAlerts();
+  }, [currentPage, activeTab, appliedSearch, appliedStatus, pageSize]);
+
+  // URL 파라미터 id로 상세 패널 열기 (데이터 로드 후 적용)
+  useEffect(() => {
+    if (paramId && alerts.length > 0) {
+      const id = Number(paramId);
+      if (alerts.some(a => a.id === id)) {
+        setSelectedAlertId(id);
       }
     }
-    return counts;
-  }, [alerts]);
+  }, [paramId, alerts]);
 
   const tabs = useMemo<{ id: TabKey; label: string }[]>(() => [
     { id: 'total',     label: unreadCounts.total > 0 ? `전체 (${unreadCounts.total})` : '전체' },
@@ -159,46 +180,11 @@ export default function AlertsPage() {
     { id: 'notice',    label: unreadCounts.notice > 0 ? `공지사항 (${unreadCounts.notice})` : '공지사항' },
   ], [unreadCounts]);
 
-  // 필터링 + 정렬
-  const filteredAlerts = useMemo(() => {
-    let list = [...alerts];
-
-    // 탭 필터
-    const filterType = tabTypeMap[activeTab];
-    if (filterType) list = list.filter(a => a.type === filterType);
-
-    // 상태 필터
-    if (appliedStatus === 'read') list = list.filter(a => a.isRead);
-    if (appliedStatus === 'unread') list = list.filter(a => !a.isRead);
-
-    // 검색 필터
-    if (appliedSearch.trim()) {
-      const q = appliedSearch.toLowerCase();
-      list = list.filter(a =>
-        a.content.toLowerCase().includes(q) ||
-        (a.detail?.toLowerCase().includes(q))
-      );
-    }
-
-    // 날짜 최신순 정렬
-    list.sort((a, b) => b.date.localeCompare(a.date));
-
-    return list;
-  }, [alerts, activeTab, appliedStatus, appliedSearch]);
-
-  // 페이징
-  const pagedAlerts = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredAlerts.slice(start, start + pageSize);
-  }, [filteredAlerts, currentPage]);
-
   // 요약 카운트
   const summaryStats = useMemo(() => {
-    const total = filteredAlerts.length;
-    const unread = filteredAlerts.filter(a => !a.isRead).length;
-    const error = filteredAlerts.filter(a => a.status === 'error').length;
-    return { total, unread, error };
-  }, [filteredAlerts]);
+    const error = alerts.filter(a => a.status === 'error').length;
+    return { total: totalItems, unread: unreadCounts.total, error };
+  }, [alerts, totalItems, unreadCounts]);
 
   // 선택된 알림 상세
   const selectedAlert = useMemo(() => {
@@ -215,6 +201,7 @@ export default function AlertsPage() {
     try {
       await markAlertRead(id);
       setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
+      await fetchAlerts();
       window.dispatchEvent(new Event('alert-read-changed'));
     } catch {
       // API 실패 시 상태 변경하지 않음
@@ -225,10 +212,7 @@ export default function AlertsPage() {
     try {
       const filterType = tabTypeMap[activeTab] ?? undefined;
       await markAllAlertsRead(undefined, filterType ?? undefined);
-      setAlerts(prev => prev.map(a => {
-        if (!filterType || a.type === filterType) return { ...a, isRead: true };
-        return a;
-      }));
+      await fetchAlerts();
       window.dispatchEvent(new Event('alert-read-changed'));
     } catch {
       // API 실패 시 상태 변경하지 않음
@@ -236,9 +220,9 @@ export default function AlertsPage() {
   };
 
   const handleSearch = () => {
+    setCurrentPage(1);
     setAppliedSearch(searchQuery);
     setAppliedStatus(statusFilter);
-    setCurrentPage(1);
   };
 
   const handleOpenCreateNotice = () => {
@@ -254,11 +238,13 @@ export default function AlertsPage() {
   const handleNoticeSubmit = async (data: NoticeFormData) => {
     let attachmentName = data.attachment?.name;
     let attachmentUrl: string | undefined;
+    let attachmentSize: number | undefined;
 
     if (data.attachment) {
       const uploaded = await uploadNoticeFile(data.attachment);
       attachmentName = uploaded.original_name;
       attachmentUrl = uploaded.url;
+      attachmentSize = uploaded.size;
     }
 
     if (noticeFormMode === 'create') {
@@ -269,6 +255,7 @@ export default function AlertsPage() {
         UserId: currentUserId,
         AttachmentName: attachmentName,
         AttachmentUrl: attachmentUrl,
+        AttachmentSize: attachmentSize,
       });
     } else if (selectedAlertId !== null) {
       const alert = alerts.find(a => a.id === selectedAlertId);
@@ -279,6 +266,7 @@ export default function AlertsPage() {
           Importance: data.importance,
           AttachmentName: attachmentName,
           AttachmentUrl: attachmentUrl,
+          AttachmentSize: attachmentSize,
         });
       }
     }
@@ -323,6 +311,10 @@ export default function AlertsPage() {
     if (tabId !== 'notice' && noticeFormOpen) setNoticeFormOpen(false);
     setActiveTab(tabId);
     setCurrentPage(1);
+    setSearchQuery('');
+    setStatusFilter('');
+    setAppliedSearch('');
+    setAppliedStatus('');
   };
 
   const handleTabConfirm = () => {
@@ -330,6 +322,10 @@ export default function AlertsPage() {
       setNoticeFormOpen(false);
       setActiveTab(showTabConfirm);
       setCurrentPage(1);
+      setSearchQuery('');
+      setStatusFilter('');
+      setAppliedSearch('');
+      setAppliedStatus('');
       setShowTabConfirm(null);
     }
   };
@@ -372,7 +368,7 @@ export default function AlertsPage() {
               <input
                 type="text"
                 className={styles.searchInput}
-                placeholder="알림 내용 검색..."
+                placeholder="알림 내용 검색"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -388,7 +384,7 @@ export default function AlertsPage() {
               onSelect={(item) => {
                 setStatusFilter(item ? (item.id as StatusFilter) : 'all');
               }}
-              width={120}
+              width={140}
             />
             <button className={styles.searchBtn} onClick={handleSearch}>
               조회
@@ -404,12 +400,12 @@ export default function AlertsPage() {
           </div>
 
           <div ref={listRef} className={`${styles.alertList} ${styles.fadeIn}`} key={`${activeTab}-${currentPage}`}>
-            {pagedAlerts.length === 0 ? (
+            {alerts.length === 0 ? (
               <div className={styles.emptyList}>
-                {searchQuery.trim() ? '검색 결과가 없습니다' : '알림이 없습니다'}
+                {appliedSearch.trim() ? '검색 결과가 없습니다' : '알림이 없습니다'}
               </div>
             ) : (
-              pagedAlerts.map((item) => {
+              alerts.map((item) => {
                 const isUnread = !item.isRead;
                 const isSelected = selectedAlertId === item.id;
 
@@ -441,6 +437,14 @@ export default function AlertsPage() {
                           {statusLabel[displayStatus]}
                         </span>
                       )}
+                      {item.importance === 'high' && (
+                        <span className={styles.listImportanceBadge}>중요</span>
+                      )}
+                      {item.attachmentName && (
+                        <svg className={styles.listAttachIcon} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                        </svg>
+                      )}
                       <p className={styles.alertContent}>
                         {item.robotName && (
                           <span className={styles.alertRobotName}>{item.robotName}</span>
@@ -459,7 +463,7 @@ export default function AlertsPage() {
           </div>
           <div className={styles.paginationBar}>
             <Pagination
-              totalItems={filteredAlerts.length}
+              totalItems={totalItems}
               currentPage={currentPage}
               onPageChange={setCurrentPage}
               pageSize={pageSize}
@@ -480,30 +484,15 @@ export default function AlertsPage() {
             />
           ) : selectedAlert ? (
             <div className={`${styles.fadeIn} ${styles.detailInner}`} key={selectedAlert.id}>
+              {/* 1행: 버튼 */}
               <div className={styles.detailHeader}>
-                <div className={styles.detailHeaderLeft}>
-                  <span className={`${styles.badge} ${badgeClass[selectedAlert.type]}`}>
-                    {typeLabels[selectedAlert.type]}
-                  </span>
-                  {(() => {
-                    const status = getDisplayStatus(selectedAlert);
-                    return status ? (
-                      <span className={`${styles.statusTag} ${
-                        status === 'error' ? styles.statusError
-                        : status === 'info' ? styles.statusInfo
-                        : styles.statusEvent
-                      }`}>
-                        {statusLabel[status]}
-                      </span>
-                    ) : null;
-                  })()}
-                </div>
+                <div className={styles.detailHeaderLeft}></div>
                 <div className={styles.detailHeaderBtns}>
                   {selectedAlert.status === 'error' && (
                     <button
                       className={styles.viewLogBtn}
                       onClick={() => router.push(`/dataManagement?tab=log&search=${encodeURIComponent(selectedAlert.robotName || '')}`)}
->
+                    >
                       상세 로그
                     </button>
                   )}
@@ -527,85 +516,103 @@ export default function AlertsPage() {
                 </div>
               </div>
 
-              <div className={styles.detailMetaInline}>
-                <span className={styles.detailMetaItem}>
-                  <span className={styles.detailMetaLabel}>날짜</span>
-                  <span className={styles.detailMetaValue}>{selectedAlert.date}</span>
+              {/* 2행: 제목 */}
+              <div className={styles.detailTitleRow}>
+                <span className={styles.detailTitleText}>
+                  {selectedAlert.title || selectedAlert.content}
                 </span>
-                {selectedAlert.robotName && (
-                  <>
-                    <span className={styles.detailMetaDivider}>|</span>
-                    <span className={styles.detailMetaItem}>
-                      <span className={styles.detailMetaLabel}>로봇</span>
-                      <span className={styles.detailMetaValue}>{selectedAlert.robotName}</span>
-                    </span>
-                  </>
-                )}
+              </div>
+
+              {/* 3행: 메타 (작성자, 날짜, 로봇 등) */}
+              <div className={styles.detailMetaInline}>
                 {selectedAlert.author && (
                   <>
-                    <span className={styles.detailMetaDivider}>|</span>
                     <span className={styles.detailMetaItem}>
                       <span className={styles.detailMetaLabel}>작성자</span>
                       <span className={styles.detailMetaValue}>{selectedAlert.author}</span>
                     </span>
+                    <span className={styles.detailMetaDivider}>|</span>
                   </>
                 )}
+                {selectedAlert.robotName && (
+                  <>
+                    <span className={styles.detailMetaItem}>
+                      <span className={styles.detailMetaLabel}>로봇</span>
+                      <span className={styles.detailMetaValue}>{selectedAlert.robotName}</span>
+                    </span>
+                    <span className={styles.detailMetaDivider}>|</span>
+                  </>
+                )}
+                <span className={styles.detailMetaItem}>
+                  <span className={styles.detailMetaLabel}>날짜</span>
+                  <span className={styles.detailMetaValue}>{selectedAlert.date}</span>
+                </span>
                 {selectedAlert.importance && (
                   <>
                     <span className={styles.detailMetaDivider}>|</span>
-                    <span className={`${styles.importanceBadge} ${
-                      selectedAlert.importance === 'high' ? styles.importanceHigh
-                      : selectedAlert.importance === 'normal' ? styles.importanceNormal
-                      : styles.importanceLow
-                    }`}>
-                      {selectedAlert.importance === 'high' ? '높음' : selectedAlert.importance === 'normal' ? '일반' : '낮음'}
+                    <span className={styles.detailMetaItem}>
+                      <span className={styles.detailMetaLabel}>중요도</span>
+                      <span className={`${styles.importanceBadge} ${
+                        selectedAlert.importance === 'high' ? styles.importanceHigh
+                        : styles.importanceNormal
+                      }`}>
+                        {selectedAlert.importance === 'high' ? '중요' : '일반'}
+                      </span>
                     </span>
                   </>
                 )}
               </div>
 
               <div className={styles.detailBody}>
-                {selectedAlert.title && (
-                  <div className={styles.detailTitleText}>
-                    {selectedAlert.title}
+                <div className={styles.detailMainContent}>
+                  {selectedAlert.attachmentName && (
+                    <div className={styles.detailAttachment}>
+                      <svg className={styles.detailAttachmentIcon} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                      </svg>
+                      {selectedAlert.attachmentUrl ? (
+                        <a
+                          href={`${API_BASE}${selectedAlert.attachmentUrl}`}
+                          className={styles.detailAttachmentLink}
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const res = await apiFetch(`${selectedAlert.attachmentUrl}`);
+                            const blob = await res.blob();
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = selectedAlert.attachmentName || 'download';
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                        >
+                          {selectedAlert.attachmentName}
+                        </a>
+                      ) : (
+                        <span className={styles.detailAttachmentName}>
+                          {selectedAlert.attachmentName}
+                          <span className={styles.attachmentNoFile}> (파일 없음)</span>
+                        </span>
+                      )}
+                      {selectedAlert.attachmentSize != null && (
+                        <span className={styles.detailAttachmentSize}>
+                          {selectedAlert.attachmentSize < 1024
+                            ? `${selectedAlert.attachmentSize} B`
+                            : selectedAlert.attachmentSize < 1024 * 1024
+                              ? `${(selectedAlert.attachmentSize / 1024).toFixed(1)} KB`
+                              : `${(selectedAlert.attachmentSize / (1024 * 1024)).toFixed(1)} MB`}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className={styles.detailContentText}>
+                    {selectedAlert.content}
                   </div>
-                )}
-                <div className={styles.detailContentText}>
-                  {selectedAlert.content}
                 </div>
 
-                {selectedAlert.attachmentName && (
-                  <div className={styles.detailAttachment}>
-                    <span className={styles.detailAttachmentIcon}>📎</span>
-                    {selectedAlert.attachmentUrl ? (
-                      <a
-                        href={`${API_BASE}${selectedAlert.attachmentUrl}`}
-                        className={styles.detailAttachmentLink}
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const res = await apiFetch(`${selectedAlert.attachmentUrl}`);
-                          const blob = await res.blob();
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = selectedAlert.attachmentName || 'download';
-                          a.click();
-                          URL.revokeObjectURL(url);
-                        }}
-                      >
-                        {selectedAlert.attachmentName}
-                      </a>
-                    ) : (
-                      <span className={styles.detailAttachmentName}>
-                        {selectedAlert.attachmentName}
-                        <span className={styles.attachmentNoFile}> (파일 없음)</span>
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {selectedAlert.detail && (
+                {selectedAlert.detail && selectedAlert.type !== 'Notice' && (
                   <div className={styles.detailNoticeBody}>
                     {selectedAlert.type === 'Schedule' ? (() => {
                       const lines = selectedAlert.detail.split('\n').filter(Boolean);
@@ -734,7 +741,6 @@ export default function AlertsPage() {
             </div>
           ) : (
             <div className={styles.emptyDetail}>
-              <div className={styles.emptyDetailDot} />
               <span>알림을 선택하세요</span>
               <span className={styles.emptyDetailSub}>목록에서 알림을 클릭하면 상세 내용을 확인할 수 있습니다</span>
             </div>

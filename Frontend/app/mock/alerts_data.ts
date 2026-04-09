@@ -18,6 +18,7 @@ export interface AlertMockData {
   importance?: NoticeImportance; // 중요도
   attachmentName?: string;     // 첨부파일 이름
   attachmentUrl?: string;      // 첨부파일 URL
+  attachmentSize?: number;     // 첨부파일 크기(bytes)
   noticeId?: number;           // notice 테이블 PK (수정 시 사용)
 }
 

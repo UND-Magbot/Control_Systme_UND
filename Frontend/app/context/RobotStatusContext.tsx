@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { RobotRowData } from "@/app/type";
 import { apiFetch } from "@/app/lib/api";
 
@@ -132,8 +132,10 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
     return () => clearInterval(id);
   }, [loadInitial, poll]);
 
+  const value = useMemo(() => ({ robots, loaded, refresh }), [robots, loaded, refresh]);
+
   return (
-    <RobotStatusContext.Provider value={{ robots, loaded, refresh }}>
+    <RobotStatusContext.Provider value={value}>
       {children}
     </RobotStatusContext.Provider>
   );

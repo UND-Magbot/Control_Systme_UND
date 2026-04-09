@@ -9,6 +9,14 @@ type RefreshResult = "success" | "invalid" | "error";
 let isRefreshing = false;
 let refreshPromise: Promise<RefreshResult> | null = null;
 
+// 세션 만료 확정 후 추가 API 호출 차단
+let sessionExpired = false;
+
+/** 로그인 성공 시 호출하여 차단 플래그 초기화 */
+export function resetSessionExpired() {
+  sessionExpired = false;
+}
+
 // ── 탭 간 refresh 동기화 ──
 const refreshChannel =
   typeof BroadcastChannel !== "undefined"
@@ -104,6 +112,11 @@ export async function apiFetch(
     headers,
   };
 
+  // 이미 세션 만료가 확정된 경우 네트워크 요청 없이 즉시 반환
+  if (sessionExpired) {
+    return new Response(null, { status: 401, statusText: "Session Expired" });
+  }
+
   let res = await fetch(url, fetchOptions);
 
   if (res.status === 401) {
@@ -114,6 +127,7 @@ export async function apiFetch(
       res = await fetch(url, fetchOptions);
     } else if (result === "invalid") {
       // refresh token 자체가 무효 → 진짜 세션 만료
+      sessionExpired = true;
       console.log("[Auth] 세션 만료: refresh token 무효");
       window.dispatchEvent(new CustomEvent("auth:session-expired"));
     }

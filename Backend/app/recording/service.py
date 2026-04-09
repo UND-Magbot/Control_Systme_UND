@@ -81,7 +81,7 @@ def get_recordings_grouped(
     # 1) 그룹별 요약 서브쿼리
     base = db.query(RecordingInfo).filter(
         RecordingInfo.DeletedAt.is_(None),
-        RecordingInfo.Status != "error",
+        RecordingInfo.Status == "completed",
     )
     if robot_id:
         base = base.filter(RecordingInfo.RobotId == robot_id)
@@ -90,12 +90,16 @@ def get_recordings_grouped(
     if start_date:
         base = base.filter(RecordingInfo.RecordStart >= start_date)
     if end_date:
-        base = base.filter(RecordingInfo.RecordStart <= end_date)
+        # "2026-04-08" → 해당 날짜 끝(23:59:59)까지 포함
+        end_val = end_date.strip()
+        if len(end_val) == 10:  # YYYY-MM-DD
+            end_val += " 23:59:59"
+        base = base.filter(RecordingInfo.RecordStart <= end_val)
 
-    # 그룹별 고유 GroupId 목록
+    # 카메라별로 분리하여 그룹핑 (GroupId + ModuleId)
     group_query = (
-        base.with_entities(RecordingInfo.GroupId)
-        .distinct()
+        base.with_entities(RecordingInfo.GroupId, RecordingInfo.ModuleId)
+        .group_by(RecordingInfo.GroupId, RecordingInfo.ModuleId)
         .order_by(desc(sqlfunc.max(RecordingInfo.RecordStart)))
     )
 
@@ -104,17 +108,49 @@ def get_recordings_grouped(
     total = len(all_groups)
 
     # 페이지네이션
-    group_ids = [g[0] for g in all_groups[(page - 1) * size : page * size]]
+    page_groups = all_groups[(page - 1) * size : page * size]
+    group_keys = [(g[0], g[1]) for g in page_groups]  # (GroupId, ModuleId)
 
-    # 2) 그룹별 세그먼트 + 조인 정보
+    if not group_keys:
+        return {"items": [], "total": total, "page": page, "size": size}
+
+    # 2) 해당 페이지의 세그먼트를 한 번에 조회
+    gid_set = set(gk[0] for gk in group_keys)
+    all_segments = (
+        db.query(RecordingInfo)
+        .filter(RecordingInfo.GroupId.in_(gid_set), RecordingInfo.DeletedAt.is_(None),
+                RecordingInfo.Status != "error")
+        .order_by(RecordingInfo.RecordStart)
+        .all()
+    )
+
+    # (GroupId, ModuleId)별로 세그먼트 분류
+    segments_by_key: dict[tuple, list] = {}
+    for seg in all_segments:
+        k = (seg.GroupId, seg.ModuleId)
+        segments_by_key.setdefault(k, []).append(seg)
+
+    # 벌크 조회를 위한 ID 수집
+    robot_ids = set()
+    module_ids = set()
+    schedule_ids = set()
+    for k, segs in segments_by_key.items():
+        if segs:
+            first = segs[0]
+            robot_ids.add(first.RobotId)
+            module_ids.add(first.ModuleId)
+            if first.ScheduleId:
+                schedule_ids.add(first.ScheduleId)
+
+    # 벌크 조회 (N+1 → 3쿼리)
+    robots = {r.id: r for r in db.query(RobotInfo).filter(RobotInfo.id.in_(robot_ids)).all()} if robot_ids else {}
+    modules_map = {m.id: m for m in db.query(RobotModule).filter(RobotModule.id.in_(module_ids)).all()} if module_ids else {}
+    schedules = {s.id: s for s in db.query(ScheduleInfo).filter(ScheduleInfo.id.in_(schedule_ids)).all()} if schedule_ids else {}
+
+    # 3) 카메라별 결과 조립
     results = []
-    for gid in group_ids:
-        segments = (
-            db.query(RecordingInfo)
-            .filter(RecordingInfo.GroupId == gid, RecordingInfo.DeletedAt.is_(None))
-            .order_by(RecordingInfo.RecordStart)
-            .all()
-        )
+    for gk in group_keys:
+        segments = segments_by_key.get(gk, [])
         if not segments:
             continue
 
@@ -122,30 +158,28 @@ def get_recordings_grouped(
         last = segments[-1]
 
         # 로봇 이름
-        robot = db.query(RobotInfo).filter(RobotInfo.id == first.RobotId).first()
+        robot = robots.get(first.RobotId)
         robot_name = robot.RobotName if robot else f"Robot-{first.RobotId}"
 
         # 카메라 라벨
-        module = db.query(RobotModule).filter(RobotModule.id == first.ModuleId).first()
+        module = modules_map.get(first.ModuleId)
         camera_label = module.Label if module else f"cam-{first.ModuleId}"
 
         # 스케줄 작업명
         work_name = None
         if first.ScheduleId:
-            schedule = db.query(ScheduleInfo).filter(ScheduleInfo.id == first.ScheduleId).first()
+            schedule = schedules.get(first.ScheduleId)
             if schedule:
                 work_name = schedule.WorkName
 
-        # 총 녹화 시간 계산
+        # 총 녹화 시간
         total_sec = 0
         for seg in segments:
             if seg.RecordEnd and seg.RecordStart:
                 total_sec += int((seg.RecordEnd - seg.RecordStart).total_seconds())
 
-        # 녹화 유형 표시명
         type_label = "자동" if first.RecordType == "auto" else "수동"
 
-        # 첫 세그먼트 썸네일
         thumbnail_url = None
         if first.ThumbnailPath:
             thumbnail_url = f"/api/recordings/{first.id}/thumbnail"
@@ -162,12 +196,11 @@ def get_recordings_grouped(
                 "stream_url": f"/api/recordings/{seg.id}/stream",
             })
 
-        # 상태 + 에러 사유
         status = first.Status
         error_reason = first.ErrorReason if status == "error" else None
 
         results.append({
-            "group_id": gid,
+            "group_id": f"{gk[0]}_{gk[1]}",  # GroupId_ModuleId (카메라별 고유키)
             "robot_id": first.RobotId,
             "robot_name": robot_name,
             "camera_label": camera_label,
@@ -211,13 +244,38 @@ def soft_delete_by_groups(db: Session, group_ids: List[str]) -> int:
 
 
 def cleanup_orphaned(db: Session) -> int:
-    """서버 시작 시 Status='recording' 고아 레코드 → 'error'"""
-    orphans = db.query(RecordingInfo).filter(RecordingInfo.Status == "recording").all()
+    """서버 시작 시 비정상 레코드 정리:
+    1) Status='recording' 고아 → 'error'
+    2) Status='completed'인데 실제 파일 없음 → 'error'
+    """
+    import os
+    now = datetime.now()
     count = 0
+
+    # 1) recording 상태 고아
+    orphans = db.query(RecordingInfo).filter(RecordingInfo.Status == "recording").all()
     for rec in orphans:
         rec.Status = "error"
-        rec.RecordEnd = datetime.now()
+        rec.ErrorReason = "서버 재시작 시 녹화 중이던 세션 (고아)"
+        rec.RecordEnd = now
         count += 1
+
+    # 2) completed인데 파일 없는 레코드
+    completed = db.query(RecordingInfo).filter(
+        RecordingInfo.Status == "completed",
+        RecordingInfo.DeletedAt.is_(None),
+    ).all()
+    for rec in completed:
+        has_file = False
+        if rec.VideoPath and os.path.isdir(rec.VideoPath):
+            mp4s = [f for f in os.listdir(rec.VideoPath)
+                    if f.endswith(".mp4") and f"cam{rec.ModuleId}" in f]
+            has_file = any(os.path.getsize(os.path.join(rec.VideoPath, f)) > 0 for f in mp4s)
+        if not has_file:
+            rec.Status = "error"
+            rec.ErrorReason = "녹화 파일 미존재 (서버 시작 시 정리)"
+            count += 1
+
     if count > 0:
         db.commit()
     return count
@@ -239,13 +297,14 @@ def get_active_camera_modules(db: Session, robot_id: int):
     return modules
 
 
-def build_rtsp_url(db: Session, module: RobotModule) -> Optional[str]:
-    """모듈에서 RTSP URL 생성"""
+def build_rtsp_url(db: Session, module: RobotModule, robot: RobotInfo = None) -> Optional[str]:
+    """모듈에서 RTSP URL 생성. robot 객체를 전달하면 DB 재조회를 생략한다."""
     ci = module.camera_info
     if not ci or ci.StreamType != "rtsp":
         return None
 
-    robot = db.query(RobotInfo).filter(RobotInfo.id == module.RobotId).first()
+    if robot is None:
+        robot = db.query(RobotInfo).filter(RobotInfo.id == module.RobotId).first()
     ip = ci.CameraIP or (robot.RobotIP if robot else None)
     if not ip:
         return None

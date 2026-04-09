@@ -10,6 +10,7 @@ class NoticeCreateReq(BaseModel):
     UserId: int
     AttachmentName: Optional[str] = None
     AttachmentUrl: Optional[str] = None
+    AttachmentSize: Optional[int] = None
 
 
 class NoticeUpdateReq(BaseModel):
@@ -18,6 +19,7 @@ class NoticeUpdateReq(BaseModel):
     Importance: Optional[Literal["high", "normal"]] = None
     AttachmentName: Optional[str] = None
     AttachmentUrl: Optional[str] = None
+    AttachmentSize: Optional[int] = None
 
 
 class NoticeResponse(BaseModel):
@@ -28,6 +30,7 @@ class NoticeResponse(BaseModel):
     UserId: int
     AttachmentName: Optional[str] = None
     AttachmentUrl: Optional[str] = None
+    AttachmentSize: Optional[int] = None
     CreatedAt: datetime
     UpdatedAt: datetime
 

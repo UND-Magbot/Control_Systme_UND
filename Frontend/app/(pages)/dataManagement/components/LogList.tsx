@@ -1,21 +1,23 @@
 "use client";
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import styles from "./LogList.module.css";
 import videoListStyles from "./VideoList.module.css";
 import Pagination from "@/app/components/pagination";
+import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import LogDetailModal from "./LogDetailModal";
 import modalStyles from "@/app/components/modal/Modal.module.css";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import type { FilterOption } from "@/app/components/button/FilterSelectBox";
-import { BaseCalendar, getTodayStr, parseYMD } from "@/app/components/calendar/index";
-import type { LogItem, LogCategory } from "@/app/type";
+import { BaseCalendar, getTodayStr, parseYMD, formatDateToYMD } from "@/app/components/calendar/index";
+import type { LogItem, LogCategory, Period } from "@/app/type";
 import { LOG_CATEGORY_LABELS } from "@/app/type";
 import { getLogData } from "@/app/lib/logData";
 import * as XLSX from "xlsx";
 
 const THEAD_HEIGHT = 44;
 const ROW_HEIGHT = 48;
+const DEBOUNCE_MS = 400;
 
 const LOG_TYPE_ITEMS: (FilterOption & { value: LogCategory })[] = [
   { id: "system", label: "시스템", value: "system" },
@@ -24,19 +26,20 @@ const LOG_TYPE_ITEMS: (FilterOption & { value: LogCategory })[] = [
   { id: "error", label: "에러", value: "error" },
 ];
 
+const PERIOD_ITEMS: { key: Period | "Total"; label: string }[] = [
+  { key: "Total", label: "전체" },
+  { key: "today", label: "당일" },
+  { key: "3days", label: "3일" },
+  { key: "1week", label: "1주" },
+  { key: "1month", label: "1달" },
+];
+
 const BADGE_CLASS_MAP: Record<string, string> = {
   robot: styles.badgeRobot,
   system: styles.badgeSystem,
   schedule: styles.badgeSchedule,
   error: styles.badgeError,
 };
-
-const TIME_ITEMS: FilterOption[] = [
-  "00:00", "01:00", "02:00", "03:00", "04:00", "05:00",
-  "06:00", "07:00", "08:00", "09:00", "10:00", "11:00",
-  "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
-  "18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "23:59",
-].map((t) => ({ id: t, label: t }));
 
 function getToday(): string {
   return getTodayStr();
@@ -52,6 +55,21 @@ function formatDateTime(iso: string): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
+/** 기간 프리셋 → 시작/종료일 계산 */
+function periodToDates(period: Period | "Total"): { start: string; end: string } {
+  const today = new Date();
+  const end = formatDateToYMD(today);
+  const start = new Date(today);
+
+  if (period === "today") { /* start = today */ }
+  else if (period === "3days") start.setDate(start.getDate() - 3);
+  else if (period === "1week") start.setDate(start.getDate() - 7);
+  else if (period === "1month") start.setMonth(start.getMonth() - 1);
+  else if (period === "Total") return { start: "", end: "" };
+
+  return { start: formatDateToYMD(start), end };
+}
+
 type LogListProps = {
   logData: LogItem[];
   initialSearch?: string;
@@ -63,11 +81,7 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
   const [selectedLogType, setSelectedLogType] = useState<LogCategory | null>(null);
   const [startDate, setStartDate] = useState(getToday());
   const [endDate, setEndDate] = useState(getToday());
-  const [startTime, setStartTime] = useState("00:00");
-  const [endTime, setEndTime] = useState("23:59");
-
-  // 페이지네이션
-  const [logPage, setLogPage] = useState(1);
+  const [selectedPeriod, setSelectedPeriod] = useState<Period | "Total" | null>("today");
 
   // tableWrapper 높이 기반 동적 pageSize 계산
   const tableWrapperRef = useRef<HTMLDivElement>(null);
@@ -92,13 +106,14 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
   // 필터된 데이터
   const [filteredData, setFilteredData] = useState<LogItem[]>(logData);
 
-  // 초기 로드: 서버에서 오늘 데이터 조회
+  // 가장 이른 로그 날짜 (마운트 시 1회 조회, "전체" 클릭 즉시 반영용)
+  const [earliestDate, setEarliestDate] = useState<string | null>(null);
   useEffect(() => {
-    const today = getToday();
-    getLogData({ start_date: today, end_date: today, size: 10000 })
-      .then((res) => setFilteredData(res.items))
-      .catch(() => setFilteredData(logData));
+    getLogData({ size: 1 }).then((res) => {
+      if (res.earliest_date) setEarliestDate(res.earliest_date);
+    }).catch(() => {});
   }, []);
+  const [isLoading, setIsLoading] = useState(false);
 
   // 알림 모달
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
@@ -129,78 +144,91 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
     setCalendarOpen(true);
   };
 
+  // 달력 선택 시 자동 보정 (시작 > 종료 방지)
   const handleCalendarSelect = (field: "start" | "end", date: string) => {
-    if (field === "start") setStartDate(date);
-    else setEndDate(date);
+    if (field === "start") {
+      setStartDate(date);
+      if (date > endDate) setEndDate(date);
+    } else {
+      setEndDate(date);
+      if (date < startDate) setStartDate(date);
+    }
+    setSelectedPeriod(null);
     setCalendarOpen(false);
     setCalendarField(null);
   };
 
-  // 필터 적용 (서버 API 호출)
-  const [isLoading, setIsLoading] = useState(false);
-
-  const applyFilters = useCallback(async () => {
-    const start = new Date(`${startDate}T${startTime}:00`);
-    const end = new Date(`${endDate}T${endTime}:59`);
-
-    if (start > end) {
-      setAlertMessage("시작 일시가 종료 일시보다 이후입니다.\n조회 조건을 확인해주세요.");
-      return;
+  // 기간 프리셋 클릭
+  const handlePeriodClick = (period: Period | "Total") => {
+    setSelectedPeriod(period);
+    if (period === "Total") {
+      setStartDate(earliestDate || "");
+      setEndDate(getToday());
+    } else {
+      const { start, end } = periodToDates(period);
+      setStartDate(start);
+      setEndDate(end);
     }
+  };
 
-    setIsLoading(true);
-    try {
-      const res = await getLogData({
-        start_date: startDate,
-        end_date: endDate,
-        category: selectedLogType ?? undefined,
-        search: searchQuery.trim() || undefined,
-        size: 10000,
-      });
+  // 디바운스로 즉시 반영 (필터 변경 시 API 호출)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchIdRef = useRef(0); // race condition 방지
 
-      // 시간 필터는 클라이언트에서 적용 (API는 날짜 단위)
-      const filtered = res.items.filter((log) => {
-        const d = new Date(log.CreatedAt);
-        return d >= start && d <= end;
-      });
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
 
-      setFilteredData(filtered);
-      setLogPage(1);
-    } catch {
-      setAlertMessage("로그 조회에 실패했습니다.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchQuery, selectedLogType, startDate, endDate, startTime, endTime]);
+    debounceRef.current = setTimeout(async () => {
+      if (startDate && endDate && startDate > endDate) return;
 
-  // 초기화 (오늘 날짜 기준으로 서버에서 다시 조회)
-  const handleReset = async () => {
+      const id = ++fetchIdRef.current;
+      setIsLoading(true);
+      try {
+        const res = await getLogData({
+          start_date: startDate || undefined,
+          end_date: endDate || undefined,
+          category: selectedLogType ?? undefined,
+          search: searchQuery.trim() || undefined,
+          size: 10000,
+        });
+        if (id === fetchIdRef.current) {
+          setFilteredData(res.items);
+          // earliest_date 캐시 갱신
+          if (res.earliest_date && res.earliest_date !== earliestDate) {
+            setEarliestDate(res.earliest_date);
+          }
+        }
+      } catch {
+        if (id === fetchIdRef.current) {
+          setAlertMessage("로그 조회에 실패했습니다.");
+        }
+      } finally {
+        if (id === fetchIdRef.current) {
+          setIsLoading(false);
+        }
+      }
+    }, DEBOUNCE_MS);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery, selectedLogType, startDate, endDate]);
+
+  // 초기화
+  const handleReset = () => {
     const today = getToday();
-
     setSearchQuery("");
     setSelectedLogType(null);
     setStartDate(today);
     setEndDate(today);
-    setStartTime("00:00");
-    setEndTime("23:59");
-
-    setIsLoading(true);
-    try {
-      const res = await getLogData({ start_date: today, end_date: today, size: 10000 });
-      setFilteredData(res.items);
-    } catch {
-      setFilteredData([]);
-    } finally {
-      setIsLoading(false);
-    }
-    setLogPage(1);
+    setSelectedPeriod("today");
   };
 
-  // 현재 페이지 데이터
-  const pagedData = useMemo(() => {
-    const startIdx = (logPage - 1) * pageSize;
-    return filteredData.slice(startIdx, startIdx + pageSize);
-  }, [filteredData, logPage, pageSize]);
+  // 페이지네이션
+  const { currentPage: logPage, setPage: setLogPage, pagedItems: pagedData, totalItems: logTotalItems } = usePaginatedList(filteredData, {
+    pageSize,
+    resetDeps: [filteredData],
+  });
 
   // 상세보기
   const openDetail = (item: LogItem) => {
@@ -243,105 +271,94 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
 
   return (
     <div className={styles.logContainer}>
-      {/* 상단 헤더: 타이틀 + Excel */}
-      <div className={videoListStyles.videoListTopPosition}>
+      {/* 상단 헤더: 타이틀 + 필터 + Excel */}
+      <div className={styles.topBar}>
         <h2>로그 관리</h2>
-        <button className={styles.excelButton} onClick={exportToExcel}>Excel 내보내기</button>
-      </div>
 
-      {/* 필터 바 */}
-      <div className={styles.filterBar}>
-        <input
-          type="text"
-          className={styles.searchInput}
-          placeholder="로그 메시지를 입력하세요."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+        <div className={styles.filterBar}>
+          <input
+            type="text"
+            className={styles.searchInput}
+            placeholder="로그 메시지를 입력하세요."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
 
-        <span className={styles.filterLabel}>타입</span>
-        <FilterSelectBox
-          items={LOG_TYPE_ITEMS}
-          selectedLabel={selectedTypeLabel}
-          placeholder="로그 타입"
-          width={120}
-          onSelect={(item) => {
-            if (item) {
-              const found = LOG_TYPE_ITEMS.find((o) => o.id === item.id);
-              setSelectedLogType(found?.value ?? null);
-            } else {
-              setSelectedLogType(null);
-            }
-          }}
-        />
+          <span className={styles.filterLabel}>타입</span>
+          <FilterSelectBox
+            items={LOG_TYPE_ITEMS}
+            selectedLabel={selectedTypeLabel}
+            placeholder="로그 타입"
+            width={120}
+            onSelect={(item) => {
+              if (item) {
+                const found = LOG_TYPE_ITEMS.find((o) => o.id === item.id);
+                setSelectedLogType(found?.value ?? null);
+              } else {
+                setSelectedLogType(null);
+              }
+            }}
+          />
 
-        <span className={styles.filterLabel}>시작</span>
-        <div className={styles.dateWrapper} ref={calendarField === "start" ? calendarRef : undefined}>
-          <div className={styles.dateInput} onClick={() => openCalendar("start")}>
-            <span>{startDate}</span>
-            <img src="/icon/search_calendar.png" alt="calendar" />
+          <div className={videoListStyles.dtPeriod}>
+            {PERIOD_ITEMS.map(({ key, label }) => (
+              <div
+                key={key}
+                className={`${videoListStyles.periodItem} ${selectedPeriod === key ? videoListStyles.active : ""}`}
+                onClick={() => handlePeriodClick(key)}
+              >
+                {label}
+              </div>
+            ))}
           </div>
-          {calendarOpen && calendarField === "start" && (
-            <div className={styles.calendarPopup}>
-              <BaseCalendar
-                mode="range"
-                startDate={startDate}
-                endDate={endDate}
-                activeField="start"
-                onRangeSelect={handleCalendarSelect}
-                showTodayButton
-                initialViewDate={parseYMD(startDate)}
-              />
-            </div>
-          )}
-        </div>
 
-        <span className={styles.filterLabel}>종료</span>
-        <div className={styles.dateWrapper} ref={calendarField === "end" ? calendarRef : undefined}>
-          <div className={styles.dateInput} onClick={() => openCalendar("end")}>
-            <span>{endDate}</span>
-            <img src="/icon/search_calendar.png" alt="calendar" />
+          <div className={styles.dateWrapper} ref={calendarField === "start" ? calendarRef : undefined}>
+            <div className={styles.dateInput} onClick={() => openCalendar("start")}>
+              <span>{startDate}</span>
+              <img src="/icon/search_calendar.png" alt="calendar" />
+            </div>
+            {calendarOpen && calendarField === "start" && (
+              <div className={styles.calendarPopup}>
+                <BaseCalendar
+                  mode="range"
+                  startDate={startDate}
+                  endDate={endDate}
+                  activeField="start"
+                  onRangeSelect={handleCalendarSelect}
+                  showTodayButton
+                  maxDate={getToday()}
+                  initialViewDate={parseYMD(startDate)}
+                />
+              </div>
+            )}
           </div>
-          {calendarOpen && calendarField === "end" && (
-            <div className={styles.calendarPopup}>
-              <BaseCalendar
-                mode="range"
-                startDate={startDate}
-                endDate={endDate}
-                activeField="end"
-                onRangeSelect={handleCalendarSelect}
-                showTodayButton
-                initialViewDate={parseYMD(endDate)}
-              />
+
+          <span className={styles.dateSeparator}>~</span>
+
+          <div className={styles.dateWrapper} ref={calendarField === "end" ? calendarRef : undefined}>
+            <div className={styles.dateInput} onClick={() => openCalendar("end")}>
+              <span>{endDate}</span>
+              <img src="/icon/search_calendar.png" alt="calendar" />
             </div>
-          )}
+            {calendarOpen && calendarField === "end" && (
+              <div className={styles.calendarPopup}>
+                <BaseCalendar
+                  mode="range"
+                  startDate={startDate}
+                  endDate={endDate}
+                  activeField="end"
+                  onRangeSelect={handleCalendarSelect}
+                  showTodayButton
+                  maxDate={getToday()}
+                  initialViewDate={parseYMD(endDate)}
+                />
+              </div>
+            )}
+          </div>
+
+          <button className={styles.resetButton} onClick={handleReset}>초기화</button>
+          <button className={styles.excelButton} onClick={exportToExcel}>Excel 내보내기</button>
         </div>
-
-        <span className={styles.filterLabel}>시간</span>
-        <FilterSelectBox
-          items={TIME_ITEMS}
-          selectedLabel={startTime}
-          placeholder="시작"
-          showTotal={false}
-          width={90}
-          onSelect={(item) => {
-            if (item) setStartTime(item.label);
-          }}
-        />
-        <span className={styles.timeSeparator}>-</span>
-        <FilterSelectBox
-          items={TIME_ITEMS}
-          selectedLabel={endTime}
-          placeholder="종료"
-          showTotal={false}
-          width={90}
-          onSelect={(item) => {
-            if (item) setEndTime(item.label);
-          }}
-        />
-
-        <button className={styles.resetButton} onClick={handleReset}>초기화</button>
-        <button className={styles.searchButton} onClick={applyFilters}>조회</button>
       </div>
 
       {/* 테이블 */}
@@ -387,15 +404,15 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
       {/* 하단 페이지네이션 */}
       <div className={styles.paginationArea}>
         <Pagination
-          totalItems={filteredData.length}
+          totalItems={logTotalItems}
           currentPage={logPage}
           onPageChange={setLogPage}
           pageSize={pageSize}
           blockSize={5}
         />
-        {filteredData.length > 0 && (
+        {logTotalItems > 0 && (
           <div className={styles.totalCount}>
-            총 <span>{filteredData.length}</span> 개
+            총 <span>{logTotalItems}</span> 개
           </div>
         )}
       </div>

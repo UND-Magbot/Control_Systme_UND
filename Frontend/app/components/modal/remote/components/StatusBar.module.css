@@ -168,13 +168,15 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  height: 26px;
+  padding: 0 10px;
   border-radius: 5px;
   border: 1px solid rgba(229, 57, 53, 0.4);
   background: rgba(229, 57, 53, 0.12);
   color: #ef5350;
   font-size: var(--font-size-sm);
   font-weight: 600;
+  line-height: 1;
   white-space: nowrap;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -194,6 +196,7 @@
 
 .recStopLabel {
   letter-spacing: 0.3px;
+  line-height: 1;
 }
 
 /* ● 빨간 점 (pulse) — 수동 녹화 중 */
@@ -243,8 +246,6 @@
   color: inherit;
   min-width: 38px;
   line-height: 1;
-  display: inline-flex;
-  align-items: center;
 }
 
 @keyframes recPulse {

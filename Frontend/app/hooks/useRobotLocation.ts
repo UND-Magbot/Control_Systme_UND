@@ -11,9 +11,10 @@ type Place = {
   floor: string;
 };
 
-type RobotLocation = {
+export type RobotLocation = {
   floor: string;
   placeName: string | null;
+  places: Place[];
 };
 
 const NEARBY_THRESHOLD = 1.5; // 미터 단위, 이 거리 이내면 해당 장소에 있다고 판단
@@ -24,7 +25,7 @@ function distance(x1: number, y1: number, x2: number, y2: number) {
 
 export function useRobotLocation(): RobotLocation {
   const [places, setPlaces] = useState<Place[]>([]);
-  const [location, setLocation] = useState<RobotLocation>({ floor: "1F", placeName: null });
+  const [location, setLocation] = useState<Omit<RobotLocation, "places">>({ floor: "1F", placeName: null });
 
   // 장소 데이터 1회 fetch
   useEffect(() => {
@@ -82,5 +83,5 @@ export function useRobotLocation(): RobotLocation {
     return () => clearInterval(id);
   }, [places]);
 
-  return location;
+  return { ...location, places };
 }

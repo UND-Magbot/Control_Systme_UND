@@ -39,6 +39,7 @@ class CameraRecordingWorker:
         self._process: Optional[subprocess.Popen] = None
         self._current_segment: int = 0
         self.error_reason: Optional[str] = None  # 실패 사유
+        self.file_prefix: Optional[str] = None   # 이 세션의 파일명 접두사
 
     def start(self):
         os.makedirs(self.output_dir, exist_ok=True)
@@ -74,10 +75,11 @@ class CameraRecordingWorker:
     def _run_ffmpeg(self):
         """FFmpeg subprocess로 RTSP 녹화 (MPEGTS 세그먼트 → 종료 시 MP4 변환)"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.file_prefix = f"{self.robot_id}_cam{self.module_id}_{self.record_type}_{timestamp}"
         # MPEGTS 세그먼트로 녹화 (강제 종료에도 파일 손상 없음)
         pattern = os.path.join(
             self.output_dir,
-            f"{self.robot_id}_cam{self.module_id}_{self.record_type}_{timestamp}_seg%03d.ts",
+            f"{self.file_prefix}_seg%03d.ts",
         )
 
         cmd = [
