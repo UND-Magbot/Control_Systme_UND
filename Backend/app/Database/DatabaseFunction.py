@@ -10,6 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from datetime import datetime
 from app.auth.dependencies import get_current_user, require_permission, require_any_permission
 from app.auth.audit import write_audit, get_client_ip
+from app.robot_runtime import _derive_network, _derive_power
 
 database = APIRouter(prefix="/DB")
 
@@ -115,6 +116,13 @@ def get_robots(db: Session = Depends(get_db), current_user: UserInfo = Depends(r
             data["PosY"] = status.PosY
             data["PosYaw"] = status.PosYaw
             data["LastHeartbeat"] = status.LastHeartbeat.isoformat() if status.LastHeartbeat else None
+        # network/power: DB LastHeartbeat 기반 derive, 없으면 "-"(미확인)
+        if status and status.LastHeartbeat:
+            net = _derive_network(status.LastHeartbeat.timestamp())
+        else:
+            net = "-"
+        data["Network"] = net
+        data["Power"] = _derive_power(net)
         result.append(data)
     return result
 

@@ -6,6 +6,7 @@ import { apiFetch } from "@/app/lib/api";
 
 const STATUS_API = `/robot/status`;
 const POLL_INTERVAL = 5000;
+const OFFLINE_THRESHOLD = 3; // 연속 실패 횟수 — 이 횟수 이상 실패해야 Offline 처리
 
 type StatusEntry = {
   robot_id: number;
@@ -43,6 +44,7 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
   const [robots, setRobots] = useState<RobotRowData[]>([]);
   const [loaded, setLoaded] = useState(false);
   const initialLoaded = useRef(false);
+  const failCount = useRef(0);
 
   // 초기 로봇 목록 로드 (DB)
   const loadInitial = useCallback(async () => {
@@ -64,11 +66,14 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const statuses: StatusEntry[] = await res.json();
 
+      failCount.current = 0; // 성공 시 실패 카운트 초기화
+
       setRobots((prev) =>
         prev.map((r) => {
           const match = statuses.find((s) => s.robot_name === r.no);
           if (!match) {
-            return { ...r, network: "-" as const, power: "-" as const };
+            // 응답에 없는 로봇은 이전 상태 유지 (즉시 Offline 처리하지 않음)
+            return r;
           }
 
           const bat = match.battery ?? {};
@@ -111,13 +116,17 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
         })
       );
     } catch {
-      setRobots((prev) =>
-        prev.map((r) => ({
-          ...r,
-          network: "Offline" as const,
-          power: "Off" as const,
-        }))
-      );
+      failCount.current += 1;
+      // 연속 실패가 임계값 이상일 때만 Offline 처리
+      if (failCount.current >= OFFLINE_THRESHOLD) {
+        setRobots((prev) =>
+          prev.map((r) => ({
+            ...r,
+            network: "Offline" as const,
+            power: "Off" as const,
+          }))
+        );
+      }
     }
   }, []);
 

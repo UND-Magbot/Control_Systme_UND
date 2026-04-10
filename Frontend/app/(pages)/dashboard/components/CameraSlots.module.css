@@ -34,6 +34,9 @@
   top: 8px;
   left: 8px;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 3px 10px;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(6px);
@@ -41,6 +44,36 @@
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-accent);
+}
+
+.robotLabelStatus {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.robotLabelDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.robotLabelDotOnline {
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
+}
+
+.robotLabelDotOffline {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+}
+
+.robotLabelDivider {
+  color: var(--text-muted);
+  opacity: 0.3;
 }
 
 /* ── 로딩 ── */

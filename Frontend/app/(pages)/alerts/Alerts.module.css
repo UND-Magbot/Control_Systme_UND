@@ -127,6 +127,7 @@
     width: 100%;
     flex: 1;
     min-height: var(--page-body-min-height);
+    min-width: var(--content-min-width);
     display: flex;
     flex-direction: row;
     overflow: hidden;
@@ -138,7 +139,7 @@
     flex: 55;
     display: flex;
     flex-direction: column;
-    min-width: 0;
+    min-width: 420px;
     border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -311,7 +312,7 @@
     flex: 45;
     display: flex;
     flex-direction: column;
-    min-width: 0;
+    min-width: 360px;
     min-height: 0;
     padding: 20px 24px;
     background: var(--surface-2);

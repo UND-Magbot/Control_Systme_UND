@@ -42,6 +42,7 @@ export default function Sidebar() {
                     {menuItems.map((item, idx) => (
                         <Link key={idx} className={styles.menuItems}
                                 href={item.path}
+                                prefetch={false}
                                 onClick={(e) => {
                                     close();
                                     if (window.location.pathname === item.path) {

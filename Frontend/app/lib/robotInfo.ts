@@ -45,8 +45,8 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     chargeStateLabel: "대기",
     chargeErrorCode: 0,
     chargeErrorMsg: null,
-    network: item.LastHeartbeat ? "Offline" : "-",
-    power: item.LastHeartbeat ? "Off" : "-",
+    network: item.Network ?? "-",
+    power: item.Power ?? "-",
     mark: item.mark ?? "No",
 
     // 배열 필드는 반드시 방어

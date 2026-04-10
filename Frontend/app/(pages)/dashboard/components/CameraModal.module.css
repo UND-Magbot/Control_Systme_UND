@@ -27,6 +27,7 @@
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
+  padding-bottom: 8px;
 }
 
 .headerLeft {
@@ -47,7 +48,7 @@
   font-weight: 600;
   color: var(--text-primary);
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
 }
 
@@ -55,6 +56,41 @@
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--text-accent);
+}
+
+.robotStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.statusItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.statusDotOnline {
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
+}
+
+.statusDotOffline {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+}
+
+.statusDivider {
+  color: var(--text-muted);
+  opacity: 0.4;
 }
 
 .backBtn {

@@ -67,6 +67,13 @@
   transform: scale(0.93);
 }
 
+.viewToggleLabel {
+  color: #82beff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .remote-icon,
 .path-icon {
   width: auto;

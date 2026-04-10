@@ -104,10 +104,7 @@ def logout(request: Request, response: Response, current_user: UserInfo = Depend
 
 @router.get("/me")
 def get_me(request: Request, db: Session = Depends(get_db)):
-    try:
-        current_user = get_current_user(request, db)
-    except HTTPException:
-        return {"user": None}
+    current_user = get_current_user(request, db)
     user_data = AuthService.get_me(db, current_user.id)
     return MeResponse(user=UserResponse(**user_data))
 

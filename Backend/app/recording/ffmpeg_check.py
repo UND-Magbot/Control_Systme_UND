@@ -11,7 +11,8 @@ import zipfile
 import urllib.request
 
 # FFmpeg 바이너리를 저장할 로컬 디렉토리
-FFMPEG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "ffmpeg_bin")
+from app.Database.database import BACKEND_ROOT
+FFMPEG_DIR = os.path.join(BACKEND_ROOT, "ffmpeg_bin")
 
 # Windows용 FFmpeg 릴리스 (gyan.dev — essentials 빌드, ~80MB)
 FFMPEG_WIN_URL = "https://github.com/GyanD/codexffmpeg/releases/download/8.1/ffmpeg-8.1-essentials_build.zip"

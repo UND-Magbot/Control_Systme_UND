@@ -1,6 +1,6 @@
 .tabPosition {
     position: relative;
-    min-width: 1123px;
+    min-width: var(--content-min-width);
     flex: 1;
     min-height: 0;
     display: flex;

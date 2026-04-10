@@ -4,12 +4,8 @@
   gap: 6px;
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
-  background: var(--surface-2);
-  padding: 4px 10px;
-  border-radius: 6px;
-  white-space: nowrap;
-  flex-wrap: nowrap;
-  overflow: hidden;
+  padding: 4px 0;
+  flex-wrap: wrap;
 }
 
 .legendGroup {

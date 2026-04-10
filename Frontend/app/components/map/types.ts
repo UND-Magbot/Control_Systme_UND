@@ -37,8 +37,11 @@ export type NavPath = {
   segments: NavPathSegment[];
 };
 
+export type MapView = "2d" | "3d";
+
 export type CanvasMapProps = {
   config: MapConfig;
+  view?: MapView;
   robotPos?: RobotPosition | null;
   robotName?: string;
   pois?: POIItem[];

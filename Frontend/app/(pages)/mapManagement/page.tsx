@@ -11,6 +11,7 @@ import type { PendingPlace } from "./components/MapPlaceCreateModal";
 import type { RobotRowData, Floor } from "@/app/type";
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
+import { usePageReady } from "@/app/context/PageLoadingContext";
 
 type MapTab = "map" | "place" | "path";
 
@@ -22,6 +23,7 @@ type Robot = { id: number; RobotName: string; ModelName: string; SerialNumber: s
 type MappingState = "idle" | "startModal" | "mappingModal" | "success" | "saveModal";
 
 export default function MapManagementPage() {
+  const setPageReady = usePageReady();
   // ── URL query에서 초기 탭 결정 ──
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as MapTab) || "map";
@@ -74,6 +76,8 @@ export default function MapManagementPage() {
         setTabRobots(mapped);
       } catch (e) {
         console.error("로봇 데이터 로드 실패:", e);
+      } finally {
+        setPageReady();
       }
     };
     fetchTabRobots();

@@ -29,6 +29,7 @@ type RobotCardProps = {
   cameras: unknown[];
   robotLocation: RobotLocation;
   canControlRobot?: boolean;
+  hasActiveSchedule?: boolean;
 };
 
 const ROBOT_ICONS = [
@@ -38,7 +39,7 @@ const ROBOT_ICONS = [
   "/icon/robot_icon(4).png",
 ];
 
-export default function RobotCard({ robot, isSelected, onClick, robots, video, cameras, robotLocation, canControlRobot = true }: RobotCardProps) {
+export default function RobotCard({ robot, isSelected, onClick, robots, video, cameras, robotLocation, canControlRobot = true, hasActiveSchedule = false }: RobotCardProps) {
   const typeIdx = ROBOT_TYPE_INDEX[robot.type] ?? 0;
   const dotClass = styles[`dot${robot.network}`] ?? styles.dotOffline;
   const badgeClass = styles[`badge${robot.network}`] ?? styles.badgeOffline;
@@ -56,7 +57,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
     if (robot.chargeState === 2) return { label: "충전 중", className: styles.taskCharging, tooltip: "" };
     if (robot.chargeState === 3) return { label: "부두에서 나가기", className: styles.taskDocking, tooltip: "" };
     if (robot.dockingTime > 0) return { label: "도킹 중", className: styles.taskDocking, tooltip: "" };
-    if (robot.tasks.length > 0) return { label: "작업 중", className: styles.taskWorking, tooltip: "" };
+    if (hasActiveSchedule || robot.tasks.length > 0) return { label: "작업 중", className: styles.taskWorking, tooltip: "" };
     return { label: "대기 중", className: styles.taskIdle, tooltip: "" };
   })();
 
@@ -139,7 +140,9 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
             <span className={styles.floorLabel}>
               {robotLocation.floor}{robotLocation.placeName ? ` · ${robotLocation.placeName}` : ""}
             </span>
-            <span className={`${styles.taskBadge} ${taskStatus.className}`} title={taskStatus.tooltip || undefined}>{taskStatus.label}</span>
+            {isOnline && (
+              <span className={`${styles.taskBadge} ${taskStatus.className}`} title={taskStatus.tooltip || undefined}>{taskStatus.label}</span>
+            )}
           </div>
 
           {/* 선택된 카드에만 액션 버튼 표시 */}

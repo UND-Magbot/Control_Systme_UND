@@ -17,6 +17,7 @@ import getRobots from "@/app/lib/robotInfo";
 import { getCamerasForRobot } from "@/app/lib/cameraView";
 import { getStatistics, type PerRobotStats } from "@/app/lib/statisticsApi";
 import { usePageReady } from "@/app/context/PageLoadingContext";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
 
 type DashboardClientProps = {
   floors: Floor[];
@@ -27,6 +28,7 @@ export default function DashboardClient({
   floors,
   videoStatus,
 }: DashboardClientProps) {
+  const { robots: liveRobots, loaded } = useRobotStatusContext();
   const [robots, setRobots] = useState<RobotRowData[]>([]);
   const [selectedRobotId, setSelectedRobotId] = useState<number | null>(null);
   const [robotCameras, setRobotCameras] = useState<Camera[]>([]);
@@ -65,19 +67,21 @@ export default function DashboardClient({
   }, []);
 
   const selectedRobot = useMemo(
-    () => robots.find((r) => r.id === selectedRobotId) ?? null,
-    [robots, selectedRobotId]
+    () => liveRobots.find((r) => r.id === selectedRobotId) ?? robots.find((r) => r.id === selectedRobotId) ?? null,
+    [liveRobots, robots, selectedRobotId]
   );
 
-  // 로봇 선택 변경 시 카메라 재로드 (초기 로드 제외)
+  const selectedRobotNetwork = selectedRobot?.network;
+
+  // 로봇 선택 변경 또는 online 복귀 시 카메라 재로드
   useEffect(() => {
-    if (isLoading) return; // 초기 로드 중이면 스킵
-    if (!selectedRobotId) {
+    if (isLoading) return;
+    if (!selectedRobotId || selectedRobotNetwork !== "Online") {
       setRobotCameras([]);
       return;
     }
     getCamerasForRobot(selectedRobotId).then(setRobotCameras);
-  }, [selectedRobotId]);
+  }, [selectedRobotId, selectedRobotNetwork]);
 
   // 선택된 로봇의 통계 데이터 로드
   useEffect(() => {
@@ -117,7 +121,7 @@ export default function DashboardClient({
             icon="/icon/notice_w.png"
             title="공지사항"
             rightSlot={
-              <Link href="/alerts?tab=notice" className={styles.moreLink}>
+              <Link href="/alerts?tab=notice" prefetch={false} className={styles.moreLink}>
                 더보기 ›
               </Link>
             }

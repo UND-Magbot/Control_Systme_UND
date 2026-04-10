@@ -147,7 +147,6 @@
 
 /* 테이블 */
 .tableWrapper {
-  flex: 1;
   min-height: 0;
 }
 

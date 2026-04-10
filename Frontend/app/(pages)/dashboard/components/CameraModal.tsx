@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import styles from "./CameraModal.module.css";
-import type { Camera } from "@/app/type";
+import type { Camera, RobotRowData } from "@/app/type";
 import CameraSlot from "./CameraSlot";
+import { getBatteryColor } from "@/app/constants/robotIcons";
 
 type ViewMode = "all" | "single";
 
@@ -12,6 +13,7 @@ type CameraModalProps = {
   onClose: () => void;
   robotCameras: Camera[];
   robotName: string;
+  robot?: RobotRowData | null;
   initialCam?: Camera | null;
   initialMode?: ViewMode;
 };
@@ -21,6 +23,7 @@ export default function CameraModal({
   onClose,
   robotCameras,
   robotName,
+  robot = null,
   initialCam = null,
   initialMode = "all",
 }: CameraModalProps) {
@@ -71,7 +74,31 @@ export default function CameraModal({
             <h3 className={styles.title}>
               {mode === "all" ? (
                 <>전체 카메라 ({count}){robotName && <span className={styles.robotTag}>{robotName}</span>}</>
-              ) : activeCam?.label ?? ""}
+              ) : (
+                <>{activeCam?.label ?? ""}{robotName && <span className={styles.robotTag}>{robotName}</span>}</>
+              )}
+              {robot && (
+                <span className={styles.robotStatus}>
+                  <span className={styles.statusItem}>
+                    <span className={`${styles.statusDot} ${robot.network === "Online" ? styles.statusDotOnline : styles.statusDotOffline}`} />
+                    {robot.network}
+                  </span>
+                  <span className={styles.statusDivider}>|</span>
+                  <span className={styles.statusItem}>
+                    {robot.type === "QUADRUPED" ? (
+                      <>
+                        L <span style={{ color: getBatteryColor(robot.batteryLeft ?? 0, robot.return) }}>{robot.batteryLeft ?? "-"}%</span>
+                        {" / "}
+                        R <span style={{ color: getBatteryColor(robot.batteryRight ?? 0, robot.return) }}>{robot.batteryRight ?? "-"}%</span>
+                      </>
+                    ) : (
+                      <span style={{ color: getBatteryColor(robot.battery, robot.return) }}>{robot.battery}%</span>
+                    )}
+                  </span>
+                  <span className={styles.statusDivider}>|</span>
+                  <span className={styles.statusItem}>{robot.power}</span>
+                </span>
+              )}
             </h3>
           </div>
           <div className={styles.headerRight}>
@@ -113,7 +140,7 @@ export default function CameraModal({
         {/* 확대 모드 */}
         {mode === "single" && activeCam && (
           <div className={styles.singleView}>
-            <CameraSlot camera={activeCam} robotName={robotName} />
+            <CameraSlot camera={activeCam} robotName="" />
           </div>
         )}
       </div>

@@ -6,6 +6,7 @@
   gap: 12px;
   flex: 1;
   min-height: 0;
+  min-width: var(--content-min-width);
 }
 
 /* ── 공통 패널 스타일 ── */
@@ -27,7 +28,7 @@
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  min-width: 180px;
+  min-width: 280px;
 }
 
 .robotListPanel {
@@ -56,7 +57,7 @@
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  min-width: 0;
+  min-width: 480px;
 }
 
 .infoRow {
@@ -101,27 +102,4 @@
 }
 .moreLink:hover {
   color: var(--text-primary);
-}
-
-/* ── 반응형 ── */
-@media (max-width: 1200px) {
-  .dashboardGrid {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto;
-    min-height: unset;
-    height: auto;
-  }
-
-  .cameraColumn {
-    width: 100%;
-    flex-direction: row;
-  }
-
-  .cameraColumn .cameraPanel {
-    flex: 1;
-  }
-
-  .robotListPanel {
-    max-height: 300px;
-  }
 }
