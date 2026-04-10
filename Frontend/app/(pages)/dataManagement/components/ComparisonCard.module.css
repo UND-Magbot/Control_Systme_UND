@@ -19,7 +19,7 @@
   align-items: center;
   gap: 5px;
   padding-bottom: clamp(4px, 0.3vw, 6px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .dot {
@@ -30,9 +30,9 @@
 }
 
 .title {
-  font-size: clamp(11px, 0.85vw, 14px);
+  font-size: clamp(12px, 0.9vw, 15px);
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .tooltip {
@@ -57,7 +57,7 @@
 }
 
 .headDelta {
-  font-size: clamp(10px, 0.8vw, 13px);
+  font-size: clamp(11px, 0.85vw, 14px);
   font-weight: 700;
   font-family: 'Gmarket Sans';
   margin-left: auto;
@@ -65,33 +65,37 @@
 }
 
 .headDeltaLabel {
-  font-size: clamp(9px, 0.65vw, 11px);
+  font-size: clamp(9px, 0.7vw, 11px);
   font-weight: 400;
   color: var(--text-muted);
   margin-left: 1px;
 }
 
-.colHeaders {
-  display: flex;
+/* 헤더 + 행 공통 그리드 — 고정 열 너비 */
+.colHeaders,
+.row {
+  display: grid;
+  grid-template-columns: 1fr clamp(52px, 5vw, 76px) clamp(52px, 5vw, 76px);
+  gap: clamp(4px, 0.3vw, 6px);
   align-items: center;
-  gap: 4px;
+}
+
+/* 비교 데이터 없을 때 2열 */
+.colSingle {
+  grid-template-columns: 1fr clamp(52px, 5vw, 76px);
 }
 
 .labelCol {
-  flex: 1;
-  font-size: clamp(10px, 0.75vw, 12px);
+  font-size: clamp(11px, 0.85vw, 14px);
   font-weight: 500;
-  color: var(--text-tertiary);
-  min-width: 0;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .valCol {
-  width: clamp(48px, 4.5vw, 68px);
-  flex-shrink: 0;
-  text-align: right;
+  text-align: center;
   font-size: clamp(10px, 0.8vw, 13px);
   font-weight: 600;
   color: var(--text-secondary);
@@ -101,29 +105,19 @@
 .rows {
   display: flex;
   flex-direction: column;
-  gap: clamp(3px, 0.25vw, 5px);
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.row .labelCol {
-  font-size: clamp(10px, 0.8vw, 13px);
-  color: var(--text-tertiary);
+  gap: clamp(4px, 0.3vw, 6px);
 }
 
 .row .valCol {
-  font-size: clamp(12px, 0.95vw, 15px);
+  font-size: clamp(13px, 1vw, 16px);
   font-weight: 700;
   font-family: 'Gmarket Sans';
+  color: #ffffff;
 }
 
 .prevVal {
-  color: var(--text-muted) !important;
-  opacity: 0.7;
+  color: var(--text-tertiary) !important;
+  opacity: 0.6;
 }
 
 .noPrev {

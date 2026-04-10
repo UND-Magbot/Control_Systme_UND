@@ -42,7 +42,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(2px, 0.2vw, 4px);
+  gap: clamp(6px, 0.5vw, 10px);
   min-width: 0;
 }
 
@@ -98,7 +98,7 @@
 }
 
 .value {
-  font-size: clamp(11px, 0.85vw, 14px);
+  font-size: clamp(12px, 0.95vw, 16px);
   font-weight: 700;
   font-family: 'Gmarket Sans';
   line-height: 1;
@@ -131,9 +131,9 @@
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: clamp(9px, 0.7vw, 12px);
-  font-weight: 500;
-  color: var(--text-tertiary);
+  font-size: clamp(10px, 0.75vw, 13px);
+  font-weight: 600;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -884,6 +884,7 @@ export default function VideoList({
                             items={robotTypeData.map(t => ({ id: t.id, label: robotTypeKorMap[t.label] ?? t.label }))}
                             selectedLabel={selectedRobotType ? (robotTypeKorMap[selectedRobotType.label] ?? selectedRobotType.label) : null}
                             placeholder="로봇 종류"
+                            width={160}
                             showTotal={true}
                             onSelect={(item) => {
                                 if (item) {
@@ -899,6 +900,7 @@ export default function VideoList({
                             items={robotNameItems}
                             selectedLabel={selectedRobot?.no ?? null}
                             placeholder="로봇 명"
+                            width={180}
                             showTotal={robots.length > 0}
                             onSelect={(item) => {
                                 if (item) {

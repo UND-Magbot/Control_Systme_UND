@@ -104,10 +104,7 @@ class AuthService:
 
     @staticmethod
     def logout(db: Session, user_id: int, ip_address: str | None = None):
-        user = db.query(UserInfo).filter(UserInfo.id == user_id).first()
-        if user:
-            user.TokenVersion = (user.TokenVersion or 0) + 1
-            db.commit()
+        # 현재 기기의 쿠키만 삭제 — TokenVersion은 변경하지 않아 다른 서버 세션 유지
         AuthService._write_audit(db, user_id, "logout", ip_address=ip_address)
 
     # ── 현재 사용자 정보 ──
