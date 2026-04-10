@@ -283,7 +283,7 @@ def _auto_migrate():
                   ADD COLUMN UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER CreatedAt,
                   ADD COLUMN DeletedAt DATETIME NULL AFTER UpdatedAt
             """))
-        print("[OK] user_info 컬럼 마이그레이션 완료")
+        print("[MIGRATION] user_info 컬럼 마이그레이션 완료")
 
     # robot_info 테이블에 RobotType, RobotIP, RobotPort 컬럼 추가
     if "robot_info" in inspector.get_table_names():
@@ -297,7 +297,7 @@ def _auto_migrate():
                       ADD COLUMN RobotIP VARCHAR(45) NULL AFTER RobotType,
                       ADD COLUMN RobotPort INT NULL DEFAULT 30000 AFTER RobotIP
                 """))
-            print("[OK] robot_info 컬럼 마이그레이션 완료 (RobotType, RobotIP, RobotPort)")
+            print("[MIGRATION] robot_info 컬럼 마이그레이션 완료 (RobotType, RobotIP, RobotPort)")
 
         # ── 데이터 복원: 컬럼 추가로 밀린 데이터 수정 (1회성) ──
         robot_cols = {col["name"] for col in inspector.get_columns("robot_info")}
@@ -318,7 +318,7 @@ def _auto_migrate():
                             "UPDATE robot_info SET Adddate = :date_val, LimitBattery = 22, BusinessId = 1 "
                             "WHERE id = :rid"
                         ), {"date_val": str(row[2]), "rid": row[0]})
-                    print("[OK] robot_info 데이터 복원 완료")
+                    print("[MIGRATION] robot_info 데이터 복원 완료")
 
         # Adddate(VARCHAR) → CreatedAt/UpdatedAt/DeletedAt(DATETIME) 마이그레이션
         robot_cols = {col["name"] for col in inspector.get_columns("robot_info")}
@@ -341,7 +341,7 @@ def _auto_migrate():
                 """))
                 # Adddate 컬럼 삭제
                 conn.execute(text("ALTER TABLE robot_info DROP COLUMN Adddate"))
-            print("[OK] robot_info Adddate → CreatedAt/UpdatedAt/DeletedAt 완료")
+            print("[MIGRATION] robot_info Adddate → CreatedAt/UpdatedAt/DeletedAt 완료")
 
     # business_info Adddate → CreatedAt/UpdatedAt/DeletedAt 마이그레이션
     if "business_info" in inspector.get_table_names():
@@ -363,7 +363,7 @@ def _auto_migrate():
                     END
                 """))
                 conn.execute(text("ALTER TABLE business_info DROP COLUMN Adddate"))
-            print("[OK] business_info Adddate → CreatedAt/UpdatedAt/DeletedAt 완료")
+            print("[MIGRATION] business_info Adddate → CreatedAt/UpdatedAt/DeletedAt 완료")
 
     # area_info Adddate → CreatedAt 마이그레이션
     if "area_info" in inspector.get_table_names():
@@ -383,7 +383,7 @@ def _auto_migrate():
                     END
                 """))
                 conn.execute(text("ALTER TABLE area_info DROP COLUMN Adddate"))
-            print("[OK] area_info Adddate → CreatedAt 완료")
+            print("[MIGRATION] area_info Adddate → CreatedAt 완료")
 
     # recording_info 테이블에 ErrorReason 컬럼 추가
     if "recording_info" in inspector.get_table_names():
@@ -394,7 +394,7 @@ def _auto_migrate():
                 conn.execute(text(
                     "ALTER TABLE recording_info ADD COLUMN ErrorReason VARCHAR(200) NULL AFTER Status"
                 ))
-            print("[OK] recording_info ErrorReason 컬럼 추가 완료")
+            print("[MIGRATION] recording_info ErrorReason 컬럼 추가 완료")
 
     # notice_info: AttachmentSize 컬럼 추가
     if "notice_info" in inspector.get_table_names():
@@ -405,7 +405,7 @@ def _auto_migrate():
                 conn.execute(text(
                     "ALTER TABLE notice_info ADD COLUMN AttachmentSize INT NULL AFTER AttachmentUrl"
                 ))
-            print("[OK] notice_info AttachmentSize 컬럼 추가 완료")
+            print("[MIGRATION] notice_info AttachmentSize 컬럼 추가 완료")
 
     # user_permission 테이블이 기존 VARCHAR MenuId로 존재하면 재생성
     if "user_permission" in inspector.get_table_names():
@@ -415,7 +415,7 @@ def _auto_migrate():
             print("[SYNC] user_permission 테이블 VARCHAR→INT FK 마이그레이션 중...")
             with engine.begin() as conn:
                 conn.execute(text("DROP TABLE user_permission"))
-            print("[OK] 기존 user_permission 삭제 (create_all에서 재생성)")
+            print("[MIGRATION] 기존 user_permission 삭제 (create_all에서 재생성)")
 
 
 @app.on_event("startup")
@@ -543,7 +543,7 @@ def startup_event():
             admin_user.IsActive = 1
             if changed:
                 db.commit()
-                print("[OK] 최고관리자 계정 동기화 완료 (superadmin/superadmin1234!)")
+                print("[SEED] 최고관리자 계정 동기화 완료")
         else:
             admin_user = UserInfo(
                 Permission=1,
@@ -554,7 +554,7 @@ def startup_event():
             )
             db.add(admin_user)
             db.commit()
-            print("[OK] 최고관리자 계정 생성 완료 (superadmin/superadmin1234!)")
+            print("[SEED] 최고관리자 계정 생성 완료")
 
         # ── 관리자 전체 메뉴 권한 시드 (없는 권한만 추가, 중복 방지) ──
         if admin_user:
@@ -603,7 +603,7 @@ def startup_event():
             manager_user.IsActive = 1
             if changed:
                 db.commit()
-                print("[OK] 관리자 계정 동기화 완료 (admin/admin1234!)")
+                print("[SEED] 관리자 계정 동기화 완료")
         else:
             manager_user = UserInfo(
                 Permission=2,
@@ -614,7 +614,7 @@ def startup_event():
             )
             db.add(manager_user)
             db.commit()
-            print("[OK] 관리자 계정 생성 완료 (admin/admin1234!)")
+            print("[SEED] 관리자 계정 생성 완료")
 
         # ── 관리자 메뉴 권한 시드 (DB 백업 제외) ──
         if manager_user:
@@ -639,7 +639,7 @@ def startup_event():
                     added_mgr += 1
             if added_mgr:
                 db.commit()
-                print(f"[OK] 관리자 메뉴 권한 {added_mgr}개 추가")
+                print(f"[SEED] 관리자 메뉴 권한 {added_mgr}개 추가")
 
         # ── 일반 사용자 계정 시드 (permission=3) ──
         normal_user = db.query(UserInfo).filter(UserInfo.LoginId == "user").first()
@@ -653,11 +653,11 @@ def startup_event():
             )
             db.add(normal_user)
             db.commit()
-            print("[OK] 일반 사용자 계정 생성 완료 (user/user1234!)")
+            print("[SEED] 일반 사용자 계정 생성 완료")
         elif normal_user.Permission != 3:
             normal_user.Permission = 3
             db.commit()
-            print("[OK] 일반 사용자 권한 3으로 업데이트")
+            print("[SEED] 일반 사용자 권한 3으로 업데이트")
 
         # ── 일반 사용자 기본 메뉴 권한 시드 ──
         if normal_user:
@@ -815,6 +815,30 @@ def send_heartbeat(sock):
 
 _was_online: dict[int, bool] = {}  # robot_id → 이전 온라인 상태
 
+def _try_status_once() -> dict | None:
+    """STATUS 요청 1회 시도. 성공 시 응답 dict, 실패 시 None."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(2.0)
+    try:
+        msg = json.dumps({"action": "STATUS"}).encode("utf-8")
+        sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
+        data, addr = sock.recvfrom(8192)
+        return json.loads(data.decode("utf-8"))
+    except socket.timeout:
+        return None
+    except Exception as e:
+        print("[ERR STATUS]", e)
+        return None
+    finally:
+        sock.close()
+
+
+RETRY_COUNT = 3          # 실패 시 즉시 재시도 횟수
+RETRY_INTERVAL = 0.5     # 재시도 간격(초)
+ERROR_THRESHOLD = 3      # Error 상태 전환 기준 (연속 실패 횟수)
+OFFLINE_THRESHOLD = 10   # Offline 확정 기준 (연속 실패 횟수)
+
+
 def status_thread():
     """receiver.py 경유로 배터리 상태 폴링 + 온라인/오프라인 전환 로그"""
     print(f"[LISTEN] 상태 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
@@ -822,16 +846,17 @@ def status_thread():
     fail_count = 0
 
     while True:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(2.0)
+        # 1차 시도 + 실패 시 즉시 재시도
+        resp = _try_status_once()
+        if resp is None:
+            for _ in range(RETRY_COUNT):
+                time.sleep(RETRY_INTERVAL)
+                resp = _try_status_once()
+                if resp is not None:
+                    break
+
         success = False
-        try:
-            msg = json.dumps({"action": "STATUS"}).encode("utf-8")
-            sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
-
-            data, addr = sock.recvfrom(8192)
-            resp = json.loads(data.decode("utf-8"))
-
+        if resp is not None:
             battery = resp.get("BatteryStatus", {})
             charge_state = resp.get("ChargeStatus")
             if battery:
@@ -847,24 +872,24 @@ def status_thread():
                         log_event("robot", "robot_online", "로봇 온라인",
                                   robot_id=get_robot_id(), robot_name=get_robot_name())
 
-        except socket.timeout:
+        if not success:
             fail_count += 1
-        except Exception as e:
-            fail_count += 1
-            print("[ERR STATUS]", e)
-            log_event("error", "robot_connection_error", "로봇 통신 연결 끊김",
-                      error_json=str(e),
-                      robot_id=get_robot_id(), robot_name=get_robot_name())
-        finally:
-            sock.close()
 
-        # 연속 3회 실패 시 온라인 → 오프라인 전환 로그
-        if not success and fail_count >= 3:
-            rid = runtime.get_robot_id_by_ip(ROBOT_IP)
-            if rid is not None and _was_online.get(rid, False):
-                _was_online[rid] = False
-                log_event("robot", "robot_offline", "로봇 오프라인",
-                          robot_id=get_robot_id(), robot_name=get_robot_name())
+            # Error 기준 도달 시 로그 (최초 1회)
+            if fail_count == ERROR_THRESHOLD:
+                rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+                if rid is not None:
+                    log_event("error", "robot_connection_error", "로봇 통신 연결 불안정",
+                              error_json=f"연속 {fail_count}회 실패",
+                              robot_id=get_robot_id(), robot_name=get_robot_name())
+
+            # Offline 확정
+            if fail_count >= OFFLINE_THRESHOLD:
+                rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+                if rid is not None and _was_online.get(rid, False):
+                    _was_online[rid] = False
+                    log_event("robot", "robot_offline", "로봇 오프라인",
+                              robot_id=get_robot_id(), robot_name=get_robot_name())
 
         time.sleep(REQ_INTERVAL_HB)
 

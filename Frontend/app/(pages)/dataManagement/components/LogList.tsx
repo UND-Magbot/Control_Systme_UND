@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import styles from "./LogList.module.css";
 import videoListStyles from "./VideoList.module.css";
 import Pagination from "@/app/components/pagination";
-import { usePaginatedList } from "@/app/hooks/usePaginatedList";
+
 import LogDetailModal from "./LogDetailModal";
 import modalStyles from "@/app/components/modal/Modal.module.css";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
@@ -13,7 +13,6 @@ import { BaseCalendar, getTodayStr, parseYMD, formatDateToYMD } from "@/app/comp
 import type { LogItem, LogCategory, Period } from "@/app/type";
 import { LOG_CATEGORY_LABELS } from "@/app/type";
 import { getLogData } from "@/app/lib/logData";
-import * as XLSX from "xlsx";
 
 const THEAD_HEIGHT = 44;
 const ROW_HEIGHT = 48;
@@ -83,28 +82,36 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
   const [endDate, setEndDate] = useState(getToday());
   const [selectedPeriod, setSelectedPeriod] = useState<Period | "Total" | null>("today");
 
-  // tableWrapper 높이 기반 동적 pageSize 계산
-  const tableWrapperRef = useRef<HTMLDivElement>(null);
+  // 컨테이너 높이 기반 동적 pageSize 계산
+  const containerRef = useRef<HTMLDivElement>(null);
+  const topBarRef = useRef<HTMLDivElement>(null);
+  const paginationRef = useRef<HTMLDivElement>(null);
   const [pageSize, setPageSize] = useState(7);
 
   useEffect(() => {
-    const el = tableWrapperRef.current;
-    if (!el) return;
+    const container = containerRef.current;
+    if (!container) return;
 
     const calcRows = () => {
-      const rows = Math.max(1, Math.floor((el.clientHeight - THEAD_HEIGHT) / ROW_HEIGHT));
+      const containerH = container.clientHeight;
+      const topBarH = topBarRef.current?.offsetHeight ?? 0;
+      const paginationH = paginationRef.current?.offsetHeight ?? 0;
+      const available = containerH - topBarH - paginationH - THEAD_HEIGHT - 26;
+      const rows = Math.max(1, Math.floor(available / ROW_HEIGHT));
       setPageSize(rows);
     };
 
     calcRows();
 
     const ro = new ResizeObserver(calcRows);
-    ro.observe(el);
+    ro.observe(container);
     return () => ro.disconnect();
   }, []);
 
-  // 필터된 데이터
+  // 서버 페이지네이션 상태
   const [filteredData, setFilteredData] = useState<LogItem[]>(logData);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverPage, setServerPage] = useState(1);
 
   // 가장 이른 로그 날짜 (마운트 시 1회 조회, "전체" 클릭 즉시 반영용)
   const [earliestDate, setEarliestDate] = useState<string | null>(null);
@@ -171,48 +178,54 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
     }
   };
 
-  // 디바운스로 즉시 반영 (필터 변경 시 API 호출)
+  // 서버 페이지네이션 API 호출 (디바운스)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fetchIdRef = useRef(0); // race condition 방지
+  const fetchIdRef = useRef(0);
 
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+  const fetchLogs = useCallback(async (page: number) => {
+    if (startDate && endDate && startDate > endDate) return;
 
-    debounceRef.current = setTimeout(async () => {
-      if (startDate && endDate && startDate > endDate) return;
-
-      const id = ++fetchIdRef.current;
-      setIsLoading(true);
-      try {
-        const res = await getLogData({
-          start_date: startDate || undefined,
-          end_date: endDate || undefined,
-          category: selectedLogType ?? undefined,
-          search: searchQuery.trim() || undefined,
-          size: 10000,
-        });
-        if (id === fetchIdRef.current) {
-          setFilteredData(res.items);
-          // earliest_date 캐시 갱신
-          if (res.earliest_date && res.earliest_date !== earliestDate) {
-            setEarliestDate(res.earliest_date);
-          }
-        }
-      } catch {
-        if (id === fetchIdRef.current) {
-          setAlertMessage("로그 조회에 실패했습니다.");
-        }
-      } finally {
-        if (id === fetchIdRef.current) {
-          setIsLoading(false);
+    const id = ++fetchIdRef.current;
+    setIsLoading(true);
+    try {
+      const res = await getLogData({
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
+        category: selectedLogType ?? undefined,
+        search: searchQuery.trim() || undefined,
+        page,
+        size: pageSize,
+      });
+      if (id === fetchIdRef.current) {
+        setFilteredData(res.items);
+        setServerTotal(res.total);
+        setServerPage(page);
+        if (res.earliest_date && res.earliest_date !== earliestDate) {
+          setEarliestDate(res.earliest_date);
         }
       }
-    }, DEBOUNCE_MS);
+    } catch {
+      if (id === fetchIdRef.current) {
+        setAlertMessage("로그 조회에 실패했습니다.");
+      }
+    } finally {
+      if (id === fetchIdRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [startDate, endDate, selectedLogType, searchQuery, pageSize, earliestDate]);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [searchQuery, selectedLogType, startDate, endDate]);
+  // 필터 변경 → 디바운스 후 1페이지로 리셋
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchLogs(1), DEBOUNCE_MS);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchQuery, selectedLogType, startDate, endDate, pageSize]);
+
+  // 페이지 변경 → 즉시 호출
+  const handleLogPageChange = (page: number) => {
+    fetchLogs(page);
+  };
 
   // 초기화
   const handleReset = () => {
@@ -224,11 +237,9 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
     setSelectedPeriod("today");
   };
 
-  // 페이지네이션
-  const { currentPage: logPage, setPage: setLogPage, pagedItems: pagedData, totalItems: logTotalItems } = usePaginatedList(filteredData, {
-    pageSize,
-    resetDeps: [filteredData],
-  });
+  const logPage = serverPage;
+  const pagedData = filteredData;
+  const logTotalItems = serverTotal;
 
   // 상세보기
   const openDetail = (item: LogItem) => {
@@ -244,9 +255,16 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
   // 현재 선택된 타입 라벨
   const selectedTypeLabel = LOG_TYPE_ITEMS.find((o) => o.value === selectedLogType)?.label ?? null;
 
-  // Excel 내보내기
-  const exportToExcel = () => {
-    const rows = filteredData.map((log) => ({
+  // Excel 내보내기 (전체 데이터 조회 후 다운로드)
+  const exportToExcel = async () => {
+    const allRes = await getLogData({
+      start_date: startDate || undefined,
+      end_date: endDate || undefined,
+      category: selectedLogType ?? undefined,
+      search: searchQuery.trim() || undefined,
+      size: 10000,
+    });
+    const rows = allRes.items.map((log) => ({
       "발생 일시": formatDateTime(log.CreatedAt),
       "로그 타입": LOG_CATEGORY_LABELS[log.Category] ?? log.Category,
       "메시지": log.Message,
@@ -262,6 +280,7 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
       }),
     }));
 
+    const XLSX = await import("xlsx");
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "로그");
@@ -270,9 +289,9 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
 
 
   return (
-    <div className={styles.logContainer}>
+    <div ref={containerRef} className={styles.logContainer}>
       {/* 상단 헤더: 타이틀 + 필터 + Excel */}
-      <div className={styles.topBar}>
+      <div ref={topBarRef} className={styles.topBar}>
         <h2>로그 관리</h2>
 
         <div className={styles.filterBar}>
@@ -362,7 +381,7 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
       </div>
 
       {/* 테이블 */}
-      <div ref={tableWrapperRef} className={styles.tableWrapper}>
+      <div className={styles.tableWrapper}>
         <table className={styles.logTable}>
           <thead>
             <tr>
@@ -402,11 +421,11 @@ export default function LogList({ logData, initialSearch }: LogListProps) {
       </div>
 
       {/* 하단 페이지네이션 */}
-      <div className={styles.paginationArea}>
+      <div ref={paginationRef} className={styles.paginationArea}>
         <Pagination
           totalItems={logTotalItems}
           currentPage={logPage}
-          onPageChange={setLogPage}
+          onPageChange={handleLogPageChange}
           pageSize={pageSize}
           blockSize={5}
         />

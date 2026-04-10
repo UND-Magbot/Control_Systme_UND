@@ -567,7 +567,7 @@ export default function RobotDetailModal({
                   let statusClass = styles.detailBadgeStandby;
                   if (isOffline) { statusLabel = "오프라인"; statusClass = styles.detailBadgeOffline; }
                   else if (r.isCharging) { statusLabel = "충전"; statusClass = styles.detailBadgeCharging; }
-                  else if (r.tasks.length > 0 && r.waitingTime === 0) { statusLabel = "운영"; statusClass = styles.detailBadgeOperating; }
+                  else if (activeSchedule || (r.tasks.length > 0 && r.waitingTime === 0)) { statusLabel = "운영"; statusClass = styles.detailBadgeOperating; }
 
                   // 네트워크 dot
                   const netDotClass = r.network === "Online" ? styles.detailNetDotOnline

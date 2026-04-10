@@ -10,8 +10,8 @@ import threading
 from typing import Optional
 
 # ── 상수 ──────────────────────────────────────────────
-ONLINE_MAX_AGE = 5      # 5초 이내 → Online
-ERROR_MAX_AGE = 15      # 5~15초 → Error, 15초 초과 → Offline
+ONLINE_MAX_AGE = 10     # 10초 이내 → Online
+ERROR_MAX_AGE = 30      # 10~30초 → Error, 30초 초과 → Offline
 
 # ── 내부 저장소 ───────────────────────────────────────
 _lock = threading.Lock()

@@ -1,6 +1,10 @@
 # app/database.py
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+
+# Backend/ 루트 디렉토리 (app/Database/database.py → 2단계 상위)
+BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 DATABASE_URL = "mysql+pymysql://root:1234@192.168.0.21:3306/control_system"
 

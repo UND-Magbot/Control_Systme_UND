@@ -36,8 +36,7 @@ class AuthService:
                                      detail=json.dumps({"reason": "WRONG_PASSWORD"}))
             raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다")
 
-        # 토큰 버전 증가 → 기존 refresh token 무효화
-        user.TokenVersion = (user.TokenVersion or 0) + 1
+        # 다중 서버 동시 로그인 허용 — 로그인 시 기존 세션을 무효화하지 않음
         user.LastLoginAt = datetime.now(timezone.utc)
         db.commit()
 

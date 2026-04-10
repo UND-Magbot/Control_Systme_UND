@@ -14,7 +14,8 @@ CHECK_INTERVAL = 3600  # 1시간
 STORAGE_WARN_PERCENT = 10   # 잔여 10% 미만 → 경고 로그
 STORAGE_CRITICAL_PERCENT = 5  # 잔여 5% 미만 → 녹화 일시 중지
 
-RECORDINGS_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "recordings")
+from app.Database.database import BACKEND_ROOT
+RECORDINGS_BASE = os.path.join(BACKEND_ROOT, "recordings")
 
 
 def retention_thread():

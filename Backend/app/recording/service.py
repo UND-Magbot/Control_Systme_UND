@@ -1,9 +1,38 @@
+import os
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func as sqlfunc
 from datetime import datetime
 from typing import Optional, List
 
+from app.Database.database import BACKEND_ROOT
 from app.Database.models import RecordingInfo, RobotModule, ModuleCameraInfo, RobotInfo, ScheduleInfo
+
+# DB에는 "recordings/10/2026-04-09" 같은 상대경로를 저장하고,
+# 런타임에 BACKEND_ROOT를 붙여서 절대경로로 복원한다.
+RECORDINGS_REL_PREFIX = "recordings"
+
+
+def to_relative_path(abs_path: str) -> str:
+    """절대경로 → DB 저장용 상대경로 (recordings/... 이하)"""
+    if not abs_path:
+        return abs_path
+    # 이미 상대경로면 그대로
+    if abs_path.startswith(RECORDINGS_REL_PREFIX):
+        return abs_path
+    idx = abs_path.find(RECORDINGS_REL_PREFIX)
+    if idx >= 0:
+        return abs_path[idx:].replace("\\", "/")
+    return abs_path
+
+
+def to_absolute_path(rel_path: str) -> str:
+    """DB 상대경로 → 현재 서버의 절대경로"""
+    if not rel_path:
+        return rel_path
+    # 이미 절대경로면 그대로 (레거시 호환)
+    if os.path.isabs(rel_path):
+        return rel_path
+    return os.path.join(BACKEND_ROOT, rel_path.replace("/", os.sep))
 
 
 def create_recording(
@@ -21,7 +50,7 @@ def create_recording(
         ScheduleId=schedule_id,
         GroupId=group_id,
         RecordType=record_type,
-        VideoPath=video_path,
+        VideoPath=to_relative_path(video_path),
         Status="recording",
         RecordStart=datetime.now(),
     )
@@ -45,7 +74,7 @@ def complete_recording(
     if video_size is not None:
         rec.VideoSize = video_size
     if thumbnail_path:
-        rec.ThumbnailPath = thumbnail_path
+        rec.ThumbnailPath = to_relative_path(thumbnail_path)
     db.commit()
 
 
@@ -58,6 +87,18 @@ def error_recording(db: Session, record_id: int, reason: str = None):
     if reason:
         rec.ErrorReason = reason[:200]  # 컬럼 길이 제한
     db.commit()
+
+
+def get_earliest_recording_date(db: Session) -> dict:
+    """가장 이른 녹화 날짜 반환"""
+    min_dt = (
+        db.query(sqlfunc.min(RecordingInfo.RecordStart))
+        .filter(RecordingInfo.DeletedAt.is_(None), RecordingInfo.Status == "completed")
+        .scalar()
+    )
+    if min_dt and isinstance(min_dt, str):
+        return {"earliest_date": min_dt[:10]}
+    return {"earliest_date": min_dt.strftime("%Y-%m-%d") if min_dt else None}
 
 
 def get_recording_by_id(db: Session, record_id: int) -> Optional[RecordingInfo]:
@@ -245,12 +286,21 @@ def soft_delete_by_groups(db: Session, group_ids: List[str]) -> int:
 
 def cleanup_orphaned(db: Session) -> int:
     """서버 시작 시 비정상 레코드 정리:
+    0) 절대경로 → 상대경로 마이그레이션
     1) Status='recording' 고아 → 'error'
     2) Status='completed'인데 실제 파일 없음 → 'error'
     """
-    import os
     now = datetime.now()
     count = 0
+
+    # 0) 레거시 절대경로 → 상대경로로 변환
+    all_recs = db.query(RecordingInfo).filter(RecordingInfo.DeletedAt.is_(None)).all()
+    for rec in all_recs:
+        if rec.VideoPath and os.path.isabs(rec.VideoPath):
+            rec.VideoPath = to_relative_path(rec.VideoPath)
+        if rec.ThumbnailPath and os.path.isabs(rec.ThumbnailPath):
+            rec.ThumbnailPath = to_relative_path(rec.ThumbnailPath)
+    db.flush()
 
     # 1) recording 상태 고아
     orphans = db.query(RecordingInfo).filter(RecordingInfo.Status == "recording").all()
@@ -260,21 +310,8 @@ def cleanup_orphaned(db: Session) -> int:
         rec.RecordEnd = now
         count += 1
 
-    # 2) completed인데 파일 없는 레코드
-    completed = db.query(RecordingInfo).filter(
-        RecordingInfo.Status == "completed",
-        RecordingInfo.DeletedAt.is_(None),
-    ).all()
-    for rec in completed:
-        has_file = False
-        if rec.VideoPath and os.path.isdir(rec.VideoPath):
-            mp4s = [f for f in os.listdir(rec.VideoPath)
-                    if f.endswith(".mp4") and f"cam{rec.ModuleId}" in f]
-            has_file = any(os.path.getsize(os.path.join(rec.VideoPath, f)) > 0 for f in mp4s)
-        if not has_file:
-            rec.Status = "error"
-            rec.ErrorReason = "녹화 파일 미존재 (서버 시작 시 정리)"
-            count += 1
+    # 2) completed인데 파일 없는 레코드 → 다중 서버 환경에서는 다른 PC의 파일일 수 있으므로
+    #    error로 변경하지 않음 (프론트에서 재생 시 404로 처리)
 
     if count > 0:
         db.commit()

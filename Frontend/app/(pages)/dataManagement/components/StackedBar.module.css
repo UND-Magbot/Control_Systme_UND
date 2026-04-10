@@ -1,0 +1,140 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.chartRow {
+  display: flex;
+  gap: clamp(14px, 1.5vw, 24px);
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+}
+
+/* ── 세로 stacked bar 그룹 ── */
+.barGroup {
+  display: flex;
+  gap: clamp(4px, 0.4vw, 8px);
+  align-items: flex-end;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+.barCol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: clamp(28px, 2.5vw, 42px);
+  flex: 1;
+}
+
+.vTrack {
+  width: 100%;
+  flex: 1;
+  min-height: clamp(70px, 7vw, 130px);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.vSegment {
+  width: 100%;
+  transition: height 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.vSegment:last-child {
+  border-radius: 0 0 3px 3px;
+}
+
+.vSegment:first-child {
+  border-radius: 3px 3px 0 0;
+}
+
+.vSegment::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 100%);
+}
+
+.vSegmentPrev::after {
+  display: none;
+}
+
+.barColLabel {
+  font-size: clamp(9px, 0.65vw, 11px);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ── 항목별 수치 ── */
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 0.8vw, 16px);
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
+}
+
+.detailItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detailDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.detailLabel {
+  font-size: clamp(11px, 0.85vw, 14px);
+  color: var(--text-tertiary);
+  font-weight: 500;
+  min-width: clamp(48px, 4vw, 70px);
+}
+
+.detailValue {
+  font-size: clamp(16px, 1.3vw, 22px);
+  font-weight: 700;
+  font-family: 'Gmarket Sans';
+  min-width: clamp(60px, 5vw, 90px);
+  text-align: right;
+}
+
+.detailPercent {
+  font-size: clamp(10px, 0.75vw, 12px);
+  font-weight: 500;
+  color: var(--text-muted);
+  min-width: 36px;
+  text-align: right;
+}
+
+.detailDelta {
+  font-size: clamp(9px, 0.7vw, 11px);
+  font-weight: 600;
+  margin-left: 2px;
+  white-space: nowrap;
+}
+
+.deltaUp {
+  color: #77a251;
+}
+
+.deltaDown {
+  color: #e06b73;
+}

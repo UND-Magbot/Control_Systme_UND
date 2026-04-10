@@ -106,7 +106,6 @@ export async function getAlerts(params?: {
   status?: string;
   is_read?: string;
   search?: string;
-  UserId?: number;
   page?: number;
   size?: number;
 }): Promise<{ items: AlertMockData[]; total: number; page: number; size: number; unread_count: UnreadCount }> {
@@ -115,12 +114,12 @@ export async function getAlerts(params?: {
   if (params?.status) query.set("status", params.status);
   if (params?.is_read) query.set("is_read", params.is_read);
   if (params?.search) query.set("search", params.search);
-  if (params?.UserId) query.set("UserId", String(params.UserId));
   if (params?.page) query.set("page", String(params.page));
   if (params?.size) query.set("size", String(params.size));
 
   const res = await apiFetch(`/DB/alerts?${query.toString()}`);
   if (!res.ok) {
+    console.warn(`[getAlerts] API 실패: ${res.status} ${res.statusText}`, await res.text().catch(() => ''));
     return { items: [], total: 0, page: 1, size: 20, unread_count: { total: 0, robot: 0, schedule: 0, notice: 0 } };
   }
 
@@ -131,22 +130,19 @@ export async function getAlerts(params?: {
   };
 }
 
-export async function markAlertRead(alertId: number, UserId?: number): Promise<void> {
-  const q = UserId != null ? `?UserId=${UserId}` : '';
-  await apiFetch(`/DB/alerts/${alertId}/read${q}`, { method: "PUT" });
+export async function markAlertRead(alertId: number): Promise<void> {
+  await apiFetch(`/DB/alerts/${alertId}/read`, { method: "PUT" });
 }
 
-export async function markAllAlertsRead(UserId?: number, type?: string): Promise<void> {
+export async function markAllAlertsRead(type?: string): Promise<void> {
   const params = new URLSearchParams();
-  if (UserId != null) params.set('UserId', String(UserId));
   if (type) params.set('type', type);
   const q = params.toString() ? `?${params.toString()}` : '';
   await apiFetch(`/DB/alerts/read-all${q}`, { method: "PUT" });
 }
 
-export async function getUnreadCount(UserId?: number): Promise<UnreadCount> {
-  const q = UserId != null ? `?UserId=${UserId}` : '';
-  const res = await apiFetch(`/DB/alerts/unread-count${q}`);
+export async function getUnreadCount(): Promise<UnreadCount> {
+  const res = await apiFetch(`/DB/alerts/unread-count`);
   if (!res.ok) return { total: 0, robot: 0, schedule: 0, notice: 0 };
   return res.json();
 }

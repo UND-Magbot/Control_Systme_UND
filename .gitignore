@@ -25,9 +25,13 @@ env/
 .DS_Store
 Thumbs.db
 
+# Node
+node_modules/
+
 # Build output
 Backend/out/
 Frontend/out/
+Frontend/.next/
 
 # Junk files (accidentally created)
 Backend/1

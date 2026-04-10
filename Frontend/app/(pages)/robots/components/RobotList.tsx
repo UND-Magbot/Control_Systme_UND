@@ -20,16 +20,19 @@ import {
   getRobotIndexFromNo,
 } from "@/app/constants/robotIcons";
 import { useAuth } from "@/app/context/AuthContext";
-import { useRobotStatus } from "@/app/hooks/useRobotStatus";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
+import { usePageReady } from "@/app/context/PageLoadingContext";
 import BusinessList from './BusinessList';
 
 const ROBOT_PAGE_SIZE = 6;
 
 const STATUS_FILTER_ITEMS = [
-  { id: 0, label: "운영" },
-  { id: 1, label: "대기" },
-  { id: 2, label: "충전" },
+  { id: 0, label: "작업 중" },
+  { id: 1, label: "대기 중" },
+  { id: 2, label: "충전 중" },
   { id: 3, label: "오프라인" },
+  { id: 4, label: "오류" },
+  { id: 5, label: "도킹 중" },
 ];
 
 interface RobotStats {
@@ -61,13 +64,20 @@ export type RobotDraft = {
   returnBattery: number;
 };
 
-/** 로봇 상태를 계산하는 헬퍼 */
-function getRobotStatus(r: RobotRowData): { label: string; className: string } {
-  if (r.power === "Off" || r.power === "-") return { label: r.power === "-" ? "미확인" : "오프라인", className: styles.statusOffline };
-  if (r.isCharging) return { label: "충전", className: styles.statusCharging };
-  if (r.tasks.length > 0 && r.waitingTime === 0) return { label: "운영", className: styles.statusOperating };
-  if (r.waitingTime > 0) return { label: "대기", className: styles.statusStandby };
-  return { label: "대기", className: styles.statusStandby };
+/** 로봇 상태를 계산하는 헬퍼 (대시보드와 통일) */
+function getRobotStatus(r: RobotRowData, hasActiveSchedule = false): { label: string; className: string; tooltip: string } {
+  if (r.power === "-") return { label: "미확인", className: styles.statusOffline, tooltip: "" };
+  if (r.network === "Offline" || r.power === "Off") return { label: "오프라인", className: styles.statusOffline, tooltip: "" };
+  if (r.network === "Error") return { label: "오류", className: styles.statusError, tooltip: "" };
+  // 충전 관련 상태 (chargeState: 1=부두 이동, 2=충전 중, 3=나가기, 4=오류, 5=전류 없음)
+  if (r.chargeState === 4) return { label: "충전 오류", className: styles.statusError, tooltip: r.chargeErrorMsg ?? "" };
+  if (r.chargeState === 5) return { label: "전류 없음", className: styles.statusError, tooltip: "부두에 있지만 전류가 흐르지 않음" };
+  if (r.chargeState === 1) return { label: "부두로 이동", className: styles.statusDocking, tooltip: "" };
+  if (r.chargeState === 2) return { label: "충전 중", className: styles.statusCharging, tooltip: "" };
+  if (r.chargeState === 3) return { label: "부두에서 나가기", className: styles.statusDocking, tooltip: "" };
+  if (r.dockingTime > 0) return { label: "도킹 중", className: styles.statusDocking, tooltip: "" };
+  if (hasActiveSchedule || r.tasks.length > 0) return { label: "작업 중", className: styles.statusOperating, tooltip: "" };
+  return { label: "대기 중", className: styles.statusStandby, tooltip: "" };
 }
 
 /** 로봇 현재 위치 표시 (API 준비 시 교체 예정) */
@@ -81,7 +91,7 @@ function getRobotLocation(r: RobotRowData): string {
 
 /** 로봇 현재 작업 표시 */
 function getRobotCurrentTask(r: RobotRowData): string {
-  if (r.power === "Off" || r.power === "-") return "-";
+  if (r.power === "Off" || r.power === "-") return "";
   if (r.tasks.length === 0) return "-";
   return r.tasks[0].taskName;
 }
@@ -108,15 +118,15 @@ export default function RobotStatusList({
   locationStatus,
 }: RobotStatusListProps) {
 
-  const [initialRobots, setInitialRobots] = useState<RobotRowData[]>([]);
-  const robots = useRobotStatus(initialRobots);
+  const { robots, loaded } = useRobotStatusContext();
   const router = useRouter();
   const { user } = useAuth();
   const admin = user?.role === 1 || user?.role === 2;
+  const setPageReady = usePageReady();
 
   useEffect(() => {
-    import("@/app/lib/robotInfo").then((mod) => mod.default()).then(setInitialRobots);
-  }, []);
+    if (loaded) setPageReady();
+  }, [loaded, setPageReady]);
 
   // 탭 메뉴
   const [activeTab, setActiveTab] = useState<"robots" | "business">("robots");
@@ -175,6 +185,7 @@ export default function RobotStatusList({
   const [activeSchedules, setActiveSchedules] = useState<ActiveSchedule[]>([]);
 
   useEffect(() => {
+    if (activeTab !== "robots") return;
     const fetchActive = () => {
       apiFetch(`/DB/schedule`)
         .then((res) => res.json())
@@ -190,7 +201,7 @@ export default function RobotStatusList({
     fetchActive();
     const timer = setInterval(fetchActive, 5_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [activeTab]);
 
   const getActiveScheduleForRobot = (robotName: string): ActiveSchedule | null => {
     return activeSchedules.find((s) => s.RobotName === robotName) ?? null;
@@ -217,7 +228,7 @@ export default function RobotStatusList({
 
     let matchStatus = true;
     if (selectedStatus) {
-      matchStatus = getRobotStatus(robot).label === selectedStatus;
+      matchStatus = getRobotStatus(robot, !!activeSchedules.find(s => s.RobotName === robot.no)).label === selectedStatus;
     }
 
     let matchPower = true;
@@ -226,7 +237,7 @@ export default function RobotStatusList({
     }
 
     return matchSearch && matchStatus && matchPower;
-  }), [robots, searchQuery, selectedStatus, selectedPower]);
+  }), [robots, searchQuery, selectedStatus, selectedPower, activeSchedules]);
 
   // 페이지네이션
   const { currentPage: robotsPage, setPage: setRobotsPage, resetPage: resetCurrentPage, pagedItems: currentItems, totalItems } = usePaginatedList(filteredRobots, {
@@ -447,7 +458,7 @@ export default function RobotStatusList({
             {currentItems.map((r, idx) => {
               const robotIndex = getRobotIndexFromNo(r.no);
               const robotColor = ROBOT_COLORS[robotIndex];
-              const status = getRobotStatus(r);
+              const status = getRobotStatus(r, !!getActiveScheduleForRobot(r.no));
 
               return (
                 <tr
@@ -480,7 +491,7 @@ export default function RobotStatusList({
                   )}
                   <td>{(robotsPage - 1) * ROBOT_PAGE_SIZE + idx + 1}</td>
                   <td><div>{r.no}</div></td>
-                  <td><span className={`${styles.statusBadge} ${status.className}`}>{status.label}</span></td>
+                  <td><span className={`${styles.statusBadge} ${status.className}`} title={status.tooltip}>{status.label}</span></td>
                   <td className={styles.locationCell}>{getRobotLocation(r)}</td>
                   <td className={styles.taskCell}>
                     {(() => {
@@ -526,9 +537,9 @@ export default function RobotStatusList({
                   <td>
                     {isDualBattery(r) ? (
                       <>
-                        <span className={r.batteryLeft != null ? batColorClass(r.batteryLeft) : ""}>L {r.batteryLeft != null ? `${r.batteryLeft}%` : "-"}</span>
+                        <span style={{ color: "#e0e0e0" }}>L </span><span className={r.batteryLeft != null ? batColorClass(r.batteryLeft) : ""}>{r.batteryLeft != null ? `${r.batteryLeft}%` : "-"}</span>
                         <span style={{ color: "var(--text-muted)" }}> / </span>
-                        <span className={r.batteryRight != null ? batColorClass(r.batteryRight) : ""}>R {r.batteryRight != null ? `${r.batteryRight}%` : "-"}</span>
+                        <span style={{ color: "#e0e0e0" }}>R </span><span className={r.batteryRight != null ? batColorClass(r.batteryRight) : ""}>{r.batteryRight != null ? `${r.batteryRight}%` : "-"}</span>
                         <span style={{ color: "var(--text-muted)" }}> ({r.return}%)</span>
                       </>
                     ) : (
@@ -538,7 +549,7 @@ export default function RobotStatusList({
                       </>
                     )}
                   </td>
-                  <td>{r.power}</td>
+                  <td>{r.network === "Online" ? r.power : "Off"}</td>
                   <td>
                     <div className={styles.infoBtnGroup}>
                       <div className={styles["info-box"]} onClick={(e) => { e.stopPropagation(); ViewInfoClick(idx, r); }}>상세보기</div>

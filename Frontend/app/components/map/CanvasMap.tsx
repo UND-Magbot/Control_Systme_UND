@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, forwardRef, useImperativeHandle } from "react";
+import dynamic from "next/dynamic";
 import type { CanvasMapProps, POIItem } from "./types";
 import { useMapCanvas } from "@/app/hooks/useMapCanvas";
 import type { ZoomAction } from "@/app/utils/zoom";
@@ -11,6 +12,16 @@ import DebugTestMarker from "./DebugTestMarker";
 import { useDebugMap } from "./DebugMapContext";
 import styles from "./CanvasMap.module.css";
 
+// 3D 맵 Lazy Load — Three.js 번들은 3D 전환 시 클라이언트에서만 로드
+const Map3DCanvas = dynamic(() => import("@/app/components/map3d/Map3DCanvas"), {
+  ssr: false,
+  loading: () => (
+    <div style={{ width: "100%", height: "100%", background: "#1a1d2e", display: "flex", alignItems: "center", justifyContent: "center", color: "#888" }}>
+      3D 맵 로딩중...
+    </div>
+  ),
+});
+
 export type CanvasMapHandle = {
   handleZoom: (action: ZoomAction) => void;
   worldToPixelScreen: (wx: number, wy: number) => { x: number; y: number };
@@ -20,6 +31,7 @@ export type CanvasMapHandle = {
 const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap(
   {
     config,
+    view = "2d",
     robotPos,
     robotName,
     pois,
@@ -41,6 +53,27 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
   },
   ref
 ) {
+  // 3D 뷰 분기
+  if (view === "3d") {
+    return (
+      <Map3DCanvas
+        ref={ref}
+        config={config}
+        robotPos={robotPos}
+        robotName={robotName}
+        pois={pois}
+        navPath={navPath}
+        selectedPoiId={selectedPoiId}
+        showRobot={showRobot}
+        showPois={showPois}
+        showPath={showPath}
+        showLabels={showLabels}
+        onPoiClick={onPoiClick}
+        className={className}
+        style={style}
+      />
+    );
+  }
   const { debugEnabled, testCoordinates } = useDebugMap();
 
   const [hoverCoord, setHoverCoord] = useState<{ x: number; y: number } | null>(

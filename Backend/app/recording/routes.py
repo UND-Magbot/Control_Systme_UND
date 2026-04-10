@@ -10,6 +10,7 @@ from app.auth.dependencies import get_current_user, require_permission
 from app.recording import service as rec_service
 from app.recording import manager as rec_manager
 from app.recording.schemas import RecordingStartRequest, RecordingStopRequest
+from app.recording.service import to_absolute_path
 
 router = APIRouter(prefix="/api/recordings", tags=["recordings"])
 
@@ -53,6 +54,15 @@ def list_recordings(
         start_date=start_date, end_date=end_date,
         page=page, size=size,
     )
+
+
+# ── 가장 이른 녹화 날짜 ──
+@router.get("/earliest-date")
+def get_earliest_recording_date(
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_permission("video")),
+):
+    return rec_service.get_earliest_recording_date(db)
 
 
 # ── 영상 다운로드 (Content-Disposition: attachment) ──
@@ -148,10 +158,28 @@ def get_thumbnail(
     current_user: UserInfo = Depends(require_permission("video")),
 ):
     rec = rec_service.get_recording_by_id(db, record_id)
-    if not rec or not rec.ThumbnailPath or not os.path.exists(rec.ThumbnailPath):
+    if not rec:
         return JSONResponse({"error": "썸네일을 찾을 수 없습니다"}, status_code=404)
 
-    return FileResponse(rec.ThumbnailPath, media_type="image/jpeg")
+    # 1) 기존 썸네일 파일이 있으면 반환
+    if rec.ThumbnailPath:
+        thumb_abs = to_absolute_path(rec.ThumbnailPath)
+        if os.path.exists(thumb_abs):
+            return FileResponse(thumb_abs, media_type="image/jpeg")
+
+    # 2) 없으면 mp4에서 즉시 생성 시도
+    video_file = _find_segment_file(rec, db)
+    if video_file and os.path.exists(video_file):
+        from app.recording.worker import generate_thumbnail
+        from app.recording.service import to_relative_path
+        thumb = generate_thumbnail(video_file)
+        if thumb and os.path.exists(thumb):
+            # DB에 저장 (다음 요청부터 캐시)
+            rec.ThumbnailPath = to_relative_path(thumb)
+            db.commit()
+            return FileResponse(thumb, media_type="image/jpeg")
+
+    return JSONResponse({"error": "썸네일을 찾을 수 없습니다"}, status_code=404)
 
 
 # ── 수동 녹화 시작 ──
@@ -213,14 +241,16 @@ def _find_segment_file(rec: RecordingInfo, db: Session = None) -> Optional[str]:
     if not rec.VideoPath:
         return None
 
+    video_dir = to_absolute_path(rec.VideoPath)
+
     # VideoPath가 파일이면 그대로 반환
-    if os.path.isfile(rec.VideoPath):
-        return rec.VideoPath
+    if os.path.isfile(video_dir):
+        return video_dir
 
     # VideoPath가 디렉토리면 — 같은 카메라의 세그먼트 파일 중 순서로 매칭
-    if os.path.isdir(rec.VideoPath):
+    if os.path.isdir(video_dir):
         files = sorted([
-            f for f in os.listdir(rec.VideoPath)
+            f for f in os.listdir(video_dir)
             if f.endswith(".mp4") and f"cam{rec.ModuleId}" in f
         ])
         if not files:
@@ -245,9 +275,8 @@ def _find_segment_file(rec: RecordingInfo, db: Session = None) -> Optional[str]:
                     break
 
         if seg_index < len(files):
-            return os.path.join(rec.VideoPath, files[seg_index])
-        # 인덱스 초과 시 마지막 파일 반환
-        return os.path.join(rec.VideoPath, files[-1])
+            return os.path.join(video_dir, files[seg_index])
+        return os.path.join(video_dir, files[-1])
 
     return None
 

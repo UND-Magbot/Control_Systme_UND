@@ -7,6 +7,7 @@ import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import BusinessDetailModal from './BusinessDetailModal';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { apiFetch } from "@/app/lib/api";
+import { usePageReady } from "@/app/context/PageLoadingContext";
 
 const BUSINESS_PAGE_SIZE = 6;
 
@@ -37,6 +38,7 @@ const BUSINESS_API = {
 };
 
 export default function BusinessList() {
+  const setPageReady = usePageReady();
   const [businessRows, setBusinessRows] = useState<BusinessItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,6 +82,7 @@ export default function BusinessList() {
       console.error("사업장 목록 로드 실패:", err);
     } finally {
       setLoading(false);
+      setPageReady();
     }
   };
 

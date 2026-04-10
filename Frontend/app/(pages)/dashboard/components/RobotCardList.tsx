@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import styles from "./RobotCardList.module.css";
 import type { RobotRowData, Floor, Camera, Video } from "@/app/type";
 import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
+import { apiFetch } from "@/app/lib/api";
 import RobotCard from "./RobotCard";
 import SectionHeader from "./SectionHeader";
 import RobotLegend from "@/app/components/common/RobotLegend";
@@ -40,6 +41,27 @@ export default function RobotCardList({
   const { robots: liveRobots } = useRobotStatusContext();
   const [search, setSearch] = useState("");
 
+  // 진행 중인 스케줄 폴링 (운영 상태 판별용)
+  const [activeRobotNames, setActiveRobotNames] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const fetchActive = () => {
+      apiFetch(`/DB/schedule`)
+        .then((res) => res.json())
+        .then((data: any[]) => {
+          const names = new Set<string>(
+            Array.isArray(data)
+              ? data.filter((s) => s.TaskStatus === "진행중" || s.TaskStatus === "진행").map((s) => s.RobotName)
+              : []
+          );
+          setActiveRobotNames(names);
+        })
+        .catch(() => setActiveRobotNames(new Set()));
+    };
+    fetchActive();
+    const timer = setInterval(fetchActive, 5_000);
+    return () => clearInterval(timer);
+  }, []);
+
   const visibleRobots = useMemo(() => {
     if (!search.trim()) return liveRobots;
 
@@ -56,16 +78,16 @@ export default function RobotCardList({
     let operating = 0, standby = 0, charging = 0, offline = 0;
     liveRobots.forEach(r => {
       if (r.power === "Off") { offline++; return; }
-      if (r.power === "-") { offline++; return; }  // 미확인 상태도 오프라인 카운트
+      if (r.power === "-") { offline++; return; }
       if (r.isCharging) { charging++; return; }
-      if (r.tasks.length > 0 && r.waitingTime === 0) { operating++; return; }
+      if (activeRobotNames.has(r.no) || (r.tasks.length > 0 && r.waitingTime === 0)) { operating++; return; }
       standby++;
     });
     return { total: liveRobots.length, operating, standby, charging, offline };
-  }, [liveRobots]);
+  }, [liveRobots, activeRobotNames]);
 
   const headerRight = canLinkRobots ? (
-    <Link href="/robots" className={styles.moreLink}>더보기 ›</Link>
+    <Link href="/robots" prefetch={false} className={styles.moreLink}>더보기 ›</Link>
   ) : undefined;
 
   return (
@@ -119,6 +141,7 @@ export default function RobotCardList({
               cameras={cameras}
               robotLocation={robotLocation}
               canControlRobot={canControlRobot}
+              hasActiveSchedule={activeRobotNames.has(robot.no)}
             />
           ))}
         </div>

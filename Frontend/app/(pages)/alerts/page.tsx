@@ -90,6 +90,7 @@ export default function AlertsPage() {
   const [selectedAlertId, setSelectedAlertId] = useState<number | null>(paramId ? Number(paramId) : null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
+  const [pageSizeReady, setPageSizeReady] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<TabKey, number>>({ total: 0, schedule: 0, robot: 0, notice: 0 });
   const listRef = useRef<HTMLDivElement>(null);
   const ROW_HEIGHT = 48;
@@ -109,6 +110,7 @@ export default function AlertsPage() {
       const available = listRef.current.clientHeight;
       const count = Math.max(1, Math.floor(available / ROW_HEIGHT));
       setPageSize(count);
+      setPageSizeReady(true);
     }
   }, []);
 
@@ -119,7 +121,7 @@ export default function AlertsPage() {
   }, [calcPageSize]);
 
   // 서버에서 현재 페이지 데이터 가져오기
-  const fetchAlerts = useCallback(async (opts?: { initial?: boolean }) => {
+  const fetchAlerts = useCallback(async () => {
     const filterType = tabTypeMap[activeTabRef.current];
     const params: Parameters<typeof getAlerts>[0] = {
       page: currentPageRef.current,
@@ -140,7 +142,7 @@ export default function AlertsPage() {
       notice: data.unread_count.notice,
     });
     setIsLoading(false);
-    if (opts?.initial) setPageReady();
+    setPageReady();
   }, [setPageReady]);
 
   useEffect(() => {
@@ -151,17 +153,16 @@ export default function AlertsPage() {
         setCurrentUserName(user.UserName ?? '');
       })
       .catch(() => {});
-    fetchAlerts({ initial: true });
 
     const handleExternalRead = () => fetchAlerts();
     window.addEventListener('alert-read-changed', handleExternalRead);
     return () => window.removeEventListener('alert-read-changed', handleExternalRead);
   }, []);
 
-  // 페이지, 탭, 필터 변경 시 서버에서 다시 가져오기
+  // pageSizeReady 후 최초 fetch + 이후 페이지/탭/필터 변경 시 재조회
   useEffect(() => {
-    if (!isLoading) fetchAlerts();
-  }, [currentPage, activeTab, appliedSearch, appliedStatus, pageSize]);
+    if (pageSizeReady) fetchAlerts();
+  }, [pageSizeReady, currentPage, activeTab, appliedSearch, appliedStatus, pageSize]);
 
   // URL 파라미터 id로 상세 패널 열기 (데이터 로드 후 적용)
   useEffect(() => {
@@ -211,7 +212,7 @@ export default function AlertsPage() {
   const handleMarkAllRead = async () => {
     try {
       const filterType = tabTypeMap[activeTab] ?? undefined;
-      await markAllAlertsRead(undefined, filterType ?? undefined);
+      await markAllAlertsRead(filterType ?? undefined);
       await fetchAlerts();
       window.dispatchEvent(new Event('alert-read-changed'));
     } catch {

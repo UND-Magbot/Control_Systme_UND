@@ -1,7 +1,36 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: clamp(10px, 0.9vw, 16px);
+  gap: clamp(6px, 0.6vw, 10px);
+  flex: 1;
+}
+
+.list.compact {
+  gap: clamp(4px, 0.4vw, 6px);
+}
+
+/* ── 범례 (현재 / 이전) ── */
+.legend {
+  display: flex;
+  gap: 14px;
+  margin-bottom: clamp(2px, 0.2vw, 4px);
+  justify-content: flex-end;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: clamp(9px, 0.7vw, 11px);
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.legendBar {
+  width: 14px;
+  height: 6px;
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 .row {
@@ -10,30 +39,79 @@
   gap: clamp(8px, 0.7vw, 12px);
 }
 
-.name {
-  width: clamp(72px, 6vw, 96px);
+.nameGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: clamp(80px, 6.5vw, 105px);
   flex-shrink: 0;
-  font-size: clamp(12px, 0.95vw, 15px);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.name {
+  flex: 1;
+  font-size: clamp(11px, 0.85vw, 14px);
   font-weight: 500;
   color: var(--text-secondary);
   text-align: right;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 바 트랙 그룹 (현재 + 이전) ── */
+.trackGroup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .track {
-  flex: 1;
-  height: clamp(18px, 1.5vw, 26px);
+  width: 100%;
+  height: clamp(14px, 1.1vw, 20px);
   background: rgba(255, 255, 255, 0.03);
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   overflow: hidden;
+}
+
+.compact .track {
+  height: clamp(12px, 0.9vw, 16px);
 }
 
 .bar {
   height: 100%;
   border-radius: 3px;
   transition: width 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-  opacity: 0.8;
+  opacity: 0.85;
+  position: relative;
+}
+
+.bar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 100%);
+  border-radius: 3px 3px 0 0;
+}
+
+.barPrev {
+  opacity: 1;
+}
+
+.barPrev::after {
+  display: none;
 }
 
 .valueGroup {
@@ -41,12 +119,12 @@
   align-items: baseline;
   justify-content: flex-end;
   gap: 3px;
-  min-width: clamp(50px, 4.5vw, 72px);
+  min-width: clamp(80px, 6.5vw, 110px);
   flex-shrink: 0;
 }
 
 .count {
-  font-size: clamp(12px, 1vw, 15px);
+  font-size: clamp(12px, 0.95vw, 15px);
   font-weight: 700;
   font-family: 'Gmarket Sans';
   line-height: 1;
@@ -54,12 +132,38 @@
 }
 
 .unit {
-  font-size: clamp(10px, 0.8vw, 13px);
+  font-size: clamp(10px, 0.75vw, 12px);
   font-weight: 400;
 }
 
 .timeUnit {
-  font-size: clamp(10px, 0.8vw, 12px);
+  font-size: clamp(10px, 0.75vw, 12px);
   font-weight: 400;
   margin: 0 2px;
+}
+
+.percent {
+  font-size: clamp(10px, 0.75vw, 12px);
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-left: 4px;
+  opacity: 0.7;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ── 증감 델타 ── */
+.delta {
+  font-size: clamp(9px, 0.7vw, 11px);
+  font-weight: 600;
+  margin-left: 3px;
+  white-space: nowrap;
+}
+
+.deltaUp {
+  color: #77a251;
+}
+
+.deltaDown {
+  color: #e06b73;
 }

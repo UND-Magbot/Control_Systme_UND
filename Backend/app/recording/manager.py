@@ -13,7 +13,8 @@ from app.recording import service as rec_service
 _sessions: dict[tuple, dict] = {}   # (robot_id, module_id) → SessionInfo
 _lock = threading.Lock()
 
-RECORDINGS_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "recordings")
+from app.Database.database import BACKEND_ROOT
+RECORDINGS_BASE = os.path.join(BACKEND_ROOT, "recordings")
 print(f"[REC] RECORDINGS_BASE = {RECORDINGS_BASE}")
 
 
@@ -221,7 +222,7 @@ def get_active_sessions(robot_id: int = None) -> list:
 
 
 def stop_all():
-    """앱 종료 시 모든 녹화 세션 정리"""
+    """앱 종료 시 모든 녹화 세션 정리 + 파일 누락 레코드 정리"""
     db = SessionLocal()
     try:
         with _lock:
@@ -229,6 +230,10 @@ def stop_all():
         for key in keys:
             _stop_session(key, db)
         print(f"[REC] 전체 녹화 종료: {len(keys)}개 세션")
+
+        count = rec_service.cleanup_orphaned(db)
+        if count > 0:
+            print(f"[REC] 고아 녹화 레코드 {count}건 정리 완료")
     finally:
         db.close()
 
@@ -258,28 +263,29 @@ def _stop_session(key: tuple, db):
 
     try:
         # 실제 녹화 파일이 생성되었는지 확인 (이 세션의 file_prefix로 정확히 매칭)
+        from app.recording.service import to_absolute_path
         rec = db.query(RecordingInfo).filter(RecordingInfo.id == info["db_record_id"]).first()
         has_files = False
         total_size = 0
         prefix = worker.file_prefix  # e.g. "10_cam2_auto_20260408_145901"
-        if rec and rec.VideoPath and os.path.isdir(rec.VideoPath):
+        video_dir = to_absolute_path(rec.VideoPath) if rec and rec.VideoPath else None
+        if video_dir and os.path.isdir(video_dir):
             if prefix:
-                mp4_files = [f for f in os.listdir(rec.VideoPath)
+                mp4_files = [f for f in os.listdir(video_dir)
                              if f.endswith(".mp4") and f.startswith(prefix)]
             else:
-                # fallback: prefix 없으면 cam 기준
-                mp4_files = [f for f in os.listdir(rec.VideoPath)
+                mp4_files = [f for f in os.listdir(video_dir)
                              if f.endswith(".mp4") and f"cam{key[1]}" in f]
             has_files = len(mp4_files) > 0
             total_size = sum(
-                os.path.getsize(os.path.join(rec.VideoPath, f))
+                os.path.getsize(os.path.join(video_dir, f))
                 for f in mp4_files
             ) if has_files else 0
 
         if has_files and total_size > 0:
             # 첫 번째 mp4에서 썸네일 생성
             thumb_path = None
-            first_mp4 = os.path.join(rec.VideoPath, mp4_files[0])
+            first_mp4 = os.path.join(video_dir, mp4_files[0])
             try:
                 from app.recording.worker import generate_thumbnail
                 thumb_path = generate_thumbnail(first_mp4)

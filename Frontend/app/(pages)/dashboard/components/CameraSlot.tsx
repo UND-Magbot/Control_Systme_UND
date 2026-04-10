@@ -2,19 +2,21 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import styles from "./CameraSlots.module.css";
-import type { Camera } from "@/app/type";
+import type { Camera, RobotRowData } from "@/app/type";
 import { API_BASE } from "@/app/config";
+import { getBatteryColor } from "@/app/constants/robotIcons";
 
 type CameraSlotProps = {
   camera: Camera;
   robotName: string;
+  robot?: RobotRowData | null;
   onExpand?: (e: React.MouseEvent) => void;
 };
 
 const CAM_TIMEOUT_MS = 10_000;
 const CAM_RETRY_MS = 5_000;
 
-export default function CameraSlot({ camera, robotName, onExpand }: CameraSlotProps) {
+export default function CameraSlot({ camera, robotName, robot, onExpand }: CameraSlotProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
@@ -161,7 +163,27 @@ export default function CameraSlot({ camera, robotName, onExpand }: CameraSlotPr
 
       {/* 레이블 */}
       {robotName && !isLoading && !hasError && (
-        <div className={styles.robotLabel}>{robotName}</div>
+        <div className={styles.robotLabel}>
+          {robotName}
+          {robot && (
+            <span className={styles.robotLabelStatus}>
+              <span className={`${styles.robotLabelDot} ${robot.network === "Online" ? styles.robotLabelDotOnline : styles.robotLabelDotOffline}`} />
+              {robot.network}
+              <span className={styles.robotLabelDivider}>|</span>
+              {robot.type === "QUADRUPED" ? (
+                <>
+                  L <span style={{ color: getBatteryColor(robot.batteryLeft ?? 0, robot.return) }}>{robot.batteryLeft ?? "-"}%</span>
+                  {" / "}
+                  R <span style={{ color: getBatteryColor(robot.batteryRight ?? 0, robot.return) }}>{robot.batteryRight ?? "-"}%</span>
+                </>
+              ) : (
+                <span style={{ color: getBatteryColor(robot.battery, robot.return) }}>{robot.battery}%</span>
+              )}
+              <span className={styles.robotLabelDivider}>|</span>
+              {robot.power}
+            </span>
+          )}
+        </div>
       )}
       <div className={styles.slotLabel}>{camera.label}</div>
     </div>

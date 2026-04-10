@@ -4,7 +4,7 @@ import styles from "./MapSection.module.css";
 import { ZoomControl } from "@/app/components/button";
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { Floor, RobotRowData, Video, Camera } from "@/app/type";
-import type { POIItem } from "@/app/components/map/types";
+import type { POIItem, MapView } from "@/app/components/map/types";
 import type { CanvasMapHandle } from "@/app/components/map/CanvasMap";
 import CanvasMap from "@/app/components/map/CanvasMap";
 import { OCC_GRID_CONFIG } from "@/app/components/map/mapConfigs";
@@ -26,6 +26,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   const [floorActiveIndex, setFloorActiveIndex] = useState<number>(0);
   const [selectedFloor, setSelectedFloor] = useState<Floor | null>(null);
   const [places, setPlaces] = useState<POIItem[]>(initialPlaces ?? []);
+  const [mapView, setMapView] = useState<MapView>("2d");
 
   const mapRef = useRef<CanvasMapHandle>(null);
   const { position: robotPos, hasError: robotPosError, isReady: robotPosReady } = useRobotPosition(true);
@@ -68,6 +69,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   const handleFloorSelect = (idx: number, floor: Floor) => {
     setFloorActiveIndex(idx);
     setSelectedFloor(floor);
+    mapRef.current?.handleZoom("reset");
   };
 
   const handleZoomFromChild = (action: string) => {
@@ -136,6 +138,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
         <CanvasMap
           ref={mapRef}
           config={OCC_GRID_CONFIG}
+          view={mapView}
           robotPos={hasRobots && robotPosReady && !robotPosError && isRobotOnCurrentFloor ? robotPos : null}
           robotName={selectedRobotName}
           showRobot={isRobotOnCurrentFloor}
@@ -144,7 +147,13 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           showLabels
           onPoiNavigate={handlePoiNavigate}
         />
-        {hasRobots && hasFloors && <ZoomControl onClick={handleZoomFromChild} />}
+        {hasRobots && hasFloors && (
+          <ZoomControl
+            onClick={handleZoomFromChild}
+            mapView={mapView}
+            onToggleView={() => setMapView((v) => (v === "2d" ? "3d" : "2d"))}
+          />
+        )}
       </div>
     </div>
   );
