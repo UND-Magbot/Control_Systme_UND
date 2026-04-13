@@ -2,14 +2,20 @@
 
 import styles from "./MapSection.module.css";
 import { ZoomControl } from "@/app/components/button";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Floor, RobotRowData, Video, Camera } from "@/app/type";
-import type { POIItem, MapView } from "@/app/components/map/types";
+import type { MapConfig, POIItem, RobotOnMap, NavPath, NavPathSegment } from "@/app/components/map/types";
 import type { CanvasMapHandle } from "@/app/components/map/CanvasMap";
 import CanvasMap from "@/app/components/map/CanvasMap";
-import { OCC_GRID_CONFIG } from "@/app/components/map/mapConfigs";
-import { useRobotPosition } from "@/app/hooks/useRobotPosition";
 import { apiFetch } from "@/app/lib/api";
+
+// ── 모듈 레벨 캐시 — 탭 전환해도 유지, npm run dev 재시작 시 초기화 ──
+const _cache: {
+  mapConfigs: Record<number, { mapId: number; config: MapConfig } | null>;  // floorId → config
+  places: POIItem[] | null;
+  navPaths: Record<number, NavPath | null>;  // mapId → navPath
+  loaded: boolean;
+} = { mapConfigs: {}, places: null, navPaths: {}, loaded: false };
 
 type MapSectionProps = {
   floors: Floor[];
@@ -18,52 +24,209 @@ type MapSectionProps = {
   cameras: Camera[];
   selectedRobotId?: number | null;
   selectedRobotName?: string;
-  robotFloor?: string;
-  initialPlaces?: POIItem[];
+  robotFloorId?: number | null;
 };
 
-export default function MapSection({ floors, robots, video, cameras, selectedRobotId, selectedRobotName, robotFloor = "1F", initialPlaces }: MapSectionProps) {
-  const [floorActiveIndex, setFloorActiveIndex] = useState<number>(0);
-  const [selectedFloor, setSelectedFloor] = useState<Floor | null>(null);
-  const [places, setPlaces] = useState<POIItem[]>(initialPlaces ?? []);
-  const [mapView, setMapView] = useState<MapView>("2d");
+export default function MapSection({ floors, robots, video, cameras, selectedRobotId, selectedRobotName, robotFloorId = null }: MapSectionProps) {
+  // 초기 층을 동기적으로 결정
+  const getInitialFloor = (): { idx: number; floor: Floor | null } => {
+    if (!floors.length) return { idx: 0, floor: null };
+    if (robotFloorId != null) {
+      const idx = floors.findIndex((f) => f.id === robotFloorId);
+      if (idx >= 0) return { idx, floor: floors[idx] };
+    }
+    return { idx: 0, floor: floors[0] };
+  };
+  const initial = getInitialFloor();
+
+  const [floorActiveIndex, setFloorActiveIndex] = useState<number>(initial.idx);
+  const [selectedFloor, setSelectedFloor] = useState<Floor | null>(initial.floor);
+  const [places, setPlaces] = useState<POIItem[]>(_cache.places ?? []);
+  const [activeMapId, setActiveMapId] = useState<number | null>(null);
+  const [navPath, setNavPath] = useState<NavPath | null>(null);
+
+  // 캐시에서 즉시 mapConfig 복원
+  const cachedEntry = selectedFloor ? _cache.mapConfigs[selectedFloor.id] : undefined;
+  const [mapConfig, setMapConfig] = useState<MapConfig | null>(cachedEntry?.config ?? null);
+  const [mapLoading, setMapLoading] = useState(!cachedEntry);
 
   const mapRef = useRef<CanvasMapHandle>(null);
-  const { position: robotPos, hasError: robotPosError, isReady: robotPosReady } = useRobotPosition(true);
 
   const hasFloors = floors.length > 0;
   const hasRobots = robots.length > 0;
   const hasRunningTask = robots.some(r => r.tasks.length > 0);
 
+  // 캐시된 mapId도 즉시 복원
+  useEffect(() => {
+    if (cachedEntry) {
+      setActiveMapId(cachedEntry.mapId);
+    }
+  }, []);
+
   const handleStopAll = useCallback(() => {
-    // TODO: 전체 정지 API 연동
     console.log("전체 정지 클릭");
   }, []);
 
-  const isRobotOnCurrentFloor = selectedFloor?.label === robotFloor;
+  // 현재 선택된 층에 있는 로봇들
+  const floorRobots: RobotOnMap[] = useMemo(() => {
+    if (!selectedFloor) return [];
+    return robots
+      .filter((r) => r.currentFloorId === selectedFloor.id && r.position?.timestamp > 0)
+      .map((r) => ({
+        id: r.id,
+        name: r.no,
+        position: { x: r.position.x, y: r.position.y, yaw: r.position.yaw },
+      }));
+  }, [robots, selectedFloor?.id]);
 
-  // 초기 마운트 시 로봇 층으로 자동 선택
+  // robotFloorId가 나중에 도착하면 최초 1회만 반영
+  const initialFloorSet = useRef(initial.floor !== null);
   useEffect(() => {
-    if (!hasFloors) return;
-    const idx = floors.findIndex((f) => f.label === robotFloor);
+    if (!hasFloors || initialFloorSet.current) return;
+    if (robotFloorId == null) return;
+    const idx = floors.findIndex((f) => f.id === robotFloorId);
     if (idx >= 0) {
       setFloorActiveIndex(idx);
       setSelectedFloor(floors[idx]);
-    } else if (!selectedFloor) {
-      setSelectedFloor(floors[0]);
+      initialFloorSet.current = true;
     }
-  }, [floors, robotFloor]);
+  }, [robotFloorId]);
 
-  // initialPlaces가 업데이트되면 반영
+  // 선택된 층의 맵 로드 (캐시 있으면 스킵)
   useEffect(() => {
-    if (initialPlaces && initialPlaces.length > 0) {
-      setPlaces(initialPlaces);
+    if (!selectedFloor) { setMapLoading(false); return; }
+
+    // 캐시 히트 → fetch 불필요
+    const cached = _cache.mapConfigs[selectedFloor.id];
+    if (cached !== undefined) {
+      setMapConfig(cached?.config ?? null);
+      setActiveMapId(cached?.mapId ?? null);
+      setMapLoading(false);
+      return;
     }
-  }, [initialPlaces]);
+
+    // 캐시 미스 → fetch
+    let cancelled = false;
+    setMapLoading(true);
+
+    (async () => {
+      try {
+        const mapsRes = await apiFetch(`/map/maps?floor_id=${selectedFloor.id}`);
+        const maps = await mapsRes.json();
+        if (cancelled) return;
+        if (!maps.length) {
+          _cache.mapConfigs[selectedFloor.id] = null;
+          setMapConfig(null);
+          setMapLoading(false);
+          return;
+        }
+
+        const map = maps[0];
+        const imgPath = map.ImgFilePath?.replace("./", "/") || map.PgmFilePath?.replace("./", "/");
+
+        const metaRes = await apiFetch(`/map/maps/${map.id}/meta`);
+        const meta = await metaRes.json();
+        if (cancelled) return;
+
+        // 이미지 프리로드
+        const img = new Image();
+        img.src = imgPath;
+        await new Promise<void>((resolve) => {
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+        });
+        if (cancelled) return;
+
+        const config: MapConfig = {
+          imageSrc: imgPath,
+          resolution: meta.resolution ?? 0.1,
+          originX: meta.originX ?? 0,
+          originY: meta.originY ?? 0,
+          pixelWidth: img.naturalWidth || 335,
+          pixelHeight: img.naturalHeight || 450,
+        };
+
+        // 캐시에 저장
+        _cache.mapConfigs[selectedFloor.id] = { mapId: map.id, config };
+
+        setActiveMapId(map.id);
+        setMapConfig(config);
+        setMapLoading(false);
+      } catch {
+        if (!cancelled) setMapLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedFloor?.id]);
+
+  // 장소 데이터 (캐시 있으면 스킵)
+  useEffect(() => {
+    if (_cache.places) return;
+    apiFetch(`/DB/places`)
+      .then((res) => res.ok ? res.json() : [])
+      .then((data: any[]) => {
+        const mapped: POIItem[] = data.map((p) => ({
+          id: p.id,
+          name: p.LacationName ?? "",
+          x: p.LocationX ?? 0,
+          y: p.LocationY ?? 0,
+          floor: p.Floor ?? "",
+          floorId: p.FloorId ?? null,
+          category: p.Category === "charge" ? "charge" as const : "work" as const,
+        }));
+        _cache.places = mapped;
+        setPlaces(mapped);
+      })
+      .catch(() => setPlaces([]));
+  }, []);
+
+  // 구간(경로) 데이터 (캐시 있으면 스킵)
+  useEffect(() => {
+    if (!activeMapId) { setNavPath(null); return; }
+
+    const cached = _cache.navPaths[activeMapId];
+    if (cached !== undefined) {
+      setNavPath(cached);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`/DB/routes?map_id=${activeMapId}`);
+        const routes: { StartPlaceName: string; EndPlaceName: string; Direction: string }[] = await res.json();
+        if (cancelled || !routes.length) {
+          _cache.navPaths[activeMapId] = null;
+          setNavPath(null);
+          return;
+        }
+
+        const segments: NavPathSegment[] = routes
+          .map((r) => {
+            const from = places.find((p) => p.name === r.StartPlaceName);
+            const to = places.find((p) => p.name === r.EndPlaceName);
+            if (!from || !to) return null;
+            return {
+              from: { x: from.x, y: from.y, name: from.name },
+              to: { x: to.x, y: to.y, name: to.name },
+              direction: r.Direction === "bidirectional" ? "two-way" as const : "one-way" as const,
+            };
+          })
+          .filter((s): s is NavPathSegment => s !== null);
+
+        const path = segments.length > 0 ? { segments } : null;
+        _cache.navPaths[activeMapId] = path;
+        if (!cancelled) setNavPath(path);
+      } catch {
+        if (!cancelled) setNavPath(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeMapId, places]);
 
   // 선택된 층의 장소만 필터
   const floorPois = selectedFloor
-    ? places.filter((p) => p.floor === selectedFloor.label)
+    ? places.filter((p) => p.floorId === selectedFloor.id)
     : [];
 
   const handleFloorSelect = (idx: number, floor: Floor) => {
@@ -103,8 +266,10 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           </div>
         )}
 
-        {hasRobots && hasFloors && robotPosError && (
-          <div className={styles.posErrorBadge}>위치 수신 불가</div>
+        {hasRobots && hasFloors && !mapConfig && !mapLoading && (
+          <div className={styles.emptyOverlay}>
+            <span>해당 층에 등록된 맵이 없습니다.</span>
+          </div>
         )}
 
         <button
@@ -116,7 +281,6 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           로봇 전체 정지
         </button>
 
-        {/* 층 선택 세로 버튼 리스트 (높은 층 → 낮은 층) */}
         {hasFloors && (
           <div className={styles.floorList}>
             {[...floors].reverse().map((floor) => {
@@ -135,25 +299,20 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           </div>
         )}
 
-        <CanvasMap
-          ref={mapRef}
-          config={OCC_GRID_CONFIG}
-          view={mapView}
-          robotPos={hasRobots && robotPosReady && !robotPosError && isRobotOnCurrentFloor ? robotPos : null}
-          robotName={selectedRobotName}
-          showRobot={isRobotOnCurrentFloor}
-          pois={floorPois}
-          showPois
-          showLabels
-          onPoiNavigate={handlePoiNavigate}
-        />
-        {hasRobots && hasFloors && (
-          <ZoomControl
-            onClick={handleZoomFromChild}
-            mapView={mapView}
-            onToggleView={() => setMapView((v) => (v === "2d" ? "3d" : "2d"))}
+        {mapConfig && (
+          <CanvasMap
+            ref={mapRef}
+            config={mapConfig}
+            robots={floorRobots}
+            pois={floorPois}
+            navPath={navPath}
+            showPois
+            showPath
+            showLabels
+            onPoiNavigate={handlePoiNavigate}
           />
         )}
+        {hasRobots && hasFloors && <ZoomControl onClick={handleZoomFromChild} />}
       </div>
     </div>
   );

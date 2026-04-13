@@ -40,9 +40,9 @@ LOCAL_MAPS_DIR = os.path.join(BASE_DIR, "static", "maps")
 # ── 매핑 상태 (SSH 클라이언트는 저장하지 않음 — 매번 새로 연결) ──
 mapping_state = {
     "is_running": False,
-    "area_name": None,
+    "map_name": None,
     "business_id": None,
-    "area_id": None,
+    "floor_id": None,
 }
 
 
@@ -105,8 +105,8 @@ def ssh_exec(client: paramiko.SSHClient, command: str, exec_timeout=60) -> str:
 # ══════════════════════════════════════
 class MappingStartReq(BaseModel):
     BusinessId: int
-    AreaId: int
-    AreaName: str
+    FloorId: int
+    MapName: str
 
 
 @mapping_ctrl.post("/start")
@@ -117,7 +117,7 @@ def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require
     client = None
     try:
         # 1. drmap mapping 실행 (SSH 실패 시 재접속하여 재시도)
-        command = f"sudo drmap mapping -n {req.AreaName}"
+        command = f"sudo drmap mapping -n {req.MapName}"
         start_success = False
         for attempt in range(3):
             try:
@@ -137,11 +137,11 @@ def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require
             raise Exception("SSH 연결 불안정으로 매핑 시작 명령 실행 실패")
 
         mapping_state["is_running"] = True
-        mapping_state["area_name"] = req.AreaName
+        mapping_state["map_name"] = req.MapName
         mapping_state["business_id"] = req.BusinessId
-        mapping_state["area_id"] = req.AreaId
+        mapping_state["floor_id"] = req.FloorId
 
-        print(f"🗺️ 매핑 시작: {req.AreaName}")
+        print(f"🗺️ 매핑 시작: {req.MapName}")
         return {"status": "ok", "message": "매핑이 시작되었습니다."}
 
     except Exception as e:
@@ -160,8 +160,8 @@ def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require
 # ══════════════════════════════════════
 class MappingEndReq(BaseModel):
     BusinessId: int
-    AreaId: int
-    AreaName: str
+    FloorId: int
+    MapName: str
 
 
 @mapping_ctrl.post("/end")
@@ -191,7 +191,7 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
 
         # 2. 맵 디렉토리 생성 대기 (최대 60초, SSH 끊기면 재접속)
         map_dir = ""
-        find_cmd = f"sudo ls -dt {NOS_MAP_BASE_DIR}/{req.AreaName}-*/ 2>/dev/null | head -1"
+        find_cmd = f"sudo ls -dt {NOS_MAP_BASE_DIR}/{req.MapName}-*/ 2>/dev/null | head -1"
 
         for wait in range(20):
             time.sleep(3)
@@ -208,19 +208,27 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
             print(f"⏳ 맵 생성 대기 중... ({(wait+1)*3}초)")
 
         if not map_dir:
-            raise Exception(f"맵 디렉토리를 찾을 수 없습니다: {NOS_MAP_BASE_DIR}/{req.AreaName}-*")
+            raise Exception(f"맵 디렉토리를 찾을 수 없습니다: {NOS_MAP_BASE_DIR}/{req.MapName}-*")
 
         print(f"📂 맵 디렉토리 발견: {map_dir}")
 
-        # 3. SFTP로 파일 가져오기
+        # 3. 맵 디렉토리를 zip으로 압축 (동기화용)
+        dir_basename = os.path.basename(map_dir)
+        remote_zip = f"{NOS_MAP_BASE_DIR}/{dir_basename}.zip"
+        zip_cmd = f"cd {NOS_MAP_BASE_DIR} && sudo zip -ry {dir_basename}.zip {dir_basename}"
+        ssh_exec(client, zip_cmd, exec_timeout=120)
+        print(f"📦 로봇에서 zip 압축 완료: {remote_zip}")
+
+        # 4. SFTP로 파일 가져오기
         sftp = client.open_sftp()
         os.makedirs(LOCAL_MAPS_DIR, exist_ok=True)
 
         remote_pgm = f"{map_dir}/{NOS_PGM_FILENAME}"
         remote_yaml = f"{map_dir}/{NOS_YAML_FILENAME}"
 
-        local_pgm = os.path.join(LOCAL_MAPS_DIR, f"{req.AreaName}.pgm")
-        local_yaml = os.path.join(LOCAL_MAPS_DIR, f"{req.AreaName}.yaml")
+        local_pgm = os.path.join(LOCAL_MAPS_DIR, f"{req.MapName}.pgm")
+        local_yaml = os.path.join(LOCAL_MAPS_DIR, f"{req.MapName}.yaml")
+        local_zip = os.path.join(LOCAL_MAPS_DIR, f"{dir_basename}.zip")
 
         print(f"📥 SFTP 다운로드: {remote_pgm} → {local_pgm}")
         sftp.get(remote_pgm, local_pgm)
@@ -228,11 +236,14 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
         print(f"📥 SFTP 다운로드: {remote_yaml} → {local_yaml}")
         sftp.get(remote_yaml, local_yaml)
 
+        print(f"📥 SFTP 다운로드: {remote_zip} → {local_zip}")
+        sftp.get(remote_zip, local_zip)
+
         sftp.close()
 
         # 4. PGM → PNG 변환
         import cv2
-        local_png = os.path.join(LOCAL_MAPS_DIR, f"{req.AreaName}.png")
+        local_png = os.path.join(LOCAL_MAPS_DIR, f"{req.MapName}.png")
         img = cv2.imread(local_pgm, cv2.IMREAD_GRAYSCALE)
         if img is not None:
             cv2.imwrite(local_png, img)
@@ -245,17 +256,19 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
         client = None
 
         # 7. DB에 맵 정보 저장
-        pgm_path = f"./static/maps/{req.AreaName}.pgm"
-        yaml_path = f"./static/maps/{req.AreaName}.yaml"
-        img_path = f"./static/maps/{req.AreaName}.png"
+        pgm_path = f"./static/maps/{req.MapName}.pgm"
+        yaml_path = f"./static/maps/{req.MapName}.yaml"
+        img_path = f"./static/maps/{req.MapName}.png"
+        zip_path = f"./static/maps/{dir_basename}.zip"
 
         robot_map = RobotMapInfo(
             BusinessId=req.BusinessId,
-            AreaId=req.AreaId,
-            AreaName=req.AreaName,
+            FloorId=req.FloorId,
+            MapName=req.MapName,
             PgmFilePath=pgm_path,
             YamlFilePath=yaml_path,
             ImgFilePath=img_path,
+            ZipFilePath=zip_path,
         )
         db.add(robot_map)
         db.commit()
@@ -263,11 +276,11 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
 
         # 8. 상태 초기화
         mapping_state["is_running"] = False
-        mapping_state["area_name"] = None
+        mapping_state["map_name"] = None
         mapping_state["business_id"] = None
-        mapping_state["area_id"] = None
+        mapping_state["floor_id"] = None
 
-        print(f"[OK] 매핑 완료 & 저장: {req.AreaName}")
+        print(f"✅ 매핑 완료 & 저장: {req.MapName}")
         return {
             "status": "ok",
             "message": "매핑이 완료되고 저장되었습니다.",
@@ -289,17 +302,17 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
 # ══════════════════════════════════════
 @mapping_ctrl.post("/cancel")
 def mapping_cancel(current_user: UserInfo = Depends(require_permission("map-edit"))):
-    area_name = mapping_state.get("area_name")
+    map_name = mapping_state.get("map_name")
     client = None
 
     try:
         client = get_ssh_client()
         ssh_exec(client, "sudo drmap stop_mapping")
 
-        if area_name:
+        if map_name:
             time.sleep(2)
-            ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/{area_name}-*/")
-            print(f"🗑️ 맵 디렉토리 삭제: {area_name}-*/")
+            ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/{map_name}-*/")
+            print(f"🗑️ 맵 디렉토리 삭제: {map_name}-*/")
     except Exception as e:
         print(f"[ERR] 매핑 취소 중 오류: {e}")
     finally:
@@ -307,9 +320,9 @@ def mapping_cancel(current_user: UserInfo = Depends(require_permission("map-edit
             try: client.close()
             except: pass
         mapping_state["is_running"] = False
-        mapping_state["area_name"] = None
+        mapping_state["map_name"] = None
         mapping_state["business_id"] = None
-        mapping_state["area_id"] = None
+        mapping_state["floor_id"] = None
 
     print("🚫 매핑 취소됨")
     return {"status": "ok", "message": "매핑이 취소되었습니다."}
@@ -322,5 +335,5 @@ def mapping_cancel(current_user: UserInfo = Depends(require_permission("map-edit
 def mapping_status(current_user: UserInfo = Depends(require_permission("map-edit"))):
     return {
         "is_running": mapping_state["is_running"],
-        "area_name": mapping_state["area_name"],
+        "map_name": mapping_state["map_name"],
     }

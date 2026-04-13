@@ -34,6 +34,7 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
     view = "2d",
     robotPos,
     robotName,
+    robots: multiRobots,
     pois,
     navPath,
     selectedPoiId,
@@ -195,7 +196,16 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
           style={{ width: "100%", height: "100%", pointerEvents: "none" }}
         />
 
-        {showRobot && robotScreen && (
+        {/* 다중 로봇 */}
+        {multiRobots && multiRobots.map((r) => {
+          const sp = worldToPixelScreen(r.position.x, r.position.y);
+          return (
+            <RobotMarker key={r.id} screenX={sp.x} screenY={sp.y} yaw={r.position.yaw} name={r.name} size={robotMarkerSize} scale={scale} />
+          );
+        })}
+
+        {/* 단일 로봇 (하위 호환) */}
+        {!multiRobots && showRobot && robotScreen && (
           <RobotMarker screenX={robotScreen.x} screenY={robotScreen.y} yaw={robotPos?.yaw} name={robotName} size={robotMarkerSize} scale={scale} />
         )}
 

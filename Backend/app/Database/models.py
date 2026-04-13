@@ -33,6 +33,8 @@ class RobotInfo(Base):
     SWversion = Column(String(100))
     Site = Column(String(100))
     BusinessId = Column(Integer, nullable=True)
+    CurrentFloorId = Column(Integer, nullable=True)
+    CurrentMapId = Column(Integer, nullable=True)
     LimitBattery = Column(Integer, default=30)
     CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
     UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -47,11 +49,12 @@ class LocationInfo(Base):
     UserId = Column(Integer)
     RobotName = Column(String(100))
     LacationName = Column(String(100))
-    FloorId = Column(Integer, nullable=False)
+    FloorId = Column(Integer)
     LocationX = Column(Double)
     LocationY = Column(Double)
     Yaw = Column(Double, default=0.0)
     MapId = Column(Integer)
+    Category = Column(String(20), default="waypoint")
     Imformation = Column(String(100))
 
 # =========================
@@ -236,10 +239,10 @@ class BusinessInfo(Base):
     DeletedAt = Column(DateTime, nullable=True, default=None)
 
 # =========================
-# 영역(층) 정보
+# 층 정보
 # =========================
-class AreaInfo(Base):
-    __tablename__ = "area_info"
+class FloorInfo(Base):
+    __tablename__ = "floor_info"
     id = Column(Integer, primary_key=True, index=True)
     BusinessId = Column(Integer, nullable=False)
     FloorName = Column(String(50), nullable=False)  # B1, 1F, 2F 등
@@ -253,11 +256,30 @@ class RobotMapInfo(Base):
     id = Column(Integer, primary_key=True, index=True)
     BusinessId = Column(Integer, nullable=False)
     FloorId = Column(Integer, nullable=False)
-    MapName = Column(String(100), nullable=False)   # 영역 이름 (사용자 입력)
+    MapName = Column(String(100), nullable=False)   # 맵 이름 (사용자 입력)
     PgmFilePath = Column(String(300))
     YamlFilePath = Column(String(300))
     ImgFilePath = Column(String(300))
+    ZipFilePath = Column(String(300))
     Adddate = Column(DateTime, server_default=func.now())
+
+
+# =========================
+# 맵별·로봇별 초기 위치
+# =========================
+class MapInitPose(Base):
+    __tablename__ = "map_init_pose"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    MapId = Column(Integer, nullable=False)
+    RobotId = Column(Integer, nullable=False)
+    PosX = Column(Float, nullable=False)
+    PosY = Column(Float, nullable=False)
+    Yaw = Column(Float, nullable=False)
+    UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("MapId", "RobotId", name="uq_map_robot"),
+    )
 
 
 # =========================

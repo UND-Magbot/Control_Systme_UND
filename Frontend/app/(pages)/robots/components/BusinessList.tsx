@@ -20,12 +20,12 @@ export type BusinessItem = {
   representName: string;
   contact: string;
   description: string;
-  areaCount: number;
+  floorCount: number;
   robotCount: number;
   createdAt: string;
 };
 
-export type AreaItem = {
+export type FloorItem = {
   id: number;
   businessId: number;
   floorName: string;
@@ -73,7 +73,7 @@ export default function BusinessList() {
         representName: b.RepresentName ?? "",
         contact: b.Contact ?? "",
         description: b.Description ?? "",
-        areaCount: b.AreaCount ?? 0,
+        floorCount: b.FloorCount ?? 0,
         robotCount: b.RobotCount ?? 0,
         createdAt: b.CreatedAt ? new Date(b.CreatedAt).toLocaleDateString("ko-KR") : "-",
       }));
@@ -275,7 +275,7 @@ export default function BusinessList() {
                     <td>{rowNum}</td>
                     <td>{b.businessName}</td>
                     <td>{b.address || "-"}</td>
-                    <td>{b.areaCount}</td>
+                    <td>{b.floorCount}</td>
                     <td>{b.robotCount}</td>
                     <td>
                       <div className={styles.infoBtnGroup}>

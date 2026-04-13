@@ -38,15 +38,16 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     chargeLeft: isQuadruped ? (item.IsCharging1 === 1 ? true : item.IsCharging1 === 0 ? false : undefined) : undefined,
     chargeRight: isQuadruped ? (item.IsCharging2 === 1 ? true : item.IsCharging2 === 0 ? false : undefined) : undefined,
     return: item.LimitBattery ?? 30,
-    isCharging: isQuadruped
-      ? !!(item.IsCharging1 || item.IsCharging2)
-      : !!(item.IsCharging1),
+    isCharging: false,  // 런타임 폴링으로만 갱신 (DB 값은 미갱신 상태이므로 무시)
     chargeState: 0,
     chargeStateLabel: "대기",
     chargeErrorCode: 0,
     chargeErrorMsg: null,
-    network: item.Network ?? "-",
-    power: item.Power ?? "-",
+    currentFloorId: item.CurrentFloorId ?? null,
+    currentMapId: item.CurrentMapId ?? null,
+    position: { x: 0, y: 0, yaw: 0, timestamp: 0 },
+    network: item.LastHeartbeat ? "Offline" : "-",
+    power: item.LastHeartbeat ? "Off" : "-",
     mark: item.mark ?? "No",
 
     // 배열 필드는 반드시 방어

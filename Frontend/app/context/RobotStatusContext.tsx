@@ -8,6 +8,10 @@ const STATUS_API = `/robot/status`;
 const POLL_INTERVAL = 5000;
 const OFFLINE_THRESHOLD = 3; // 연속 실패 횟수 — 이 횟수 이상 실패해야 Offline 처리
 
+// 충전→비충전 전환 디바운스 카운터 (로봇ID → 연속 false 횟수)
+const _chargingDropCount: Record<number, number> = {};
+const CHARGING_DROP_THRESHOLD = 2;
+
 type StatusEntry = {
   robot_id: number;
   robot_name: string;
@@ -20,6 +24,8 @@ type StatusEntry = {
   charge_state_label: string;
   charge_error_code: number;
   charge_error_msg: string | null;
+  current_floor_id: number | null;
+  current_map_id: number | null;
   timestamp: number;
   position: { x: number; y: number; yaw: number; timestamp: number };
 };
@@ -51,7 +57,28 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
     try {
       const mod = await import("@/app/lib/robotInfo");
       const data = await mod.default();
-      setRobots(data);
+      setRobots((prev) => {
+        if (!prev.length) return data; // 최초 로드
+        // refresh: DB 목록 갱신하되 런타임 상태는 유지
+        return data.map((d) => {
+          const existing = prev.find((r) => r.id === d.id);
+          if (!existing) return d;
+          return {
+            ...d,
+            isCharging: existing.isCharging,
+            chargeState: existing.chargeState,
+            chargeStateLabel: existing.chargeStateLabel,
+            chargeErrorCode: existing.chargeErrorCode,
+            chargeErrorMsg: existing.chargeErrorMsg,
+            network: existing.network,
+            power: existing.power,
+            position: existing.position,
+            battery: existing.battery,
+            batteryLeft: existing.batteryLeft,
+            batteryRight: existing.batteryRight,
+          };
+        });
+      });
       initialLoaded.current = true;
       setLoaded(true);
     } catch {
@@ -78,6 +105,17 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
 
           const bat = match.battery ?? {};
 
+          // 충전→비충전 전환 디바운스
+          const rawCharging = match.is_charging ?? r.isCharging;
+          let stableCharging: boolean;
+          if (r.isCharging && !rawCharging) {
+            _chargingDropCount[r.id] = (_chargingDropCount[r.id] ?? 0) + 1;
+            stableCharging = _chargingDropCount[r.id] >= CHARGING_DROP_THRESHOLD ? false : true;
+          } else {
+            _chargingDropCount[r.id] = 0;
+            stableCharging = rawCharging;
+          }
+
           if (r.type === "QUADRUPED") {
             return {
               ...r,
@@ -91,11 +129,14 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
               chargeRight: (bat.chargeRight as boolean) ?? r.chargeRight,
               serialLeft: (bat.serialLeft as string) ?? r.serialLeft,
               serialRight: (bat.serialRight as string) ?? r.serialRight,
-              isCharging: match.is_charging ?? r.isCharging,
+              isCharging: stableCharging,
               chargeState: match.charge_state ?? r.chargeState,
               chargeStateLabel: match.charge_state_label ?? r.chargeStateLabel,
               chargeErrorCode: match.charge_error_code ?? r.chargeErrorCode,
               chargeErrorMsg: match.charge_error_msg ?? r.chargeErrorMsg,
+              currentFloorId: match.current_floor_id ?? r.currentFloorId,
+              currentMapId: match.current_map_id ?? r.currentMapId,
+              position: match.position ?? r.position,
               network: match.network,
               power: match.power,
             };
@@ -105,11 +146,14 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
           return {
             ...r,
             battery: soc ?? r.battery,
-            isCharging: match.is_charging ?? r.isCharging,
+            isCharging: stableCharging,
             chargeState: match.charge_state ?? r.chargeState,
             chargeStateLabel: match.charge_state_label ?? r.chargeStateLabel,
             chargeErrorCode: match.charge_error_code ?? r.chargeErrorCode,
             chargeErrorMsg: match.charge_error_msg ?? r.chargeErrorMsg,
+            currentFloorId: match.current_floor_id ?? r.currentFloorId,
+            currentMapId: match.current_map_id ?? r.currentMapId,
+            position: match.position ?? r.position,
             network: match.network,
             power: match.power,
           };

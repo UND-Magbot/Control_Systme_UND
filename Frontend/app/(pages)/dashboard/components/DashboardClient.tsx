@@ -13,7 +13,6 @@ import { useRobotLocation } from "@/app/hooks/useRobotLocation";
 import type { POIItem } from "@/app/components/map/types";
 import RobotStats from "./RobotStats";
 import ScheduleTimeline from "./ScheduleTimeline";
-import getRobots from "@/app/lib/robotInfo";
 import { getCamerasForRobot } from "@/app/lib/cameraView";
 import { getStatistics, type PerRobotStats } from "@/app/lib/statisticsApi";
 import { usePageReady } from "@/app/context/PageLoadingContext";
@@ -28,7 +27,7 @@ export default function DashboardClient({
   floors,
   videoStatus,
 }: DashboardClientProps) {
-  const { robots: liveRobots, loaded } = useRobotStatusContext();
+  const { robots: liveRobots, loaded: statusLoaded } = useRobotStatusContext();
   const [robots, setRobots] = useState<RobotRowData[]>([]);
   const [selectedRobotId, setSelectedRobotId] = useState<number | null>(null);
   const [robotCameras, setRobotCameras] = useState<Camera[]>([]);
@@ -50,21 +49,21 @@ export default function DashboardClient({
   );
   const setPageReady = usePageReady();
 
-  // 로봇 목록 + 첫 번째 로봇 카메라 병렬 로드
+  // 컨텍스트 로드 완료 시 첫 번째 로봇 선택 + 카메라 로드
   useEffect(() => {
-    setIsLoading(true);
-    getRobots().then((fetched) => {
-      setRobots(fetched);
-      const firstId = fetched[0]?.id ?? null;
-      setSelectedRobotId(firstId);
+    if (!statusLoaded) return;
+    const firstId = liveRobots[0]?.id ?? null;
+    setSelectedRobotId((prev) => prev ?? firstId);
+    if (firstId && isLoading) {
+      getCamerasForRobot(firstId).then(setRobotCameras).finally(() => {
+        setIsLoading(false);
+        setPageReady();
+      });
+    } else {
       setIsLoading(false);
       setPageReady();
-      // 카메라는 UI 차단 없이 백그라운드 로드
-      if (firstId) {
-        getCamerasForRobot(firstId).then(setRobotCameras);
-      }
-    }).catch(() => { setIsLoading(false); setPageReady(); });
-  }, []);
+    }
+  }, [statusLoaded]);
 
   const selectedRobot = useMemo(
     () => liveRobots.find((r) => r.id === selectedRobotId) ?? robots.find((r) => r.id === selectedRobotId) ?? null,
@@ -105,7 +104,7 @@ export default function DashboardClient({
         {/* 로봇 카드 리스트 */}
         <div className={styles.robotListPanel}>
           <RobotCardList
-            robots={robots}
+            robots={liveRobots}
             floors={floors}
             selectedRobotId={selectedRobotId}
             onSelectRobot={setSelectedRobotId}
@@ -138,13 +137,12 @@ export default function DashboardClient({
         </div>
         <MapSection
           floors={floors}
-          robots={robots}
+          robots={liveRobots}
           video={videoStatus}
           cameras={robotCameras}
           selectedRobotId={selectedRobotId}
           selectedRobotName={selectedRobot?.no}
-          robotFloor={robotLocation.floor}
-          initialPlaces={mapPlaces}
+          robotFloorId={selectedRobot?.currentFloorId ?? null}
         />
       </div>
 
@@ -155,7 +153,7 @@ export default function DashboardClient({
           robotCameras={robotCameras}
           videoItems={[]}
           selectedRobot={selectedRobot}
-          robots={robots}
+          robots={liveRobots}
           video={videoStatus}
         />
       </div>

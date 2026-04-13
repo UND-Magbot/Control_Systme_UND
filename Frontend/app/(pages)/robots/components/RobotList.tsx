@@ -19,6 +19,7 @@ import {
   ROBOT_COLORS,
   getRobotIndexFromNo,
 } from "@/app/constants/robotIcons";
+import ChargingIcon from "@/app/components/common/ChargingIcon";
 import { useAuth } from "@/app/context/AuthContext";
 import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
 import { usePageReady } from "@/app/context/PageLoadingContext";

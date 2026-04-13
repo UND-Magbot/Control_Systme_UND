@@ -34,6 +34,10 @@ export default function SchedulePageClient({ floors }: SchedulePageClientProps) 
               <span>작업중</span>
             </div>
             <div className={styles.statusItem}>
+              <span className={`${styles.statusCircle} ${styles.cancelledC}`}></span>
+              <span>작업중(취소)</span>
+            </div>
+            <div className={styles.statusItem}>
               <span className={`${styles.statusCircle} ${styles.errorC}`}></span>
               <span>작업중(오류)</span>
             </div>

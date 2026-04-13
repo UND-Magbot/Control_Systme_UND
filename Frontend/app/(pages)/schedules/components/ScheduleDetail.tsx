@@ -1478,7 +1478,7 @@ export default function ScheduleDetail({
                     : form.workStatus === '진행중' || form.workStatus === '진행' ? styles.detailStatusBlue
                     : form.workStatus === '완료' ? styles.detailStatusGreen
                     : form.workStatus === '오류' ? styles.detailStatusRed
-                    : form.workStatus === '취소' ? styles.detailStatusRed
+                    : form.workStatus === '취소' ? styles.detailStatusOrange
                     : ''
                   }`}>
                   {form.workStatus}

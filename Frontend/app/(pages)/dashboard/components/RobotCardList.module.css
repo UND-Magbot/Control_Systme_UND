@@ -132,7 +132,6 @@
 .cardTop {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 6px;
 }
 
@@ -145,8 +144,26 @@
   text-overflow: ellipsis;
 }
 
+.floorChangeBtn {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.floorChangeBtn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
 .networkBadge {
-  font-size: var(--font-size-xs);
+  margin-left: auto;
+  font-size: 9px;
   font-weight: 500;
   padding: 2px 7px;
   border-radius: 10px;

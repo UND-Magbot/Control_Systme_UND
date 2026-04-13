@@ -287,6 +287,11 @@
   background: rgba(244, 67, 54, 0.15);
 }
 
+.detailStatusOrange {
+  color: #FF9800;
+  background: rgba(255, 152, 0, 0.15);
+}
+
 .detailPathOrderWrap {
   display: flex;
   flex-direction: column;

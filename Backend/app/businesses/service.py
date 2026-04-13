@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func as sql_func
 from fastapi import HTTPException
 
-from app.Database.models import BusinessInfo, AreaInfo, RobotInfo, RobotMapInfo
+from app.Database.models import BusinessInfo, FloorInfo, RobotInfo, RobotMapInfo
 
 
 class BusinessService:
@@ -24,7 +24,7 @@ class BusinessService:
         total = query.count()
         rows = query.offset((page - 1) * size).limit(size).all()
 
-        area_counts = dict(
+        floor_counts = dict(
             self.db.query(RobotMapInfo.BusinessId, sql_func.count(RobotMapInfo.id))
             .group_by(RobotMapInfo.BusinessId)
             .all()
@@ -48,7 +48,7 @@ class BusinessService:
                 "Description": b.Description,
                 "CreatedAt": b.CreatedAt,
                 "UpdatedAt": b.UpdatedAt,
-                "AreaCount": area_counts.get(b.id, 0),
+                "FloorCount": floor_counts.get(b.id, 0),
                 "RobotCount": robot_counts.get(b.id, 0),
             }
             for b in rows
@@ -63,7 +63,7 @@ class BusinessService:
         if not biz:
             raise HTTPException(status_code=404, detail="사업자를 찾을 수 없습니다")
 
-        area_count = (
+        floor_count = (
             self.db.query(sql_func.count(RobotMapInfo.id))
             .filter(RobotMapInfo.BusinessId == biz_id)
             .scalar()
@@ -85,7 +85,7 @@ class BusinessService:
             "Description": biz.Description,
             "CreatedAt": biz.CreatedAt,
             "UpdatedAt": biz.UpdatedAt,
-            "AreaCount": area_count,
+            "FloorCount": floor_count,
             "RobotCount": robot_count,
         }
 
@@ -174,19 +174,19 @@ class BusinessService:
         if not biz:
             raise HTTPException(status_code=404, detail="사업자를 찾을 수 없습니다")
 
-        # 1) 하위 영역에 매핑된 맵 삭제
-        area_ids = [
+        # 1) 하위 층에 매핑된 맵 삭제
+        floor_ids = [
             a.id for a in
-            self.db.query(AreaInfo.id).filter(AreaInfo.BusinessId == biz_id).all()
+            self.db.query(FloorInfo.id).filter(FloorInfo.BusinessId == biz_id).all()
         ]
-        if area_ids:
-            self.db.query(RobotMapInfo).filter(RobotMapInfo.AreaId.in_(area_ids)).delete(synchronize_session=False)
+        if floor_ids:
+            self.db.query(RobotMapInfo).filter(RobotMapInfo.FloorId.in_(floor_ids)).delete(synchronize_session=False)
 
         # 2) 사업장에 직접 연결된 맵도 삭제
         self.db.query(RobotMapInfo).filter(RobotMapInfo.BusinessId == biz_id).delete(synchronize_session=False)
 
-        # 3) 하위 영역 삭제
-        self.db.query(AreaInfo).filter(AreaInfo.BusinessId == biz_id).delete(synchronize_session=False)
+        # 3) 하위 층 삭제
+        self.db.query(FloorInfo).filter(FloorInfo.BusinessId == biz_id).delete(synchronize_session=False)
 
         # 4) 연결된 로봇의 BusinessId를 NULL로 변경 (로봇 자체는 삭제하지 않음)
         self.db.query(RobotInfo).filter(RobotInfo.BusinessId == biz_id).update(
@@ -198,55 +198,50 @@ class BusinessService:
         self.db.commit()
 
 
-class AreaService:
+class FloorService:
     def __init__(self, db: Session):
         self.db = db
 
     def get_list(self, business_id: int):
         return (
-            self.db.query(AreaInfo)
-            .filter(AreaInfo.BusinessId == business_id)
-            .order_by(AreaInfo.id.asc())
+            self.db.query(FloorInfo)
+            .filter(FloorInfo.BusinessId == business_id)
+            .order_by(FloorInfo.id.asc())
             .all()
         )
 
     def create(self, business_id: int, floor_name: str):
-        # 사업자 존재 확인
         biz = self.db.query(BusinessInfo).filter(BusinessInfo.id == business_id).first()
         if not biz:
             raise HTTPException(status_code=404, detail="사업자를 찾을 수 없습니다")
 
-        # 빈 값 검증
         if not floor_name or not floor_name.strip():
-            raise HTTPException(status_code=400, detail="영역(층) 이름을 입력해주세요")
+            raise HTTPException(status_code=400, detail="층 이름을 입력해주세요")
         floor_name = floor_name.strip()
 
-        # 길이 검증
         if len(floor_name) > 50:
-            raise HTTPException(status_code=400, detail="영역 이름은 50자 이내로 입력해주세요")
+            raise HTTPException(status_code=400, detail="층 이름은 50자 이내로 입력해주세요")
 
-        # 같은 사업자 내 중복 검증
         exists = (
-            self.db.query(AreaInfo)
-            .filter(AreaInfo.BusinessId == business_id, AreaInfo.FloorName == floor_name)
+            self.db.query(FloorInfo)
+            .filter(FloorInfo.BusinessId == business_id, FloorInfo.FloorName == floor_name)
             .first()
         )
         if exists:
-            raise HTTPException(status_code=409, detail="이미 등록된 영역 이름입니다")
+            raise HTTPException(status_code=409, detail="이미 등록된 층 이름입니다")
 
-        area = AreaInfo(BusinessId=business_id, FloorName=floor_name)
-        self.db.add(area)
+        floor = FloorInfo(BusinessId=business_id, FloorName=floor_name)
+        self.db.add(floor)
         self.db.commit()
-        self.db.refresh(area)
-        return area
+        self.db.refresh(floor)
+        return floor
 
-    def delete(self, area_id: int):
-        area = self.db.query(AreaInfo).filter(AreaInfo.id == area_id).first()
-        if not area:
-            raise HTTPException(status_code=404, detail="영역을 찾을 수 없습니다")
+    def delete(self, floor_id: int):
+        floor = self.db.query(FloorInfo).filter(FloorInfo.id == floor_id).first()
+        if not floor:
+            raise HTTPException(status_code=404, detail="층을 찾을 수 없습니다")
 
-        # 해당 영역에 매핑된 맵 삭제
-        self.db.query(RobotMapInfo).filter(RobotMapInfo.AreaId == area_id).delete(synchronize_session=False)
+        self.db.query(RobotMapInfo).filter(RobotMapInfo.FloorId == floor_id).delete(synchronize_session=False)
 
-        self.db.delete(area)
+        self.db.delete(floor)
         self.db.commit()

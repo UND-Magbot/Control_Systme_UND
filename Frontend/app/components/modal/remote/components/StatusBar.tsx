@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { RobotRowData } from '@/app/type';
 import { getRobotCapabilities } from '@/app/constants/robotCapabilities';
+import ChargingIcon from '@/app/components/common/ChargingIcon';
 import styles from './StatusBar.module.css';
 
 type StatusBarProps = {
@@ -83,7 +84,11 @@ export default function StatusBar({
         {/* 상태 */}
         <span className={styles.statusBadge}>
           <span className={styles.badgeLabel}>상태</span>
-          <span>{network}</span>
+          <span>
+            {robot?.isCharging ? (
+              <><ChargingIcon size={12} style={{ marginLeft: 0, marginRight: 3 }} />충전 중</>
+            ) : network}
+          </span>
         </span>
 
         {/* 배터리 */}

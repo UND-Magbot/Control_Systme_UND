@@ -98,7 +98,9 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
     setIsPending(true);
     try {
       await apiFetch('/nav/stopmove', { method: 'POST' });
+      wasWorkingRef.current = false;  // 폴링에서 "완료" 알림 방지
       setIsWorking(false);
+      onAlert?.('작업이 중지되었습니다.');
     } catch {
       onAlert?.('작업 중지에 실패했습니다.\n연결 상태를 확인해주세요.');
     } finally {

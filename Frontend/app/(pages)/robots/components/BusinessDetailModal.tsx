@@ -99,7 +99,7 @@ export default function BusinessDetailModal({
         representName: d.RepresentName ?? "",
         contact: d.Contact ?? "",
         description: d.Description ?? "",
-        areaCount: d.AreaCount ?? 0,
+        floorCount: d.FloorCount ?? 0,
         robotCount: d.RobotCount ?? 0,
         createdAt: d.CreatedAt ? new Date(d.CreatedAt).toLocaleDateString("ko-KR") : "-",
       };
@@ -370,7 +370,7 @@ export default function BusinessDetailModal({
                   <span className={styles.detailInfoLabel}>주소</span>
                   <span className={styles.detailInfoValue}>{fullAddressDisplay}</span>
                 </div>
-                {infoField("영역 수", null, `${business?.areaCount ?? 0}개`, true)}
+                {infoField("영역 수", null, `${business?.floorCount ?? 0}개`, true)}
                 {infoField("로봇 수", null, `${business?.robotCount ?? 0}대`, true)}
                 <div className={`${styles.detailInfoRow} ${styles.detailInfoFull}`}>
                   <span className={styles.detailInfoLabel}>회사 설명</span>

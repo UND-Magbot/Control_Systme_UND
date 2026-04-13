@@ -9,11 +9,14 @@ import {
   getBatteryColor,
   isCriticalBattery,
 } from "@/app/constants/robotIcons";
+import ChargingIcon from "@/app/components/common/ChargingIcon";
 import { apiFetch } from "@/app/lib/api";
 import dynamic from "next/dynamic";
 
 const PlacePathModal = dynamic(() => import("@/app/components/modal/PlacePathModal"), { ssr: false });
 const BatteryPathModal = dynamic(() => import("@/app/components/modal/BatteryChargeModal"), { ssr: false });
+const FloorChangeModal = dynamic(() => import("@/app/components/modal/FloorChangeModal"), { ssr: false });
+const ReturnToWorkModal = dynamic(() => import("@/app/components/modal/ReturnToWorkModal"), { ssr: false });
 
 type RobotLocation = {
   floor: string;
@@ -28,6 +31,7 @@ type RobotCardProps = {
   video: unknown[];
   cameras: unknown[];
   robotLocation: RobotLocation;
+  floors?: { id: number; label: string }[];
   canControlRobot?: boolean;
   hasActiveSchedule?: boolean;
 };
@@ -39,7 +43,8 @@ const ROBOT_ICONS = [
   "/icon/robot_icon(4).png",
 ];
 
-export default function RobotCard({ robot, isSelected, onClick, robots, video, cameras, robotLocation, canControlRobot = true, hasActiveSchedule = false }: RobotCardProps) {
+export default function RobotCard({ robot, isSelected, onClick, robots, video, cameras, robotLocation, floors = [], canControlRobot = true, hasActiveSchedule = false }: RobotCardProps) {
+  const currentFloorName = floors.find((f) => f.id === robot.currentFloorId)?.label ?? "층";
   const typeIdx = ROBOT_TYPE_INDEX[robot.type] ?? 0;
   const dotClass = styles[`dot${robot.network}`] ?? styles.dotOffline;
   const badgeClass = styles[`badge${robot.network}`] ?? styles.badgeOffline;
@@ -56,21 +61,31 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
     if (robot.chargeState === 1) return { label: "부두로 이동", className: styles.taskDocking, tooltip: "" };
     if (robot.chargeState === 2) return { label: "충전 중", className: styles.taskCharging, tooltip: "" };
     if (robot.chargeState === 3) return { label: "부두에서 나가기", className: styles.taskDocking, tooltip: "" };
+    if (robot.isCharging) return { label: "충전 중", className: styles.taskCharging, tooltip: "" };
     if (robot.dockingTime > 0) return { label: "도킹 중", className: styles.taskDocking, tooltip: "" };
     if (hasActiveSchedule || robot.tasks.length > 0) return { label: "작업 중", className: styles.taskWorking, tooltip: "" };
     return { label: "대기 중", className: styles.taskIdle, tooltip: "" };
   })();
 
   const [placeModalOpen, setPlaceModalOpen] = useState(false);
-  const [chargeModalOpen, setChargeModalOpen] = useState(false);
+  const [chargeConfirmOpen, setChargeConfirmOpen] = useState(false);
+  const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
+  const [floorChangeOpen, setFloorChangeOpen] = useState(false);
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
 
   const handleScheduleReturn = (e: React.MouseEvent) => {
     e.stopPropagation();
-    apiFetch(`/nav/startmove`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ robotName: robot.no, action: "schedule_return" }),
-    }).catch((err) => console.error("작업일정 복귀 실패", err));
+    setReturnModalOpen(true);
+  };
+
+  const handleReturnSelect = (mode: "direct" | "retrace") => {
+    apiFetch(`/robot/return-to-work?mode=${mode}`, { method: "POST" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status === "error") alert(data.msg);
+      })
+      .catch((err) => console.error("작업 복귀 실패", err));
+    setReturnModalOpen(false);
   };
 
   const handlePlaceMove = (e: React.MouseEvent) => {
@@ -80,21 +95,32 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
 
   const handleEmergencyStop = (e: React.MouseEvent) => {
     e.stopPropagation();
-    apiFetch(`/nav/stop`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ robotName: robot.no }),
-    }).catch((err) => console.error("긴급 정지 실패", err));
+    setEmergencyConfirmOpen(true);
+  };
+
+  const handleEmergencyConfirm = () => {
+    apiFetch(`/nav/stopmove`, { method: "POST" })
+      .then((res) => {
+        if (res.ok) alert("작업이 중지되었습니다.");
+      })
+      .catch((err) => console.error("긴급 정지 실패", err));
+    setEmergencyConfirmOpen(false);
   };
 
   const handleChargeMove = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setChargeModalOpen(true);
+    if (robot.isCharging) {
+      alert("이미 충전 중입니다.");
+      return;
+    }
+    setChargeConfirmOpen(true);
   };
 
   const handleChargeConfirm = () => {
-    console.log("충전소 이동:", robot.no);
-    setChargeModalOpen(false);
+    apiFetch(`/robot/return-to-charge`, {
+      method: "POST",
+    }).catch((err) => console.error("충전소 이동 실패", err));
+    setChargeConfirmOpen(false);
   };
 
   return (
@@ -105,11 +131,16 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
       >
         <div className={styles.cardInfo}>
           <div className={styles.cardTop}>
-            <span
-              className={styles.robotName}
-            >
+            <span className={styles.robotName}>
               {robot.no}
             </span>
+            <button
+              className={styles.floorChangeBtn}
+              onClick={(e) => { e.stopPropagation(); setFloorChangeOpen(true); }}
+              title="현재 층 변경"
+            >
+              현재 층 변경
+            </button>
             <span className={`${styles.networkBadge} ${badgeClass}`}>
               <span className={`${styles.dot} ${dotClass}`} />
               {robot.network}
@@ -140,9 +171,10 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
             <span className={styles.floorLabel}>
               {robotLocation.floor}{robotLocation.placeName ? ` · ${robotLocation.placeName}` : ""}
             </span>
-            {isOnline && (
-              <span className={`${styles.taskBadge} ${taskStatus.className}`} title={taskStatus.tooltip || undefined}>{taskStatus.label}</span>
-            )}
+            <span className={`${styles.taskBadge} ${taskStatus.className}`} title={taskStatus.tooltip || undefined}>
+              {robot.isCharging && <ChargingIcon size={12} style={{ marginLeft: 0, marginRight: 3 }} />}
+              {taskStatus.label}
+            </span>
           </div>
 
           {/* 선택된 카드에만 액션 버튼 표시 */}
@@ -169,12 +201,41 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
         />
       )}
 
-      {chargeModalOpen && (
+      {chargeConfirmOpen && (
         <BatteryPathModal
-          isOpen={chargeModalOpen}
-          message="배터리 충전소로 이동하시겠습니까?"
+          isOpen={chargeConfirmOpen}
+          message="현재 진행 중인 작업을 중단하고, 충전소로 이동하시겠습니까?"
           onConfirm={handleChargeConfirm}
-          onCancel={() => setChargeModalOpen(false)}
+          onCancel={() => setChargeConfirmOpen(false)}
+        />
+      )}
+
+      {emergencyConfirmOpen && (
+        <BatteryPathModal
+          isOpen={emergencyConfirmOpen}
+          message="긴급 정지하시겠습니까?"
+          onConfirm={handleEmergencyConfirm}
+          onCancel={() => setEmergencyConfirmOpen(false)}
+        />
+      )}
+
+      {returnModalOpen && (
+        <ReturnToWorkModal
+          isOpen={returnModalOpen}
+          onSelect={handleReturnSelect}
+          onCancel={() => setReturnModalOpen(false)}
+        />
+      )}
+
+      {floorChangeOpen && (
+        <FloorChangeModal
+          isOpen={floorChangeOpen}
+          robotId={robot.id}
+          robotName={robot.no}
+          currentFloorId={robot.currentFloorId}
+          currentMapId={robot.currentMapId}
+          onClose={() => setFloorChangeOpen(false)}
+          onComplete={() => {}}
         />
       )}
     </>

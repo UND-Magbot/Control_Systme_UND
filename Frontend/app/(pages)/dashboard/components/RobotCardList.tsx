@@ -140,6 +140,7 @@ export default function RobotCardList({
               video={videoStatus}
               cameras={cameras}
               robotLocation={robotLocation}
+              floors={floors}
               canControlRobot={canControlRobot}
               hasActiveSchedule={activeRobotNames.has(robot.no)}
             />
