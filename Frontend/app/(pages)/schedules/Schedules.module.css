@@ -44,6 +44,10 @@
     background-color: var(--color-error);
 }
 
+.cancelledC {
+    background-color: #FF9800;
+}
+
 .completedC {
     background-color: #66bb6a;
 }

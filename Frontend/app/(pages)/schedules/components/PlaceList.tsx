@@ -13,7 +13,6 @@ import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import { apiFetch } from "@/app/lib/api";
 
 const PLACE_PAGE_SIZE = 6;
-const FLOORS = ["B1", "1F", "2F", "3F", "4F"];
 
 interface PlaceListProps {
   robots: RobotRowData[];
@@ -22,6 +21,8 @@ interface PlaceListProps {
 }
 
 export default function PlaceList({ robots, floors, hideActions }: PlaceListProps) {
+  const floorLabels = useMemo(() => floors.map((f) => f.label), [floors]);
+
   // ── 장소 state ──
   const [placeRows, setPlaceRows] = useState<PlaceRow[]>([]);
   const [selectedPlaceRobot, setSelectedPlaceRobot] = useState<string | null>(null);
@@ -379,7 +380,7 @@ export default function PlaceList({ robots, floors, hideActions }: PlaceListProp
         isOpen={placeCreateOpen}
         mode="create"
         robots={robots}
-        floors={FLOORS}
+        floors={floorLabels}
         initial={null}
         existingPlaces={placeRows}
         onClose={() => setPlaceCreateOpen(false)}
@@ -390,7 +391,7 @@ export default function PlaceList({ robots, floors, hideActions }: PlaceListProp
         isOpen={placeEditOpen}
         mode="edit"
         robots={robots}
-        floors={FLOORS}
+        floors={floorLabels}
         initial={singleCheckedPlaceRow ? toPlaceRowData(singleCheckedPlaceRow) : null}
         existingPlaces={placeRows}
         onClose={() => setPlaceEditOpen(false)}

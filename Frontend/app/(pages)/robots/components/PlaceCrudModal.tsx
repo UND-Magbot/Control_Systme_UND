@@ -83,7 +83,7 @@ export default function PlaceCrudModal({
   const [y, setY] = useState<string>("");
   const [direction, setDirection] = useState<string>("");
   const [desc, setDesc] = useState<string>("");
-  const [category, setCategory] = useState<POICategory>("work");
+  const [category, setCategory] = useState<POICategory>("waypoint");
   const [isPinMode, setIsPinMode] = useState(false);
   const [pinPlaced, setPinPlaced] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
@@ -160,7 +160,7 @@ export default function PlaceCrudModal({
       setY(initial.y ?? "");
       setDirection(initial.direction ?? "");
       setDesc(initial.desc ?? "");
-      setCategory((initial as any).category ?? "work");
+      setCategory((initial as any).category ?? "waypoint");
       setPinPlaced(!!(initial.x && initial.y));
     } else {
       setRobotNo("");
@@ -170,7 +170,7 @@ export default function PlaceCrudModal({
       setY("");
       setDirection("");
       setDesc("");
-      setCategory("work");
+      setCategory("waypoint");
       setPinPlaced(false);
     }
     setIsPinMode(false);
@@ -276,13 +276,25 @@ export default function PlaceCrudModal({
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
+    // FloorId 조회
+    let floorId: number | null = null;
+    try {
+      const floorRes = await apiFetch(`/map/floors`);
+      if (floorRes.ok) {
+        const floorList: { id: number; FloorName: string }[] = await floorRes.json();
+        const matched = floorList.find((f) => f.FloorName === floor);
+        if (matched) floorId = matched.id;
+      }
+    } catch { /* ignore */ }
+
     const dbPayload = {
       RobotName: robotNo,
       LacationName: name.trim(),
-      Floor: floor,
+      FloorId: floorId,
       LocationX: Number(x),
       LocationY: Number(y),
       LocationDir: Number(direction),
+      Category: category,
       Imformation: desc || null,
     };
 

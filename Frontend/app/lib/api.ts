@@ -106,16 +106,23 @@ export async function apiFetch(
     headers.set("X-Requested-With", "XMLHttpRequest");
   }
 
+  // 항상 30초 타임아웃 적용 (외부 signal이 있으면 둘 다 결합)
+  const timeoutSignal = AbortSignal.timeout(10_000);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
+
   const fetchOptions: RequestInit = {
     ...options,
     credentials: "include",
     headers,
+    signal,
   };
 
-  // 이미 세션 만료가 확정된 경우 네트워크 요청 없이 즉시 반환
-  if (sessionExpired) {
-    return new Response(null, { status: 401, statusText: "Session Expired" });
-  }
+  // // 이미 세션 만료가 확정된 경우 네트워크 요청 없이 즉시 반환
+  // if (sessionExpired) {
+  //   return new Response(null, { status: 401, statusText: "Session Expired" });
+  // }
 
   let res = await fetch(url, fetchOptions);
 

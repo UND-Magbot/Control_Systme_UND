@@ -13,7 +13,7 @@ from app.map.map_manage import map_manage as map_manage_router
 from app.map.mapping_control import mapping_ctrl as mapping_ctrl_router
 from app.map.ws_mapping import ws_mapping as ws_mapping_router, start_udp_server
 from app.Database.database import engine, Base, SessionLocal
-from app.Database.models import BusinessInfo, AreaInfo, RobotMapInfo, RobotModule, ModuleCameraInfo, RobotInfo
+from app.Database.models import BusinessInfo, FloorInfo, RobotMapInfo, RobotModule, ModuleCameraInfo, RobotInfo
 from app.logs.routes import router as log_router
 from app.alerts.routes import router as alert_router
 from app.notices.routes import router as notice_router
@@ -40,6 +40,10 @@ import threading
 import socket
 import json
 import struct
+import math
+
+# OpenCV RTSP를 TCP 우선 모드로 설정 (UDP 끊김 방지)
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|loglevel;error"
 import cv2
 
 
@@ -87,7 +91,7 @@ app.include_router(recording_router)
 # MJPEG
 # ======================================================
 def rtsp_to_mjpeg(rtsp_url):
-    cap = cv2.VideoCapture(rtsp_url)
+    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -221,7 +225,7 @@ def get_robot_position_once(timeout=1.0):
 # ======================================================
 # 초기 Pose 설정
 # ======================================================
-INIT_POSE = {"PosX": 3.998, "PosY": -2.718, "PosZ": 0.0, "Yaw": -1.602}
+INIT_POSE = {"PosX": 3.998, "PosY": -2.612, "PosZ": 0.0, "Yaw": -1.604}
 
 def send_init_pose():
     """로봇에 직접 init_pose 전송 + 위치 변화로 성공 확인"""
@@ -364,26 +368,6 @@ def _auto_migrate():
                 """))
                 conn.execute(text("ALTER TABLE business_info DROP COLUMN Adddate"))
             print("[MIGRATION] business_info Adddate → CreatedAt/UpdatedAt/DeletedAt 완료")
-
-    # area_info Adddate → CreatedAt 마이그레이션
-    if "area_info" in inspector.get_table_names():
-        area_cols = {col["name"] for col in inspector.get_columns("area_info")}
-        if "Adddate" in area_cols and "CreatedAt" not in area_cols:
-            print("[SYNC] area_info Adddate → CreatedAt 마이그레이션 중...")
-            with engine.begin() as conn:
-                conn.execute(text("""
-                    ALTER TABLE area_info
-                      ADD COLUMN CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER FloorName
-                """))
-                conn.execute(text("""
-                    UPDATE area_info
-                    SET CreatedAt = CASE
-                        WHEN Adddate IS NOT NULL THEN Adddate
-                        ELSE CURRENT_TIMESTAMP
-                    END
-                """))
-                conn.execute(text("ALTER TABLE area_info DROP COLUMN Adddate"))
-            print("[MIGRATION] area_info Adddate → CreatedAt 완료")
 
     # recording_info 테이블에 ErrorReason 컬럼 추가
     if "recording_info" in inspector.get_table_names():
@@ -845,6 +829,7 @@ def status_thread():
 
     fail_count = 0
 
+    _hb_count = 0
     while True:
         # 1차 시도 + 실패 시 즉시 재시도
         resp = _try_status_once()
@@ -859,10 +844,11 @@ def status_thread():
         if resp is not None:
             battery = resp.get("BatteryStatus", {})
             charge_state = resp.get("ChargeStatus")
+            device_temp = resp.get("DeviceTemperature", {})
             if battery:
                 rid = runtime.get_robot_id_by_ip(ROBOT_IP)
                 if rid is not None:
-                    runtime.update_status(rid, battery, time.time(), charge_state=charge_state)
+                    runtime.update_status(rid, battery, time.time(), charge_state=charge_state, device_temp=device_temp)
                     success = True
                     fail_count = 0
 
@@ -917,9 +903,6 @@ ARRIVAL_CONFIRM_COUNT = 3  # status==0 연속 N회 확인 후 도착 판정 (오
 NEAR_SKIP_DISTANCE = 0.5   # 목표 웨이포인트까지 이 거리(m) 이내면 이미 도착으로 간주
 
 def nav_thread():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(1.5)
-
     last_status = None
     ever_moved = False      # 현재 WP에서 이동(!=0)을 한 번이라도 감지했는지
     zero_count = 0          # status==0 연속 카운트
@@ -945,7 +928,10 @@ def nav_thread():
             print(f"[NAV] 상태 리셋 (last_status=None, full={is_full})")
 
         # ── 상태 기반 도착 감지 ──
+        sock = None
         try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(1.5)
             msg = json.dumps({"action": "NAV_STATUS"}).encode("utf-8")
             sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
 
@@ -1024,24 +1010,31 @@ def nav_thread():
                             arrived = True
                             print(f"[WARN] NAV 이동 미감지 — 재전송 한도 초과, 다음 WP로 진행")
 
+                # 충전 중 여부 확인
+                _rid_for_charge = runtime.get_robot_id_by_ip(ROBOT_IP)
+                _is_charging = runtime.is_charging(_rid_for_charge) if _rid_for_charge else False
+
                 # 일시 정지(255) 추적 + 앉기 방지
                 if status == 255:
                     if pause_since == 0:
                         pause_since = time.time()
-                    # 5초마다 STAND 전송하여 앉기 방지
-                    if is_nav_active() and (time.time() - last_stand_sent) >= 5.0:
+                    # 5초마다 STAND 전송하여 앉기 방지 (충전 중이면 스킵)
+                    if is_nav_active() and not _is_charging and (time.time() - last_stand_sent) >= 5.0:
                         last_stand_sent = time.time()
                         try:
                             from app.robot_sender import send_to_robot
                             send_to_robot("STAND")
                         except Exception as e:
                             print(f"[ERR] STAND 전송 실패: {e}")
+                    elif _is_charging:
+                        print(f"[NAV] 충전 중 — STAND 전송 스킵")
                 else:
                     pause_since = 0
 
-                # 일시 정지(255): 연속 5초 이상 지속 시 현재 WP 재전송
+                # 일시 정지(255): 연속 10초 이상 지속 시 현재 WP 재전송 (충전 중이면 스킵)
                 if (not arrived and status == 255 and pause_since > 0
                         and is_nav_active() and cooldown_ok
+                        and not _is_charging
                         and (time.time() - pause_since) >= 10.0
                         and retry_count < NAV_MAX_RETRIES):
                     retry_count += 1
@@ -1052,9 +1045,10 @@ def nav_thread():
                     except Exception as e:
                         print(f"[ERR] 재전송 실패: {e}")
 
-                # 재전송: 전송 후 N초 지났는데 이동을 한 번도 안 했으면 명령 재전송
+                # 재전송: 전송 후 N초 지났는데 이동을 한 번도 안 했으면 명령 재전송 (충전 중이면 스킵)
                 if (is_nav_active() and not ever_moved and not arrived
                         and sent_time > 0
+                        and not _is_charging
                         and (time.time() - sent_time) > NAV_RETRY_TIMEOUT
                         and retry_count < NAV_MAX_RETRIES):
                     retry_count += 1
@@ -1082,6 +1076,10 @@ def nav_thread():
             log_event("error", "nav_error", "네비게이션 오류 발생",
                       detail=err_detail, error_json=str(e),
                       robot_id=get_robot_id(), robot_name=get_robot_name())
+        finally:
+            if sock:
+                try: sock.close()
+                except: pass
 
         if arrived and is_nav_active():
             rid = runtime.get_robot_id_by_ip(ROBOT_IP)
@@ -1130,7 +1128,7 @@ def get_pos():
 def init_pose():
     rid = runtime.get_robot_id_by_ip(ROBOT_IP)
     before = runtime.get_position(rid) if rid else {}
-    # send_init_pose()
+    send_init_pose()
     after = runtime.get_position(rid) if rid else {}
     return {
         "status": "ok",
@@ -1151,6 +1149,355 @@ def get_nav():
         "current_wp": current_wp_index,
         "total_wp": len(waypoints_list),
         "loop_remaining": nav_loop_remaining,
+    }
+
+
+@app.post("/robot/charge")
+def start_charge():
+    """충전소로 이동 (자동 충전) 명령 전송."""
+    asdu = {
+        "PatrolDevice": {
+            "Type": 2,
+            "Command": 24,
+            "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "Items": {
+                "Charge": 1
+            }
+        }
+    }
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        log_event("robot", "robot_charging_start", "충전소 이동 명령 전송",
+                  robot_id=get_robot_id(), robot_name=get_robot_name())
+        return {"status": "ok", "msg": "충전소 이동 명령 전송 완료"}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
+    finally:
+        sock.close()
+
+
+@app.post("/robot/return-to-charge")
+def return_to_charge():
+    """작업 복귀: 진행 중인 작업 정지 → 도킹 포인트로 이동 → 도착 후 충전 명령 자동 실행."""
+    from app.Database.database import SessionLocal
+    from app.Database.models import LocationInfo
+    from app.navigation.send_move import (
+        navigation_send_next, _signal_nav_reset,
+    )
+    import app.navigation.send_move as nav
+    from app.robot_sender import send_to_robot
+
+    db = SessionLocal()
+    try:
+        # 충전소(category=charge) 찾기 → 도킹 포인트는 "{충전소이름}-1"
+        charge_station = (
+            db.query(LocationInfo)
+            .filter(LocationInfo.Category == "charge")
+            .first()
+        )
+        if not charge_station:
+            return {"status": "error", "msg": "등록된 충전소가 없습니다."}
+
+        dock_name = f"{charge_station.LacationName}-1"
+        dock_point = (
+            db.query(LocationInfo)
+            .filter(LocationInfo.LacationName == dock_name)
+            .first()
+        )
+        if not dock_point:
+            return {"status": "error", "msg": f"도킹 포인트 '{dock_name}'을(를) 찾을 수 없습니다."}
+
+        # 1) 진행 중인 스케줄 취소 (대기로 되돌림)
+        from app.scheduler.engine import cancel_active_schedule
+        if get_active_schedule_id() is not None:
+            cancel_active_schedule("충전소 이동")
+
+        # 2) 진행 중인 네비게이션 정지
+        if nav.is_navigating:
+            nav.is_navigating = False
+            nav.current_wp_index = 0
+            nav.nav_loop_remaining = 0
+            nav.charge_on_arrival = False
+            _signal_nav_reset(full=True)
+            print("🛑 작업 복귀: 기존 네비게이션 정지")
+
+        # 2) 로봇 정지 명령
+        try:
+            send_to_robot("STOP")
+        except Exception as e:
+            print(f"[WARN] STOP 전송 실패: {e}")
+
+        time.sleep(1)  # 로봇 정지 대기
+
+        # 3) 도킹 포인트로 네비게이션 + 도착 후 자동 충전 플래그
+        nav.waypoints_list = [{
+            "x": dock_point.LocationX,
+            "y": dock_point.LocationY,
+            "yaw": dock_point.Yaw or 0.0,
+        }]
+        nav.current_wp_index = 0
+        nav.is_navigating = True
+        nav.nav_loop_remaining = 0
+        nav.charge_on_arrival = True
+        _signal_nav_reset(full=True)
+
+        print(f"🔋 작업 복귀: {dock_name} → x={dock_point.LocationX}, y={dock_point.LocationY}")
+        log_event("schedule", "return_to_charge",
+                  f"작업 복귀 시작: {dock_name}(으)로 이동",
+                  robot_id=get_robot_id(), robot_name=get_robot_name())
+
+        navigation_send_next()
+        return {
+            "status": "ok",
+            "msg": f"{dock_name}(으)로 이동 시작 (도착 후 자동 충전)",
+            "dock_point": dock_name,
+            "charge_station": charge_station.LacationName,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/robot/return-to-work/info")
+def get_return_to_work_info():
+    """작업 복귀 가능 여부 + 대상 경로 정보 반환"""
+    from app.Database.database import SessionLocal
+    from app.Database.models import LocationInfo, WayInfo, ScheduleInfo
+    import app.navigation.send_move as nav
+
+    from app.scheduler.engine import get_active_schedule_id
+
+    source = None       # "active" | "recent"
+    way_name = None
+    origin_name = None
+    waypoint_names = []
+    schedule_name = None
+
+    # 1) 현재 진행 중인 네비게이션 또는 활성 스케줄
+    active_schedule_id = get_active_schedule_id()
+    is_active = nav.is_navigating or active_schedule_id is not None
+
+    if is_active and nav.waypoints_list:
+        source = "active"
+        waypoint_names = [wp.get("name", f"({wp['x']:.1f},{wp['y']:.1f})") for wp in nav.waypoints_list]
+        origin_name = waypoint_names[0]
+        if active_schedule_id:
+            db = SessionLocal()
+            try:
+                sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == active_schedule_id).first()
+                if sched:
+                    way_name = sched.WayName
+                    schedule_name = sched.WorkName
+            finally:
+                db.close()
+
+    # 활성 스케줄은 있지만 waypoints_list가 비어있는 경우 — DB에서 경로 조회
+    if is_active and not waypoint_names and active_schedule_id:
+        db = SessionLocal()
+        try:
+            sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == active_schedule_id).first()
+            if sched and sched.WayName:
+                path = db.query(WayInfo).filter(WayInfo.WayName == sched.WayName).first()
+                if path:
+                    place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+                    valid_names = []
+                    for name in place_names:
+                        if db.query(LocationInfo).filter(LocationInfo.LacationName == name).first():
+                            valid_names.append(name)
+                    if valid_names:
+                        source = "active"
+                        way_name = sched.WayName
+                        schedule_name = sched.WorkName
+                        waypoint_names = valid_names
+                        origin_name = valid_names[0]
+        finally:
+            db.close()
+
+    # 2) DB에서 "진행중" 상태 스케줄 확인
+    if not source:
+        db = SessionLocal()
+        try:
+            running = (
+                db.query(ScheduleInfo)
+                .filter(ScheduleInfo.TaskStatus == "진행중")
+                .order_by(ScheduleInfo.LastRunDate.desc())
+                .first()
+            )
+            if running and running.WayName:
+                path = db.query(WayInfo).filter(WayInfo.WayName == running.WayName).first()
+                if path:
+                    place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+                    valid_names = []
+                    for name in place_names:
+                        if db.query(LocationInfo).filter(LocationInfo.LacationName == name).first():
+                            valid_names.append(name)
+                    if valid_names:
+                        source = "active"
+                        way_name = running.WayName
+                        schedule_name = running.WorkName
+                        waypoint_names = valid_names
+                        origin_name = valid_names[0]
+        finally:
+            db.close()
+
+    # 3) 최근 실행된 스케줄 경로
+    if not source:
+        db = SessionLocal()
+        try:
+            recent = (
+                db.query(ScheduleInfo)
+                .filter(ScheduleInfo.LastRunDate.isnot(None))
+                .order_by(ScheduleInfo.LastRunDate.desc())
+                .first()
+            )
+            if recent and recent.WayName:
+                path = db.query(WayInfo).filter(WayInfo.WayName == recent.WayName).first()
+                if path:
+                    place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+                    valid = True
+                    for name in place_names:
+                        if not db.query(LocationInfo).filter(LocationInfo.LacationName == name).first():
+                            valid = False
+                            break
+                    if valid and place_names:
+                        source = "recent"
+                        way_name = recent.WayName
+                        schedule_name = recent.WorkName
+                        waypoint_names = place_names
+                        origin_name = place_names[0]
+        finally:
+            db.close()
+
+    if not source:
+        return {"available": False, "msg": "복귀할 경로가 없습니다."}
+
+    return {
+        "available": True,
+        "source": source,
+        "source_label": "진행 중인 작업" if source == "active" else "최근 작업",
+        "retrace_available": source == "active" and nav.is_navigating and nav.current_wp_index > 0,
+        "schedule_name": schedule_name,
+        "way_name": way_name,
+        "origin": origin_name,
+        "waypoints": waypoint_names,
+    }
+
+
+@app.post("/robot/return-to-work")
+def return_to_work(mode: str = "direct"):
+    """
+    작업 복귀: 가장 최근 경로의 출발 지점으로 복귀.
+    - mode="direct": 자율 주행 (출발 지점으로 직접 이동)
+    - mode="retrace": 경로 역주행 (현재 위치에서 경로를 거꾸로 따라감)
+    """
+    from app.Database.database import SessionLocal
+    from app.Database.models import LocationInfo, WayInfo, ScheduleInfo
+    from app.navigation.send_move import (
+        navigation_send_next, _signal_nav_reset,
+    )
+    import app.navigation.send_move as nav
+    from app.robot_sender import send_to_robot
+    from app.scheduler.engine import cancel_active_schedule, get_active_schedule_id
+
+    # 현재 진행 중인 경로가 있으면 그것을 사용, 없으면 가장 최근 실행된 스케줄의 경로
+    waypoints_snapshot = list(nav.waypoints_list) if nav.waypoints_list else []
+    wp_index_snapshot = nav.current_wp_index  # 정지 전에 인덱스 저장
+    way_name = None
+
+    if not waypoints_snapshot:
+        # 가장 최근 실행된 스케줄에서 경로 조회
+        db = SessionLocal()
+        try:
+            recent = (
+                db.query(ScheduleInfo)
+                .filter(ScheduleInfo.LastRunDate.isnot(None))
+                .order_by(ScheduleInfo.LastRunDate.desc())
+                .first()
+            )
+            if recent and recent.WayName:
+                way_name = recent.WayName
+                path = db.query(WayInfo).filter(WayInfo.WayName == way_name).first()
+                if path:
+                    place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+                    for name in place_names:
+                        place = db.query(LocationInfo).filter(LocationInfo.LacationName == name).first()
+                        if place:
+                            waypoints_snapshot.append({
+                                "x": place.LocationX,
+                                "y": place.LocationY,
+                                "yaw": place.Yaw or 0.0,
+                                "name": place.LacationName,
+                            })
+        finally:
+            db.close()
+
+    if not waypoints_snapshot:
+        return {"status": "error", "msg": "복귀할 경로가 없습니다. 최근 작업 이력이 없습니다."}
+
+    # 출발 지점 = 경로의 첫 번째 웨이포인트
+    origin = waypoints_snapshot[0]
+
+    # 1) 진행 중인 스케줄 취소
+    if get_active_schedule_id() is not None:
+        cancel_active_schedule("작업 복귀")
+
+    # 2) 진행 중인 네비게이션 정지
+    if nav.is_navigating:
+        nav.is_navigating = False
+        nav.current_wp_index = 0
+        nav.nav_loop_remaining = 0
+        nav.charge_on_arrival = False
+        _signal_nav_reset(full=True)
+
+    # 3) 로봇 정지
+    try:
+        send_to_robot("STOP")
+    except Exception as e:
+        print(f"[WARN] STOP 전송 실패: {e}")
+
+    time.sleep(1)
+
+    if mode == "retrace":
+        # 경로 역주행: 현재 웨이포인트 위치부터 역순으로 출발 지점까지
+        # 현재 진행 중이었던 인덱스 기준으로 지나온 경로를 역순 생성
+        # wp_index_snapshot은 전송 후 +1된 값이므로 -1 해서 현재 향하던 포인트 제외
+        wp_index = min(wp_index_snapshot, len(waypoints_snapshot))
+        passed = max(wp_index - 1, 0)  # 실제 도착 완료한 포인트까지
+        retrace_wps = list(reversed(waypoints_snapshot[:max(passed, 1)]))
+
+        # yaw를 역방향으로 재계산
+        for i in range(len(retrace_wps)):
+            if i < len(retrace_wps) - 1:
+                nx = retrace_wps[i + 1]["x"]
+                ny = retrace_wps[i + 1]["y"]
+                retrace_wps[i]["yaw"] = round(math.atan2(ny - retrace_wps[i]["y"], nx - retrace_wps[i]["x"]), 3)
+
+        nav.waypoints_list = retrace_wps
+        route_desc = " → ".join(wp.get("name", f"({wp['x']:.1f},{wp['y']:.1f})") for wp in retrace_wps)
+        print(f"🔙 작업 복귀 (역주행): {len(retrace_wps)}개 포인트 — {route_desc}")
+    else:
+        # 자율 주행: 출발 지점으로 직접 이동
+        nav.waypoints_list = [origin]
+        print(f"🔙 작업 복귀 (자율주행): {origin.get('name', '')} → x={origin['x']}, y={origin['y']}")
+
+    nav.current_wp_index = 0
+    nav.is_navigating = True
+    nav.nav_loop_remaining = 0
+    nav.charge_on_arrival = False
+    _signal_nav_reset(full=True)
+
+    mode_label = "경로 역주행" if mode == "retrace" else "자율 주행"
+    origin_name = origin.get("name", f"({origin['x']:.1f}, {origin['y']:.1f})")
+    log_event("schedule", "return_to_work",
+              f"작업 복귀 시작 ({mode_label}): {origin_name}(으)로 이동",
+              robot_id=get_robot_id(), robot_name=get_robot_name())
+
+    navigation_send_next()
+    return {
+        "status": "ok",
+        "msg": f"작업 복귀 시작 ({mode_label}) → {origin_name}",
+        "mode": mode,
+        "origin": origin_name,
     }
 
 

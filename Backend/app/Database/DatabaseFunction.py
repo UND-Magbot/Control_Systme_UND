@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.Database.database import SessionLocal
-from app.Database.models import RobotInfo, LocationInfo, WayInfo, ScheduleInfo, UserInfo, RobotModule, ModuleCameraInfo, RouteInfo, RobotLastStatus, BusinessInfo
+from app.Database.models import RobotInfo, LocationInfo, WayInfo, ScheduleInfo, UserInfo, RobotModule, ModuleCameraInfo, RouteInfo, RobotLastStatus, BusinessInfo, FloorInfo
 from fastapi.encoders import jsonable_encoder
 
 from datetime import datetime
@@ -144,14 +144,24 @@ def get_robot_by_id(robot_id: int, db: Session = Depends(get_db), current_user: 
     return data
 
 
+def _get_floor_name(db: Session, floor_id: int | None) -> str:
+    """FloorId로 FloorName 조회"""
+    if not floor_id:
+        return ""
+    from app.Database.models import FloorInfo
+    fi = db.query(FloorInfo).filter(FloorInfo.id == floor_id).first()
+    return fi.FloorName if fi else ""
+
+
 class RobotPlaceInsertReq(BaseModel):
     RobotName: str
     LacationName: str
-    Floor: str
+    FloorId: int | None = None
     LocationX: float
     LocationY: float
     Yaw: float = 0.0
     MapId: int | None = None
+    Category: str = "waypoint"
     Imformation: str | None = None
 
 @database.post("/places")
@@ -165,11 +175,12 @@ def insert_robot_place(
         UserId=current_user.id,
         RobotName=req.RobotName,
         LacationName=req.LacationName,
-        Floor=req.Floor,
+        FloorId=req.FloorId,
         LocationX=req.LocationX,
         LocationY=req.LocationY,
         Yaw=req.Yaw,
         MapId=req.MapId,
+        Category=req.Category,
         Imformation=req.Imformation,
     )
 
@@ -177,8 +188,9 @@ def insert_robot_place(
     db.commit()
     db.refresh(place)
 
+    floor_name = _get_floor_name(db, req.FloorId)
     write_audit(db, current_user.id, "place_created", "place", place.id,
-                detail=f"장소명: {req.LacationName}, 로봇: {req.RobotName}, 층: {req.Floor}",
+                detail=f"장소명: {req.LacationName}, 로봇: {req.RobotName}, 층: {floor_name}",
                 ip_address=get_client_ip(request))
 
     return place
@@ -188,7 +200,31 @@ def get_places(map_id: int | None = None, db: Session = Depends(get_db), current
     q = db.query(LocationInfo)
     if map_id is not None:
         q = q.filter(LocationInfo.MapId == map_id)
-    return q.order_by(LocationInfo.id.desc()).all()
+    places = q.order_by(LocationInfo.id.desc()).all()
+
+    floor_ids = {p.FloorId for p in places if p.FloorId}
+    floor_map = {}
+    if floor_ids:
+        rows = db.query(FloorInfo).filter(FloorInfo.id.in_(floor_ids)).all()
+        floor_map = {f.id: f.FloorName for f in rows}
+
+    return [
+        {
+            "id": p.id,
+            "UserId": p.UserId,
+            "RobotName": p.RobotName,
+            "LacationName": p.LacationName,
+            "FloorId": p.FloorId,
+            "Floor": floor_map.get(p.FloorId, ""),
+            "LocationX": p.LocationX,
+            "LocationY": p.LocationY,
+            "Yaw": p.Yaw,
+            "MapId": p.MapId,
+            "Category": p.Category,
+            "Imformation": p.Imformation,
+        }
+        for p in places
+    ]
 
 
 class PathInsertReq(BaseModel):
@@ -719,6 +755,7 @@ class RobotUpdateReq(BaseModel):
     site: str | None = None
     limit_battery: int | None = None
     business_id: int | None = None
+    current_floor_id: int | None = None
 
 @database.put("/robots/{robot_id}")
 def update_robot(
@@ -748,6 +785,7 @@ def update_robot(
         "사이트": ("Site", req.site),
         "배터리제한": ("LimitBattery", req.limit_battery),
         "사업장": ("BusinessId", req.business_id),
+        "현재층": ("CurrentFloorId", req.current_floor_id),
     }
 
     for label, (attr, new_val) in field_map.items():
@@ -755,7 +793,12 @@ def update_robot(
             continue
         old_val = getattr(robot, attr)
         if old_val != new_val:
-            changes.append(f"{label}: {old_val or ''} → {new_val}")
+            if attr == "CurrentFloorId":
+                old_name = _get_floor_name(db, old_val)
+                new_name = _get_floor_name(db, new_val)
+                changes.append(f"현재층: {old_name} → {new_name}")
+            else:
+                changes.append(f"{label}: {old_val or ''} → {new_val}")
             setattr(robot, attr, new_val)
 
     db.commit()
@@ -800,18 +843,24 @@ def update_place(place_id: int, req: RobotPlaceInsertReq, request: Request, db: 
     field_map = {
         "로봇": ("RobotName", req.RobotName),
         "장소명": ("LacationName", req.LacationName),
-        "층": ("Floor", req.Floor),
+        "층ID": ("FloorId", req.FloorId),
         "X좌표": ("LocationX", req.LocationX),
         "Y좌표": ("LocationY", req.LocationY),
         "방향": ("Yaw", req.Yaw),
         "맵ID": ("MapId", req.MapId),
+        "카테고리": ("Category", req.Category),
         "정보": ("Imformation", req.Imformation),
     }
 
     for label, (attr, new_val) in field_map.items():
         old_val = getattr(place, attr)
         if old_val != new_val:
-            changes.append(f"{label}: {old_val or ''} → {new_val or ''}")
+            if attr == "FloorId":
+                old_name = _get_floor_name(db, old_val)
+                new_name = _get_floor_name(db, new_val)
+                changes.append(f"층: {old_name} → {new_name}")
+            else:
+                changes.append(f"{label}: {old_val or ''} → {new_val or ''}")
             setattr(place, attr, new_val)
 
     db.commit()

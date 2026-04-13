@@ -114,8 +114,8 @@ def start_auto_recording(robot_id: int):
         db.close()
 
 
-def stop_all_recording(robot_id: int = None):
-    """네비게이션 종료 시 호출 — 해당 로봇(또는 전체)의 모든 녹화 세션 중지"""
+def _stop_all_recording_sync(robot_id: int = None):
+    """실제 정지 작업 — 백그라운드 스레드에서 실행"""
     db = SessionLocal()
     try:
         with _lock:
@@ -124,11 +124,33 @@ def stop_all_recording(robot_id: int = None):
             else:
                 keys = list(_sessions.keys())
         for key in keys:
-            _stop_session(key, db)
+            try:
+                _stop_session(key, db)
+            except Exception as e:
+                print(f"[REC] 세션 정지 실패 {key}: {e}")
         if keys:
-            print(f"[REC] 녹화 전체 중지: robot_id={robot_id}, {len(keys)}개 세션")
+            print(f"[REC] 녹화 전체 중지 완료: robot_id={robot_id}, {len(keys)}개 세션")
     finally:
         db.close()
+
+
+def stop_all_recording(robot_id: int = None):
+    """네비게이션 종료 시 호출 — 비동기로 녹화 세션 정리 (호출자 즉시 반환)"""
+    with _lock:
+        if robot_id:
+            count = sum(1 for k in _sessions if k[0] == robot_id)
+        else:
+            count = len(_sessions)
+    if count == 0:
+        return
+    print(f"[REC] 녹화 전체 중지 요청: robot_id={robot_id}, {count}개 세션 (백그라운드 처리)")
+    t = threading.Thread(
+        target=_stop_all_recording_sync,
+        args=(robot_id,),
+        daemon=True,
+        name=f"rec-stop-{robot_id}",
+    )
+    t.start()
 
 
 def start_manual_recording(robot_id: int, module_id: int) -> dict:

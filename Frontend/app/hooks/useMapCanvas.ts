@@ -24,21 +24,23 @@ function drawArrowhead(
   ctx: CanvasRenderingContext2D,
   fromX: number, fromY: number,
   toX: number, toY: number,
-  size: number
+  size: number,
+  t: number = 0.5,
+  color: string = "rgba(100, 180, 255, 0.9)"
 ) {
-  const midX = (fromX + toX) / 2;
-  const midY = (fromY + toY) / 2;
+  const px = fromX + (toX - fromX) * t;
+  const py = fromY + (toY - fromY) * t;
   const angle = Math.atan2(toY - fromY, toX - fromX);
 
   ctx.save();
-  ctx.translate(midX, midY);
+  ctx.translate(px, py);
   ctx.rotate(angle);
   ctx.beginPath();
   ctx.moveTo(size, 0);
   ctx.lineTo(-size, -size * 0.6);
   ctx.lineTo(-size, size * 0.6);
   ctx.closePath();
-  ctx.fillStyle = "rgba(100, 180, 255, 0.9)";
+  ctx.fillStyle = color;
   ctx.fill();
   ctx.restore();
 }
@@ -144,6 +146,10 @@ export function useMapCanvas(
       const renderSize = { w: rect.w, h: rect.h };
 
       for (const seg of navPath.segments) {
+        const isBidi = seg.direction === "two-way";
+        const lineColor = isBidi ? "rgba(0, 230, 180, 0.75)" : "rgba(255, 180, 50, 0.8)";
+        const arrowColor = isBidi ? "rgba(0, 230, 180, 0.95)" : "rgba(255, 180, 50, 0.95)";
+
         // 전체 포인트 수집: from → waypoints → to
         const allPoints = [
           seg.from,
@@ -151,11 +157,11 @@ export function useMapCanvas(
           seg.to,
         ];
 
-        // 점선 경로 그리기
+        // 경로 선 그리기
         ctx.save();
-        ctx.strokeStyle = "rgba(100, 180, 255, 0.7)";
-        ctx.lineWidth = 2.5;
-        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = isBidi ? 2.5 : 2;
+        ctx.setLineDash(isBidi ? [] : [6, 4]);
         ctx.beginPath();
 
         for (let i = 0; i < allPoints.length; i++) {
@@ -168,7 +174,7 @@ export function useMapCanvas(
         ctx.stroke();
         ctx.restore();
 
-        // 4. 방향 화살표
+        // 방향 화살표
         const fromPx = worldToPixel(seg.from.x, seg.from.y, config, renderSize);
         const toPx = worldToPixel(seg.to.x, seg.to.y, config, renderSize);
         const fsx = fromPx.x + rect.x;
@@ -176,12 +182,12 @@ export function useMapCanvas(
         const tsx = toPx.x + rect.x;
         const tsy = toPx.y + rect.y;
 
-        if (seg.direction === "one-way") {
-          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 8);
+        if (isBidi) {
+          // 양방향 <->: 1/4 지점에 ← , 3/4 지점에 →
+          drawArrowhead(ctx, tsx, tsy, fsx, fsy, 7, 0.75, arrowColor);
+          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 7, 0.75, arrowColor);
         } else {
-          // 양방향: 양쪽에 화살표
-          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 8);
-          drawArrowhead(ctx, tsx, tsy, fsx, fsy, 8);
+          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 7, 0.5, arrowColor);
         }
       }
     }
@@ -260,17 +266,20 @@ export function useMapCanvas(
     panStartRef.current = null;
   }, []);
 
-  // wheel zoom (passive: false로 등록해야 preventDefault 가능)
+  // wheel zoom — DOM에 직접 등록 (passive: false로 preventDefault 허용)
   useEffect(() => {
-    const el = wrapperRef.current;
-    if (!el || !interactive) return;
+    const wrapper = wrapperRef.current;
+    if (!wrapper || !interactive) return;
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       handleZoom(e.deltaY < 0 ? "in" : "out");
     };
-    el.addEventListener("wheel", handler, { passive: false });
-    return () => el.removeEventListener("wheel", handler);
+    wrapper.addEventListener("wheel", handler, { passive: false });
+    return () => wrapper.removeEventListener("wheel", handler);
   }, [interactive, handleZoom]);
+
+  // onWheel은 더 이상 사용하지 않지만 인터페이스 유지
+  const onWheel = useCallback(() => {}, []);
 
   // 스케일 변경 시 translate 보정
   useEffect(() => {

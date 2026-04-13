@@ -26,6 +26,7 @@ waypoints_list = []
 is_navigating = False
 nav_sent_time = 0
 nav_loop_remaining = 0
+charge_on_arrival = False  # 도착 후 자동 충전 플래그
 WAYPOINT_FILE = "./data/waypoints.json"
 
 # nav_thread 상태 리셋 신호 (새 주행/정지 시 nav_thread가 감지)
@@ -106,12 +107,29 @@ def start_navigation(loop: int = 3, current_user: UserInfo = Depends(require_per
 
 @move.post("/stopmove")
 def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
-    global is_navigating, current_wp_index, nav_loop_remaining
+    global is_navigating, current_wp_index, nav_loop_remaining, charge_on_arrival
     was_active = is_navigating
     is_navigating = False
     current_wp_index = 0
     nav_loop_remaining = 0
+    charge_on_arrival = False
     _signal_nav_reset(full=True)
+
+    # 로봇에 즉시 정지 명령 + 네비게이션 취소
+    try:
+        from app.robot_sender import send_to_robot
+        send_to_robot("CANCEL_NAV")
+        send_to_robot("STOP")
+    except Exception as e:
+        print(f"[WARN] STOP/CANCEL_NAV 전송 실패: {e}")
+
+    # 진행 중인 스케줄 취소
+    try:
+        from app.scheduler.engine import cancel_active_schedule, get_active_schedule_id
+        if get_active_schedule_id() is not None:
+            cancel_active_schedule("작업 정지")
+    except Exception as e:
+        print(f"[WARN] 스케줄 취소 실패: {e}")
 
     try:
         from app.recording.manager import stop_all_recording
@@ -120,7 +138,7 @@ def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
         print(f"[WARN] 녹화 정지 실패: {e}")
 
     print(f"🛑 NAV STOP (was_active={was_active})")
-    return {"status": "ok", "msg": "네비게이션 정지 완료"}
+    return {"status": "ok", "msg": "작업이 중지되었습니다."}
 
 def navigation_resend_current():
     """현재 웨이포인트를 재전송 (로봇이 명령을 무시했을 때)"""
@@ -153,13 +171,6 @@ def navigation_send_next():
                       f"반복 시작 (남은 횟수: {nav_loop_remaining + 1})",
                       robot_id=get_robot_id(), robot_name=get_robot_name())
         else:
-            route_summary = " → ".join(
-                wp.get("name", f"WP{i+1}") for i, wp in enumerate(waypoints_list)
-            )
-            print("🎉 모든 웨이포인트 이동 완료!")
-            log_event("schedule", "nav_complete", "모든 웨이포인트 이동 완료",
-                      detail=f"경로: {route_summary}",
-                      robot_id=get_robot_id(), robot_name=get_robot_name())
             is_navigating = False
 
             try:
@@ -167,6 +178,23 @@ def navigation_send_next():
                 stop_all_recording(get_robot_id())
             except Exception as e:
                 print(f"[WARN] 녹화 정지 실패: {e}")
+
+            # 도킹 포인트 도착 후 자동 충전
+            global charge_on_arrival
+            if charge_on_arrival:
+                charge_on_arrival = False
+                print("🔋 도킹 포인트 도착 완료 — 충전소 이동 명령 전송")
+                log_event("schedule", "dock_arrival", "도킹 포인트 도착 완료, 충전 명령 전송",
+                          robot_id=get_robot_id(), robot_name=get_robot_name())
+                try:
+                    from app.main import start_charge
+                    start_charge()
+                except Exception as e:
+                    print(f"[ERR] 자동 충전 명령 실패: {e}")
+            else:
+                print("🎉 모든 웨이포인트 이동 완료!")
+                log_event("schedule", "nav_complete", "모든 웨이포인트 이동 완료",
+                          robot_id=get_robot_id(), robot_name=get_robot_name())
 
             return
 

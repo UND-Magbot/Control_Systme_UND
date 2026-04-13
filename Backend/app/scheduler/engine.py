@@ -30,6 +30,39 @@ def get_active_schedule_id() -> int | None:
     return _active_schedule_id
 
 
+def cancel_active_schedule(reason: str = "사용자 취소"):
+    """진행 중인 스케줄을 취소/대기 상태로 변경한다.
+    - once(단일): 취소
+    - weekly/interval(반복): 대기 (다음 회차 실행 가능)
+    """
+    global _active_schedule_id
+
+    with _lock:
+        schedule_id = _active_schedule_id
+        if schedule_id is None:
+            return
+        _active_schedule_id = None
+
+    db = SessionLocal()
+    try:
+        sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule_id).first()
+        if sched:
+            mode = getattr(sched, 'ScheduleMode', None) or (
+                "weekly" if sched.Repeat == "Y" else "once"
+            )
+            if mode == "once":
+                sched.TaskStatus = "취소"
+            else:
+                sched.TaskStatus = "대기"
+            db.commit()
+            print(f"[SCHEDULER] 스케줄 #{schedule_id} → {sched.TaskStatus} ({reason})")
+    except Exception as e:
+        print(f"[SCHEDULER ERR] 취소 처리 실패: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 # ─── 모드별 실행 조건 판단 ───
 
 def _should_run_now(schedule: ScheduleInfo, now: datetime) -> bool:

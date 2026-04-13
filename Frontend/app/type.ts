@@ -52,6 +52,9 @@ export type RobotRowData = {
     chargeStateLabel: string;
     chargeErrorCode: number;
     chargeErrorMsg: string | null;
+    currentFloorId: number | null;
+    currentMapId: number | null;
+    position: { x: number; y: number; yaw: number; timestamp: number };
     network: 'Online' | 'Offline' | 'Error' | '-';
     power: 'On' | 'Off' | '-';
     mark: 'Yes' | 'No';

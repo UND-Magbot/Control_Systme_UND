@@ -9,6 +9,14 @@ import { API_BASE } from "@/app/config";
 
 type DBRobot = { id: number; RobotName: string };
 
+const CATEGORY_OPTIONS = [
+  { value: "waypoint", label: "경유지" },
+  { value: "work", label: "작업지" },
+  { value: "charge", label: "충전소" },
+  { value: "standby", label: "대기소" },
+  { value: "danger", label: "위험구역" },
+];
+
 export type PlaceEditData = {
   key: string;
   name: string;
@@ -42,6 +50,10 @@ type Props = {
   lockCoords?: boolean;
   /** 로봇 yaw (라디안) — lockCoords=true 시 방향 자동 세팅 */
   defaultYaw?: number;
+  /** 카테고리 기본값 (충전소 생성 등) */
+  defaultCategory?: string;
+  /** 층 목록 (floor_info) */
+  floors?: { id: number; FloorName: string }[];
   onClose: () => void;
   onConfirm: (place: PendingPlace, oldName?: string) => void;
 };
@@ -50,11 +62,12 @@ export type PendingPlace = {
   tempId: string;
   RobotName: string;
   LacationName: string;
-  Floor: string;
+  FloorId: number | null;
   LocationX: number;
   LocationY: number;
   Yaw: number;
   MapId: number | null;
+  Category: string;
   Imformation: string | null;
 };
 
@@ -71,6 +84,8 @@ export default function MapPlaceCreateModal({
   editData = null,
   lockCoords = false,
   defaultYaw,
+  defaultCategory,
+  floors = [],
   onClose,
   onConfirm,
 }: Props) {
@@ -85,6 +100,7 @@ export default function MapPlaceCreateModal({
   const [floor, setFloor] = useState("");
   const [name, setName] = useState("");
   const [direction, setDirection] = useState("");
+  const [category, setCategory] = useState("waypoint");
   const [desc, setDesc] = useState("");
   const isSubmitting = false; // 즉시 반환이므로 항상 false
   const [fieldErrors, setFieldErrors] = useState<{
@@ -95,6 +111,9 @@ export default function MapPlaceCreateModal({
   }>({});
 
   const DEFAULT_FLOORS = ["B1", "1F", "2F", "3F", "4F"];
+  const floorOptions = floors.length > 0
+    ? floors.map((a) => a.FloorName)
+    : DEFAULT_FLOORS;
 
   // DB 로봇 목록 fetch
   const fetchRobots = useCallback(() => {
@@ -125,6 +144,7 @@ export default function MapPlaceCreateModal({
       setName(editData.name);
       // yaw(라디안) → 도 변환
       setDirection(String(Math.round(editData.yaw * 180 / Math.PI)));
+      setCategory((editData as any).category || "waypoint");
       setDesc(editData.desc);
     } else {
       setRobotNo(defaultRobotName);
@@ -137,10 +157,11 @@ export default function MapPlaceCreateModal({
       } else {
         setDirection("");
       }
+      setCategory(defaultCategory ?? "waypoint");
       setDesc("");
     }
     setFieldErrors({});
-  }, [isOpen, defaultRobotName, defaultFloor, isEdit, editData]);
+  }, [isOpen, defaultRobotName, defaultFloor, defaultCategory, isEdit, editData]);
 
   // ESC / 오버레이 클릭 닫기
   useModalBehavior({ isOpen, onClose, disabled: isSubmitting });
@@ -214,15 +235,17 @@ export default function MapPlaceCreateModal({
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
+    const matchedFloor = floors.find((a) => a.FloorName === floor);
     const place: PendingPlace = {
       tempId: isEdit && editData ? editData.key : `pending_${Date.now()}`,
       RobotName: robotNo,
       LacationName: name.trim(),
-      Floor: floor,
+      FloorId: matchedFloor?.id ?? null,
       LocationX: isEdit && editData ? editData.x : Number(worldX.toFixed(3)),
       LocationY: isEdit && editData ? editData.y : Number(worldY.toFixed(3)),
       Yaw: Number((Number(direction) * Math.PI / 180).toFixed(4)),
       MapId: mapId ?? editData?.mapId ?? null,
+      Category: category,
       Imformation: desc || null,
     };
     const oldName = isEdit && editData && editData.name !== name.trim() ? editData.name : undefined;
@@ -286,7 +309,7 @@ export default function MapPlaceCreateModal({
                 <DropdownSelect<string>
                   placeholder="층을 선택하세요"
                   value={floor || null}
-                  options={DEFAULT_FLOORS}
+                  options={floorOptions}
                   getLabel={(f) => f}
                   getKey={(f) => f}
                   onChange={(f) => {
@@ -318,6 +341,22 @@ export default function MapPlaceCreateModal({
                   {name.length}/50
                 </div>
                 {fieldErrors.name && <div className={styles.fieldError}>{fieldErrors.name}</div>}
+              </div>
+            </div>
+
+            {/* 장소 타입 */}
+            <div className={styles.row}>
+              <div className={styles.label}>장소 타입</div>
+              <div className={styles.selectWrap}>
+                <DropdownSelect<typeof CATEGORY_OPTIONS[number]>
+                  placeholder="장소 타입을 선택하세요"
+                  value={CATEGORY_OPTIONS.find((o) => o.value === category) ?? null}
+                  options={CATEGORY_OPTIONS}
+                  getLabel={(o) => o.label}
+                  getKey={(o) => o.value}
+                  onChange={(o) => setCategory(o.value)}
+                  className={styles.modalSelect}
+                />
               </div>
             </div>
           </div>

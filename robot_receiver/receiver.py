@@ -38,6 +38,7 @@ sock.bind(("", 30001))
 latest_position = {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
 latest_nav_status = {"status": None, "timestamp": 0}
 latest_battery = {}
+latest_device_temp = {}
 latest_charge_state = {"state": 0, "error_code": 0, "timestamp": 0}  # /CHARGE_STATUS
 
 def nav_poll_loop():
@@ -94,7 +95,7 @@ def battery_poll_loop():
     """heartbeat(Type=100, Command=100) 전송 → 로봇이 push하는 패킷 중
     Type=1002, Command=5 에서 BatteryStatus 추출,
     /CHARGE_STATUS 패킷에서 충전 상태 추출"""
-    global latest_battery, latest_charge_state
+    global latest_battery, latest_charge_state, latest_device_temp
     bat_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     bat_sock.settimeout(1.0)
 
@@ -144,6 +145,10 @@ def battery_poll_loop():
                             print(f"✅ [BAT] 업데이트: {list(battery.keys())}")
                         else:
                             print(f"⚠️ [BAT] BatteryStatus 키 없음. Items={items}")
+
+                        device_temp = items.get("DeviceTemperature", {})
+                        if device_temp:
+                            latest_device_temp = device_temp
 
                 except socket.timeout:
                     break
@@ -377,7 +382,7 @@ def send_nav_command(idx, x, y, yaw):
                 "PosY": y,
                 "PosZ": 0.0,
                 "AngleYaw": yaw,
-                "PointInfo": 1,
+                "PointInfo": 2,
                 "Gait": 0x3002,
                 "Speed": 0,
                 "Manner": 0,
@@ -434,25 +439,13 @@ def hold_motion(func, duration=1.0, interval=0.1):
     stop_robot()
 
 
-def set_flash(pos,status):
-    print("in")
-    print(pos)
-    print(status)
-    if pos == "front":
-        if status == "on":
-          send_asdu(1101, 2, {"Front": 1, "Back": 0 })
-          print("▶ frontflash on")
-        else :
-          send_asdu(1101, 2, {"Front": 0, "Back": 0 })
-          print("▶ frontflash off")
+_flash_state = {"Front": 0, "Back": 0}
 
-    else :
-        if status == "on":
-          send_asdu(1101, 2, {"Front": 0, "Back": 1 })
-          print("▶ rearflash on")
-        else :
-          send_asdu(1101, 2, {"Front": 0, "Back": 0 })
-          print("▶ nearflash off")
+def set_flash(pos, status):
+    key = "Front" if pos == "front" else "Back"
+    _flash_state[key] = 1 if status == "on" else 0
+    send_asdu(1101, 2, dict(_flash_state))
+    print(f"▶ flash {_flash_state}")
 
 
 
@@ -503,7 +496,8 @@ def udp_receiver_loop():
             elif action == "STATUS":
                 server_sock.sendto(json.dumps({
                     "BatteryStatus": latest_battery,
-                    "ChargeStatus": latest_charge_state
+                    "ChargeStatus": latest_charge_state,
+                    "DeviceTemperature": latest_device_temp
                 }).encode("utf-8"), addr)
 
             elif action == "NAV_STATUS":
@@ -568,6 +562,7 @@ def udp_receiver_loop():
             elif action == "LEFTTURN": hold_motion(turn_left, duration=0.5)
             elif action == "RIGHTTURN": hold_motion(turn_right, duration=0.5)
             elif action == "STOP": stop_robot()
+            elif action == "CANCEL_NAV": cancel_nav()
             elif action == "STAND": stand_robot()
             elif action == "SIT": sit_robot()
             elif action == "SLOW": set_slow()

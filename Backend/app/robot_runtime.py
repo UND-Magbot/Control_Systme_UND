@@ -31,9 +31,12 @@ def init_runtime(robots) -> None:
                 "robot_type": r.RobotType or "",
                 "robot_ip": r.RobotIP,
                 "robot_port": r.RobotPort or 30000,
+                "current_floor_id": r.CurrentFloorId,
+                "current_map_id": getattr(r, "CurrentMapId", None),
                 "position": {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0},
                 "battery": {},
                 "charge_state": {"state": 0, "error_code": 0, "timestamp": 0},
+                "device_temp": {},
                 "last_heartbeat": 0,
                 "nav": {"arrived": False, "last_state": None, "timestamp": 0},
             }
@@ -43,8 +46,9 @@ def init_runtime(robots) -> None:
 # ── 상태 업데이트 ─────────────────────────────────────
 
 def update_status(robot_id: int, battery: dict, timestamp: float,
-                   charge_state: dict | None = None) -> None:
-    """heartbeat 수신 시 배터리, 충전 상태 및 타임스탬프 갱신."""
+                   charge_state: dict | None = None,
+                   device_temp: dict | None = None) -> None:
+    """heartbeat 수신 시 배터리, 충전 상태, 디바이스 온도 및 타임스탬프 갱신."""
     with _lock:
         entry = _runtime.get(robot_id)
         if not entry:
@@ -53,6 +57,35 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
         entry["last_heartbeat"] = timestamp
         if charge_state:
             entry["charge_state"] = charge_state
+
+        # is_charging 디바운스: 충전→비충전 전환은 5회 연속 확인 후 반영
+        now_charging = _check_charging(battery)
+        if charge_state and charge_state.get("state", 0) == 2:
+            now_charging = True
+        was_charging = entry.get("_is_charging", False)
+
+        if was_charging and not now_charging:
+            drop = entry.get("_charging_drop_count", 0) + 1
+            entry["_charging_drop_count"] = drop
+            if drop >= 15:
+                entry["_is_charging"] = False
+                entry["_charging_drop_count"] = 0
+        else:
+            entry["_is_charging"] = now_charging
+            entry["_charging_drop_count"] = 0
+
+        if device_temp:
+            entry["device_temp"] = device_temp
+            nonzero = {k: round(v, 1) for k, v in device_temp.items() if v != 0.0}
+            if nonzero:
+                max_key = max(nonzero, key=nonzero.get)
+                max_val = nonzero[max_key]
+                # 50도 이상 + 30초마다 1번만 로그
+                if max_val >= 50.0:
+                    last_log = entry.get("_last_temp_log", 0)
+                    if timestamp - last_log >= 30:
+                        entry["_last_temp_log"] = timestamp
+                        print(f"[TEMP WARN] 최고 온도: {max_key}={max_val}°C")
 
 
 def update_position(robot_id: int, x: float, y: float, yaw: float) -> None:
@@ -166,14 +199,28 @@ def _build_status(entry: dict) -> dict:
         "battery": battery,
         "network": network,
         "power": power,
-        "is_charging": charge_st == 2,
+        "is_charging": entry.get("_is_charging", False),
         "charge_state": charge_st,
         "charge_state_label": _CHARGE_STATE_LABEL.get(charge_st, f"알 수 없음({charge_st})"),
         "charge_error_code": charge_err,
         "charge_error_msg": _CHARGE_ERROR_MSG.get(charge_err, f"알 수 없는 오류(0x{charge_err:04X})") if charge_st == 4 else None,
+        "current_floor_id": entry.get("current_floor_id"),
+        "current_map_id": entry.get("current_map_id"),
         "timestamp": entry["last_heartbeat"],
         "position": entry["position"],
     }
+
+
+def _check_charging(battery: dict) -> bool:
+    """배터리 딕셔너리에서 충전 여부 판정.
+    - 일반 로봇: Charging 키
+    - QUADRUPED: chargeLeft 또는 chargeRight 중 하나라도 True
+    """
+    if battery.get("Charging", False):
+        return True
+    if battery.get("chargeLeft", False) or battery.get("chargeRight", False):
+        return True
+    return False
 
 
 # ── 유틸 ──────────────────────────────────────────────
@@ -202,6 +249,25 @@ def get_robot_id_by_ip(ip: str) -> Optional[int]:
             if entry.get("robot_ip") == ip:
                 return rid
         return None
+
+
+def is_charging(robot_id: int) -> bool:
+    """로봇이 충전 중인지 확인."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return False
+        return entry.get("_is_charging", False)
+
+
+def update_floor(robot_id: int, floor_id: int, map_id: int = None) -> None:
+    """로봇의 현재 층/맵 변경."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if entry:
+            entry["current_floor_id"] = floor_id
+            if map_id is not None:
+                entry["current_map_id"] = map_id
 
 
 def get_position(robot_id: int) -> dict:
