@@ -28,11 +28,39 @@
   overflow: hidden;
 }
 
+.leftHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .panelTitle {
   margin: 0;
   font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.registerBtn {
+  height: 30px;
+  padding: 0 14px;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.registerBtn:hover {
+  background: var(--color-info-selected);
+}
+
+.registerBtn:active {
+  transform: scale(0.97);
 }
 
 .userName {
@@ -60,7 +88,7 @@
 }
 
 .searchInput::placeholder {
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   font-weight: 300;
 }
 
@@ -139,8 +167,7 @@
 }
 
 .userItem:hover {
-  background: var(--surface-4);
-  color: var(--text-primary);
+  background: transparent;
 }
 
 .userItem:has(.userCheckbox:checked) {
@@ -163,7 +190,7 @@
 }
 
 .userCheckbox:hover {
-  border-color: var(--color-info);
+  border-color: var(--text-muted);
 }
 
 .userCheckbox:checked {
@@ -174,13 +201,13 @@
 .userCheckbox:checked::after {
   content: '';
   position: absolute;
-  left: 5px;
-  top: 1px;
+  left: 50%;
+  top: 40%;
   width: 5px;
   height: 10px;
   border: solid #fff;
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 
 .userLabel {
@@ -260,11 +287,11 @@
 }
 
 .treeRow:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
 }
 
 .treeRow:has(.checkbox:checked) {
-  background: rgba(59, 130, 246, 0.06);
+  background: transparent;
 }
 
 .treeArrow {
@@ -320,13 +347,13 @@
 .checkbox:checked::after {
   content: '';
   position: absolute;
-  left: 5px;
-  top: 1px;
+  left: 50%;
+  top: 40%;
   width: 5px;
   height: 10px;
   border: solid #fff;
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  transform: translate(-50%, -50%) rotate(45deg);
 }
 
 .checkbox:indeterminate {

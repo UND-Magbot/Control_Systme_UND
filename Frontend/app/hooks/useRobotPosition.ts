@@ -7,6 +7,8 @@ import { apiFetch } from "@/app/lib/api";
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const LERP_FACTOR = 0.08;
 const POLL_INTERVAL = 1000;
+const FRAME_INTERVAL = 1000 / 15; // ~15fps로 throttle
+const ERROR_THRESHOLD = 3; // 연속 실패 횟수 — 이 횟수 이상 실패해야 에러 처리
 
 type UseRobotPositionReturn = {
   position: RobotPosition;
@@ -21,8 +23,17 @@ export function useRobotPosition(enabled = true): UseRobotPositionReturn {
   const targetRef = useRef<RobotPosition>({ x: 0, y: 0, yaw: 0 });
   const currentRef = useRef<RobotPosition>({ x: 0, y: 0, yaw: 0 });
   const rafRef = useRef<number>(0);
+  const lastFrameRef = useRef<number>(0);
+  const failCountRef = useRef(0);
 
-  const animate = useCallback(() => {
+  const animate = useCallback((timestamp: number) => {
+    // ~15fps throttle
+    if (timestamp - lastFrameRef.current < FRAME_INTERVAL) {
+      rafRef.current = requestAnimationFrame(animate);
+      return;
+    }
+    lastFrameRef.current = timestamp;
+
     const t = targetRef.current;
     const c = currentRef.current;
 
@@ -44,6 +55,7 @@ export function useRobotPosition(enabled = true): UseRobotPositionReturn {
         .then((res) => res.json())
         .then((data: RobotPosition) => {
           targetRef.current = data;
+          failCountRef.current = 0;
           setHasError(false);
           if (!isReady) {
             // 첫 응답: LERP 없이 즉시 위치 설정
@@ -53,7 +65,10 @@ export function useRobotPosition(enabled = true): UseRobotPositionReturn {
           }
         })
         .catch(() => {
-          setHasError(true);
+          failCountRef.current += 1;
+          if (failCountRef.current >= ERROR_THRESHOLD) {
+            setHasError(true);
+          }
         });
     };
 

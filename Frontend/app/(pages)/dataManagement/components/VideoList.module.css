@@ -91,6 +91,85 @@
 .videoSelect {
     display: flex;
     gap: 10px;
+    align-items: center;
+}
+
+/* ── 삭제 영역 (필터 맨 우측) ── */
+.videoDeleteArea {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto;
+}
+
+/* 기본 버튼 (삭제/취소) — robotWorkCommonBtn 통일 */
+.videoWorkBtn {
+    height: 32px;
+    border-radius: 6px;
+    padding: 0 14px;
+    background: var(--surface-button);
+    border: 1px solid var(--border-subtle);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    white-space: nowrap;
+    transition: background 0.2s ease, transform 0.1s ease;
+    box-sizing: border-box;
+}
+
+.videoWorkBtn:hover {
+    background: var(--surface-elevated);
+}
+
+.videoWorkBtn:active {
+    transform: scale(0.97);
+}
+
+.videoWorkBtn img {
+    height: 11px;
+    width: auto;
+}
+
+/* 삭제 확인 버튼 (파란 강조) — placePrimaryBtn 통일 */
+.videoDeleteConfirmBtn {
+    min-width: 120px;
+    height: 35px;
+    border-radius: 8px;
+    padding: 8px 14px;
+    background: var(--color-info-selected);
+    color: var(--text-primary);
+    font-size: var(--font-size-base);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.videoDeleteConfirmBtn:hover {
+    background: var(--color-info-bg);
+}
+
+.videoDeleteConfirmBtn:active {
+    transform: scale(0.97);
+}
+
+.videoDeleteConfirmBtn img {
+    width: 11px;
+    height: 11px;
+}
+
+.btnDisabled {
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 .dtSearch {
@@ -159,9 +238,8 @@
 .videoViewContainer {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    grid-template-rows: 1fr 1fr;
+    grid-auto-rows: min-content;
     gap: 14px;
-    height: 100%;
 }
 
 .videoViewItem {
@@ -172,6 +250,27 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    border: 2px solid transparent;
+    transition: border-color 0.15s ease;
+}
+
+.videoViewItemSelected {
+    border-color: var(--color-info, #1e88e5);
+}
+
+/* 선택 모드 체크박스 (미사용, 예비) */
+.selectCheckbox {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 3;
+}
+
+.selectCheckbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-info, #1e88e5);
+    cursor: pointer;
 }
 
 .videoViewBox {
@@ -188,6 +287,7 @@
     height: 100%;
     border-radius: 10px;
     overflow: hidden;
+    position: relative;
 }
 
 .videoView img {
@@ -196,18 +296,98 @@
     object-fit: cover;
 }
 
+/* 썸네일 placeholder (로드 실패 시) */
+.thumbPlaceholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--surface-3, #1a1d2e);
+    border-radius: 10px;
+}
+
+.thumbPlaceholder img {
+    width: 32px;
+    height: 32px;
+    opacity: 0.3;
+    object-fit: contain;
+}
+
+.thumbPlaceholder span {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    opacity: 0.5;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* 녹화 유형 뱃지 */
+.recordBadge {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    z-index: 2;
+}
+
+.recordBadgeAuto {
+    background: var(--color-info);
+}
+
+.recordBadgeManual {
+    background: #43a047;
+}
+
+.recordBadgeError {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--color-error, #e53935);
+    z-index: 2;
+}
+
 .videoViewIcon {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, transform 0.2s ease;
 }
 
 .videoViewIcon img {
-    width: 32px;
-    height: 32px;
-    opacity: 0.8;
-    transition: opacity 0.15s ease;
+    width: 24px;
+    height: 24px;
+    opacity: 0.9;
+    transition: opacity 0.2s ease;
+}
+
+.videoViewBox:hover .videoViewIcon {
+    background: rgba(0, 0, 0, 0.65);
+    transform: translate(-50%, -50%) scale(1.08);
 }
 
 .videoViewBox:hover .videoViewIcon img {
@@ -364,298 +544,88 @@
     z-index: 200;
 }
 
-/* ═══════════════════════════════════════════
-   KPI 요약 카드
-   ═══════════════════════════════════════════ */
-.kpiRow {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 8px;
-    flex-shrink: 0;
-}
-
-.kpiCard {
-    flex: 1;
-    background: var(--surface-3);
-    border: 1px solid rgba(146, 212, 244, 0.08);
-    border-radius: 10px;
-    padding: clamp(10px, 0.8vw, 14px) clamp(14px, 1vw, 18px);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: relative;
-    overflow: hidden;
-}
-
-.kpiLabel {
-    font-size: var(--font-size-md);
+.excelButton {
+    height: 36px;
+    padding: 0 16px;
+    background: #217346;
+    border: 1px solid #2a8c56;
+    border-radius: 5px;
+    color: #ffffff;
+    font-size: var(--font-size-sm);
     font-weight: 600;
-    color: var(--text-secondary);
+    cursor: pointer;
     white-space: nowrap;
 }
 
-.kpiRight {
-    display: flex;
-    align-items: baseline;
-    gap: 3px;
-}
-
-.kpiNum {
-    font-size: clamp(22px, 1.9vw, 32px);
-    font-weight: 700;
-    font-family: 'Gmarket Sans';
-    line-height: 1;
-}
-
-.kpiNumSub {
-    font-size: clamp(13px, 1.05vw, 17px);
-    font-weight: 500;
-    color: var(--text-tertiary);
-    margin: 0 1px;
-}
-
-.kpiUnit {
-    font-size: clamp(11px, 0.85vw, 14px);
-    font-weight: 500;
-    color: var(--text-tertiary);
-    margin-left: 3px;
-}
-
-.kpiBar {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    opacity: 0.6;
+.excelButton:hover {
+    background: #1a5c38;
 }
 
 /* ═══════════════════════════════════════════
-   2×2 통계 그리드
+   3단 통계 레이아웃
    ═══════════════════════════════════════════ */
-/* 통계 + 이벤트 래퍼 */
-.statsBody {
-    display: flex;
-    gap: 8px;
-    flex: 1;
-    min-height: 0;
-}
-
-.statsGrid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    flex: 3;
-    min-height: 0;
-}
-
-/* ── 로봇별 요약 테이블 ── */
-.robotTable {
-    flex: 2;
-    min-width: 0;
-    background: var(--surface-3);
-    border: 1px solid rgba(146, 212, 244, 0.08);
-    border-radius: 10px;
-    padding: clamp(12px, 0.9vw, 18px) clamp(14px, 1.1vw, 20px);
+.statsLayout {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-}
-
-.rtHeader {
-    display: flex;
-    align-items: center;
-    padding: clamp(6px, 0.5vw, 10px) 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    flex-shrink: 0;
-}
-
-.rtHName {
+    gap: clamp(8px, 0.6vw, 12px);
     flex: 1;
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.rtHTask {
-    width: clamp(80px, 7vw, 105px);
-    flex-shrink: 0;
-    text-align: center;
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--text-secondary);
-    white-space: nowrap;
-}
-
-.rtHTask span {
-    font-size: var(--font-size-2xs);
-    font-weight: 400;
-    color: var(--text-muted);
-    margin-left: 2px;
-}
-
-.rtHNum {
-    width: clamp(44px, 3.5vw, 56px);
-    flex-shrink: 0;
-    text-align: center;
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.rtHWide {
-    width: clamp(68px, 6vw, 90px);
-    flex-shrink: 0;
-    text-align: center;
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.rtBody {
-    flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
 }
 
-.rtBody::-webkit-scrollbar {
+.statsLayout::-webkit-scrollbar {
     width: 3px;
 }
 
-.rtBody::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+.statsLayout::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
     border-radius: 2px;
 }
 
-.rtRow {
-    display: flex;
-    align-items: center;
-    padding: clamp(7px, 0.6vw, 12px) 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-    transition: background 0.15s ease;
+/* Section 1: KPI 요약 카드 4열 */
+.kpiRow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: clamp(6px, 0.5vw, 10px);
+    flex-shrink: 0;
 }
 
-
-.rtRow:last-child {
-    border-bottom: none;
-}
-
-.rtName {
+/* Section 2: 상세 차트 4열 */
+.detailRow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: clamp(6px, 0.5vw, 10px);
     flex: 1;
-    display: flex;
-    align-items: center;
-    min-width: 0;
+    min-height: clamp(180px, 18vw, 340px);
 }
 
-.rtRobotDot {
-    width: 6px;
-    height: 6px;
-    border-radius: 2px;
-    flex-shrink: 0;
-}
-
-.rtName span {
-    font-size: var(--font-size-md);
-    font-weight: 500;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.rtTask {
-    width: clamp(80px, 7vw, 105px);
-    flex-shrink: 0;
-    text-align: center;
-    font-size: var(--font-size-md);
-    font-weight: 700;
-    font-family: 'Gmarket Sans';
-    color: var(--text-primary);
-    white-space: nowrap;
-}
-
-.rtTask span {
-    font-size: var(--font-size-xs);
-    font-weight: 400;
-    color: var(--text-primary);
-}
-
-.rtNum {
-    width: clamp(44px, 3.5vw, 56px);
-    flex-shrink: 0;
-    text-align: center;
-    font-size: var(--font-size-md);
-    font-weight: 700;
-    font-family: 'Gmarket Sans';
-    color: var(--text-primary);
-    white-space: nowrap;
-}
-
-.rtNum span {
-    font-size: var(--font-size-xs);
-    font-weight: 400;
-    color: var(--text-secondary);
-}
-
-.rtWide {
-    width: clamp(68px, 6vw, 90px);
-    flex-shrink: 0;
-    text-align: center;
-    font-size: var(--font-size-md);
-    font-weight: 700;
-    font-family: 'Gmarket Sans';
-    color: var(--text-primary);
-    white-space: nowrap;
-}
-
-.rtWide span {
-    font-size: var(--font-size-xs);
-    font-weight: 400;
-    color: var(--text-secondary);
-    margin-left: 1px;
-    margin-right: 2px;
-}
-
-.rtError {
-    color: var(--color-error-soft);
-}
-
-.rtEmpty {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    color: var(--text-muted);
-    font-size: var(--font-size-sm);
-    padding: 20px 0;
-}
-
-.statsCell {
+.chartCard {
     background: var(--surface-3);
     border: 1px solid rgba(146, 212, 244, 0.08);
     border-radius: 10px;
-    padding: clamp(12px, 0.9vw, 18px) clamp(14px, 1.1vw, 20px);
+    padding: clamp(10px, 0.7vw, 14px) clamp(12px, 0.9vw, 16px);
     display: flex;
     flex-direction: column;
-    min-height: 0;
     overflow: hidden;
 }
+
+/* Section 3: 기간 비교 4열 */
+.comparisonRow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: clamp(6px, 0.5vw, 10px);
+    flex-shrink: 0;
+}
+
 
 /* ── 셀 헤더 ── */
 .cellHead {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: clamp(8px, 0.6vw, 12px);
+    gap: 6px;
+    margin-bottom: clamp(6px, 0.4vw, 8px);
     flex-shrink: 0;
-    padding-bottom: clamp(8px, 0.6vw, 12px);
+    padding-bottom: clamp(6px, 0.4vw, 8px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 

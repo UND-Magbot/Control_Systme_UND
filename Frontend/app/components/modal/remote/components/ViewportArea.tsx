@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import type { Camera } from '@/app/type';
 import { CanvasMap } from '@/app/components/map';
 import { OCC_GRID_CONFIG } from '@/app/components/map/mapConfigs';
@@ -69,16 +69,20 @@ export default function ViewportArea({
     [scale],
   );
 
-  const onWheel = useCallback(
-    (e: React.WheelEvent) => {
+  // wheel zoom (passive: false로 등록해야 preventDefault 가능)
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
       e.preventDefault();
       setScale((prev) => {
         const next = prev + (e.deltaY < 0 ? 0.2 : -0.2);
         return Math.min(Math.max(next, 1), 4);
       });
-    },
-    [],
-  );
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -154,7 +158,6 @@ export default function ViewportArea({
       <div
         ref={wrapperRef}
         className={styles.mainView}
-        onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={endPan}
@@ -205,6 +208,8 @@ export default function ViewportArea({
           <span>↻</span>
         </button>
       )}
+
+      {/* 녹화 버튼은 StatusBar로 이동 */}
 
       {/* ── 맵: icon / pip / expanded ── */}
       {mapState === 'icon' && (

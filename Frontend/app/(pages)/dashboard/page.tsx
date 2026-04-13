@@ -1,13 +1,17 @@
 import React from 'react';
 import DashboardClient from "./components/DashboardClient";
-import Floors from '@/app/lib/floorInfo';
+import PermissionGuard from "@/app/components/common/PermissionGuard";
+import getFloors from '@/app/lib/floorInfo';
 import VideoStatus from '@/app/lib/videoStatus';
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const floors = await getFloors();
   return (
-    <DashboardClient
-      floors={Floors()}
-      videoStatus={VideoStatus()}
-    />
+    <PermissionGuard requiredPermissions={["dashboard"]}>
+      <DashboardClient
+        floors={floors}
+        videoStatus={VideoStatus()}
+      />
+    </PermissionGuard>
   );
 }

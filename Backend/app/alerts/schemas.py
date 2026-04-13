@@ -11,6 +11,7 @@ class NoticeDetail(BaseModel):
     UserName: Optional[str] = None
     AttachmentName: Optional[str] = None
     AttachmentUrl: Optional[str] = None
+    AttachmentSize: Optional[int] = None
 
     class Config:
         from_attributes = True

@@ -10,12 +10,13 @@ import NoticeList from "./NoticeList";
 import SectionHeader from "./SectionHeader";
 import Link from "next/link";
 import { useRobotLocation } from "@/app/hooks/useRobotLocation";
+import type { POIItem } from "@/app/components/map/types";
 import RobotStats from "./RobotStats";
 import ScheduleTimeline from "./ScheduleTimeline";
-import getRobots from "@/app/lib/robotInfo";
 import { getCamerasForRobot } from "@/app/lib/cameraView";
 import { getStatistics, type PerRobotStats } from "@/app/lib/statisticsApi";
 import { usePageReady } from "@/app/context/PageLoadingContext";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
 
 type DashboardClientProps = {
   floors: Floor[];
@@ -26,44 +27,60 @@ export default function DashboardClient({
   floors,
   videoStatus,
 }: DashboardClientProps) {
+  const { robots: liveRobots, loaded: statusLoaded } = useRobotStatusContext();
   const [robots, setRobots] = useState<RobotRowData[]>([]);
   const [selectedRobotId, setSelectedRobotId] = useState<number | null>(null);
   const [robotCameras, setRobotCameras] = useState<Camera[]>([]);
   const [robotStats, setRobotStats] = useState<PerRobotStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const robotLocation = useRobotLocation();
+
+  // useRobotLocation에서 가져온 places를 MapSection용 POIItem으로 변환
+  const mapPlaces = useMemo<POIItem[]>(
+    () => robotLocation.places.map((p) => ({
+      id: p.id,
+      name: p.name,
+      x: p.x,
+      y: p.y,
+      floor: p.floor,
+      category: "work" as const,
+    })),
+    [robotLocation.places]
+  );
   const setPageReady = usePageReady();
 
-  // 로봇 + 첫 번째 로봇의 카메라까지 로드 완료 후 로딩 해제
+  // 컨텍스트 로드 완료 시 첫 번째 로봇 선택 + 카메라 로드
   useEffect(() => {
-    setIsLoading(true);
-    getRobots().then(async (fetched) => {
-      setRobots(fetched);
-      const firstId = fetched[0]?.id ?? null;
-      setSelectedRobotId(firstId);
-      if (firstId) {
-        const cams = await getCamerasForRobot(firstId);
-        setRobotCameras(cams);
-      }
+    if (!statusLoaded) return;
+    const firstId = liveRobots[0]?.id ?? null;
+    setSelectedRobotId((prev) => prev ?? firstId);
+    if (firstId && isLoading) {
+      getCamerasForRobot(firstId).then(setRobotCameras).finally(() => {
+        setIsLoading(false);
+        setPageReady();
+      });
+    } else {
       setIsLoading(false);
       setPageReady();
-    }).catch(() => { setIsLoading(false); setPageReady(); });
-  }, []);
+    }
+  }, [statusLoaded]);
 
   const selectedRobot = useMemo(
-    () => robots.find((r) => r.id === selectedRobotId) ?? null,
-    [robots, selectedRobotId]
+    () => liveRobots.find((r) => r.id === selectedRobotId) ?? robots.find((r) => r.id === selectedRobotId) ?? null,
+    [liveRobots, robots, selectedRobotId]
   );
 
-  // 로봇 선택 변경 시 카메라 재로드 (초기 로드 제외)
+  const selectedRobotNetwork = selectedRobot?.network;
+
+  // 로봇 선택 변경 또는 online 복귀 시 카메라 재로드
   useEffect(() => {
-    if (isLoading) return; // 초기 로드 중이면 스킵
-    if (!selectedRobotId) {
+    if (isLoading) return;
+    if (!selectedRobotId || selectedRobotNetwork !== "Online") {
       setRobotCameras([]);
       return;
     }
     getCamerasForRobot(selectedRobotId).then(setRobotCameras);
-  }, [selectedRobotId]);
+  }, [selectedRobotId, selectedRobotNetwork]);
 
   // 선택된 로봇의 통계 데이터 로드
   useEffect(() => {
@@ -87,7 +104,7 @@ export default function DashboardClient({
         {/* 로봇 카드 리스트 */}
         <div className={styles.robotListPanel}>
           <RobotCardList
-            robots={robots}
+            robots={liveRobots}
             floors={floors}
             selectedRobotId={selectedRobotId}
             onSelectRobot={setSelectedRobotId}
@@ -103,7 +120,7 @@ export default function DashboardClient({
             icon="/icon/notice_w.png"
             title="공지사항"
             rightSlot={
-              <Link href="/alerts?tab=notice" className={styles.moreLink}>
+              <Link href="/alerts?tab=notice" prefetch={false} className={styles.moreLink}>
                 더보기 ›
               </Link>
             }
@@ -120,12 +137,12 @@ export default function DashboardClient({
         </div>
         <MapSection
           floors={floors}
-          robots={robots}
+          robots={liveRobots}
           video={videoStatus}
           cameras={robotCameras}
           selectedRobotId={selectedRobotId}
           selectedRobotName={selectedRobot?.no}
-          robotFloor={robotLocation.floor}
+          robotFloorId={selectedRobot?.currentFloorId ?? null}
         />
       </div>
 
@@ -136,7 +153,7 @@ export default function DashboardClient({
           robotCameras={robotCameras}
           videoItems={[]}
           selectedRobot={selectedRobot}
-          robots={robots}
+          robots={liveRobots}
           video={videoStatus}
         />
       </div>

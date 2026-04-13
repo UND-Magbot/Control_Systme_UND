@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import styles from "./NumberSpinner.module.css";
 
 type NumberSpinnerProps = {
@@ -74,13 +74,22 @@ export default function NumberSpinner({
     }
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const dir = e.deltaY < 0 ? 1 : -1;
-    const next = clamp((value ?? min) + dir);
-    onChange(next);
-    if (editing) setDraft(String(next).padStart(pad, "0"));
-  };
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // wheel (passive: false로 등록해야 preventDefault 가능)
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const dir = e.deltaY < 0 ? 1 : -1;
+      const next = clamp((value ?? min) + dir);
+      onChange(next);
+      if (editing) setDraft(String(next).padStart(pad, "0"));
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [value, min, onChange, editing, pad, clamp]);
 
   const wrapperClass = [
     styles.wrapper,
@@ -91,7 +100,7 @@ export default function NumberSpinner({
     .join(" ");
 
   return (
-    <div className={wrapperClass} onWheel={handleWheel}>
+    <div className={wrapperClass} ref={wrapperRef}>
       <input
         ref={inputRef}
         className={styles.input}

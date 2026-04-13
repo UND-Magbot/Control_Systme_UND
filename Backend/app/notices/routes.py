@@ -8,7 +8,7 @@ from typing import Optional
 from app.Database.database import SessionLocal
 from app.Database.models import UserInfo
 from app.auth.audit import write_audit, get_client_ip
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_permission
 from app.notices.schemas import NoticeCreateReq, NoticeUpdateReq, NoticeResponse, NoticeListResponse
 from app.notices.service import NoticeService
 
@@ -33,18 +33,18 @@ def get_notices(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=10000),
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(get_current_user),
+    current_user: UserInfo = Depends(require_permission("alert-notice")),
 ):
     return NoticeService(db).get_list(search=search, importance=importance, page=page, size=size)
 
 
 @router.get("/notices/{notice_id}", response_model=NoticeResponse)
-def get_notice(notice_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def get_notice(notice_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("alert-notice"))):
     return NoticeService(db).get_by_id(notice_id)
 
 
 @router.post("/notices")
-def create_notice(req: NoticeCreateReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def create_notice(req: NoticeCreateReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("alert-notice"))):
     notice = NoticeService(db).create(
         title=req.Title,
         content=req.Content,
@@ -52,6 +52,7 @@ def create_notice(req: NoticeCreateReq, request: Request, db: Session = Depends(
         user_id=req.UserId,
         attachment_name=req.AttachmentName,
         attachment_url=req.AttachmentUrl,
+        attachment_size=req.AttachmentSize,
     )
     write_audit(db, current_user.id, "notice_created", "notice", notice.id,
                 detail=f"제목: {req.Title}, 중요도: {req.Importance}",
@@ -60,7 +61,7 @@ def create_notice(req: NoticeCreateReq, request: Request, db: Session = Depends(
 
 
 @router.put("/notices/{notice_id}", response_model=NoticeResponse)
-def update_notice(notice_id: int, req: NoticeUpdateReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def update_notice(notice_id: int, req: NoticeUpdateReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("alert-notice"))):
     notice, changes = NoticeService(db).update(
         notice_id=notice_id,
         title=req.Title,
@@ -68,6 +69,7 @@ def update_notice(notice_id: int, req: NoticeUpdateReq, request: Request, db: Se
         importance=req.Importance,
         attachment_name=req.AttachmentName,
         attachment_url=req.AttachmentUrl,
+        attachment_size=req.AttachmentSize,
     )
     detail = ", ".join(changes) if changes else None
     write_audit(db, current_user.id, "notice_updated", "notice", notice_id, detail=detail,
@@ -76,7 +78,7 @@ def update_notice(notice_id: int, req: NoticeUpdateReq, request: Request, db: Se
 
 
 @router.delete("/notices/{notice_id}")
-def delete_notice(notice_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def delete_notice(notice_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("alert-notice"))):
     svc = NoticeService(db)
     notice = svc.get_by_id(notice_id)
     title = notice.Title
@@ -88,7 +90,7 @@ def delete_notice(notice_id: int, request: Request, db: Session = Depends(get_db
 
 
 @router.post("/notices/upload")
-async def upload_notice_file(file: UploadFile = File(...), current_user: UserInfo = Depends(get_current_user)):
+async def upload_notice_file(file: UploadFile = File(...), current_user: UserInfo = Depends(require_permission("alert-notice"))):
     contents = await file.read()
     if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="파일 크기는 10MB 이하만 가능합니다")
@@ -107,11 +109,12 @@ async def upload_notice_file(file: UploadFile = File(...), current_user: UserInf
         "original_name": file.filename,
         "stored_name": stored_name,
         "url": f"/DB/notices/files/{stored_name}",
+        "size": len(contents),
     }
 
 
 @router.get("/notices/files/{filename}")
-def download_notice_file(filename: str, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def download_notice_file(filename: str, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("alert-notice"))):
     file_path = os.path.join(UPLOAD_DIR, filename)
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")

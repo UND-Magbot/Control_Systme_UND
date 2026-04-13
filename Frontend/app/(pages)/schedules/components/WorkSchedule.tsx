@@ -102,7 +102,7 @@ type WeekEvent = {
   dayIndex: number;   // 0=일 ... 6=토
   startMin: number;   // 0~1439
   endMin: number;     // 1~1440
-  color?: "green" | "yellow" | "blue" | "red";
+  color?: "green" | "yellow" | "blue" | "red" | "orange";
   status?: string;       // "대기" | "진행중" | "완료" | "오류"
   scheduleMode?: string; // "once" | "weekly" | "interval"
 };
@@ -239,7 +239,7 @@ type MonthEvent = {
   id: string;
   title: string;
   date: string; // "2025-01-09"
-  color?: "green" | "yellow" | "blue" | "red";
+  color?: "green" | "yellow" | "blue" | "red" | "orange";
   status?: ScheduleStatus;
   startMin?: number;
 };
@@ -294,6 +294,7 @@ const monthColorClass: Record<NonNullable<MonthEvent["color"]>, string> = {
   yellow: styles.evYellow,
   blue: styles.evBlue,
   red: styles.evRed,
+  orange: styles.evOrange,
 };
 
 function statusToColor(status: string): WeekEvent["color"] {
@@ -301,6 +302,7 @@ function statusToColor(status: string): WeekEvent["color"] {
     case "대기": return "yellow";
     case "진행": case "진행중": return "blue";
     case "오류": return "red";
+    case "취소": return "orange";
     case "완료": return "green";
     default: return "green";
   }
@@ -317,6 +319,8 @@ const statusDotClass = (status?: ScheduleStatus) => {
       return styles.statusWorking;
     case "오류":
       return styles.statusError;
+    case "취소":
+      return styles.statusCancelled;
     case "완료":
       return styles.statusCompleted;
     default:
@@ -345,7 +349,6 @@ export default function Page({ robots }: RobotScheduleProps) {
                 const res = await apiFetch(`/DB/schedule`);
                 if (!res.ok) throw new Error("서버 응답 오류");
                 const data = await res.json();
-                console.log("[SCHEDULE] API 응답:", data);
                 setSchedules(Array.isArray(data) ? data : []);
             }
         } catch (e) {
@@ -711,6 +714,8 @@ export default function Page({ robots }: RobotScheduleProps) {
             return styles.evBlue;
         case "red":
             return styles.evRed;
+        case "orange":
+            return styles.evOrange;
         default:
             return styles.evGreen;
         }

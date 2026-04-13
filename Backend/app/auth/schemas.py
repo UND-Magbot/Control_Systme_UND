@@ -8,11 +8,12 @@ from datetime import datetime
 class LoginRequest(BaseModel):
     login_id: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=1, max_length=100)
+    auto_login: bool = False
 
 
 class PasswordChangeRequest(BaseModel):
     current_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=6, max_length=12)
+    new_password: str = Field(..., min_length=6, max_length=16)
 
 
 class AccountDeleteRequest(BaseModel):

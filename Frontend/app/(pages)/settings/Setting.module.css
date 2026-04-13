@@ -40,6 +40,7 @@
   width: 100%;
   flex: 1;
   min-height: var(--page-body-min-height);
+  min-width: var(--content-min-width);
   padding: 20px;
   overflow: hidden;
 }

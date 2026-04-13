@@ -15,6 +15,7 @@ import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
 import PathMoveModal from "@/app/components/modal/PathMoveModal";
 import { MapPin, Route } from "lucide-react";
 import { getBatteryColor } from "@/app/constants/robotIcons";
+import ChargingIcon from "@/app/components/common/ChargingIcon";
 import WaypointProgress from "@/app/components/common/WaypointProgress";
 import type { WaypointStep } from "@/app/components/common/WaypointProgress";
 
@@ -468,13 +469,19 @@ export default function RobotDetailModal({
 
     // 충전소 이동 핸들러
     const handleChargeMove = () => {
+      const r = robotDetail ?? selectedRobot;
+      if (r?.isCharging) {
+        alert("이미 충전 중입니다.");
+        return;
+      }
       setBatteryConfirmOpen(true);
     };
 
     const handleChargeMoveConfirm = () => {
       if (!selectedRobotId) return;
-      console.log("충전소 이동:", selectedRobotId);
-      // TODO: API call
+      apiFetch(`/robot/return-to-charge`, {
+        method: "POST",
+      }).catch((err) => console.error("충전소 이동 실패", err));
       setBatteryConfirmOpen(false);
     };
 
@@ -567,7 +574,7 @@ export default function RobotDetailModal({
                   let statusClass = styles.detailBadgeStandby;
                   if (isOffline) { statusLabel = "오프라인"; statusClass = styles.detailBadgeOffline; }
                   else if (r.isCharging) { statusLabel = "충전"; statusClass = styles.detailBadgeCharging; }
-                  else if (r.tasks.length > 0 && r.waitingTime === 0) { statusLabel = "운영"; statusClass = styles.detailBadgeOperating; }
+                  else if (activeSchedule || (r.tasks.length > 0 && r.waitingTime === 0)) { statusLabel = "운영"; statusClass = styles.detailBadgeOperating; }
 
                   // 네트워크 dot
                   const netDotClass = r.network === "Online" ? styles.detailNetDotOnline
@@ -1011,12 +1018,7 @@ export default function RobotDetailModal({
             loading={workScheduleLoading}
             error={workScheduleError}
             onConfirmReturn={() => {
-              const robotName = (robotDetail ?? selectedRobot)?.no ?? '';
-              apiFetch(`/nav/startmove`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ robotName, action: "schedule_return" }),
-              }).catch((err) => console.error("작업일정 복귀 명령 실패", err));
+              // TODO: 작업 복귀 기능 연결 예정
             }}
             onConfirmWhenNone={() => {
               window.location.href = "/schedules";
@@ -1052,7 +1054,7 @@ export default function RobotDetailModal({
         {batteryConfirmOpen && (
           <BatteryPathModal
             isOpen={batteryConfirmOpen}
-            message="배터리 충전소로 이동하시겠습니까?"
+            message="현재 진행 중인 작업을 중단하고, 충전소로 이동하시겠습니까?"
             onConfirm={handleChargeMoveConfirm}
             onCancel={() => setBatteryConfirmOpen(false)}
           />

@@ -15,7 +15,7 @@ const MENU_ITEMS = [
   { path: "/mapManagement", icon: "map", label: "맵 관리", childIds: ["map-edit", "place-list", "path-list"] },
   { path: "/dataManagement", icon: "data", label: "데이터관리", childIds: ["video", "statistics", "log"] },
   { path: "/alerts", icon: "alerts", label: "알림", childIds: ["alert-total", "alert-schedule", "alert-robot", "alert-notice"] },
-  { path: "/settings", icon: "setting", label: "설정", childIds: ["menu-permissions", "password-change", "db-backup"] },
+  { path: "/settings", icon: "setting", label: "설정", childIds: ["menu-permissions", "db-backup"] },
 ];
 
 export default function Sidebar() {
@@ -42,6 +42,7 @@ export default function Sidebar() {
                     {menuItems.map((item, idx) => (
                         <Link key={idx} className={styles.menuItems}
                                 href={item.path}
+                                prefetch={false}
                                 onClick={(e) => {
                                     close();
                                     if (window.location.pathname === item.path) {

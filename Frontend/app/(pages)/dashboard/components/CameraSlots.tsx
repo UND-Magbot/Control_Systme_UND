@@ -34,6 +34,7 @@ export default function CameraSlots({
   const [startIdx, setStartIdx] = useState(0);
 
   const robotName = selectedRobot?.no ?? "";
+  const isOnline = selectedRobot?.network === "Online";
   const maxStartIdx = Math.max(0, robotCameras.length - SLOTS_PER_PAGE);
   const hasMultiplePages = robotCameras.length > SLOTS_PER_PAGE;
   const canGoUp = startIdx > 0;
@@ -54,26 +55,34 @@ export default function CameraSlots({
 
   return (
     <>
-      {robotCameras.length === 0 && (
+      {!isOnline ? (
+        <div className={dashStyles.cameraPanel}>
+          <div className={styles.emptySlot}>
+            <span>로봇 연결 끊김</span>
+          </div>
+        </div>
+      ) : robotCameras.length === 0 ? (
         <div className={dashStyles.cameraPanel}>
           <div className={styles.emptySlot}>
             <span>카메라를 등록해주세요</span>
           </div>
         </div>
+      ) : (
+        <>
+          {visibleCams.map((cam) => (
+            <div key={cam.id} className={`${dashStyles.cameraPanel} ${styles.camSlotWrapper}`}>
+              <CameraSlot
+                camera={cam}
+                robotName=""
+                onExpand={(e) => openExpand(cam, e)}
+              />
+            </div>
+          ))}
+        </>
       )}
 
-      {visibleCams.map((cam) => (
-        <div key={cam.id} className={`${dashStyles.cameraPanel} ${styles.camSlotWrapper}`}>
-          <CameraSlot
-            camera={cam}
-            robotName=""
-            onExpand={(e) => openExpand(cam, e)}
-          />
-        </div>
-      ))}
-
       {/* 스크롤 버튼 */}
-      {hasMultiplePages && (
+      {isOnline && hasMultiplePages && (
         <div className={styles.scrollBar}>
           <button
             className={styles.scrollBtn}
@@ -104,6 +113,7 @@ export default function CameraSlots({
         onClose={() => setModalOpen(false)}
         robotCameras={robotCameras}
         robotName={robotName}
+        robot={selectedRobot}
         initialCam={modalCam}
         initialMode={modalMode}
       />

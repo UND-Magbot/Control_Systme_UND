@@ -32,7 +32,7 @@ class BusinessResponse(BaseModel):
     RepresentName: Optional[str] = None
     Contact: Optional[str] = None
     Description: Optional[str] = None
-    AreaCount: int = 0
+    FloorCount: int = 0
     RobotCount: int = 0
     CreatedAt: Optional[datetime] = None
     UpdatedAt: Optional[datetime] = None
@@ -48,12 +48,12 @@ class BusinessListResponse(BaseModel):
     size: int
 
 
-class AreaCreateReq(BaseModel):
+class FloorCreateReq(BaseModel):
     BusinessId: int
     FloorName: str
 
 
-class AreaResponse(BaseModel):
+class FloorResponse(BaseModel):
     id: int
     BusinessId: int
     FloorName: str

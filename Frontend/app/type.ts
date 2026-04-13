@@ -48,6 +48,13 @@ export type RobotRowData = {
     serialRight?: string;           // serialRight
     return: number;
     isCharging: boolean;
+    chargeState: number;
+    chargeStateLabel: string;
+    chargeErrorCode: number;
+    chargeErrorMsg: string | null;
+    currentFloorId: number | null;
+    currentMapId: number | null;
+    position: { x: number; y: number; yaw: number; timestamp: number };
     network: 'Online' | 'Offline' | 'Error' | '-';
     power: 'On' | 'Off' | '-';
     mark: 'Yes' | 'No';
@@ -90,16 +97,39 @@ export type LocationItem = {
     label: string;
 }
 
+export type VideoSegment = {
+    id: number;
+    start: string;
+    duration_sec: number;
+    stream_url: string;
+};
+
 export type VideoItem = {
+    // 기존 호환
     id: number;
     robotNo: string;
     cameraNo: string;
     cameraType: string;
-    filename: string,
+    filename: string;
     contentType: string;
     data: string;
     videoTime: string;
     date: string;
+    // 녹화 API 확장
+    group_id?: string;
+    robot_name?: string;
+    camera_label?: string;
+    record_type?: string;
+    work_name?: string;
+    record_start?: string;
+    record_end?: string;
+    total_duration_sec?: number;
+    segment_count?: number;
+    thumbnail_url?: string;
+    streamUrl?: string;
+    segments?: VideoSegment[];
+    status?: string;
+    error_reason?: string;
 }
 
 // VideoItem과 임시로 동일하게 적용
@@ -135,7 +165,7 @@ export type LogItem = {
     CreatedAt: string;
 }
 
-export type Period = 'today' | '1week' | '1month' | '1year' | 'Total' | null;
+export type Period = 'today' | '3days' | '1week' | '1month' | '1year' | 'Total' | null;
 
 // 도넛 차트에 쓸 공통 타입
 export type RobotType = { 

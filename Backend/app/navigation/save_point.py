@@ -9,7 +9,7 @@ import app.main
 from app.Database.database import SessionLocal
 from app.Database.models import LocationInfo, UserInfo
 from app.current_user import get_user_id
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import require_any_permission
 
 point = APIRouter(prefix="/nav")
 
@@ -45,10 +45,12 @@ def _next_cur_name(db: Session) -> str:
 
 
 @point.post("/savepoint")
-def save_current_waypoint(db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
+def save_current_waypoint(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit"))):
 
     # runtime에서 현재 로봇 위치 조회
     import app.robot_runtime as runtime
+    from app.Database.models import RobotInfo, RobotMapInfo
+
     rid = runtime.get_first_robot_id()
     current_pos = runtime.get_position(rid) if rid else {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
 
@@ -81,18 +83,31 @@ def save_current_waypoint(db: Session = Depends(get_db), current_user: UserInfo 
 
     # DB 장소 저장 (CUR-XXX)
     cur_name = _next_cur_name(db)
+
+    # 로봇 정보에서 현재 층/맵 조회
+    robot = db.query(RobotInfo).filter(RobotInfo.id == rid).first()
+    floor_id = robot.CurrentFloorId if robot else None
+    robot_name = robot.RobotName if robot else ""
+
+    # 현재 층의 활성 맵 조회
+    map_id = None
+    if floor_id:
+        active_map = db.query(RobotMapInfo).filter(RobotMapInfo.FloorId == floor_id).order_by(RobotMapInfo.id.desc()).first()
+        map_id = active_map.id if active_map else None
+
     place = LocationInfo(
-        UserId=get_user_id(),
-        RobotName="TestRobot-01",
+        UserId=current_user.id,
+        RobotName=robot_name,
         LacationName=cur_name,
-        Floor="1F",
+        FloorId=floor_id,
+        MapId=map_id,
         LocationX=wp_x,
         LocationY=wp_y,
         Yaw=wp_yaw,
     )
     db.add(place)
     db.commit()
-    print(f"📍 DB 장소 저장: {cur_name} → x={wp_x}, y={wp_y}, yaw={wp_yaw}")
+    print(f"📍 DB 장소 저장: {cur_name} → x={wp_x}, y={wp_y}, yaw={wp_yaw} (FloorId={floor_id}, MapId={map_id})")
 
     return {
         "status": "ok",
@@ -102,7 +117,7 @@ def save_current_waypoint(db: Session = Depends(get_db), current_user: UserInfo 
     }
 
 @point.post("/clearpoints")
-def clear_waypoints(current_user: UserInfo = Depends(get_current_user)):
+def clear_waypoints(current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit"))):
     with open(WAYPOINT_FILE, "w") as f:
         json.dump([], f, indent=4)
     return {"status": "ok", "msg": "웨이포인트 초기화 완료"}

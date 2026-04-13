@@ -26,6 +26,8 @@ type DBSchedule = {
   RunCount?: number;
   MaxRunCount?: number | null;
   LastRunDate?: string | null;
+  SeriesStartDate?: string | null;
+  SeriesEndDate?: string | null;
 };
 
 function getMode(s: DBSchedule): string {
@@ -55,6 +57,7 @@ function getStatusClass(status: string): string {
     case "진행중": case "진행": return styles.statusActive;
     case "완료": return styles.statusDone;
     case "작업중(오류)": case "오류": return styles.statusError;
+    case "취소": return styles.statusCancelled;
     default: return styles.statusWaiting;
   }
 }
@@ -96,8 +99,9 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
         if (robotName && s.RobotName !== robotName) return false;
         const mode = getMode(s);
 
-        // 요일반복: 오늘 요일에 포함되어야 함
+        // 요일반복: 시리즈 종료일 + 오늘 요일에 포함되어야 함
         if (mode === "weekly" && s.Repeat_Day) {
+          if (s.SeriesEndDate && s.SeriesEndDate < todayStr) return false;
           const days = s.Repeat_Day.split(",").map((d) => KOREAN_DAY_TO_JS[d.trim()]);
           if (!days.includes(todayDow)) return false;
           // 오늘 남은 실행 시각이 있거나 현재 진행 중이어야 함
@@ -105,15 +109,17 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
           if (s.ExecutionTime) {
             const hasRemaining = s.ExecutionTime.split(",").some((t) => {
               const [h, m] = t.trim().split(":").map(Number);
-              return h * 60 + m > nowMin;
+              return h * 60 + m >= nowMin;
             });
             return hasRemaining;
           }
           return true;
         }
 
-        // 주기반복: 활성 시간 범위 내인지 + 오늘 요일
+        // 주기반복: 시리즈 종료일 + 활성 시간 범위 내인지 + 오늘 요일
         if (mode === "interval") {
+          // 시리즈 종료일이 지났으면 표시하지 않음 (SeriesEndDate 기준)
+          if (s.SeriesEndDate && s.SeriesEndDate < todayStr) return false;
           if (s.Repeat_Day) {
             const days = s.Repeat_Day.split(",").map((d) => KOREAN_DAY_TO_JS[d.trim()]);
             if (!days.includes(todayDow)) return false;
@@ -123,7 +129,10 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
             const [h, m] = s.ActiveEndTime.split(":").map(Number);
             return h * 60 + m > nowMin;
           }
-          return s.StartDate.slice(0, 10) <= todayStr && todayStr <= s.EndDate.slice(0, 10);
+          // ActiveEndTime 없는 interval: 시리즈 기간 내이면 표시
+          const iStart = s.SeriesStartDate || s.StartDate.slice(0, 10);
+          const iEnd = s.SeriesEndDate;
+          return iStart <= todayStr && (!iEnd || todayStr <= iEnd);
         }
 
         // 단일: 날짜 범위 확인
@@ -150,9 +159,23 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
       const next = times.find((t) => t >= nowMin);
       return next ?? times[times.length - 1];
     }
-    if (mode === "interval" && s.ActiveStartTime) {
-      const [h, m] = s.ActiveStartTime.split(":").map(Number);
-      return h * 60 + m;
+    if (mode === "interval") {
+      // 활성 시간대 내이면 현재 시각을 반환 (항상 upcoming 조건 통과)
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      if (s.ActiveStartTime && s.ActiveEndTime) {
+        const [sh, sm] = s.ActiveStartTime.split(":").map(Number);
+        const [eh, em] = s.ActiveEndTime.split(":").map(Number);
+        const startMin = sh * 60 + sm;
+        const endMin = eh * 60 + em;
+        if (nowMin >= startMin && nowMin <= endMin) return nowMin;
+        if (nowMin < startMin) return startMin;
+        return endMin;
+      }
+      if (s.ActiveStartTime) {
+        const [h, m] = s.ActiveStartTime.split(":").map(Number);
+        return h * 60 + m;
+      }
     }
     const d = new Date(s.StartDate);
     return d.getHours() * 60 + d.getMinutes();
@@ -164,7 +187,7 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
     const nowMin = now.getHours() * 60 + now.getMinutes();
 
     return todaySchedules
-      .filter((s) => s.TaskStatus !== "완료")
+      .filter((s) => s.TaskStatus !== "완료" && s.TaskStatus !== "취소")
       .filter((s) => modeFilter === "all" || getMode(s) === modeFilter)
       .sort((a, b) => {
         // 진행중인 작업은 항상 최상단
@@ -186,7 +209,7 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
   const todayExecuted = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     return schedules
-      .filter((s) => s.LastRunDate && s.LastRunDate.slice(0, 10) === todayStr && (s.RunCount ?? 0) > 0)
+      .filter((s) => s.LastRunDate && s.LastRunDate.slice(0, 10) === todayStr && ((s.RunCount ?? 0) > 0 || s.TaskStatus === "취소"))
       .sort((a, b) => new Date(b.LastRunDate!).getTime() - new Date(a.LastRunDate!).getTime());
   }, [schedules]);
 

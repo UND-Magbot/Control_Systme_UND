@@ -13,7 +13,7 @@ from app.map.map_manage import map_manage as map_manage_router
 from app.map.mapping_control import mapping_ctrl as mapping_ctrl_router
 from app.map.ws_mapping import ws_mapping as ws_mapping_router, start_udp_server
 from app.Database.database import engine, Base, SessionLocal
-from app.Database.models import BusinessInfo, AreaInfo, RobotMapInfo, RobotModule, ModuleCameraInfo, RobotInfo
+from app.Database.models import BusinessInfo, FloorInfo, RobotMapInfo, RobotModule, ModuleCameraInfo, RobotInfo
 from app.logs.routes import router as log_router
 from app.alerts.routes import router as alert_router
 from app.notices.routes import router as notice_router
@@ -22,6 +22,7 @@ from app.auth.routes import router as auth_router
 from app.users.routes import router as users_router
 from app.backup.routes import router as backup_router
 from app.statistics.routes import router as statistics_router
+from app.recording.routes import router as recording_router
 from app.logs.service import log_event
 from app.robot_sender import send_to_robot
 from app.navigation.send_move import (
@@ -39,6 +40,10 @@ import threading
 import socket
 import json
 import struct
+import math
+
+# OpenCV RTSP를 TCP 우선 모드로 설정 (UDP 끊김 방지)
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|loglevel;error"
 import cv2
 
 
@@ -79,13 +84,14 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(backup_router)
 app.include_router(statistics_router)
+app.include_router(recording_router)
 
 
 # ======================================================
 # MJPEG
 # ======================================================
 def rtsp_to_mjpeg(rtsp_url):
-    cap = cv2.VideoCapture(rtsp_url)
+    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -219,7 +225,7 @@ def get_robot_position_once(timeout=1.0):
 # ======================================================
 # 초기 Pose 설정
 # ======================================================
-INIT_POSE = {"PosX": 3.998, "PosY": -2.718, "PosZ": 0.0, "Yaw": -1.602}
+INIT_POSE = {"PosX": 3.998, "PosY": -2.612, "PosZ": 0.0, "Yaw": -1.604}
 
 def send_init_pose():
     """로봇에 직접 init_pose 전송 + 위치 변화로 성공 확인"""
@@ -240,7 +246,7 @@ def send_init_pose():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
     sock.close()
-    print(f"🚀 [INIT_POSE] 전송 완료 → {ROBOT_IP}:{ROBOT_PORT} | {INIT_POSE}")
+    print(f"[INIT] [INIT_POSE] 전송 완료 → {ROBOT_IP}:{ROBOT_PORT} | {INIT_POSE}")
 
     # 3) 3초 후 위치 다시 확인
     time.sleep(3)
@@ -250,9 +256,9 @@ def send_init_pose():
     dx = abs(after.get("x", 0) - before.get("x", 0))
     dy = abs(after.get("y", 0) - before.get("y", 0))
     if dx > 0.01 or dy > 0.01:
-        print(f"✅ [INIT_POSE] 위치 변화 감지! dx={dx:.3f}, dy={dy:.3f} → 적용 성공")
+        print(f"[OK] [INIT_POSE] 위치 변화 감지! dx={dx:.3f}, dy={dy:.3f} → 적용 성공")
     else:
-        print(f"⚠️ [INIT_POSE] 위치 변화 없음 (dx={dx:.3f}, dy={dy:.3f}) → 적용 안 됐을 수 있음")
+        print(f"[WARN] [INIT_POSE] 위치 변화 없음 (dx={dx:.3f}, dy={dy:.3f}) → 적용 안 됐을 수 있음")
 
 
 def _auto_migrate():
@@ -268,7 +274,7 @@ def _auto_migrate():
 
     # LoginId 컬럼이 없으면 아직 마이그레이션 안 된 것
     if "LoginId" not in existing_cols:
-        print("🔄 기존 DB 감지 — user_info 컬럼 마이그레이션 실행 중...")
+        print("[SYNC] 기존 DB 감지 — user_info 컬럼 마이그레이션 실행 중...")
         with engine.begin() as conn:
             conn.execute(text("""
                 ALTER TABLE user_info
@@ -281,13 +287,13 @@ def _auto_migrate():
                   ADD COLUMN UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER CreatedAt,
                   ADD COLUMN DeletedAt DATETIME NULL AFTER UpdatedAt
             """))
-        print("✅ user_info 컬럼 마이그레이션 완료")
+        print("[MIGRATION] user_info 컬럼 마이그레이션 완료")
 
     # robot_info 테이블에 RobotType, RobotIP, RobotPort 컬럼 추가
     if "robot_info" in inspector.get_table_names():
         robot_cols = {col["name"] for col in inspector.get_columns("robot_info")}
         if "RobotType" not in robot_cols:
-            print("🔄 robot_info 컬럼 마이그레이션 실행 중...")
+            print("[SYNC] robot_info 컬럼 마이그레이션 실행 중...")
             with engine.begin() as conn:
                 conn.execute(text("""
                     ALTER TABLE robot_info
@@ -295,7 +301,7 @@ def _auto_migrate():
                       ADD COLUMN RobotIP VARCHAR(45) NULL AFTER RobotType,
                       ADD COLUMN RobotPort INT NULL DEFAULT 30000 AFTER RobotIP
                 """))
-            print("✅ robot_info 컬럼 마이그레이션 완료 (RobotType, RobotIP, RobotPort)")
+            print("[MIGRATION] robot_info 컬럼 마이그레이션 완료 (RobotType, RobotIP, RobotPort)")
 
         # ── 데이터 복원: 컬럼 추가로 밀린 데이터 수정 (1회성) ──
         robot_cols = {col["name"] for col in inspector.get_columns("robot_info")}
@@ -310,18 +316,18 @@ def _auto_migrate():
                     "AND CAST(LimitBattery AS CHAR) LIKE '20%'"
                 )).fetchall()
                 if rows:
-                    print(f"🔄 robot_info 밀린 데이터 {len(rows)}건 복원 중...")
+                    print(f"[SYNC] robot_info 밀린 데이터 {len(rows)}건 복원 중...")
                     for row in rows:
                         conn.execute(_t(
                             "UPDATE robot_info SET Adddate = :date_val, LimitBattery = 22, BusinessId = 1 "
                             "WHERE id = :rid"
                         ), {"date_val": str(row[2]), "rid": row[0]})
-                    print("✅ robot_info 데이터 복원 완료")
+                    print("[MIGRATION] robot_info 데이터 복원 완료")
 
         # Adddate(VARCHAR) → CreatedAt/UpdatedAt/DeletedAt(DATETIME) 마이그레이션
         robot_cols = {col["name"] for col in inspector.get_columns("robot_info")}
         if "Adddate" in robot_cols and "CreatedAt" not in robot_cols:
-            print("🔄 robot_info Adddate → CreatedAt/UpdatedAt/DeletedAt 마이그레이션 중...")
+            print("[SYNC] robot_info Adddate → CreatedAt/UpdatedAt/DeletedAt 마이그레이션 중...")
             with engine.begin() as conn:
                 conn.execute(text("""
                     ALTER TABLE robot_info
@@ -339,13 +345,13 @@ def _auto_migrate():
                 """))
                 # Adddate 컬럼 삭제
                 conn.execute(text("ALTER TABLE robot_info DROP COLUMN Adddate"))
-            print("✅ robot_info Adddate → CreatedAt/UpdatedAt/DeletedAt 완료")
+            print("[MIGRATION] robot_info Adddate → CreatedAt/UpdatedAt/DeletedAt 완료")
 
     # business_info Adddate → CreatedAt/UpdatedAt/DeletedAt 마이그레이션
     if "business_info" in inspector.get_table_names():
         biz_cols = {col["name"] for col in inspector.get_columns("business_info")}
         if "Adddate" in biz_cols and "CreatedAt" not in biz_cols:
-            print("🔄 business_info Adddate → CreatedAt/UpdatedAt/DeletedAt 마이그레이션 중...")
+            print("[SYNC] business_info Adddate → CreatedAt/UpdatedAt/DeletedAt 마이그레이션 중...")
             with engine.begin() as conn:
                 conn.execute(text("""
                     ALTER TABLE business_info
@@ -361,37 +367,39 @@ def _auto_migrate():
                     END
                 """))
                 conn.execute(text("ALTER TABLE business_info DROP COLUMN Adddate"))
-            print("✅ business_info Adddate → CreatedAt/UpdatedAt/DeletedAt 완료")
+            print("[MIGRATION] business_info Adddate → CreatedAt/UpdatedAt/DeletedAt 완료")
 
-    # area_info Adddate → CreatedAt 마이그레이션
-    if "area_info" in inspector.get_table_names():
-        area_cols = {col["name"] for col in inspector.get_columns("area_info")}
-        if "Adddate" in area_cols and "CreatedAt" not in area_cols:
-            print("🔄 area_info Adddate → CreatedAt 마이그레이션 중...")
+    # recording_info 테이블에 ErrorReason 컬럼 추가
+    if "recording_info" in inspector.get_table_names():
+        rec_cols = {col["name"] for col in inspector.get_columns("recording_info")}
+        if "ErrorReason" not in rec_cols:
+            print("[SYNC] recording_info ErrorReason 컬럼 추가 중...")
             with engine.begin() as conn:
-                conn.execute(text("""
-                    ALTER TABLE area_info
-                      ADD COLUMN CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER FloorName
-                """))
-                conn.execute(text("""
-                    UPDATE area_info
-                    SET CreatedAt = CASE
-                        WHEN Adddate IS NOT NULL THEN Adddate
-                        ELSE CURRENT_TIMESTAMP
-                    END
-                """))
-                conn.execute(text("ALTER TABLE area_info DROP COLUMN Adddate"))
-            print("✅ area_info Adddate → CreatedAt 완료")
+                conn.execute(text(
+                    "ALTER TABLE recording_info ADD COLUMN ErrorReason VARCHAR(200) NULL AFTER Status"
+                ))
+            print("[MIGRATION] recording_info ErrorReason 컬럼 추가 완료")
+
+    # notice_info: AttachmentSize 컬럼 추가
+    if "notice_info" in inspector.get_table_names():
+        ni_cols = {col["name"] for col in inspector.get_columns("notice_info")}
+        if "AttachmentSize" not in ni_cols:
+            print("[SYNC] notice_info AttachmentSize 컬럼 추가 중...")
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE notice_info ADD COLUMN AttachmentSize INT NULL AFTER AttachmentUrl"
+                ))
+            print("[MIGRATION] notice_info AttachmentSize 컬럼 추가 완료")
 
     # user_permission 테이블이 기존 VARCHAR MenuId로 존재하면 재생성
     if "user_permission" in inspector.get_table_names():
         up_cols = {col["name"]: col for col in inspector.get_columns("user_permission")}
         menu_id_col = up_cols.get("MenuId")
         if menu_id_col and str(menu_id_col["type"]).startswith("VARCHAR"):
-            print("🔄 user_permission 테이블 VARCHAR→INT FK 마이그레이션 중...")
+            print("[SYNC] user_permission 테이블 VARCHAR→INT FK 마이그레이션 중...")
             with engine.begin() as conn:
                 conn.execute(text("DROP TABLE user_permission"))
-            print("✅ 기존 user_permission 삭제 (create_all에서 재생성)")
+            print("[MIGRATION] 기존 user_permission 삭제 (create_all에서 재생성)")
 
 
 @app.on_event("startup")
@@ -417,23 +425,23 @@ def startup_event():
         ("schedule-list",    "작업 목록",   "schedule-mgmt",   1),
         ("robot-mgmt",       "운영관리",    None,              3),
         ("robot-list",       "로봇 목록",   "robot-mgmt",      1),
-        ("business-list",    "사업자 목록", "robot-mgmt",      2),
+        ("business-list",    "사업장 목록", "robot-mgmt",      2),
         ("map-management",   "맵 관리",     None,              4),
-        ("place-list",       "장소 목록",   "map-management",  1),
-        ("path-list",        "경로 목록",   "map-management",  2),
+        ("map-edit",         "맵 편집",     "map-management",  1),
+        ("place-list",       "장소 목록",   "map-management",  2),
+        ("path-list",        "경로 목록",   "map-management",  3),
         ("data-mgmt",        "데이터관리",  None,              5),
-        ("video",            "영상",        "data-mgmt",       1),
-        ("statistics",       "통계",        "data-mgmt",       2),
-        ("log",              "로그",        "data-mgmt",       3),
+        ("video",            "영상 관리",   "data-mgmt",       1),
+        ("statistics",       "통계 관리",   "data-mgmt",       2),
+        ("log",              "로그 관리",   "data-mgmt",       3),
         ("alerts",           "알림",        None,              6),
         ("alert-total",      "전체",        "alerts",          1),
-        ("alert-schedule",   "작업일정",    "alerts",          2),
-        ("alert-emergency",  "긴급사항",    "alerts",          3),
-        ("alert-robot",      "로봇상태",    "alerts",          4),
-        ("alert-notice",     "공지사항",    "alerts",          5),
+        ("alert-schedule",   "스케줄",      "alerts",          2),
+        ("alert-robot",      "로봇",        "alerts",          3),
+        ("alert-notice",     "공지사항",    "alerts",          4),
         ("settings",         "설정",        None,              7),
         ("menu-permissions", "메뉴 권한",   "settings",        1),
-        ("password-change",  "비밀번호 변경","settings",        2),
+        ("password-change",  "비밀번호 변경","settings",       2),
         ("db-backup",        "DB 백업",     "settings",        3),
     ]
 
@@ -455,7 +463,7 @@ def startup_event():
                 db.flush()
                 key_to_id[menu_key] = m.id
         db.commit()
-        print(f"✅ 메뉴 마스터 {len(MENU_SEED)}개 시드 완료")
+        print(f"[OK] 메뉴 마스터 {len(MENU_SEED)}개 시드 완료")
     else:
         # 새 메뉴 추가분만 처리
         new_menus = [s for s in MENU_SEED if s[0] not in existing_keys]
@@ -468,7 +476,7 @@ def startup_event():
                 db.flush()
                 key_to_id[menu_key] = m.id
             db.commit()
-            print(f"✅ 메뉴 마스터 {len(new_menus)}개 추가")
+            print(f"[OK] 메뉴 마스터 {len(new_menus)}개 추가")
 
         # 기존 메뉴 ParentId·SortOrder 동기화
         key_to_id = {r.MenuKey: r.id for r in db.query(MenuInfo).all()}
@@ -495,30 +503,42 @@ def startup_event():
         removed = db.query(MenuInfo).filter(MenuInfo.MenuKey.notin_(seed_keys)).delete(synchronize_session="fetch")
         if updated or removed:
             db.commit()
-            print(f"✅ 메뉴 마스터 동기화: {updated}개 수정, {removed}개 삭제")
+            print(f"[OK] 메뉴 마스터 동기화: {updated}개 수정, {removed}개 삭제")
 
     try:
-        # ── 관리자 계정 시드 ──
-        admin_user = db.query(UserInfo).filter(UserInfo.UserName == "관리자").first()
-        if admin_user and not admin_user.LoginId:
-            admin_user.LoginId = "admin"
-            admin_user.Password = hash_password("admin1234!")
-            admin_user.Permission = 1
+        # ── 최고관리자 계정 시드 (permission=1) ──
+        admin_user = (
+            db.query(UserInfo).filter(UserInfo.LoginId == "superadmin").first()
+            or db.query(UserInfo).filter(UserInfo.LoginId == "admin").first()
+            or db.query(UserInfo).filter(UserInfo.UserName == "관리자").first()
+        )
+        if admin_user:
+            changed = False
+            if admin_user.LoginId != "superadmin":
+                admin_user.LoginId = "superadmin"
+                admin_user.Password = hash_password("superadmin1234!")
+                changed = True
+            if admin_user.Permission != 1:
+                admin_user.Permission = 1
+                changed = True
+            if admin_user.UserName != "최고관리자":
+                admin_user.UserName = "최고관리자"
+                changed = True
             admin_user.IsActive = 1
-            db.commit()
-            print("✅ 기존 '관리자' 계정에 admin/admin1234! 매칭 완료")
-        elif not admin_user:
-            new_admin = UserInfo(
+            if changed:
+                db.commit()
+                print("[SEED] 최고관리자 계정 동기화 완료")
+        else:
+            admin_user = UserInfo(
                 Permission=1,
-                UserName="관리자",
-                LoginId="admin",
-                Password=hash_password("admin1234!"),
+                UserName="최고관리자",
+                LoginId="superadmin",
+                Password=hash_password("superadmin1234!"),
                 IsActive=1,
             )
-            db.add(new_admin)
+            db.add(admin_user)
             db.commit()
-            admin_user = new_admin
-            print("✅ 기본 관리자 계정 생성 완료 (admin/admin1234!)")
+            print("[SEED] 최고관리자 계정 생성 완료")
 
         # ── 관리자 전체 메뉴 권한 시드 (없는 권한만 추가, 중복 방지) ──
         if admin_user:
@@ -545,13 +565,71 @@ def startup_event():
                         added += 1
                 if added:
                     db.commit()
-                    print(f"✅ 관리자 메뉴 권한 {added}개 추가")
+                    print(f"[OK] 관리자 메뉴 권한 {added}개 추가")
 
-        # ── 일반 사용자 계정 시드 ──
+        # ── 관리자 계정 시드 (permission=2) ──
+        manager_user = (
+            db.query(UserInfo).filter(UserInfo.LoginId == "admin").first()
+            or db.query(UserInfo).filter(UserInfo.LoginId == "manager").first()
+        )
+        if manager_user:
+            changed = False
+            if manager_user.LoginId != "admin":
+                manager_user.LoginId = "admin"
+                manager_user.Password = hash_password("admin1234!")
+                changed = True
+            if manager_user.Permission != 2:
+                manager_user.Permission = 2
+                changed = True
+            if manager_user.UserName != "관리자":
+                manager_user.UserName = "관리자"
+                changed = True
+            manager_user.IsActive = 1
+            if changed:
+                db.commit()
+                print("[SEED] 관리자 계정 동기화 완료")
+        else:
+            manager_user = UserInfo(
+                Permission=2,
+                UserName="관리자",
+                LoginId="admin",
+                Password=hash_password("admin1234!"),
+                IsActive=1,
+            )
+            db.add(manager_user)
+            db.commit()
+            print("[SEED] 관리자 계정 생성 완료")
+
+        # ── 관리자 메뉴 권한 시드 (DB 백업 제외) ──
+        if manager_user:
+            MANAGER_MENUS = [
+                "dashboard", "schedule-list",
+                "robot-list", "business-list",
+                "map-edit", "place-list", "path-list",
+                "video", "statistics", "log",
+                "alert-total", "alert-schedule", "alert-robot", "alert-notice",
+                "menu-permissions",
+            ]
+            existing_mgr_perms = {
+                r.MenuId for r in
+                db.query(UserPermission.MenuId).filter(UserPermission.UserId == manager_user.id).all()
+            }
+            key_to_id = {r.MenuKey: r.id for r in db.query(MenuInfo).all()}
+            added_mgr = 0
+            for menu_key in MANAGER_MENUS:
+                menu_id = key_to_id.get(menu_key)
+                if menu_id and menu_id not in existing_mgr_perms:
+                    db.add(UserPermission(UserId=manager_user.id, MenuId=menu_id))
+                    added_mgr += 1
+            if added_mgr:
+                db.commit()
+                print(f"[SEED] 관리자 메뉴 권한 {added_mgr}개 추가")
+
+        # ── 일반 사용자 계정 시드 (permission=3) ──
         normal_user = db.query(UserInfo).filter(UserInfo.LoginId == "user").first()
         if not normal_user:
             normal_user = UserInfo(
-                Permission=2,
+                Permission=3,
                 UserName="사용자",
                 LoginId="user",
                 Password=hash_password("user1234!"),
@@ -559,24 +637,25 @@ def startup_event():
             )
             db.add(normal_user)
             db.commit()
-            print("✅ 일반 사용자 계정 생성 완료 (user/user1234!)")
+            print("[SEED] 일반 사용자 계정 생성 완료")
+        elif normal_user.Permission != 3:
+            normal_user.Permission = 3
+            db.commit()
+            print("[SEED] 일반 사용자 권한 3으로 업데이트")
 
-        # ── 일반 사용자 기본 메뉴 권한 시드 (설정 제외) ──
+        # ── 일반 사용자 기본 메뉴 권한 시드 ──
         if normal_user:
             USER_DEFAULT_MENUS = [
-                "dashboard",
-                "schedule-list",
-                "robot-list", "business-list",
-                "map-management", "place-list", "path-list",
-                "video", "statistics", "log",
-                "alert-total", "alert-schedule", "alert-emergency", "alert-robot", "alert-notice",
-                "password-change",
+                "dashboard", "schedule-list",
+                "video", "statistics",
+                "alert-total", "alert-schedule", "alert-robot", "alert-notice",
             ]
             existing_user_perms = {
                 r.MenuId for r in
                 db.query(UserPermission.MenuId).filter(UserPermission.UserId == normal_user.id).all()
             }
-            key_to_id = {r.MenuKey: r.id for r in db.query(MenuInfo).all()}
+            if not key_to_id:
+                key_to_id = {r.MenuKey: r.id for r in db.query(MenuInfo).all()}
             added_user = 0
             for menu_key in USER_DEFAULT_MENUS:
                 menu_id = key_to_id.get(menu_key)
@@ -585,21 +664,21 @@ def startup_event():
                     added_user += 1
             if added_user:
                 db.commit()
-                print(f"✅ 일반 사용자 메뉴 권한 {added_user}개 추가")
+                print(f"[OK] 일반 사용자 메뉴 권한 {added_user}개 추가")
 
         # 사용자 캐싱 (기존 호환)
         user = db.query(UserInfo).order_by(UserInfo.id.asc()).first()
         if user:
             cached_user["id"] = user.id
             cached_user["UserName"] = user.UserName
-            print(f"✅ 현재 사용자: {cached_user['UserName']} (id={cached_user['id']})")
+            print(f"[OK] 현재 사용자: {cached_user['UserName']} (id={cached_user['id']})")
 
         # robot_info에서 첫 번째 로봇 캐싱
         robot = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
         if robot:
             cached_robot["id"] = robot.id
             cached_robot["RobotName"] = robot.RobotName
-            print(f"✅ 현재 로봇: {cached_robot['RobotName']} (id={cached_robot['id']})")
+            print(f"[OK] 현재 로봇: {cached_robot['RobotName']} (id={cached_robot['id']})")
 
         # ── 기존 로봇 중 모듈 미등록분에 내장 카메라 시드 ──
         DEFAULT_BUILT_IN_CAMERAS = {
@@ -627,7 +706,7 @@ def startup_event():
                 seeded_count += 1
         if seeded_count:
             db.commit()
-            print(f"✅ 기존 로봇 {seeded_count}대에 내장 카메라 모듈 시드 완료")
+            print(f"[OK] 기존 로봇 {seeded_count}대에 내장 카메라 모듈 시드 완료")
 
         # 전체 로봇 런타임 상태 초기화
         all_robots = db.query(RobotInfo).order_by(RobotInfo.id.asc()).all()
@@ -637,7 +716,21 @@ def startup_event():
 
     time.sleep(2)
     #send_init_pose()
+    # FFmpeg 자동 확인/설치 + 녹화 고아 세션 정리 + 보관 정책 스레드 시작
+    from app.recording.ffmpeg_check import ensure_ffmpeg
+    from app.recording.manager import cleanup_orphaned_recordings
+    from app.recording.retention import start_retention_thread
+    ensure_ffmpeg()
+    cleanup_orphaned_recordings()
+    start_retention_thread()
+
     log_event("system", "system_startup", "서버 시작")
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    from app.recording.manager import stop_all
+    stop_all()
 
 
 # ======================================================
@@ -659,7 +752,7 @@ RECEIVER_IP = "10.21.31.106"
 RECEIVER_PORT = 40000
 
 def position_thread():
-    print(f"📡 위치 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
+    print(f"[LISTEN] 위치 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
     while True:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -680,7 +773,8 @@ def position_thread():
             pass
         except Exception as e:
             print("[ERR POS]", e)
-            log_event("error", "position_recv_error", f"로봇 위치 수신 오류: {e}",
+            log_event("error", "position_recv_error", "로봇 위치 수신 실패",
+                      error_json=str(e),
                       robot_id=get_robot_id(), robot_name=get_robot_name())
         finally:
             sock.close()
@@ -705,28 +799,56 @@ def send_heartbeat(sock):
 
 _was_online: dict[int, bool] = {}  # robot_id → 이전 온라인 상태
 
+def _try_status_once() -> dict | None:
+    """STATUS 요청 1회 시도. 성공 시 응답 dict, 실패 시 None."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(2.0)
+    try:
+        msg = json.dumps({"action": "STATUS"}).encode("utf-8")
+        sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
+        data, addr = sock.recvfrom(8192)
+        return json.loads(data.decode("utf-8"))
+    except socket.timeout:
+        return None
+    except Exception as e:
+        print("[ERR STATUS]", e)
+        return None
+    finally:
+        sock.close()
+
+
+RETRY_COUNT = 3          # 실패 시 즉시 재시도 횟수
+RETRY_INTERVAL = 0.5     # 재시도 간격(초)
+ERROR_THRESHOLD = 3      # Error 상태 전환 기준 (연속 실패 횟수)
+OFFLINE_THRESHOLD = 10   # Offline 확정 기준 (연속 실패 횟수)
+
+
 def status_thread():
     """receiver.py 경유로 배터리 상태 폴링 + 온라인/오프라인 전환 로그"""
-    print(f"📡 상태 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
+    print(f"[LISTEN] 상태 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
     fail_count = 0
 
+    _hb_count = 0
     while True:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(2.0)
+        # 1차 시도 + 실패 시 즉시 재시도
+        resp = _try_status_once()
+        if resp is None:
+            for _ in range(RETRY_COUNT):
+                time.sleep(RETRY_INTERVAL)
+                resp = _try_status_once()
+                if resp is not None:
+                    break
+
         success = False
-        try:
-            msg = json.dumps({"action": "STATUS"}).encode("utf-8")
-            sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
-
-            data, addr = sock.recvfrom(8192)
-            resp = json.loads(data.decode("utf-8"))
-
+        if resp is not None:
             battery = resp.get("BatteryStatus", {})
+            charge_state = resp.get("ChargeStatus")
+            device_temp = resp.get("DeviceTemperature", {})
             if battery:
                 rid = runtime.get_robot_id_by_ip(ROBOT_IP)
                 if rid is not None:
-                    runtime.update_status(rid, battery, time.time())
+                    runtime.update_status(rid, battery, time.time(), charge_state=charge_state, device_temp=device_temp)
                     success = True
                     fail_count = 0
 
@@ -736,23 +858,24 @@ def status_thread():
                         log_event("robot", "robot_online", "로봇 온라인",
                                   robot_id=get_robot_id(), robot_name=get_robot_name())
 
-        except socket.timeout:
+        if not success:
             fail_count += 1
-        except Exception as e:
-            fail_count += 1
-            print("[ERR STATUS]", e)
-            log_event("error", "robot_connection_error", f"로봇 상태 수신 오류: {e}",
-                      robot_id=get_robot_id(), robot_name=get_robot_name())
-        finally:
-            sock.close()
 
-        # 연속 3회 실패 시 온라인 → 오프라인 전환 로그
-        if not success and fail_count >= 3:
-            rid = runtime.get_robot_id_by_ip(ROBOT_IP)
-            if rid is not None and _was_online.get(rid, False):
-                _was_online[rid] = False
-                log_event("robot", "robot_offline", "로봇 오프라인",
-                          robot_id=get_robot_id(), robot_name=get_robot_name())
+            # Error 기준 도달 시 로그 (최초 1회)
+            if fail_count == ERROR_THRESHOLD:
+                rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+                if rid is not None:
+                    log_event("error", "robot_connection_error", "로봇 통신 연결 불안정",
+                              error_json=f"연속 {fail_count}회 실패",
+                              robot_id=get_robot_id(), robot_name=get_robot_name())
+
+            # Offline 확정
+            if fail_count >= OFFLINE_THRESHOLD:
+                rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+                if rid is not None and _was_online.get(rid, False):
+                    _was_online[rid] = False
+                    log_event("robot", "robot_offline", "로봇 오프라인",
+                              robot_id=get_robot_id(), robot_name=get_robot_name())
 
         time.sleep(REQ_INTERVAL_HB)
 
@@ -780,9 +903,6 @@ ARRIVAL_CONFIRM_COUNT = 3  # status==0 연속 N회 확인 후 도착 판정 (오
 NEAR_SKIP_DISTANCE = 0.5   # 목표 웨이포인트까지 이 거리(m) 이내면 이미 도착으로 간주
 
 def nav_thread():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(1.5)
-
     last_status = None
     ever_moved = False      # 현재 WP에서 이동(!=0)을 한 번이라도 감지했는지
     zero_count = 0          # status==0 연속 카운트
@@ -790,7 +910,7 @@ def nav_thread():
     last_stand_sent = 0     # 마지막 STAND 전송 시간
     retry_count = 0
 
-    print(f"📡 네비 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
+    print(f"[LISTEN] 네비 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
     while True:
         arrived = False
@@ -808,7 +928,10 @@ def nav_thread():
             print(f"[NAV] 상태 리셋 (last_status=None, full={is_full})")
 
         # ── 상태 기반 도착 감지 ──
+        sock = None
         try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(1.5)
             msg = json.dumps({"action": "NAV_STATUS"}).encode("utf-8")
             sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
 
@@ -833,7 +956,7 @@ def nav_thread():
 
             if status is not None:
                 if last_status != status:
-                    print(f"🔄 NAV 상태 변화: {last_status} → {status}")
+                    print(f"[SYNC] NAV 상태 변화: {last_status} → {status}")
 
                 # 이동 감지 (한 번이라도 non-zero면 기록)
                 if status != 0:
@@ -851,8 +974,9 @@ def nav_thread():
                     arrived = True
                     print(f"🎉 NAV 도착! (상태 기반: 연속 {zero_count}회 status==0 확인)")
                     from app.navigation.send_move import current_wp_index, waypoints_list
+                    wp_name = waypoints_list[current_wp_index - 1].get("name", f"WP{current_wp_index}") if current_wp_index > 0 else f"WP{current_wp_index}"
                     log_event("schedule", "nav_arrival",
-                              f"웨이포인트 {current_wp_index}/{len(waypoints_list)} 도착",
+                              f"{wp_name} 도착 ({current_wp_index}/{len(waypoints_list)})",
                               robot_id=get_robot_id(), robot_name=get_robot_name())
 
                 # 이동 미감지: status=0이 지속될 때 처리
@@ -871,56 +995,64 @@ def nav_thread():
                         dist = (dx**2 + dy**2) ** 0.5
                         if dist < NEAR_SKIP_DISTANCE:
                             arrived = True
-                            print(f"✅ NAV 이미 목표 근처 (거리={dist:.2f}m < {NEAR_SKIP_DISTANCE}m) — 다음 WP로 진행")
+                            print(f"[OK] NAV 이미 목표 근처 (거리={dist:.2f}m < {NEAR_SKIP_DISTANCE}m) — 다음 WP로 진행")
 
                     # 목표와 멀면 재전송 (5초 대기 후)
                     if not arrived and elapsed >= 5.0:
                         if retry_count < NAV_MAX_RETRIES:
                             retry_count += 1
-                            print(f"⚠️ NAV 이동 미감지 — 재전송 ({retry_count}/{NAV_MAX_RETRIES})")
+                            print(f"[WARN] NAV 이동 미감지 — 재전송 ({retry_count}/{NAV_MAX_RETRIES})")
                             try:
                                 navigation_resend_current()
                             except Exception as e:
                                 print(f"[ERR] 재전송 실패: {e}")
                         else:
                             arrived = True
-                            print(f"⚠️ NAV 이동 미감지 — 재전송 한도 초과, 다음 WP로 진행")
+                            print(f"[WARN] NAV 이동 미감지 — 재전송 한도 초과, 다음 WP로 진행")
+
+                # 충전 중 여부 확인
+                _rid_for_charge = runtime.get_robot_id_by_ip(ROBOT_IP)
+                _is_charging = runtime.is_charging(_rid_for_charge) if _rid_for_charge else False
 
                 # 일시 정지(255) 추적 + 앉기 방지
                 if status == 255:
                     if pause_since == 0:
                         pause_since = time.time()
-                    # 5초마다 STAND 전송하여 앉기 방지
-                    if is_nav_active() and (time.time() - last_stand_sent) >= 5.0:
+                    # 5초마다 STAND 전송하여 앉기 방지 (충전 중이면 스킵)
+                    if is_nav_active() and not _is_charging and (time.time() - last_stand_sent) >= 5.0:
                         last_stand_sent = time.time()
                         try:
                             from app.robot_sender import send_to_robot
                             send_to_robot("STAND")
                         except Exception as e:
                             print(f"[ERR] STAND 전송 실패: {e}")
+                    elif _is_charging:
+                        print(f"[NAV] 충전 중 — STAND 전송 스킵")
                 else:
                     pause_since = 0
 
-                # 일시 정지(255): 연속 5초 이상 지속 시 현재 WP 재전송
+                # 일시 정지(255): 연속 10초 이상 지속 시 현재 WP 재전송 (충전 중이면 스킵)
                 if (not arrived and status == 255 and pause_since > 0
                         and is_nav_active() and cooldown_ok
+                        and not _is_charging
                         and (time.time() - pause_since) >= 10.0
                         and retry_count < NAV_MAX_RETRIES):
                     retry_count += 1
                     pause_since = time.time()  # 재전송 후 타이머 리셋
-                    print(f"⚠️ NAV 일시정지(255) 연속 10초 지속 — 재전송 ({retry_count}/{NAV_MAX_RETRIES})")
+                    print(f"[WARN] NAV 일시정지(255) 연속 10초 지속 — 재전송 ({retry_count}/{NAV_MAX_RETRIES})")
                     try:
                         navigation_resend_current()
                     except Exception as e:
                         print(f"[ERR] 재전송 실패: {e}")
 
-                # 재전송: 전송 후 N초 지났는데 이동을 한 번도 안 했으면 명령 재전송
+                # 재전송: 전송 후 N초 지났는데 이동을 한 번도 안 했으면 명령 재전송 (충전 중이면 스킵)
                 if (is_nav_active() and not ever_moved and not arrived
                         and sent_time > 0
+                        and not _is_charging
                         and (time.time() - sent_time) > NAV_RETRY_TIMEOUT
                         and retry_count < NAV_MAX_RETRIES):
                     retry_count += 1
-                    print(f"⚠️ NAV 재전송 시도 ({retry_count}/{NAV_MAX_RETRIES}) — {NAV_RETRY_TIMEOUT}초 내 이동 미감지")
+                    print(f"[WARN] NAV 재전송 시도 ({retry_count}/{NAV_MAX_RETRIES}) — {NAV_RETRY_TIMEOUT}초 내 이동 미감지")
                     try:
                         navigation_resend_current()
                     except Exception as e:
@@ -936,8 +1068,18 @@ def nav_thread():
                 print("[NAV DEBUG] NAV_STATUS 응답 타임아웃")
         except Exception as e:
             print("[ERR NAV]", e)
-            log_event("error", "nav_error", f"네비게이션 오류: {e}",
+            from app.navigation.send_move import current_wp_index as err_wp_idx, waypoints_list as err_wp_list
+            err_route = " → ".join(wp.get("name", f"WP{i+1}") for i, wp in enumerate(err_wp_list)) if err_wp_list else ""
+            err_detail = f"중단 지점: WP{err_wp_idx}/{len(err_wp_list)}"
+            if err_route:
+                err_detail += f"\n경로: {err_route}"
+            log_event("error", "nav_error", "네비게이션 오류 발생",
+                      detail=err_detail, error_json=str(e),
                       robot_id=get_robot_id(), robot_name=get_robot_name())
+        finally:
+            if sock:
+                try: sock.close()
+                except: pass
 
         if arrived and is_nav_active():
             rid = runtime.get_robot_id_by_ip(ROBOT_IP)
@@ -950,7 +1092,12 @@ def nav_thread():
                     on_navigation_complete()
             except Exception as e:
                 print(f"[ERR] navigation_send_next 실패: {e}")
-                log_event("error", "nav_error", f"네비게이션 다음 웨이포인트 전송 실패: {e}",
+                err_route2 = " → ".join(wp.get("name", f"WP{j+1}") for j, wp in enumerate(waypoints_list)) if waypoints_list else ""
+                err_detail2 = f"중단 지점: WP{current_wp_index}/{len(waypoints_list)}"
+                if err_route2:
+                    err_detail2 += f"\n경로: {err_route2}"
+                log_event("error", "nav_error", "다음 웨이포인트 이동 실패",
+                          detail=err_detail2, error_json=str(e),
                           robot_id=get_robot_id(), robot_name=get_robot_name())
                 if get_active_schedule_id() is not None:
                     on_navigation_error(str(e))
@@ -981,7 +1128,7 @@ def get_pos():
 def init_pose():
     rid = runtime.get_robot_id_by_ip(ROBOT_IP)
     before = runtime.get_position(rid) if rid else {}
-    # send_init_pose()
+    send_init_pose()
     after = runtime.get_position(rid) if rid else {}
     return {
         "status": "ok",
@@ -1005,6 +1152,355 @@ def get_nav():
     }
 
 
+@app.post("/robot/charge")
+def start_charge():
+    """충전소로 이동 (자동 충전) 명령 전송."""
+    asdu = {
+        "PatrolDevice": {
+            "Type": 2,
+            "Command": 24,
+            "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "Items": {
+                "Charge": 1
+            }
+        }
+    }
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        log_event("robot", "robot_charging_start", "충전소 이동 명령 전송",
+                  robot_id=get_robot_id(), robot_name=get_robot_name())
+        return {"status": "ok", "msg": "충전소 이동 명령 전송 완료"}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
+    finally:
+        sock.close()
+
+
+@app.post("/robot/return-to-charge")
+def return_to_charge():
+    """작업 복귀: 진행 중인 작업 정지 → 도킹 포인트로 이동 → 도착 후 충전 명령 자동 실행."""
+    from app.Database.database import SessionLocal
+    from app.Database.models import LocationInfo
+    from app.navigation.send_move import (
+        navigation_send_next, _signal_nav_reset,
+    )
+    import app.navigation.send_move as nav
+    from app.robot_sender import send_to_robot
+
+    db = SessionLocal()
+    try:
+        # 충전소(category=charge) 찾기 → 도킹 포인트는 "{충전소이름}-1"
+        charge_station = (
+            db.query(LocationInfo)
+            .filter(LocationInfo.Category == "charge")
+            .first()
+        )
+        if not charge_station:
+            return {"status": "error", "msg": "등록된 충전소가 없습니다."}
+
+        dock_name = f"{charge_station.LacationName}-1"
+        dock_point = (
+            db.query(LocationInfo)
+            .filter(LocationInfo.LacationName == dock_name)
+            .first()
+        )
+        if not dock_point:
+            return {"status": "error", "msg": f"도킹 포인트 '{dock_name}'을(를) 찾을 수 없습니다."}
+
+        # 1) 진행 중인 스케줄 취소 (대기로 되돌림)
+        from app.scheduler.engine import cancel_active_schedule
+        if get_active_schedule_id() is not None:
+            cancel_active_schedule("충전소 이동")
+
+        # 2) 진행 중인 네비게이션 정지
+        if nav.is_navigating:
+            nav.is_navigating = False
+            nav.current_wp_index = 0
+            nav.nav_loop_remaining = 0
+            nav.charge_on_arrival = False
+            _signal_nav_reset(full=True)
+            print("🛑 작업 복귀: 기존 네비게이션 정지")
+
+        # 2) 로봇 정지 명령
+        try:
+            send_to_robot("STOP")
+        except Exception as e:
+            print(f"[WARN] STOP 전송 실패: {e}")
+
+        time.sleep(1)  # 로봇 정지 대기
+
+        # 3) 도킹 포인트로 네비게이션 + 도착 후 자동 충전 플래그
+        nav.waypoints_list = [{
+            "x": dock_point.LocationX,
+            "y": dock_point.LocationY,
+            "yaw": dock_point.Yaw or 0.0,
+        }]
+        nav.current_wp_index = 0
+        nav.is_navigating = True
+        nav.nav_loop_remaining = 0
+        nav.charge_on_arrival = True
+        _signal_nav_reset(full=True)
+
+        print(f"🔋 작업 복귀: {dock_name} → x={dock_point.LocationX}, y={dock_point.LocationY}")
+        log_event("schedule", "return_to_charge",
+                  f"작업 복귀 시작: {dock_name}(으)로 이동",
+                  robot_id=get_robot_id(), robot_name=get_robot_name())
+
+        navigation_send_next()
+        return {
+            "status": "ok",
+            "msg": f"{dock_name}(으)로 이동 시작 (도착 후 자동 충전)",
+            "dock_point": dock_name,
+            "charge_station": charge_station.LacationName,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/robot/return-to-work/info")
+def get_return_to_work_info():
+    """작업 복귀 가능 여부 + 대상 경로 정보 반환"""
+    from app.Database.database import SessionLocal
+    from app.Database.models import LocationInfo, WayInfo, ScheduleInfo
+    import app.navigation.send_move as nav
+
+    from app.scheduler.engine import get_active_schedule_id
+
+    source = None       # "active" | "recent"
+    way_name = None
+    origin_name = None
+    waypoint_names = []
+    schedule_name = None
+
+    # 1) 현재 진행 중인 네비게이션 또는 활성 스케줄
+    active_schedule_id = get_active_schedule_id()
+    is_active = nav.is_navigating or active_schedule_id is not None
+
+    if is_active and nav.waypoints_list:
+        source = "active"
+        waypoint_names = [wp.get("name", f"({wp['x']:.1f},{wp['y']:.1f})") for wp in nav.waypoints_list]
+        origin_name = waypoint_names[0]
+        if active_schedule_id:
+            db = SessionLocal()
+            try:
+                sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == active_schedule_id).first()
+                if sched:
+                    way_name = sched.WayName
+                    schedule_name = sched.WorkName
+            finally:
+                db.close()
+
+    # 활성 스케줄은 있지만 waypoints_list가 비어있는 경우 — DB에서 경로 조회
+    if is_active and not waypoint_names and active_schedule_id:
+        db = SessionLocal()
+        try:
+            sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == active_schedule_id).first()
+            if sched and sched.WayName:
+                path = db.query(WayInfo).filter(WayInfo.WayName == sched.WayName).first()
+                if path:
+                    place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+                    valid_names = []
+                    for name in place_names:
+                        if db.query(LocationInfo).filter(LocationInfo.LacationName == name).first():
+                            valid_names.append(name)
+                    if valid_names:
+                        source = "active"
+                        way_name = sched.WayName
+                        schedule_name = sched.WorkName
+                        waypoint_names = valid_names
+                        origin_name = valid_names[0]
+        finally:
+            db.close()
+
+    # 2) DB에서 "진행중" 상태 스케줄 확인
+    if not source:
+        db = SessionLocal()
+        try:
+            running = (
+                db.query(ScheduleInfo)
+                .filter(ScheduleInfo.TaskStatus == "진행중")
+                .order_by(ScheduleInfo.LastRunDate.desc())
+                .first()
+            )
+            if running and running.WayName:
+                path = db.query(WayInfo).filter(WayInfo.WayName == running.WayName).first()
+                if path:
+                    place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+                    valid_names = []
+                    for name in place_names:
+                        if db.query(LocationInfo).filter(LocationInfo.LacationName == name).first():
+                            valid_names.append(name)
+                    if valid_names:
+                        source = "active"
+                        way_name = running.WayName
+                        schedule_name = running.WorkName
+                        waypoint_names = valid_names
+                        origin_name = valid_names[0]
+        finally:
+            db.close()
+
+    # 3) 최근 실행된 스케줄 경로
+    if not source:
+        db = SessionLocal()
+        try:
+            recent = (
+                db.query(ScheduleInfo)
+                .filter(ScheduleInfo.LastRunDate.isnot(None))
+                .order_by(ScheduleInfo.LastRunDate.desc())
+                .first()
+            )
+            if recent and recent.WayName:
+                path = db.query(WayInfo).filter(WayInfo.WayName == recent.WayName).first()
+                if path:
+                    place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+                    valid = True
+                    for name in place_names:
+                        if not db.query(LocationInfo).filter(LocationInfo.LacationName == name).first():
+                            valid = False
+                            break
+                    if valid and place_names:
+                        source = "recent"
+                        way_name = recent.WayName
+                        schedule_name = recent.WorkName
+                        waypoint_names = place_names
+                        origin_name = place_names[0]
+        finally:
+            db.close()
+
+    if not source:
+        return {"available": False, "msg": "복귀할 경로가 없습니다."}
+
+    return {
+        "available": True,
+        "source": source,
+        "source_label": "진행 중인 작업" if source == "active" else "최근 작업",
+        "retrace_available": source == "active" and nav.is_navigating and nav.current_wp_index > 0,
+        "schedule_name": schedule_name,
+        "way_name": way_name,
+        "origin": origin_name,
+        "waypoints": waypoint_names,
+    }
+
+
+@app.post("/robot/return-to-work")
+def return_to_work(mode: str = "direct"):
+    """
+    작업 복귀: 가장 최근 경로의 출발 지점으로 복귀.
+    - mode="direct": 자율 주행 (출발 지점으로 직접 이동)
+    - mode="retrace": 경로 역주행 (현재 위치에서 경로를 거꾸로 따라감)
+    """
+    from app.Database.database import SessionLocal
+    from app.Database.models import LocationInfo, WayInfo, ScheduleInfo
+    from app.navigation.send_move import (
+        navigation_send_next, _signal_nav_reset,
+    )
+    import app.navigation.send_move as nav
+    from app.robot_sender import send_to_robot
+    from app.scheduler.engine import cancel_active_schedule, get_active_schedule_id
+
+    # 현재 진행 중인 경로가 있으면 그것을 사용, 없으면 가장 최근 실행된 스케줄의 경로
+    waypoints_snapshot = list(nav.waypoints_list) if nav.waypoints_list else []
+    wp_index_snapshot = nav.current_wp_index  # 정지 전에 인덱스 저장
+    way_name = None
+
+    if not waypoints_snapshot:
+        # 가장 최근 실행된 스케줄에서 경로 조회
+        db = SessionLocal()
+        try:
+            recent = (
+                db.query(ScheduleInfo)
+                .filter(ScheduleInfo.LastRunDate.isnot(None))
+                .order_by(ScheduleInfo.LastRunDate.desc())
+                .first()
+            )
+            if recent and recent.WayName:
+                way_name = recent.WayName
+                path = db.query(WayInfo).filter(WayInfo.WayName == way_name).first()
+                if path:
+                    place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+                    for name in place_names:
+                        place = db.query(LocationInfo).filter(LocationInfo.LacationName == name).first()
+                        if place:
+                            waypoints_snapshot.append({
+                                "x": place.LocationX,
+                                "y": place.LocationY,
+                                "yaw": place.Yaw or 0.0,
+                                "name": place.LacationName,
+                            })
+        finally:
+            db.close()
+
+    if not waypoints_snapshot:
+        return {"status": "error", "msg": "복귀할 경로가 없습니다. 최근 작업 이력이 없습니다."}
+
+    # 출발 지점 = 경로의 첫 번째 웨이포인트
+    origin = waypoints_snapshot[0]
+
+    # 1) 진행 중인 스케줄 취소
+    if get_active_schedule_id() is not None:
+        cancel_active_schedule("작업 복귀")
+
+    # 2) 진행 중인 네비게이션 정지
+    if nav.is_navigating:
+        nav.is_navigating = False
+        nav.current_wp_index = 0
+        nav.nav_loop_remaining = 0
+        nav.charge_on_arrival = False
+        _signal_nav_reset(full=True)
+
+    # 3) 로봇 정지
+    try:
+        send_to_robot("STOP")
+    except Exception as e:
+        print(f"[WARN] STOP 전송 실패: {e}")
+
+    time.sleep(1)
+
+    if mode == "retrace":
+        # 경로 역주행: 현재 웨이포인트 위치부터 역순으로 출발 지점까지
+        # 현재 진행 중이었던 인덱스 기준으로 지나온 경로를 역순 생성
+        # wp_index_snapshot은 전송 후 +1된 값이므로 -1 해서 현재 향하던 포인트 제외
+        wp_index = min(wp_index_snapshot, len(waypoints_snapshot))
+        passed = max(wp_index - 1, 0)  # 실제 도착 완료한 포인트까지
+        retrace_wps = list(reversed(waypoints_snapshot[:max(passed, 1)]))
+
+        # yaw를 역방향으로 재계산
+        for i in range(len(retrace_wps)):
+            if i < len(retrace_wps) - 1:
+                nx = retrace_wps[i + 1]["x"]
+                ny = retrace_wps[i + 1]["y"]
+                retrace_wps[i]["yaw"] = round(math.atan2(ny - retrace_wps[i]["y"], nx - retrace_wps[i]["x"]), 3)
+
+        nav.waypoints_list = retrace_wps
+        route_desc = " → ".join(wp.get("name", f"({wp['x']:.1f},{wp['y']:.1f})") for wp in retrace_wps)
+        print(f"🔙 작업 복귀 (역주행): {len(retrace_wps)}개 포인트 — {route_desc}")
+    else:
+        # 자율 주행: 출발 지점으로 직접 이동
+        nav.waypoints_list = [origin]
+        print(f"🔙 작업 복귀 (자율주행): {origin.get('name', '')} → x={origin['x']}, y={origin['y']}")
+
+    nav.current_wp_index = 0
+    nav.is_navigating = True
+    nav.nav_loop_remaining = 0
+    nav.charge_on_arrival = False
+    _signal_nav_reset(full=True)
+
+    mode_label = "경로 역주행" if mode == "retrace" else "자율 주행"
+    origin_name = origin.get("name", f"({origin['x']:.1f}, {origin['y']:.1f})")
+    log_event("schedule", "return_to_work",
+              f"작업 복귀 시작 ({mode_label}): {origin_name}(으)로 이동",
+              robot_id=get_robot_id(), robot_name=get_robot_name())
+
+    navigation_send_next()
+    return {
+        "status": "ok",
+        "msg": f"작업 복귀 시작 ({mode_label}) → {origin_name}",
+        "mode": mode,
+        "origin": origin_name,
+    }
+
+
 @app.post("/robot/test-error/{error_code}")
 def test_robot_error(error_code: str):
     """로봇 에러 코드 알림 테스트 (예: /robot/test-error/0xA302)"""
@@ -1019,8 +1515,8 @@ def test_robot_error(error_code: str):
 
     _last_logged_error_code = code
     log_event("error", "robot_error_code",
-              f"로봇 에러 발생 [{error_hex}]: {error_msg}",
-              detail=json.dumps({"error_code": error_hex, "test": True}, ensure_ascii=False),
+              f"로봇 에러: {error_msg}",
+              error_json=json.dumps({"error_code": error_hex, "test": True}, ensure_ascii=False),
               robot_id=get_robot_id(), robot_name=get_robot_name())
 
     return {"status": "ok", "error_code": error_hex, "message": error_msg}

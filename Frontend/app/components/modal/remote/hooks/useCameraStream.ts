@@ -102,33 +102,6 @@ export function useCameraStream({
     }
   }, []);
 
-  // const connectThermalWSInner = useCallback((cam: Camera) => {
-  //   closeThermalWS();
-  //   const wsUrl = cam.webrtcUrl ?? '';
-  //   if (!wsUrl) return;
-  //   setIsCamLoading(true);
-  //   setCamError(false);
-  //   startCamTimeoutInner();
-  //   const ws = new WebSocket(wsUrl);
-  //   wsRef.current = ws;
-  //   ws.onerror = () => {
-  //     clearCamTimeout();
-  //     setIsCamLoading(false);
-  //     setCamError(true);
-  //     startRetryTimer();
-  //   };
-  //   ws.onmessage = (e) => {
-  //     if (e.data instanceof Blob) {
-  //       onConnectSuccess();
-  //       const nextUrl = URL.createObjectURL(e.data);
-  //       if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
-  //       prevObjectUrlRef.current = nextUrl;
-  //       setThermalUrl(nextUrl);
-  //     }
-  //   };
-  //   ws.onclose = () => {};
-  // }, [closeThermalWS, startCamTimeoutInner, clearCamTimeout, startRetryTimer, onConnectSuccess]);
-
   // --- img 이벤트 ---
   const handleCamImgLoad = useCallback(() => {
     onConnectSuccess();

@@ -15,12 +15,13 @@ type LoginErrors = {
   password?: string;
 };
 
-const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,12}$/;
+const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,16}$/;
 
 export default function Login() {
     const router = useRouter();
     const { isAuthenticated, isLoading, login } = useAuth();
     const [loginForm, setLoginForm] = useState<LoginForm>({ userId: "", password: "" });
+    const [autoLogin, setAutoLogin] = useState(false);
     const [errors, setErrors] = useState<LoginErrors>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSessionExpired, setIsSessionExpired] = useState(false);
@@ -60,7 +61,7 @@ export default function Login() {
 
         // 비밀번호 정규식 검증 (빈 값이 아닐 때만)
         if (password && !PASSWORD_REGEX.test(password)) {
-            newErrors.password = "영문, 숫자, 특수문자 조합 6~12자리로 입력하세요";
+            newErrors.password = "영문, 숫자, 특수문자 조합 6~16자리로 입력하세요";
         }
 
         if (Object.keys(newErrors).length > 0) {
@@ -70,7 +71,7 @@ export default function Login() {
 
         // API 로그인
         setIsSubmitting(true);
-        const result = await login(userId.trim(), password);
+        const result = await login(userId.trim(), password, autoLogin);
         setIsSubmitting(false);
 
         if (!result.success) {
@@ -141,6 +142,21 @@ export default function Login() {
                         />
                         {errors.password && <span className={styles.errorMsg}>{errors.password}</span>}
                     </div>
+
+                    {/* 자동 로그인 */}
+                    <label className={styles.autoLogin}>
+                        <input
+                            type="checkbox"
+                            checked={autoLogin}
+                            onChange={(e) => setAutoLogin(e.target.checked)}
+                        />
+                        <span className={styles.checkbox}>
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </span>
+                        <span>자동 로그인</span>
+                    </label>
 
                     {/* 로그인 버튼 */}
                     <button type="submit" className={styles.loginButton} disabled={isSubmitting}>

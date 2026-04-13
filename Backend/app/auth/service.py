@@ -14,7 +14,7 @@ class AuthService:
     # ── 로그인 ──
 
     @staticmethod
-    def login(db: Session, login_id: str, password: str, ip_address: str | None = None) -> dict:
+    def login(db: Session, login_id: str, password: str, ip_address: str | None = None, remember: bool = False) -> dict:
         user = (
             db.query(UserInfo)
             .filter(UserInfo.LoginId == login_id, UserInfo.DeletedAt.is_(None))
@@ -36,14 +36,13 @@ class AuthService:
                                      detail=json.dumps({"reason": "WRONG_PASSWORD"}))
             raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다")
 
-        # 토큰 버전 증가 → 기존 refresh token 무효화
-        user.TokenVersion = (user.TokenVersion or 0) + 1
+        # 다중 서버 동시 로그인 허용 — 로그인 시 기존 세션을 무효화하지 않음
         user.LastLoginAt = datetime.now(timezone.utc)
         db.commit()
 
         # 토큰 발급 (refresh token에 버전 내장)
-        access_token = create_access_token(user.id, user.LoginId, user.UserName, user.Permission)
-        refresh_token = create_refresh_token(user.id, user.TokenVersion)
+        access_token = create_access_token(user.id, user.LoginId, user.UserName, user.Permission, user.TokenVersion or 0)
+        refresh_token = create_refresh_token(user.id, user.TokenVersion, remember=remember)
 
         # 권한 목록 조회
         permissions = AuthService._get_permissions(db, user)
@@ -87,7 +86,7 @@ class AuthService:
         if token_version != (user.TokenVersion or 0):
             raise HTTPException(status_code=401, detail="토큰이 무효화되었습니다")
 
-        new_access = create_access_token(user.id, user.LoginId, user.UserName, user.Permission)
+        new_access = create_access_token(user.id, user.LoginId, user.UserName, user.Permission, user.TokenVersion or 0)
         permissions = AuthService._get_permissions(db, user)
 
         return {
@@ -140,7 +139,7 @@ class AuthService:
             raise HTTPException(status_code=400, detail="현재 비밀번호가 일치하지 않습니다")
 
         if not validate_password_format(new_password):
-            raise HTTPException(status_code=422, detail="영문, 숫자, 특수문자 조합 6~12자리로 입력하세요")
+            raise HTTPException(status_code=422, detail="영문, 숫자, 특수문자 조합 6~16자리로 입력하세요")
 
         if verify_password(new_password, user.Password):
             raise HTTPException(status_code=400, detail="현재 비밀번호와 다른 비밀번호를 입력하세요")

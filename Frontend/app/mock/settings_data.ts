@@ -27,7 +27,7 @@ export const menuTree: MenuNode[] = [
         label: "운영관리",
         children: [
           { id: "robot-list", label: "로봇 목록" },
-          { id: "business-list", label: "사업자 목록" },
+          { id: "business-list", label: "사업장 목록" },
         ],
       },
       {
@@ -43,9 +43,9 @@ export const menuTree: MenuNode[] = [
         id: "data-management",
         label: "데이터관리",
         children: [
-          { id: "video", label: "영상" },
-          { id: "statistics", label: "통계" },
-          { id: "log", label: "로그" },
+          { id: "video", label: "영상 관리" },
+          { id: "statistics", label: "통계 관리" },
+          { id: "log", label: "로그 관리" },
         ],
       },
       {
@@ -63,7 +63,6 @@ export const menuTree: MenuNode[] = [
         label: "설정",
         children: [
           { id: "menu-permissions", label: "메뉴 권한" },
-          { id: "password-change", label: "비밀번호 변경" },
           { id: "db-backup", label: "DB 백업" },
         ],
       },

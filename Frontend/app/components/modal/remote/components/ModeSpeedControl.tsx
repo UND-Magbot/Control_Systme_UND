@@ -94,8 +94,8 @@ export default function ModeSpeedControl({ robotType, disabled = false }: ModeSp
         </div>
       )}
 
-      {/* 모드 */}
-      {/* <div className={styles.controlGroup}>
+      {/* 모드 — 추후 백엔드 연동 후 활성화
+      <div className={styles.controlGroup}>
         <div className={styles.controlLabel}>모드</div>
         <div className={styles.segmentGroup}>
           {(['regular', 'navigation', 'assist'] as RobotMode[]).map((m) => (
@@ -106,8 +106,8 @@ export default function ModeSpeedControl({ robotType, disabled = false }: ModeSp
         </div>
       </div> */}
 
-      {/* 지형 */}
-      {/* <div className={styles.controlGroup}>
+      {/* 지형 — 추후 ROS2 연동 후 활성화
+      <div className={styles.controlGroup}>
         <div className={styles.controlLabel}>지형</div>
         <div className={styles.segmentGroup}>
           <button type="button" className={`${styles.segmentBtn} ${activeTerrain === 'flat' ? styles.active : ''}`} onClick={() => handleTerrain('flat')} disabled={disabled}>Flat</button>

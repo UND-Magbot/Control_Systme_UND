@@ -3,9 +3,11 @@
 import React, { useState, useMemo } from 'react';
 import styles from './RobotList.module.css';
 import Pagination from "@/app/components/pagination";
+import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import BusinessDetailModal from './BusinessDetailModal';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { apiFetch } from "@/app/lib/api";
+import { usePageReady } from "@/app/context/PageLoadingContext";
 
 const BUSINESS_PAGE_SIZE = 6;
 
@@ -18,12 +20,12 @@ export type BusinessItem = {
   representName: string;
   contact: string;
   description: string;
-  areaCount: number;
+  floorCount: number;
   robotCount: number;
   createdAt: string;
 };
 
-export type AreaItem = {
+export type FloorItem = {
   id: number;
   businessId: number;
   floorName: string;
@@ -36,6 +38,7 @@ const BUSINESS_API = {
 };
 
 export default function BusinessList() {
+  const setPageReady = usePageReady();
   const [businessRows, setBusinessRows] = useState<BusinessItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,11 +54,6 @@ export default function BusinessList() {
   const [deleteMode, setDeleteMode] = useState(false);
 
   // 페이지네이션
-  const [page, setPage] = useState(1);
-  const handlePageChange = (p: number) => {
-    setPage(p);
-    setCheckedBusinessIds([]);
-  };
 
   const fetchBusinessList = async () => {
     setLoading(true);
@@ -75,7 +73,7 @@ export default function BusinessList() {
         representName: b.RepresentName ?? "",
         contact: b.Contact ?? "",
         description: b.Description ?? "",
-        areaCount: b.AreaCount ?? 0,
+        floorCount: b.FloorCount ?? 0,
         robotCount: b.RobotCount ?? 0,
         createdAt: b.CreatedAt ? new Date(b.CreatedAt).toLocaleDateString("ko-KR") : "-",
       }));
@@ -84,6 +82,7 @@ export default function BusinessList() {
       console.error("사업장 목록 로드 실패:", err);
     } finally {
       setLoading(false);
+      setPageReady();
     }
   };
 
@@ -94,7 +93,6 @@ export default function BusinessList() {
   // 조회
   const handleSearch = () => {
     setAppliedQuery(searchQuery);
-    setPage(1);
   };
 
   const filteredRows = useMemo(() => {
@@ -106,9 +104,15 @@ export default function BusinessList() {
     );
   }, [businessRows, appliedQuery]);
 
-  const totalItems = filteredRows.length;
-  const startIdx = (page - 1) * BUSINESS_PAGE_SIZE;
-  const currentItems = filteredRows.slice(startIdx, startIdx + BUSINESS_PAGE_SIZE);
+  const { currentPage: page, setPage, pagedItems: currentItems, totalItems } = usePaginatedList(filteredRows, {
+    pageSize: BUSINESS_PAGE_SIZE,
+    resetDeps: [appliedQuery],
+  });
+
+  const handlePageChange = (p: number) => {
+    setPage(p);
+    setCheckedBusinessIds([]);
+  };
 
   // 체크 토글
   const toggleCheck = (id: number, checked: boolean) => {
@@ -254,7 +258,7 @@ export default function BusinessList() {
                 <tr><td colSpan={colCount} className={styles.emptyState}>등록된 사업장이 없습니다.</td></tr>
               )}
               {currentItems.map((b, idx) => {
-                const rowNum = startIdx + idx + 1;
+                const rowNum = (page - 1) * BUSINESS_PAGE_SIZE + idx + 1;
                 const isSelected = selectedBusinessId === b.id;
                 const isChecked = checkedBusinessIds.includes(b.id);
 
@@ -271,7 +275,7 @@ export default function BusinessList() {
                     <td>{rowNum}</td>
                     <td>{b.businessName}</td>
                     <td>{b.address || "-"}</td>
-                    <td>{b.areaCount}</td>
+                    <td>{b.floorCount}</td>
                     <td>{b.robotCount}</td>
                     <td>
                       <div className={styles.infoBtnGroup}>

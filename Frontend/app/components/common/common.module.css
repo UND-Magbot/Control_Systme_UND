@@ -21,9 +21,37 @@
     position: relative;
 }
 
-.alarm-icon button {
+.alarm-icon > button {
     border: none;
     background: transparent;
+}
+
+.stopAllBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 6px 14px;
+    background-color: var(--color-error, #e53e3e) !important;
+    color: #fff;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    transition: opacity 0.15s ease;
+}
+
+.stopAllBtn:hover {
+    opacity: 0.8;
+}
+
+.stopAllBtnDisabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.stopAllBtnDisabled:hover {
+    opacity: 0.4;
 }
 
 .alarmBegs {
@@ -109,6 +137,10 @@
     align-items: center;
     gap: 8px;
     opacity: 0.7;
+}
+
+.alertWrapper {
+    position: relative;
 }
 
 .adminWrapper {
@@ -212,13 +244,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    white-space: nowrap;
 }
 
 .lrDivFlex {
     display: flex;
     align-items: center;
-    min-width: 0;
-    flex-shrink: 1;
+    flex-shrink: 0;
 }
 
 .rAlign {

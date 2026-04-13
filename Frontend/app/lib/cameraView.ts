@@ -30,15 +30,8 @@ function extractCameras(modules: RobotModule[]): Camera[] {
   }
 
   walk(modules);
+  cameras.sort((a, b) => a.id - b.id);
   return cameras;
-}
-
-/**
- * @deprecated 로봇별 카메라 로딩으로 전환됨 — getCamerasForRobot() 사용
- * 기존 페이지 호환용 빈 배열 반환
- */
-export default function getCameras(): Camera[] {
-  return [];
 }
 
 /**

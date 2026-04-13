@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styles from '@/app/(pages)/robots/components/RobotList.module.css';
 import Pagination from "@/app/components/pagination";
+import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import type { RobotRowData, Floor } from '@/app/type';
 import type { PlaceRow } from "@/app/mock/robotPlace_data";
 import PathCrudModal from "@/app/(pages)/robots/components/PathCrudModal";
@@ -50,8 +51,6 @@ export default function PathList({ robots, floors, hideActions }: PathListProps)
   const [checkedPathIds, setCheckedPathIds] = useState<number[]>([]);
   const pathCheckedCount = checkedPathIds.length;
   const [pathDeleteMode, setPathDeleteMode] = useState(false);
-
-  const [pathPage, setPathPage] = useState(1);
 
   const [pathCreateOpen, setPathCreateOpen] = useState(false);
   const [pathEditOpen, setPathEditOpen] = useState(false);
@@ -114,10 +113,11 @@ export default function PathList({ robots, floors, hideActions }: PathListProps)
       });
   }, [pathRows, selectedPathRobot, selectedPathWorkType]);
 
-  // ── 페이지 데이터 ──
-  const pathTotalItems = filteredPathRows.length;
-  const pathStartIndex = (pathPage - 1) * PATH_PAGE_SIZE;
-  const currentPathItems = filteredPathRows.slice(pathStartIndex, pathStartIndex + PATH_PAGE_SIZE);
+  // ── 페이지네이션 ──
+  const { currentPage: pathPage, setPage: setPathPage, resetPage: resetPathPage, pagedItems: currentPathItems, totalItems: pathTotalItems } = usePaginatedList(filteredPathRows, {
+    pageSize: PATH_PAGE_SIZE,
+    resetDeps: [selectedPathRobot, selectedPathWorkType],
+  });
 
   const handlePathPageChange = (page: number) => {
     setPathPage(page);
@@ -162,7 +162,6 @@ export default function PathList({ robots, floors, hideActions }: PathListProps)
   const resetPathSelection = () => {
     setCheckedPathIds([]);
     setSelectedPathId(null);
-    setPathPage(1);
   };
 
   // ── DB fetch ──
@@ -249,10 +248,6 @@ export default function PathList({ robots, floors, hideActions }: PathListProps)
 
       const del = new Set(checkedPathIds);
       setPathRows((prev) => prev.filter((p) => !del.has(p.id)));
-
-      const remaining = filteredPathRows.length - del.size;
-      const maxPage = Math.max(1, Math.ceil(remaining / PATH_PAGE_SIZE));
-      if (pathPage > maxPage) setPathPage(maxPage);
 
       setCheckedPathIds([]);
       setSelectedPathId(null);

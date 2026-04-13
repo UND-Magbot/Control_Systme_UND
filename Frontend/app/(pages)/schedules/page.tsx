@@ -1,10 +1,14 @@
 import SchedulePageClient from './components/SchedulePageClient';
-import Floors from '@/app/lib/floorInfo';
+import PermissionGuard from "@/app/components/common/PermissionGuard";
+import getFloors from '@/app/lib/floorInfo';
 
-export default function Page() {
+export default async function Page() {
+    const floors = await getFloors();
     return (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <SchedulePageClient floors={Floors()} />
-        </div>
+        <PermissionGuard requiredPermissions={["schedule-list"]}>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <SchedulePageClient floors={floors} />
+            </div>
+        </PermissionGuard>
     );
 }

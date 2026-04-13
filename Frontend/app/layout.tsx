@@ -1,8 +1,8 @@
 import '@/app/globals.css'
 import type { Viewport } from "next";
-import { DebugMapProvider } from "@/app/components/map/DebugMapContext";
-import DebugMapPanel from "@/app/components/map/DebugMapPanel";
 import { AuthProvider } from "@/app/context/AuthContext";
+import { DebugMapProvider } from "@/app/components/map/DebugMapContext";
+import DebugMapPanelLoader from "@/app/components/map/DebugMapPanelLoader";
 
 export const metadata = {
   icons: { icon: "data:," },
@@ -28,7 +28,7 @@ export default function RootLayout({
         <AuthProvider>
           <DebugMapProvider>
             {children}
-            <DebugMapPanel />
+            <DebugMapPanelLoader />
           </DebugMapProvider>
         </AuthProvider>
       </body>

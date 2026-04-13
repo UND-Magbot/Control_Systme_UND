@@ -34,19 +34,23 @@ export default function VideoDateRange({
   const [activeField, setActiveField] = useState<ActiveField>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // 캘린더에서 날짜 선택 시
+  // 캘린더에서 날짜 선택 시 (자동 보정: 시작>종료면 종료를 시작으로, 종료<시작이면 시작을 종료로)
   const handleRangeSelect = (field: "start" | "end", date: string) => {
     let nextStart = startDate;
     let nextEnd = endDate;
 
     if (field === "start") {
       nextStart = date;
-      setStartDate(date);
+      // 시작일이 종료일보다 뒤면 → 종료일도 같은 날로
+      if (date > nextEnd) nextEnd = date;
     } else {
       nextEnd = date;
-      setEndDate(date);
+      // 종료일이 시작일보다 앞이면 → 시작일도 같은 날로
+      if (date < nextStart) nextStart = date;
     }
 
+    setStartDate(nextStart);
+    setEndDate(nextEnd);
     syncPeriodWithRange(nextStart, nextEnd, onChangePeriod);
     setIsCalendarOpen(false);
     setActiveField(null);
@@ -87,8 +91,15 @@ export default function VideoDateRange({
     const yearStart = new Date(today);
     yearStart.setFullYear(yearStart.getFullYear() - 1);
 
+    const threeDaysStart = new Date(today);
+    threeDaysStart.setDate(threeDaysStart.getDate() - 3);
+
     let nextPeriod: Period | null = null;
-    if (startStr === formatDateToYMD(weekStart) && endStr === todayStr) {
+    if (startStr === todayStr && endStr === todayStr) {
+      nextPeriod = "today";
+    } else if (startStr === formatDateToYMD(threeDaysStart) && endStr === todayStr) {
+      nextPeriod = "3days";
+    } else if (startStr === formatDateToYMD(weekStart) && endStr === todayStr) {
       nextPeriod = "1week";
     } else if (startStr === formatDateToYMD(monthStart) && endStr === todayStr) {
       nextPeriod = "1month";
@@ -130,7 +141,9 @@ export default function VideoDateRange({
     const today = new Date();
     const start = new Date(today);
 
-    if (selectedPeriod === '1week') start.setDate(start.getDate() - 7);
+    if (selectedPeriod === 'today') { /* start = today 유지 */ }
+    else if (selectedPeriod === '3days') start.setDate(start.getDate() - 3);
+    else if (selectedPeriod === '1week') start.setDate(start.getDate() - 7);
     else if (selectedPeriod === '1month') start.setMonth(start.getMonth() - 1);
     else if (selectedPeriod === '1year') start.setFullYear(start.getFullYear() - 1);
 

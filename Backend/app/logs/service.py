@@ -1,9 +1,10 @@
 import time
 import threading
 import queue
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from app.Database.models import LogDataInfo, Alert
 from app.Database.database import SessionLocal
 
@@ -12,6 +13,8 @@ _cooldown_lock = threading.Lock()
 _last_logged: dict[str, float] = {}       # action → 마지막 기록 시각
 _suppressed_counts: dict[str, int] = {}   # action → 억제된 횟수
 LOG_COOLDOWN_SEC = 30                     # 같은 action 반복 억제 시간(초)
+# 쿨다운 예외: 매번 기록되어야 하는 action (알림 Detail에 누적)
+_COOLDOWN_EXEMPT = {"nav_arrival", "nav_loop", "nav_complete", "nav_error"}
 
 # ── 큐 기반 단일 Writer ──
 _log_queue: queue.Queue = queue.Queue(maxsize=500)
@@ -21,23 +24,10 @@ ALERT_TRIGGER_RULES = {
     # Action: (alert Type, alert Status)
     "robot_battery_low":       ("Robot", "error"),
     "robot_connection_error":  ("Robot", "error"),
-    "robot_charging_start":    ("Robot", "event"),
-    "robot_charging_complete": ("Robot", "event"),
     "rtsp_error":              ("Robot", "error"),
-    "nav_start":               ("Schedule", "info"),
-    "nav_arrival":             ("Schedule", "info"),
-    "nav_complete":            ("Schedule", "info"),
-    "nav_error":               ("Robot", "error"),
-    "nav_loop":                ("Schedule", "info"),
-    "place_move_start":        ("Schedule", "info"),
-    "path_move_start":         ("Schedule", "info"),
+    "nav_error":               ("Schedule", "error"),
     "remote_send_error":       ("Robot", "error"),
-    "nav_poll_timeout":        ("Robot", "error"),
-    "position_recv_error":     ("Robot", "error"),
     "robot_error_code":        ("Robot", "error"),
-    "db_operation_error":      ("Robot", "error"),
-    "robot_online":            ("Robot", "event"),
-    "robot_offline":           ("Robot", "event"),
 }
 
 # 로그 Action → 알림 제목 매핑
@@ -124,14 +114,21 @@ class LogService:
     ):
         query = self.db.query(LogDataInfo)
 
+        # 로봇 온라인/오프라인 로그는 목록에서 제외 (통계용으로만 사용)
+        query = query.filter(
+            LogDataInfo.Action.notin_(["robot_online", "robot_offline"])
+        )
+
         if category:
             query = query.filter(LogDataInfo.Category == category)
         if search:
             query = query.filter(LogDataInfo.Message.contains(search))
         if start_date:
-            query = query.filter(LogDataInfo.CreatedAt >= start_date)
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(LogDataInfo.CreatedAt >= start_dt)
         if end_date:
-            query = query.filter(LogDataInfo.CreatedAt <= end_date)
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            query = query.filter(LogDataInfo.CreatedAt <= end_dt)
 
         total = query.count()
         items = (
@@ -141,7 +138,11 @@ class LogService:
             .all()
         )
 
-        return {"items": items, "total": total, "page": page, "size": size}
+        # 가장 이른 로그 날짜 조회
+        min_dt = self.db.query(func.min(LogDataInfo.CreatedAt)).scalar()
+        earliest = min_dt.strftime("%Y-%m-%d") if min_dt else None
+
+        return {"items": items, "total": total, "page": page, "size": size, "earliest_date": earliest}
 
 
 # ── 큐 Writer 스레드 (세션 1개 재사용) ──
@@ -200,17 +201,17 @@ def log_event(
     """스레드에서 안전하게 로그를 큐에 추가 (동일 action 30초 쿨다운)"""
     now = time.time()
 
-    with _cooldown_lock:
-        last = _last_logged.get(action, 0)
-        if now - last < LOG_COOLDOWN_SEC:
-            _suppressed_counts[action] = _suppressed_counts.get(action, 0) + 1
-            return
-        # 쿨다운 해제 — 억제된 횟수가 있으면 요약 메시지에 포함
-        suppressed = _suppressed_counts.pop(action, 0)
-        _last_logged[action] = now
+    if action not in _COOLDOWN_EXEMPT:
+        with _cooldown_lock:
+            last = _last_logged.get(action, 0)
+            if now - last < LOG_COOLDOWN_SEC:
+                _suppressed_counts[action] = _suppressed_counts.get(action, 0) + 1
+                return
+            suppressed = _suppressed_counts.pop(action, 0)
+            _last_logged[action] = now
 
-    if suppressed > 0:
-        message = f"{message} (이전 {suppressed}건 동일 로그 생략됨)"
+        if suppressed > 0:
+            message = f"{message} (이전 {suppressed}건 동일 로그 생략됨)"
 
     item = dict(
         category=category,

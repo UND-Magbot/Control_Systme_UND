@@ -1923,7 +1923,7 @@ button.workPopoverItem:hover {
 .confirmBox {
 
   width: 400px;
-  height: 220px;
+  min-height: 220px;
   border-radius: 14px;
 
   background: var(--surface-3);
@@ -1955,12 +1955,12 @@ button.workPopoverItem:hover {
 
 .confirmContents {
   margin: 75px 0 35px 0;
+  padding: 0 24px;
 
   text-align: center;
   white-space: pre-line;
+  word-break: keep-all;
   font-size: var(--font-size-xl);
-
-
 }
 
 .btnItemCommon {
@@ -2130,6 +2130,15 @@ button.workPopoverItem:hover {
 .vpErrorText {
   color: var(--text-tertiary);
   font-size: var(--font-size-md);
+}
+
+.vpErrorReason {
+  color: var(--text-quaternary, #888);
+  font-size: var(--font-size-sm);
+  margin-top: 6px;
+  text-align: center;
+  max-width: 80%;
+  line-height: 1.4;
 }
 
 .vpRetryBtn {
@@ -2360,14 +2369,34 @@ button.workPopoverItem:hover {
 
 /* Header - Alerts */
 .alertsModalContent {
-  width: 467px;
-  height: 488px;
-  border-radius: 17px;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+
+  width: 440px;
+  border-radius: 12px;
   background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
 
-  padding: 35px 19px 35px 27px;
+  padding: 20px;
 
-  box-shadow: 10px 12px 20px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  animation: alertsSlideIn 0.15s ease-out;
+}
+
+@keyframes alertsSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 
@@ -2375,107 +2404,118 @@ button.workPopoverItem:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .alertsModalTitle {
-  display: flex;
-}
-
-.alertsModalTitle img {
-  width: var(--icon-xl);
-  height: var(--icon-xl);
-  margin-right: 16px;
-}
-
-.alertsModalTitle h2 {
   margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
 }
 
-.alertsModalTop button {
-  background: transparent;
-  border: none;
-
-  width: 28px;
-  height: 28px;
-
+.alertsTopActions {
   display: flex;
   align-items: center;
-  justify-content: center;
-
-  cursor: pointer;
-  color: var(--text-primary);
-  font-size: var(--font-size-xl);
+  gap: 8px;
 }
 
-.alertsModalTop button img {
-  width: 16px;
-  height: 16px;
+.alertsViewAllBtn {
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s;
+  white-space: nowrap;
+}
+
+.alertsViewAllBtn:hover {
+  color: #38bdf8;
 }
 
 /* 탭 행: 탭 바 + 전체 읽음 버튼 */
 .alertsTabRow {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.alertsTabCount {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* 탭 바 */
 .alertsTabBar {
   display: flex;
-  gap: 8px;
+  gap: 0;
 }
 
 /* 전체 읽음 버튼 */
 .alertsMarkAllReadBtn {
-  height: 28px;
-  padding: 0 12px;
-  background: var(--color-info-bg);
-  border: 1px solid var(--color-info-border);
+  height: 24px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: rgba(255, 255, 255, 0.7);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
   white-space: nowrap;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
 }
 
 .alertsMarkAllReadBtn:hover {
-  background: var(--color-info-hover);
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+  color: #fff;
 }
 
 .alertsMarkAllReadBtn:disabled {
-  opacity: 0.4;
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
 .alertsTab {
-  height: 30px;
-  padding: 0 14px;
-  border-radius: 15px;
-  border: 1px solid var(--border-default);
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  margin-bottom: -1px;
 }
 
-.alertsTab:hover {
-  background: var(--surface-5);
-}
 
 .alertsTabActive {
-  background: var(--color-info-bg);
-  color: var(--text-primary);
-  border-color: var(--color-info-border);
+  color: #fff;
+  font-weight: 700;
+  border-bottom-color: var(--color-info-bg);
 }
 
-/* 에러 항목 좌측 보더 */
+/* 에러 항목 좌측 컬러 바 (긴급도 강조) */
 .alertsItemError {
   border-left: 3px solid var(--color-error-badge);
 }
@@ -2499,8 +2539,9 @@ button.workPopoverItem:hover {
 
 .alertsContents {
   width: 100%;
-  height: auto;
-  max-height: 335px;
+  flex: 1;
+  min-height: 0;
+  max-height: 340px;
 
   position: relative;
   overflow: hidden;
@@ -2510,8 +2551,8 @@ button.workPopoverItem:hover {
 .alertsScroll {
   max-height: inherit;
   overflow-y: scroll;
-  padding-right: 3px; /* 오른쪽 커스텀 스크롤바 공간 */
-  padding-bottom: 10px;
+  padding-right: 6px;
+  padding-bottom: 4px;
   box-sizing: border-box;
 
   /* 스크롤바 숨김(네이티브) */
@@ -2521,15 +2562,21 @@ button.workPopoverItem:hover {
   display: none; /* Chrome/Edge */
 }
 
+.alertsInner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .scrollTrack {
   position: absolute;
-  top: 3px;
-  bottom: 3px;
-  right: 5px;
+  top: 2px;
+  bottom: 2px;
+  right: 0;
 
-  width: 7px;
+  width: 4px;
   border-radius: 50px;
-  background:transparent;
+  background: transparent;
 }
 
 /* 썸(움직이는 막대) */
@@ -2541,78 +2588,92 @@ button.workPopoverItem:hover {
   width: 100%;
   height: 50%;            /* JS가 동적으로 조절 */
   border-radius: 50px;
-  background: #9496A1;     /* 요청 색상 */
+  background: rgba(148, 150, 161, 0.5);
+}
+
+.scrollThumb:hover {
+  background: rgba(148, 150, 161, 0.8);
 }
 
 .alertsItem {
-  width: 398px;
+  width: 100%;
 
   background: var(--surface-5);
-  border-radius: 5px;
+  border-radius: 6px;
 
-  padding: 10px 16px;
+  padding: 8px 14px;
 
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 
   font-size: var(--font-size-sm);
+  transition: background 0.12s;
+}
+
+.alertsItem:hover {
+  background: var(--surface-elevated, var(--surface-5));
 }
 
 .alertsItem:not(:last-child) {
-  margin-bottom: 9px;
+  margin-bottom: 0;
 }
 
 .alertsItem .topContents {
   display: flex;
   align-items: center;
-
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
 }
 
-.alertsItem .bottomContents {
+.alertsItem .topLeft {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  min-width: 0;
+  flex: 1;
 }
 
 .aletsActions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .aletsReadBtn {
-  height: 24px;
-  padding: 0 12px;
-  background: var(--surface-3);
+  height: 18px;
+  padding: 0 8px;
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
-  color: var(--text-secondary);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
   white-space: nowrap;
-  line-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .aletsReadBtn:hover {
   background: var(--color-info-bg);
   border-color: var(--color-info-border);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .aletsType {
-  padding: 0 8px;
-  height: 20px;
-  line-height: 20px;
-  border-radius: 4px;
+  padding: 0 6px;
+  height: 18px;
+  line-height: 18px;
+  border-radius: 3px;
   text-align: center;
-  font-size: var(--font-size-sm);
+  font-size: 11px;
+  font-weight: 600;
   flex-shrink: 0;
-
-  margin-right: 7px;
+  margin-right: 6px;
 }
 
 /* 타입별 배지 색상 */
@@ -2622,18 +2683,20 @@ button.workPopoverItem:hover {
 .badge--robot    { background-color: var(--color-info-badge); } /* 파랑 */
 
 .aletsStatus {
-  min-width: 34px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 5px;
+  min-width: 30px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 3px;
 
-  font-size: var(--font-size-sm);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
 
   display: flex;
   align-items: center;
   justify-content: center;
 
-  margin-right: 7px;
+  margin-right: 6px;
 }
 
 .aletsStatus.statusError {
@@ -2658,9 +2721,18 @@ button.workPopoverItem:hover {
   width: 0;
 }
 
+.aletsRobotName {
+  color: #38bdf8;
+  margin-right: 5px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+
 .aletsContent {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
 
   flex: 1;
   min-width: 0;
@@ -2670,8 +2742,8 @@ button.workPopoverItem:hover {
 }
 
 .aletsDetail {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
   line-height: 1.5;
   padding: 0 2px;
   overflow: hidden;
@@ -2682,7 +2754,7 @@ button.workPopoverItem:hover {
 
 .aletsDate {
   font-size: 11px;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .aletsSendLogBtn {

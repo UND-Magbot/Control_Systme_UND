@@ -1,42 +1,3 @@
-.robot-chk-btn button.active,
-.floor-btn button.active {
-  background-color: rgba(255, 255, 255);
-  color: #202334;
-}
-
-.robot-chk-btn button,
-.floor-btn button {
-  padding: 5px 15px;
-  border: 1px solid #fff;
-  background-color: #292D43;
-  color: #BFBFBF;
-  font-size: 13px;
-  margin-right: 5px;
-  cursor: pointer;
-}
-
-.robot-chk-btn button:hover,
-.robot-chk-btn button:active,
-.floor-btn button:hover,
-.floor-btn button:active {
-  background-color: #fff;
-  color: #202334;
-}
-
-.view-div {
-    width: 100%;
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-}
-
-.view-box {
-  width: 100%;
-  height: 100%;
-  background-color: #d6d6d6;
-  color: #222;
-}
-
 .viewBtn,
 .mapButton {
   position: absolute;
@@ -104,6 +65,13 @@
 
 .zoomIcon:active {
   transform: scale(0.93);
+}
+
+.viewToggleLabel {
+  color: #82beff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .remote-icon,

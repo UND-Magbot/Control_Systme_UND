@@ -4,6 +4,7 @@
     width: 100%;
     flex: 1;
     min-height: 0;
+    min-width: var(--content-min-width);
     font-size: 20px;
     color: #a2adcc;
     padding: 22px 25px;
@@ -113,9 +114,9 @@
   line-height: 29px;
 
   text-align: center;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   color: #ffffff;
-  
+
   border: 1px solid #CCCDD1;
   border-radius: 6px;
 
@@ -788,6 +789,10 @@
   background-color: #FF0000;
 }
 
+.statusCancelled {
+  background-color: #FF9800;
+}
+
 .statusCompleted {
   background-color: #66bb6a;
 }
@@ -1035,6 +1040,10 @@
 
 .evRed {
   background: rgba(255, 0, 0, 0.85); /* --color-error #FF0000 */
+}
+
+.evOrange {
+  background: rgba(255, 152, 0, 0.85); /* #FF9800 */
 }
 
 /* ── 주간 시간 슬롯 이벤트 ── */
@@ -1429,6 +1438,11 @@
 .dayListStatus[data-color="red"] {
   color: #ef5350;
   background: rgba(244, 67, 54, 0.18);
+}
+
+.dayListStatus[data-color="orange"] {
+  color: #FF9800;
+  background: rgba(255, 152, 0, 0.18);
 }
 
 .dayListArrow {

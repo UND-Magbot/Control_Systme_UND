@@ -71,9 +71,12 @@ export default function BaseCalendar({
     setViewDate((prev) => new Date(prev.getFullYear() + 1, prev.getMonth(), 1));
   const moveToday = () => {
     const t = getToday();
+    const todayStr = formatDateToYMD(t);
     setViewDate(new Date(t.getFullYear(), t.getMonth(), 1));
     if (mode === "single") {
-      onDateSelect?.(formatDateToYMD(t));
+      onDateSelect?.(todayStr);
+    } else if (mode === "range" && activeField) {
+      onRangeSelect?.(activeField, todayStr);
     }
   };
 

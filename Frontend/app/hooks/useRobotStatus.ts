@@ -15,6 +15,8 @@ type StatusEntry = {
   network: "Online" | "Offline" | "Error" | "-";
   power: "On" | "Off" | "-";
   is_charging: boolean;
+  current_floor_id: number | null;
+  current_map_id: number | null;
   timestamp: number;
   position: { x: number; y: number; yaw: number; timestamp: number };
 };
@@ -57,6 +59,8 @@ export function useRobotStatus(initialData: RobotRowData[]) {
                 serialLeft: (bat.serialLeft as string) ?? r.serialLeft,
                 serialRight: (bat.serialRight as string) ?? r.serialRight,
                 isCharging: match.is_charging ?? r.isCharging,
+                currentFloorId: match.current_floor_id ?? r.currentFloorId,
+                currentMapId: match.current_map_id ?? r.currentMapId,
                 network: match.network,
                 power: match.power,
               };
@@ -67,6 +71,8 @@ export function useRobotStatus(initialData: RobotRowData[]) {
               ...r,
               battery: soc ?? r.battery,
               isCharging: match.is_charging ?? r.isCharging,
+              currentFloorId: match.current_floor_id ?? r.currentFloorId,
+              currentMapId: match.current_map_id ?? r.currentMapId,
               network: match.network,
               power: match.power,
             };

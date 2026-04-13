@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { getAlerts, markAlertRead, markAllAlertsRead } from "@/app/lib/alertData";
 import type { AlertMockData } from "@/app/mock/alerts_data";
 
@@ -43,7 +43,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await getAlerts({ is_read: "false", size: 10000 });
+      const data = await getAlerts({ is_read: "false", size: 200 });
       setUnreadAlerts(data.items);
       setUnreadCounts(data.unread_count);
     } catch {
@@ -90,8 +90,13 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refresh]);
 
+  const value = useMemo(
+    () => ({ unreadAlerts, unreadCounts, refresh, handleMarkRead, handleMarkAllRead }),
+    [unreadAlerts, unreadCounts, refresh, handleMarkRead, handleMarkAllRead]
+  );
+
   return (
-    <AlertContext.Provider value={{ unreadAlerts, unreadCounts, refresh, handleMarkRead, handleMarkAllRead }}>
+    <AlertContext.Provider value={value}>
       {children}
     </AlertContext.Provider>
   );

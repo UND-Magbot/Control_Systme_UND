@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
+import PermissionGuard from "@/app/components/common/PermissionGuard";
 import styles from "./mapManagement.module.css";
 import PlaceList from "@/app/(pages)/schedules/components/PlaceList";
 import PathList from "@/app/(pages)/schedules/components/PathList";
@@ -10,17 +11,19 @@ import type { PendingPlace } from "./components/MapPlaceCreateModal";
 import type { RobotRowData, Floor } from "@/app/type";
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
+import { usePageReady } from "@/app/context/PageLoadingContext";
 
 type MapTab = "map" | "place" | "path";
 
 type Business = { id: number; BusinessName: string };
-type Area = { id: number; BusinessId: number; FloorName: string };
-type RobotMap = { id: number; BusinessId: number; AreaId: number; AreaName: string; PgmFilePath: string; ImgFilePath: string };
+type FloorItem ={ id: number; BusinessId: number; FloorName: string };
+type RobotMap = { id: number; BusinessId: number; FloorId: number; MapName: string; PgmFilePath: string; ImgFilePath: string };
 
-type Robot = { id: number; RobotName: string; ModelName: string; SerialNumber: string };
+type Robot = { id: number; RobotName: string; ModelName: string; SerialNumber: string; CurrentFloorId: number | null };
 type MappingState = "idle" | "startModal" | "mappingModal" | "success" | "saveModal";
 
 export default function MapManagementPage() {
+  const setPageReady = usePageReady();
   // ── URL query에서 초기 탭 결정 ──
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as MapTab) || "map";
@@ -30,13 +33,7 @@ export default function MapManagementPage() {
 
   // ── PlaceList / PathList 용 데이터 ──
   const [tabRobots, setTabRobots] = useState<RobotRowData[]>([]);
-  const [tabFloors] = useState<Floor[]>([
-    { id: 1, label: "B2" },
-    { id: 2, label: "B1" },
-    { id: 3, label: "1F" },
-    { id: 4, label: "2F" },
-    { id: 5, label: "3F" },
-  ]);
+  const [tabFloors, setTabFloors] = useState<Floor[]>([]);
 
   useEffect(() => {
     const fetchTabRobots = async () => {
@@ -73,14 +70,26 @@ export default function MapManagementPage() {
         setTabRobots(mapped);
       } catch (e) {
         console.error("로봇 데이터 로드 실패:", e);
+      } finally {
+        setPageReady();
       }
     };
     fetchTabRobots();
   }, []);
 
+  // tabFloors를 floor_info에서 로드
+  useEffect(() => {
+    apiFetch(`/map/floors`)
+      .then((res) => res.ok ? res.json() : [])
+      .then((data: { id: number; FloorName: string }[]) => {
+        setTabFloors(data.map((a) => ({ id: a.id, label: a.FloorName })));
+      })
+      .catch(() => {});
+  }, []);
+
   // ── 사업장 / 층 / 영역(맵) 데이터 ──
   const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [areas, setAreas] = useState<Area[]>([]);
+  const [floors, setFloors] = useState<FloorItem[]>([]);
   const [maps, setMaps] = useState<RobotMap[]>([]);
   const [selectedBiz, setSelectedBiz] = useState<number | "">("");
   const [selectedFloor, setSelectedFloor] = useState<number | "">("");
@@ -93,11 +102,13 @@ export default function MapManagementPage() {
   // ── 로봇 연결 ──
   const [showRobotModal, setShowRobotModal] = useState(false);
   const [robots, setRobots] = useState<Robot[]>([]);
-  const [connectedRobot, setConnectedRobot] = useState<Robot | null>(null);
+  const [connectedRobots, setConnectedRobots] = useState<Robot[]>([]);
+  const [selectedConnectIds, setSelectedConnectIds] = useState<number[]>([]);
 
   // ── 동기화 (맵 적용) ──
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncRobots, setSyncRobots] = useState<Robot[]>([]);
+  const [selectedSyncIds, setSelectedSyncIds] = useState<number[]>([]);
   const [robotPos, setRobotPos] = useState<{ x: number; y: number; yaw: number } | null>(null);
 
   // ── 맵 메타 (origin, resolution) ──
@@ -106,7 +117,7 @@ export default function MapManagementPage() {
   // ── 맵 위 장소 목록 ──
   const [mapPlaces, setMapPlaces] = useState<
     { id: number; LacationName: string; LocationX: number; LocationY: number; Yaw: number;
-      RobotName?: string; Floor?: string; MapId?: number; Imformation?: string }[]
+      RobotName?: string; Floor?: string; FloorId?: number; MapId?: number; Category?: string; Imformation?: string }[]
   >([]);
 
   const loadMapPlaces = useCallback(async (mapId: number) => {
@@ -260,11 +271,12 @@ export default function MapManagementPage() {
             body: JSON.stringify({
               RobotName: dbPlace.RobotName ?? "",
               LacationName: dbPlace.LacationName,
-              Floor: dbPlace.Floor ?? "",
+              FloorId: dbPlace.FloorId ?? null,
               LocationX: Number(coords.x.toFixed(3)),
               LocationY: Number(coords.y.toFixed(3)),
               Yaw: Number((dbPlace.Yaw ?? 0).toFixed(3)),
               MapId: dbPlace.MapId ?? null,
+              Category: dbPlace.Category ?? "waypoint",
               Imformation: dbPlace.Imformation ?? null,
             }),
           });
@@ -327,6 +339,8 @@ export default function MapManagementPage() {
     worldX: number; worldY: number; pixelX: number; pixelY: number;
   } | null>(null);
   const [isFromRobotPos, setIsFromRobotPos] = useState(false);
+  const [isChargeCreate, setIsChargeCreate] = useState(false);
+  const [chargeDockingPlace, setChargeDockingPlace] = useState<PendingPlace | null>(null);
 
   // ── 장소 인라인 수정 ──
   const [editingPlace, setEditingPlace] = useState<{
@@ -402,7 +416,7 @@ export default function MapManagementPage() {
 
     // RobotName: 연결된 로봇 > 첫 번째 장소의 RobotName > 빈 문자열
     const robotName =
-      connectedRobot?.RobotName
+      connectedRobots[0]?.RobotName
       ?? mapPlaces.find((p) => p.LacationName === pathBuildOrder[0])?.RobotName
       ?? pendingPlaces.find((p) => p.LacationName === pathBuildOrder[0])?.RobotName
       ?? "";
@@ -509,8 +523,8 @@ export default function MapManagementPage() {
 
   // ── 저장 모달 폼 ──
   const [saveBizId, setSaveBizId] = useState<number | "">("");
-  const [saveAreaId, setSaveAreaId] = useState<number | "">("");
-  const [saveAreaName, setSaveAreaName] = useState("");
+  const [saveFloorId, setSaveFloorId] = useState<number | "">("");
+  const [saveMapName, setSaveMapName] = useState("");
 
   // ── 맵핑 시작 모달 폼 ──
   const [startBizId, setStartBizId] = useState<number | "">("");
@@ -519,9 +533,9 @@ export default function MapManagementPage() {
   const [startFloorId, setStartFloorId] = useState<number | "">("");
   const [startFloorNew, setStartFloorNew] = useState("");
   const [startFloorMode, setStartFloorMode] = useState<"select" | "new">("select");
-  const [startAreas, setStartAreas] = useState<Area[]>([]);
-  const [startAreaName, setStartAreaName] = useState("");
-  const [startAreaChecked, setStartAreaChecked] = useState<boolean | null>(null); // null=미확인, true=사용가능, false=중복
+  const [startFloors, setStartFloors] = useState<FloorItem[]>([]);
+  const [startMapName, setStartMapName] = useState("");
+  const [startMapNameChecked, setStartMapNameChecked] = useState<boolean | null>(null); // null=미확인, true=사용가능, false=중복
   const [isMappingRunning, setIsMappingRunning] = useState(false); // 맵핑 진행 중 여부
   const [isMappingStarting, setIsMappingStarting] = useState(false); // 맵핑 시작 준비 중
   const [isMappingEnding, setIsMappingEnding] = useState(false); // 맵핑 종료(맵 생성) 중
@@ -545,20 +559,20 @@ export default function MapManagementPage() {
   }, []);
 
   // ── 층 목록 로드 ──
-  const loadAreas = useCallback(async (bizId: number) => {
+  const loadFloors = useCallback(async (bizId: number) => {
     try {
-      const res = await apiFetch(`/map/areas?business_id=${bizId}`);
+      const res = await apiFetch(`/map/floors?business_id=${bizId}`);
       const data = await res.json();
-      setAreas(Array.isArray(data) ? data : []);
+      setFloors(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("층 로드 실패:", e);
     }
   }, []);
 
   // ── 영역(맵) 목록 로드 ──
-  const loadMaps = useCallback(async (areaId: number) => {
+  const loadMaps = useCallback(async (floorId: number) => {
     try {
-      const res = await apiFetch(`/map/maps?area_id=${areaId}`);
+      const res = await apiFetch(`/map/maps?floor_id=${floorId}`);
       const data = await res.json();
       setMaps(data);
     } catch (e) {
@@ -568,6 +582,7 @@ export default function MapManagementPage() {
 
   // ── 초기 진입 시 첫 번째 맵 자동 탐색 ──
   useEffect(() => {
+    let cancelled = false;
     const loadFirstMap = async () => {
       try {
         // 1. 사업장 로드
@@ -575,25 +590,27 @@ export default function MapManagementPage() {
         const bizRaw = await bizRes.json();
         const bizList: Business[] = Array.isArray(bizRaw) ? bizRaw : [];
         setBusinesses(bizList);
-        if (bizList.length === 0) return;
+        if (bizList.length === 0 || cancelled) return;
 
         for (const biz of bizList) {
+          if (cancelled) return;
           // 2. 해당 사업장의 층 로드
-          const areaRes = await apiFetch(`/map/areas?business_id=${biz.id}`);
-          const areaRaw = await areaRes.json();
-          const areaList: Area[] = Array.isArray(areaRaw) ? areaRaw : [];
+          const floorRes = await apiFetch(`/map/floors?business_id=${biz.id}`);
+          const floorRaw = await floorRes.json();
+          const floorList: FloorItem[] = Array.isArray(floorRaw) ? floorRaw : [];
 
-          for (const area of areaList) {
+          for (const fl of floorList) {
+            if (cancelled) return;
             // 3. 해당 층의 맵 로드
-            const mapRes = await apiFetch(`/map/maps?area_id=${area.id}`);
+            const mapRes = await apiFetch(`/map/maps?floor_id=${fl.id}`);
             const mapRaw = await mapRes.json();
             const mapList: RobotMap[] = Array.isArray(mapRaw) ? mapRaw : [];
 
             if (mapList.length > 0) {
               // 첫 번째 맵 발견 → 전부 세팅
               setSelectedBiz(biz.id);
-              setAreas(areaList);
-              setSelectedFloor(area.id);
+              setFloors(floorList);
+              setSelectedFloor(fl.id);
               setMaps(mapList);
               setSelectedMap(mapList[0].id);
               return;
@@ -601,24 +618,25 @@ export default function MapManagementPage() {
           }
 
           // 맵은 없지만 첫 사업장/층은 세팅
-          if (areaList.length > 0) {
+          if (floorList.length > 0) {
             setSelectedBiz(biz.id);
-            setAreas(areaList);
-            setSelectedFloor(areaList[0].id);
+            setFloors(floorList);
+            setSelectedFloor(floorList[0].id);
           }
         }
       } catch (e) {
-        console.error("초기 맵 로드 실패:", e);
+        if (!cancelled) console.error("초기 맵 로드 실패:", e);
       }
     };
     loadFirstMap();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (saveBizId !== "") {
-      loadAreas(saveBizId as number);
+      loadFloors(saveBizId as number);
     }
-  }, [saveBizId, loadAreas]);
+  }, [saveBizId, loadFloors]);
 
   // ── 맵 메타 로드 ──
   useEffect(() => {
@@ -872,11 +890,17 @@ export default function MapManagementPage() {
     ctx.drawImage(offscreen, 0, 0);
   }, [mappingCloudPoints, mappingOdom]);
 
-  // ── SVG 마우스 휠 줌 ──
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    setZoom((prev) => Math.max(0.1, Math.min(10, prev * (e.deltaY < 0 ? 1.1 : 0.9))));
-  }, []);
+  // ── SVG 마우스 휠 줌 (passive: false로 등록해야 preventDefault 가능) ──
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoom((prev) => Math.max(0.1, Math.min(10, prev * (e.deltaY < 0 ? 1.1 : 0.9))));
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [processedImg]);
 
   // ── SVG 드래그 팬 ──
   const panDragged = useRef(false);
@@ -1045,20 +1069,31 @@ export default function MapManagementPage() {
     setSelectedFloor("");
     setSelectedMap("");
     setMaps([]);
-    loadAreas(bizId);
+    loadFloors(bizId);
   };
 
   // ── 상단 층 선택 ──
-  const handleFloorChange = (areaId: number) => {
-    setSelectedFloor(areaId);
+  const handleFloorChange = async (floorId: number) => {
+    setSelectedFloor(floorId);
     setSelectedMap("");
-    loadMaps(areaId);
+    try {
+      const res = await apiFetch(`/map/maps?floor_id=${floorId}`);
+      const data = await res.json();
+      const list: RobotMap[] = Array.isArray(data) ? data : [];
+      setMaps(list);
+      if (list.length > 0) {
+        const latest = list.reduce((a, b) => (b.id > a.id ? b : a));
+        setSelectedMap(latest.id);
+      }
+    } catch (e) {
+      console.error("영역 로드 실패:", e);
+    }
   };
 
   // ── 맵핑 시작 모달 열기 ──
   const handleMappingStart = () => {
     clearAllModes();
-    if (!connectedRobot) {
+    if (connectedRobots.length === 0) {
       alert("로봇이 연결되어 있지 않습니다. 먼저 로봇을 연결해주세요.");
       return;
     }
@@ -1068,9 +1103,9 @@ export default function MapManagementPage() {
     setStartFloorId("");
     setStartFloorNew("");
     setStartFloorMode("select");
-    setStartAreas([]);
-    setStartAreaName("");
-    setStartAreaChecked(null);
+    setStartFloors([]);
+    setStartMapName("");
+    setStartMapNameChecked(null);
     setMappingState("startModal");
   };
 
@@ -1080,22 +1115,22 @@ export default function MapManagementPage() {
     setStartFloorId("");
     setStartFloorMode("select");
     try {
-      const res = await apiFetch(`/map/areas?business_id=${bizId}`);
+      const res = await apiFetch(`/map/floors?business_id=${bizId}`);
       const data = await res.json();
-      setStartAreas(data);
+      setStartFloors(data);
     } catch (e) {
-      setStartAreas([]);
+      setStartFloors([]);
     }
   };
 
   // ── 영역 이름 중복 체크 ──
-  const handleCheckAreaName = async () => {
-    if (!startAreaName.trim()) return;
+  const handleCheckMapName = async () => {
+    if (!startMapName.trim()) return;
     try {
       const res = await apiFetch(`/map/maps`);
       const data: RobotMap[] = await res.json();
-      const exists = data.some((m) => m.AreaName === startAreaName.trim());
-      setStartAreaChecked(!exists);
+      const exists = data.some((m) => m.MapName === startMapName.trim());
+      setStartMapNameChecked(!exists);
     } catch (e) {
       console.error("중복 체크 실패:", e);
     }
@@ -1103,7 +1138,7 @@ export default function MapManagementPage() {
 
   // ── 맵핑 실제 시작 ──
   const handleConfirmMappingStart = async () => {
-    if (startAreaChecked !== true) {
+    if (startMapNameChecked !== true) {
       alert("영역 이름 중복 체크를 해주세요.");
       return;
     }
@@ -1130,13 +1165,13 @@ export default function MapManagementPage() {
     let floorId = startFloorId as number;
     if (startFloorMode === "new" && startFloorNew.trim() && bizId) {
       try {
-        const res = await apiFetch(`/map/areas`, {
+        const res = await apiFetch(`/map/floors`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ BusinessId: bizId, FloorName: startFloorNew.trim() }),
         });
-        const area = await res.json();
-        floorId = area.id;
+        const newFloor = await res.json();
+        floorId = newFloor.id;
       } catch (e) {
         alert("층 생성 실패");
         return;
@@ -1145,8 +1180,8 @@ export default function MapManagementPage() {
 
     // 맵핑 시작 정보 임시 저장 (종료 시 사용)
     setSaveBizId(bizId);
-    setSaveAreaId(floorId);
-    setSaveAreaName(startAreaName.trim());
+    setSaveFloorId(floorId);
+    setSaveMapName(startMapName.trim());
     setIsMappingRunning(false);
     setMappingState("mappingModal");
   };
@@ -1161,8 +1196,8 @@ export default function MapManagementPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           BusinessId: saveBizId,
-          AreaId: saveAreaId,
-          AreaName: saveAreaName,
+          FloorId: saveFloorId,
+          MapName: saveMapName,
         }),
       });
       if (!res.ok) throw new Error("시작 실패");
@@ -1185,8 +1220,8 @@ export default function MapManagementPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           BusinessId: saveBizId,
-          AreaId: saveAreaId,
-          AreaName: saveAreaName,
+          FloorId: saveFloorId,
+          MapName: saveMapName,
         }),
       });
       if (res.ok) {
@@ -1212,17 +1247,17 @@ export default function MapManagementPage() {
 
     // 층 목록 갱신 & 선택
     const bizId = saveBizId as number;
-    const areaId = saveAreaId as number;
+    const floorId = saveFloorId as number;
     setSelectedBiz(bizId);
-    await loadAreas(bizId);
-    setSelectedFloor(areaId);
+    await loadFloors(bizId);
+    setSelectedFloor(floorId);
 
     // 영역(맵) 목록 갱신 & 새 맵 자동 선택
-    const mapRes = await apiFetch(`/map/maps?area_id=${areaId}`);
+    const mapRes = await apiFetch(`/map/maps?floor_id=${floorId}`);
     const mapList: RobotMap[] = await mapRes.json();
     setMaps(mapList);
 
-    const newMap = mapList.find((m) => m.AreaName === saveAreaName);
+    const newMap = mapList.find((m) => m.MapName === saveMapName);
     if (newMap) {
       setSelectedMap(newMap.id);
     }
@@ -1230,7 +1265,7 @@ export default function MapManagementPage() {
 
   // ── 맵 저장 ──
   const handleSaveMap = async () => {
-    if (saveBizId === "" || saveAreaId === "" || !saveAreaName.trim()) {
+    if (saveBizId === "" || saveFloorId === "" || !saveMapName.trim()) {
       alert("모든 항목을 입력해주세요.");
       return;
     }
@@ -1241,8 +1276,8 @@ export default function MapManagementPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           BusinessId: saveBizId,
-          AreaId: saveAreaId,
-          AreaName: saveAreaName.trim(),
+          FloorId: saveFloorId,
+          MapName: saveMapName.trim(),
         }),
       });
 
@@ -1258,19 +1293,32 @@ export default function MapManagementPage() {
     }
   };
 
-  // ── 로봇 위치 폴링 ──
+  // ── 로봇 위치 폴링 + 현재 층 갱신 ──
   useEffect(() => {
-    if (!connectedRobot) {
+    if (connectedRobots.length === 0) {
       setRobotPos(null);
       return;
     }
     const poll = async () => {
       try {
-        const res = await apiFetch(`/robot/position`);
-        const data = await res.json();
-        if (data.timestamp > 0) {
-          setRobotPos({ x: data.x, y: data.y, yaw: data.yaw });
+        const [posRes, statusRes] = await Promise.all([
+          apiFetch(`/robot/position`),
+          apiFetch(`/robot/status`),
+        ]);
+        const posData = await posRes.json();
+        if (posData.timestamp > 0) {
+          setRobotPos({ x: posData.x, y: posData.y, yaw: posData.yaw });
         }
+        const statuses: { robot_name: string; current_floor_id: number | null }[] = await statusRes.json();
+        setConnectedRobots((prev) =>
+          prev.map((robot) => {
+            const match = statuses.find((s) => s.robot_name === robot.RobotName);
+            if (match && match.current_floor_id !== robot.CurrentFloorId) {
+              return { ...robot, CurrentFloorId: match.current_floor_id };
+            }
+            return robot;
+          })
+        );
       } catch (e) {
         console.error("위치 폴링 실패:", e);
       }
@@ -1278,7 +1326,7 @@ export default function MapManagementPage() {
     poll();
     const interval = setInterval(poll, 2000);
     return () => clearInterval(interval);
-  }, [connectedRobot]);
+  }, [connectedRobots.length]);
 
   // ── 저장 취소 ──
   const handleCancelSave = () => {
@@ -1291,10 +1339,16 @@ export default function MapManagementPage() {
     try {
       const res = await apiFetch(`/DB/robots`);
       const data = await res.json();
-      setRobots(data);
+      // 현재 선택된 맵을 사용 중인 로봇만 필터링
+      if (selectedMap !== "") {
+        setRobots(data.filter((r: Robot) => r.CurrentMapId === selectedMap));
+      } else {
+        setRobots(data);
+      }
     } catch (e) {
       console.error("로봇 목록 로드 실패:", e);
     }
+    setSelectedConnectIds(connectedRobots.map((r) => r.id));
     setShowRobotModal(true);
   };
 
@@ -1312,23 +1366,49 @@ export default function MapManagementPage() {
     } catch (e) {
       console.error("로봇 목록 로드 실패:", e);
     }
+    setSelectedSyncIds([]);
     setShowSyncModal(true);
   };
 
-  const handleSyncRobot = async (robot: Robot) => {
+  const handleSyncConfirm = async () => {
     const mapData = maps.find((m) => m.id === selectedMap);
     if (!mapData) return;
+    const selected = syncRobots.filter((r) => selectedSyncIds.includes(r.id));
+    if (selected.length === 0) { alert("동기화할 로봇을 선택해주세요."); return; }
+
+    const names = selected.map((r) => r.RobotName).join(", ");
+    if (!confirm(`로봇 [${names}]에 맵 '${mapData.MapName}'을(를) 동기화하시겠습니까?`)) return;
     setShowSyncModal(false);
-    // TODO: 로봇에 맵 적용 API 호출
-    alert(`로봇 '${robot.RobotName}'에 맵 '${mapData.AreaName}' 동기화 (추후 구현)`);
+
+    const results: string[] = [];
+    for (const robot of selected) {
+      try {
+        const res = await apiFetch(`/map/maps/sync`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ map_id: mapData.id, robot_id: robot.id }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          results.push(`${robot.RobotName}: 실패 - ${err.detail || "오류"}`);
+        } else {
+          results.push(`${robot.RobotName}: 성공`);
+        }
+      } catch (e: any) {
+        results.push(`${robot.RobotName}: 실패 - ${e.message}`);
+      }
+    }
+    alert(results.join("\n"));
   };
 
-  const handleConnectRobot = (robot: Robot) => {
-    setConnectedRobot(robot);
+  const handleConnectConfirm = () => {
+    const selected = robots.filter((r) => selectedConnectIds.includes(r.id));
+    setConnectedRobots(selected);
     setShowRobotModal(false);
   };
 
   return (
+    <PermissionGuard requiredPermissions={["map-edit", "place-list", "path-list"]}>
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       {/* 페이지 헤더 + 탭 */}
       <div className="page-header-tab">
@@ -1373,7 +1453,7 @@ export default function MapManagementPage() {
             onChange={(e) => handleFloorChange(Number(e.target.value))}
           >
             <option value="">층 선택</option>
-            {areas.map((a) => (
+            {floors.map((a) => (
               <option key={a.id} value={a.id}>{a.FloorName}</option>
             ))}
           </select>
@@ -1385,7 +1465,7 @@ export default function MapManagementPage() {
           >
             <option value="">영역 선택</option>
             {maps.map((m) => (
-              <option key={m.id} value={m.id}>{m.AreaName}</option>
+              <option key={m.id} value={m.id}>{m.MapName}</option>
             ))}
           </select>
 
@@ -1401,7 +1481,7 @@ export default function MapManagementPage() {
                   alert("삭제할 맵을 먼저 선택해주세요.");
                   return;
                 }
-                const mapName = maps.find((m) => m.id === selectedMap)?.AreaName ?? "선택된 맵";
+                const mapName = maps.find((m) => m.id === selectedMap)?.MapName ?? "선택된 맵";
                 if (!confirm(`"${mapName}" 맵을 삭제하시겠습니까?\n맵에 포함된 장소, 구간, 관련 경로가 모두 삭제됩니다.`)) return;
                 try {
                   const res = await apiFetch(`/map/maps/${selectedMap}`, { method: "DELETE" });
@@ -1416,9 +1496,9 @@ export default function MapManagementPage() {
                   setUndoStack([]);
                   // 맵 목록 새로고침 후 다음 맵 자동 선택
                   if (selectedFloor !== "") {
-                    const area = areas.find((a) => a.id === selectedFloor);
-                    if (area) {
-                      const mapsRes = await apiFetch(`/map/maps?area_id=${area.id}`);
+                    const fl = floors.find((a) => a.id === selectedFloor);
+                    if (fl) {
+                      const mapsRes = await apiFetch(`/map/maps?floor_id=${fl.id}`);
                       if (mapsRes.ok) {
                         const updatedMaps = await mapsRes.json();
                         setMaps(updatedMaps);
@@ -1448,7 +1528,7 @@ export default function MapManagementPage() {
           </div>
           <div className={styles.toolbarRight}>
             <button className={styles.robotConnectBtn} onClick={handleOpenRobotModal}>
-              {connectedRobot ? connectedRobot.RobotName : "로봇 연결"}
+              {connectedRobots.length > 0 ? connectedRobots.map((r) => r.RobotName).join(", ") : "로봇 연결"}
             </button>
           </div>
         </div>
@@ -1462,7 +1542,6 @@ export default function MapManagementPage() {
                 ref={svgRef}
                 className={styles.mapSvg}
                 style={draggingPlace ? { cursor: "grabbing" } : isPlaceMode ? { cursor: "crosshair" } : (isDeleteMode || isRouteMode || isPathBuildMode) ? { cursor: "pointer" } : undefined}
-                onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -1707,8 +1786,8 @@ export default function MapManagementPage() {
                     );
                   })}
 
-                  {/* 로봇 위치 표시 (RobotMarker 스타일) */}
-                  {robotPos && mapMeta && (() => {
+                  {/* 로봇 위치 표시 (RobotMarker 스타일) — 현재 층과 같을 때만 */}
+                  {robotPos && mapMeta && connectedRobots.some((r) => r.CurrentFloorId === selectedFloor) && (() => {
                     const px = (robotPos.x - mapMeta.originX) / mapMeta.resolution;
                     const py = processedImg.h - (robotPos.y - mapMeta.originY) / mapMeta.resolution;
                     const svgX = px - processedImg.w / 2;
@@ -1847,7 +1926,54 @@ export default function MapManagementPage() {
               <span className={styles.topToolIcon}>&#8634;</span>
               <span>되돌리기</span>
             </button>
-            <button className={styles.topToolBtn}>
+            <button
+              className={styles.topToolBtn}
+              onClick={() => {
+                clearAllModes();
+                if (!processedImg || !mapMeta) {
+                  alert("맵을 먼저 선택해주세요.");
+                  return;
+                }
+                if (!robotPos) {
+                  alert("로봇 위치 정보를 가져올 수 없습니다.");
+                  return;
+                }
+                // 도킹 포인트 → 충전소 간 거리 (0.866m)
+                const CHARGE_OFFSET = 0.866;
+                const yaw = robotPos.yaw;
+                // 충전소 좌표: 로봇이 바라보는 방향 앞 0.866m
+                const chargeX = robotPos.x + CHARGE_OFFSET * Math.cos(yaw);
+                const chargeY = robotPos.y + CHARGE_OFFSET * Math.sin(yaw);
+                const chargePx = (chargeX - mapMeta.originX) / mapMeta.resolution;
+                const chargePy = processedImg.h - (chargeY - mapMeta.originY) / mapMeta.resolution;
+
+                // 도킹 포인트 기본 정보 저장 (이름은 confirm 시 결정)
+                const dockingPlace: PendingPlace = {
+                  tempId: `pending_dock_${Date.now()}`,
+                  RobotName: connectedRobots[0]?.RobotName ?? "",
+                  LacationName: "", // confirm 시 충전소 이름 기반으로 결정
+                  FloorId: selectedFloor !== "" ? (selectedFloor as number) : null,
+                  LocationX: Number(robotPos.x.toFixed(3)),
+                  LocationY: Number(robotPos.y.toFixed(3)),
+                  Yaw: Number(robotPos.yaw.toFixed(4)),
+                  MapId: selectedMap !== "" ? (selectedMap as number) : null,
+                  Category: "waypoint",
+                  Imformation: "",
+                };
+                setChargeDockingPlace(dockingPlace);
+
+                // 충전소 좌표로 모달 열기
+                setPlaceClickCoords({
+                  worldX: Number(chargeX.toFixed(3)),
+                  worldY: Number(chargeY.toFixed(3)),
+                  pixelX: chargePx,
+                  pixelY: chargePy,
+                });
+                setIsFromRobotPos(true);
+                setIsChargeCreate(true);
+                setShowPlaceModal(true);
+              }}
+            >
               <span className={styles.topToolIcon}>&#9733;</span>
               <span>충전소 생성</span>
             </button>
@@ -2236,7 +2362,7 @@ export default function MapManagementPage() {
                         onChange={(e) => setStartFloorId(Number(e.target.value))}
                       >
                         <option value="">층 선택</option>
-                        {startAreas.map((a) => (
+                        {startFloors.map((a) => (
                           <option key={a.id} value={a.id}>{a.FloorName}</option>
                         ))}
                       </select>
@@ -2272,27 +2398,27 @@ export default function MapManagementPage() {
                       className={styles.startInput}
                       type="text"
                       placeholder="영역 이름을 입력하세요"
-                      value={startAreaName}
+                      value={startMapName}
                       onChange={(e) => {
-                        setStartAreaName(e.target.value);
-                        setStartAreaChecked(null);
+                        setStartMapName(e.target.value);
+                        setStartMapNameChecked(null);
                       }}
                     />
                     <button
                       className={styles.startCheckBtn}
-                      onClick={handleCheckAreaName}
-                      disabled={!startAreaName.trim()}
+                      onClick={handleCheckMapName}
+                      disabled={!startMapName.trim()}
                     >
                       중복 체크
                     </button>
                   </div>
                 </div>
-                {startAreaChecked === true && (
+                {startMapNameChecked === true && (
                   <div className={styles.startFieldMsg}>
                     <span className={styles.checkOk}>사용 가능한 이름입니다.</span>
                   </div>
                 )}
-                {startAreaChecked === false && (
+                {startMapNameChecked === false && (
                   <div className={styles.startFieldMsg}>
                     <span className={styles.checkFail}>이미 사용 중인 이름입니다.</span>
                   </div>
@@ -2309,7 +2435,7 @@ export default function MapManagementPage() {
               <button
                 className={styles.startFooterBtn + " " + styles.startBtnConfirm}
                 onClick={handleConfirmMappingStart}
-                disabled={startAreaChecked !== true}
+                disabled={startMapNameChecked !== true}
               >
                 맵핑 시작
                 <img src="/icon/arrow-right.png" alt="" />
@@ -2354,7 +2480,7 @@ export default function MapManagementPage() {
                 </div>
                 <div className={styles.mappingStatusRow}>
                   <span className={styles.mappingStatusLabel}>영역</span>
-                  <span className={styles.mappingStatusValue}>{saveAreaName}</span>
+                  <span className={styles.mappingStatusValue}>{saveMapName}</span>
                 </div>
               </div>
 
@@ -2426,7 +2552,7 @@ export default function MapManagementPage() {
                 value={saveBizId}
                 onChange={(e) => {
                   setSaveBizId(Number(e.target.value));
-                  setSaveAreaId("");
+                  setSaveFloorId("");
                 }}
               >
                 <option value="">사업장 선택</option>
@@ -2439,11 +2565,11 @@ export default function MapManagementPage() {
             <div className={styles.formGroup}>
               <label>층</label>
               <select
-                value={saveAreaId}
-                onChange={(e) => setSaveAreaId(Number(e.target.value))}
+                value={saveFloorId}
+                onChange={(e) => setSaveFloorId(Number(e.target.value))}
               >
                 <option value="">층 선택</option>
-                {areas.map((a) => (
+                {floors.map((a) => (
                   <option key={a.id} value={a.id}>{a.FloorName}</option>
                 ))}
               </select>
@@ -2454,8 +2580,8 @@ export default function MapManagementPage() {
               <input
                 type="text"
                 placeholder="영역 이름을 입력하세요"
-                value={saveAreaName}
-                onChange={(e) => setSaveAreaName(e.target.value)}
+                value={saveMapName}
+                onChange={(e) => setSaveMapName(e.target.value)}
               />
             </div>
 
@@ -2488,10 +2614,10 @@ export default function MapManagementPage() {
 
             {/* 본문 */}
             <div className={styles.robotBody}>
-              {connectedRobot && (
+              {connectedRobots.length > 0 && (
                 <div className={styles.robotConnectedBanner}>
                   <span className={styles.robotConnectedDot} />
-                  <span>현재 연결: <strong>{connectedRobot.RobotName}</strong></span>
+                  <span>현재 연결: <strong>{connectedRobots.map((r) => r.RobotName).join(", ")}</strong></span>
                 </div>
               )}
 
@@ -2502,16 +2628,26 @@ export default function MapManagementPage() {
                 </div>
 
                 {robots.length === 0 ? (
-                  <div className={styles.robotEmptyMsg}>등록된 로봇이 없습니다.</div>
+                  <div className={styles.robotEmptyMsg}>
+                    {selectedMap !== "" ? "현재 맵을 사용 중인 로봇이 없습니다." : "등록된 로봇이 없습니다."}
+                  </div>
                 ) : (
                   <div className={styles.robotList}>
                     {robots.map((robot) => (
                       <button
                         key={robot.id}
-                        className={`${styles.robotItem} ${connectedRobot?.id === robot.id ? styles.robotItemActive : ""}`}
-                        onClick={() => handleConnectRobot(robot)}
+                        className={`${styles.robotItem} ${selectedConnectIds.includes(robot.id) ? styles.robotItemActive : ""}`}
+                        onClick={() => setSelectedConnectIds((prev) =>
+                          prev.includes(robot.id) ? prev.filter((id) => id !== robot.id) : [...prev, robot.id]
+                        )}
                       >
                         <div className={styles.robotItemLeft}>
+                          <input
+                            type="checkbox"
+                            checked={selectedConnectIds.includes(robot.id)}
+                            readOnly
+                            style={{ marginRight: 8, accentColor: "var(--color-info)" }}
+                          />
                           <img src="/icon/robot_icon(1).png" alt="" className={styles.robotItemIcon} />
                           <div>
                             <div className={styles.robotItemName}>{robot.RobotName}</div>
@@ -2521,7 +2657,7 @@ export default function MapManagementPage() {
                             </div>
                           </div>
                         </div>
-                        {connectedRobot?.id === robot.id && (
+                        {connectedRobots.some((r) => r.id === robot.id) && (
                           <span className={styles.robotItemBadge}>연결됨</span>
                         )}
                       </button>
@@ -2535,6 +2671,9 @@ export default function MapManagementPage() {
             <div className={styles.startFooter}>
               <button className={styles.startFooterBtn + " " + styles.startBtnCancel} onClick={() => setShowRobotModal(false)}>
                 닫기
+              </button>
+              <button className={styles.startFooterBtn + " " + styles.startBtnStart} onClick={handleConnectConfirm}>
+                확인
               </button>
             </div>
           </div>
@@ -2568,10 +2707,18 @@ export default function MapManagementPage() {
                     {syncRobots.map((robot) => (
                       <button
                         key={robot.id}
-                        className={styles.robotItem}
-                        onClick={() => handleSyncRobot(robot)}
+                        className={`${styles.robotItem} ${selectedSyncIds.includes(robot.id) ? styles.robotItemActive : ""}`}
+                        onClick={() => setSelectedSyncIds((prev) =>
+                          prev.includes(robot.id) ? prev.filter((id) => id !== robot.id) : [...prev, robot.id]
+                        )}
                       >
                         <div className={styles.robotItemLeft}>
+                          <input
+                            type="checkbox"
+                            checked={selectedSyncIds.includes(robot.id)}
+                            readOnly
+                            style={{ marginRight: 8, accentColor: "var(--color-info)" }}
+                          />
                           <img src="/icon/robot_icon(1).png" alt="" className={styles.robotItemIcon} />
                           <div>
                             <div className={styles.robotItemName}>{robot.RobotName}</div>
@@ -2591,6 +2738,9 @@ export default function MapManagementPage() {
             <div className={styles.startFooter}>
               <button className={styles.startFooterBtn + " " + styles.startBtnCancel} onClick={() => setShowSyncModal(false)}>
                 닫기
+              </button>
+              <button className={styles.startFooterBtn + " " + styles.startBtnStart} onClick={handleSyncConfirm}>
+                동기화
               </button>
             </div>
           </div>
@@ -2856,28 +3006,49 @@ export default function MapManagementPage() {
           pixelX={placeClickCoords.pixelX}
           pixelY={placeClickCoords.pixelY}
           mapId={selectedMap !== "" ? (selectedMap as number) : undefined}
-          defaultRobotName={connectedRobot?.RobotName ?? ""}
+          defaultRobotName={connectedRobots[0]?.RobotName ?? ""}
           defaultFloor={
             selectedFloor !== ""
-              ? areas.find((a) => a.id === selectedFloor)?.FloorName ?? ""
+              ? floors.find((a) => a.id === selectedFloor)?.FloorName ?? ""
               : ""
           }
+          floors={floors}
           lockCoords={isFromRobotPos}
           defaultYaw={isFromRobotPos && robotPos ? robotPos.yaw : undefined}
+          defaultCategory={isChargeCreate ? "charge" : undefined}
           onClose={() => {
             setShowPlaceModal(false);
             setPlaceClickCoords(null);
             setIsFromRobotPos(false);
+            setIsChargeCreate(false);
+            setChargeDockingPlace(null);
           }}
           onConfirm={(place) => {
-            setPendingPlaces((prev) => [...prev, place]);
-            setUndoStack((prev) => [...prev, { type: "addPlace", tempId: place.tempId }]);
+            // 충전소 생성 시 도킹 포인트도 함께 추가
+            if (isChargeCreate && chargeDockingPlace) {
+              const dock: PendingPlace = {
+                ...chargeDockingPlace,
+                LacationName: `${place.LacationName}-1`,
+                Imformation: `${place.LacationName} 충전 도킹 포인트`,
+              };
+              setPendingPlaces((prev) => [...prev, dock, place]);
+              setUndoStack((prev) => [
+                ...prev,
+                { type: "addPlace", tempId: dock.tempId },
+                { type: "addPlace", tempId: place.tempId },
+              ]);
+            } else {
+              setPendingPlaces((prev) => [...prev, place]);
+              setUndoStack((prev) => [...prev, { type: "addPlace", tempId: place.tempId }]);
+            }
             if (isRouteMode && routeStartName) {
               setRouteEndName(place.LacationName);
             }
             setShowPlaceModal(false);
             setPlaceClickCoords(null);
             setIsFromRobotPos(false);
+            setIsChargeCreate(false);
+            setChargeDockingPlace(null);
           }}
         />
       )}
@@ -2885,5 +3056,6 @@ export default function MapManagementPage() {
 
 
     </div>
+    </PermissionGuard>
   );
 }

@@ -18,6 +18,9 @@ MAPPING_LOCAL_PORT = 50000
 mapping_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 mapping_sock.settimeout(1.0)
 
+# relay_charge.py 로컬 통신 포트
+CHARGE_LOCAL_PORT = 50001
+
 # 로봇이 PC에서 오는 명령 수신용 소켓
 server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_sock.bind(("0.0.0.0", SERVER_UDP_PORT))
@@ -35,6 +38,8 @@ sock.bind(("", 30001))
 latest_position = {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
 latest_nav_status = {"status": None, "timestamp": 0}
 latest_battery = {}
+latest_device_temp = {}
+latest_charge_state = {"state": 0, "error_code": 0, "timestamp": 0}  # /CHARGE_STATUS
 
 def nav_poll_loop():
     global latest_nav_status
@@ -88,8 +93,9 @@ def nav_poll_loop():
 
 def battery_poll_loop():
     """heartbeat(Type=100, Command=100) 전송 → 로봇이 push하는 패킷 중
-    Type=1002, Command=5 에서 BatteryStatus 추출"""
-    global latest_battery
+    Type=1002, Command=5 에서 BatteryStatus 추출,
+    /CHARGE_STATUS 패킷에서 충전 상태 추출"""
+    global latest_battery, latest_charge_state, latest_device_temp
     bat_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     bat_sock.settimeout(1.0)
 
@@ -128,14 +134,22 @@ def battery_poll_loop():
                         msg = json.loads(data[16:].decode())
 
                     pd = msg.get("PatrolDevice", {})
-                    if pd.get("Type") == 1002 and pd.get("Command") == 5:
-                        items = pd.get("Items", {})
+                    ptype = pd.get("Type")
+                    pcmd = pd.get("Command")
+                    items = pd.get("Items", {})
+
+                    if ptype == 1002 and pcmd == 5:
                         battery = items.get("BatteryStatus", {})
                         if battery:
                             latest_battery = battery
                             print(f"✅ [BAT] 업데이트: {list(battery.keys())}")
                         else:
                             print(f"⚠️ [BAT] BatteryStatus 키 없음. Items={items}")
+
+                        device_temp = items.get("DeviceTemperature", {})
+                        if device_temp:
+                            latest_device_temp = device_temp
+
                 except socket.timeout:
                     break
 
@@ -145,6 +159,32 @@ def battery_poll_loop():
             print("[BAT POLL ERR]", e)
 
         time.sleep(3)
+
+
+def charge_status_listener():
+    """relay_charge.py → receiver: /CHARGE_STATUS 데이터 수신"""
+    global latest_charge_state
+    ch_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    ch_sock.bind(("127.0.0.1", CHARGE_LOCAL_PORT))
+    ch_sock.settimeout(2.0)
+    print(f"🔋 충전 상태 수신 대기 (127.0.0.1:{CHARGE_LOCAL_PORT})")
+
+    while True:
+        try:
+            data, addr = ch_sock.recvfrom(1024)
+            msg = json.loads(data.decode("utf-8"))
+            state = msg.get("state", 0)
+            error_code = msg.get("error_code", 0)
+            latest_charge_state = {
+                "state": state,
+                "error_code": error_code,
+                "timestamp": time.time()
+            }
+            print(f"🔋 [CHARGE] state={state}, error_code={error_code}")
+        except socket.timeout:
+            continue
+        except Exception as e:
+            print(f"[CHARGE LISTEN ERR] {e}")
 
 
 def position_poll_loop():
@@ -342,7 +382,7 @@ def send_nav_command(idx, x, y, yaw):
                 "PosY": y,
                 "PosZ": 0.0,
                 "AngleYaw": yaw,
-                "PointInfo": 1,
+                "PointInfo": 2,
                 "Gait": 0x3002,
                 "Speed": 0,
                 "Manner": 0,
@@ -399,25 +439,13 @@ def hold_motion(func, duration=1.0, interval=0.1):
     stop_robot()
 
 
-def set_flash(pos,status):
-    print("in")
-    print(pos)
-    print(status)
-    if pos == "front":
-        if status == "on":
-          send_asdu(1101, 2, {"Front": 1, "Back": 0 })
-          print("▶ frontflash on")
-        else :
-          send_asdu(1101, 2, {"Front": 0, "Back": 0 })
-          print("▶ frontflash off")
+_flash_state = {"Front": 0, "Back": 0}
 
-    else :
-        if status == "on":
-          send_asdu(1101, 2, {"Front": 0, "Back": 1 })
-          print("▶ rearflash on")
-        else :
-          send_asdu(1101, 2, {"Front": 0, "Back": 0 })
-          print("▶ nearflash off")
+def set_flash(pos, status):
+    key = "Front" if pos == "front" else "Back"
+    _flash_state[key] = 1 if status == "on" else 0
+    send_asdu(1101, 2, dict(_flash_state))
+    print(f"▶ flash {_flash_state}")
 
 
 
@@ -466,7 +494,11 @@ def udp_receiver_loop():
                 server_sock.sendto(json.dumps(latest_position).encode("utf-8"), addr)
 
             elif action == "STATUS":
-                server_sock.sendto(json.dumps({"BatteryStatus": latest_battery}).encode("utf-8"), addr)
+                server_sock.sendto(json.dumps({
+                    "BatteryStatus": latest_battery,
+                    "ChargeStatus": latest_charge_state,
+                    "DeviceTemperature": latest_device_temp
+                }).encode("utf-8"), addr)
 
             elif action == "NAV_STATUS":
                 server_sock.sendto(json.dumps(latest_nav_status).encode("utf-8"), addr)
@@ -530,6 +562,7 @@ def udp_receiver_loop():
             elif action == "LEFTTURN": hold_motion(turn_left, duration=0.5)
             elif action == "RIGHTTURN": hold_motion(turn_right, duration=0.5)
             elif action == "STOP": stop_robot()
+            elif action == "CANCEL_NAV": cancel_nav()
             elif action == "STAND": stand_robot()
             elif action == "SIT": sit_robot()
             elif action == "SLOW": set_slow()
@@ -571,6 +604,7 @@ def udp_receiver_loop():
 threading.Thread(target=battery_poll_loop, daemon=True).start()
 threading.Thread(target=position_poll_loop, daemon=True).start()
 threading.Thread(target=nav_poll_loop, daemon=True).start()
+threading.Thread(target=charge_status_listener, daemon=True).start()
 threading.Thread(target=udp_receiver_loop, daemon=True).start()
 threading.Thread(target=robot_sniff_loop, daemon=True).start()
 
