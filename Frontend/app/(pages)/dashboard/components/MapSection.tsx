@@ -4,7 +4,7 @@ import styles from "./MapSection.module.css";
 import { ZoomControl } from "@/app/components/button";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Floor, RobotRowData, Video, Camera } from "@/app/type";
-import type { MapConfig, POIItem, RobotOnMap, NavPath, NavPathSegment } from "@/app/components/map/types";
+import type { MapConfig, POIItem, RobotOnMap, NavPath, NavPathSegment, MapView } from "@/app/components/map/types";
 import type { CanvasMapHandle } from "@/app/components/map/CanvasMap";
 import CanvasMap from "@/app/components/map/CanvasMap";
 import { apiFetch } from "@/app/lib/api";
@@ -44,6 +44,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   const [places, setPlaces] = useState<POIItem[]>(_cache.places ?? []);
   const [activeMapId, setActiveMapId] = useState<number | null>(null);
   const [navPath, setNavPath] = useState<NavPath | null>(null);
+  const [mapView, setMapView] = useState<MapView>("2d");
 
   // 캐시에서 즉시 mapConfig 복원
   const cachedEntry = selectedFloor ? _cache.mapConfigs[selectedFloor.id] : undefined;
@@ -303,6 +304,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           <CanvasMap
             ref={mapRef}
             config={mapConfig}
+            view={mapView}
             robots={floorRobots}
             pois={floorPois}
             navPath={navPath}
@@ -312,7 +314,13 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
             onPoiNavigate={handlePoiNavigate}
           />
         )}
-        {hasRobots && hasFloors && <ZoomControl onClick={handleZoomFromChild} />}
+        {hasRobots && hasFloors && (
+          <ZoomControl
+            onClick={handleZoomFromChild}
+            mapView={mapView}
+            onToggleView={() => setMapView((v) => (v === "2d" ? "3d" : "2d"))}
+          />
+        )}
       </div>
     </div>
   );

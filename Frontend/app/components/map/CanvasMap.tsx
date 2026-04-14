@@ -56,16 +56,21 @@ const CanvasMap = forwardRef<CanvasMapHandle, CanvasMapProps>(function CanvasMap
 ) {
   // 3D 뷰 분기
   if (view === "3d") {
+    // Map3DCanvas는 아직 다중 로봇을 지원하지 않아, robots 배열이 있으면 첫 항목을 단일 로봇으로 매핑
+    const firstMultiRobot = multiRobots && multiRobots.length > 0 ? multiRobots[0] : null;
+    const effectiveRobotPos = robotPos ?? firstMultiRobot?.position ?? null;
+    const effectiveRobotName = robotName ?? firstMultiRobot?.name;
+    const effectiveShowRobot = showRobot || !!firstMultiRobot;
     return (
       <Map3DCanvas
         ref={ref}
         config={config}
-        robotPos={robotPos}
-        robotName={robotName}
+        robotPos={effectiveRobotPos}
+        robotName={effectiveRobotName}
         pois={pois}
         navPath={navPath}
         selectedPoiId={selectedPoiId}
-        showRobot={showRobot}
+        showRobot={effectiveShowRobot}
         showPois={showPois}
         showPath={showPath}
         showLabels={showLabels}
