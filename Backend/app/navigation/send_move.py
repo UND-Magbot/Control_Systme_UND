@@ -2,24 +2,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 import time
 import json
-import math
-import app.main
-from app.robot_sender import send_nav_to_robot
-from app.Database.database import SessionLocal
-from app.Database.models import LocationInfo, WayInfo, UserInfo, RobotInfo
+from app.robot_io.sender import send_nav_to_robot
+from app.database.database import SessionLocal, get_db
+from app.database.models import LocationInfo, WayInfo, UserInfo, RobotInfo
 from app.logs.service import log_event
-from app.current_user import get_robot_id, get_robot_name
+from app.user_cache import get_robot_id, get_robot_name
 from app.auth.dependencies import get_current_user, require_permission
 
 
 move = APIRouter(prefix="/nav")
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 current_wp_index = 0
 waypoints_list = []
@@ -94,9 +85,11 @@ def start_navigation(loop: int = 3, current_user: UserInfo = Depends(require_per
         rid = get_robot_id()
         if not rid:
             db = SessionLocal()
-            robot = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
-            rid = robot.id if robot else None
-            db.close()
+            try:
+                robot = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+                rid = robot.id if robot else None
+            finally:
+                db.close()
         if rid:
             start_auto_recording(rid)
     except Exception as e:
@@ -117,7 +110,7 @@ def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
 
     # 로봇에 즉시 정지 명령 + 네비게이션 취소
     try:
-        from app.robot_sender import send_to_robot
+        from app.robot_io.sender import send_to_robot
         send_to_robot("CANCEL_NAV")
         send_to_robot("STOP")
     except Exception as e:
@@ -125,7 +118,7 @@ def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
 
     # 진행 중인 스케줄 취소
     try:
-        from app.scheduler.engine import cancel_active_schedule, get_active_schedule_id
+        from app.scheduler.loop import cancel_active_schedule, get_active_schedule_id
         if get_active_schedule_id() is not None:
             cancel_active_schedule("작업 정지")
     except Exception as e:
@@ -152,7 +145,7 @@ def navigation_resend_current():
 
     print(f"🔁 NAV 재전송: {idx} / {len(waypoints_list)}")
     _signal_nav_reset()
-    from app.robot_sender import send_nav_to_robot
+    from app.robot_io.sender import send_nav_to_robot
     send_nav_to_robot(idx, wp["x"], wp["y"], wp["yaw"])
     nav_sent_time = time.time()
 
@@ -187,7 +180,7 @@ def navigation_send_next():
                 log_event("schedule", "dock_arrival", "도킹 포인트 도착 완료, 충전 명령 전송",
                           robot_id=get_robot_id(), robot_name=get_robot_name())
                 try:
-                    from app.main import start_charge
+                    from app.robot_control.charge import start_charge
                     start_charge()
                 except Exception as e:
                     print(f"[ERR] 자동 충전 명령 실패: {e}")
@@ -211,7 +204,7 @@ def navigation_send_next():
 
     print(f"➡ NAV 이동 시작: {idx} / {len(waypoints_list)}")
     time.sleep(1)  # 로봇 네비게이션 준비 대기
-    from app.robot_sender import send_nav_to_robot
+    from app.robot_io.sender import send_nav_to_robot
     send_nav_to_robot(idx, x, y, yaw)
 
     current_wp_index += 1
@@ -262,21 +255,8 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
         places.append(place)
 
     # 웨이포인트 목록 생성 (yaw = 다음 포인트 방향, 마지막은 저장된 yaw)
-    waypoints = []
-    for i, place in enumerate(places):
-        x = place.LocationX
-        y = place.LocationY
-
-        if i < len(places) - 1:
-            # 다음 포인트를 향하는 방향으로 yaw 계산
-            nx = places[i + 1].LocationX
-            ny = places[i + 1].LocationY
-            yaw = math.atan2(ny - y, nx - x)
-        else:
-            # 마지막 포인트: 저장된 yaw 사용
-            yaw = place.Yaw or 0.0
-
-        waypoints.append({"x": x, "y": y, "yaw": round(yaw, 3), "name": place.LacationName})
+    from app.navigation.waypoints import build_waypoints_from_places
+    waypoints = build_waypoints_from_places(places)
 
     # 기존 웨이포인트 순차 이동 시스템 활용
     waypoints_list = waypoints
@@ -298,9 +278,11 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
         rid = get_robot_id()
         if not rid:
             _db = SessionLocal()
-            _robot = _db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
-            rid = _robot.id if _robot else None
-            _db.close()
+            try:
+                _robot = _db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+                rid = _robot.id if _robot else None
+            finally:
+                _db.close()
         if rid:
             start_auto_recording(rid)
     except Exception as e:

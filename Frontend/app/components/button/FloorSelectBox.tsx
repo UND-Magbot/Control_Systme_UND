@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import styles from './Button.module.css';
-import type { Floor, Camera } from "@/app/type";
+import type { Floor, Camera } from "@/app/types";
 
 
 type FloorSelectBoxProps = {

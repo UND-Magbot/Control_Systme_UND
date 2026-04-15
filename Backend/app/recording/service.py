@@ -4,8 +4,12 @@ from sqlalchemy import desc, func as sqlfunc
 from datetime import datetime
 from typing import Optional, List
 
-from app.Database.database import BACKEND_ROOT
-from app.Database.models import RecordingInfo, RobotModule, ModuleCameraInfo, RobotInfo, ScheduleInfo
+from app.database.database import BACKEND_ROOT
+from app.database.models import RecordingInfo, RobotModule, ModuleCameraInfo, RobotInfo, ScheduleInfo
+
+# 녹화 파일 루트 디렉토리 (절대경로).
+# manager.py / retention.py에서 공용으로 사용.
+RECORDINGS_BASE = os.path.join(BACKEND_ROOT, "recordings")
 
 # DB에는 "recordings/10/2026-04-09" 같은 상대경로를 저장하고,
 # 런타임에 BACKEND_ROOT를 붙여서 절대경로로 복원한다.

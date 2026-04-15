@@ -1,17 +1,9 @@
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.Database.database import SessionLocal
-from app.Database.models import UserInfo, UserPermission, MenuInfo
+from app.database.database import get_db  # re-export (하위 호환)
+from app.database.models import UserInfo, UserPermission, MenuInfo
 from app.auth.jwt_handler import decode_token, decode_token_allow_expired
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> UserInfo:

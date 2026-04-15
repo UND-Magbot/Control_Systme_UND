@@ -1,4 +1,4 @@
-import type { RobotRowData, DonutCommonInfo } from '@/app/type';
+import type { RobotRowData, DonutCommonInfo } from '@/app/types';
 import type { RobotTypeCount, TaskCounts, TimeMinutes, ErrorCounts } from '@/app/lib/statisticsApi';
 import { convertMinutesToText } from "@/app/utils/convertMinutesToText";
 

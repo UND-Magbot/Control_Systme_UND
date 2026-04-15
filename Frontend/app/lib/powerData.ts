@@ -1,4 +1,4 @@
-import type { PowerItem } from "@/app/type";
+import type { PowerItem } from "@/app/types";
 
 export default function getPowerStatus(): PowerItem[] {
   return [

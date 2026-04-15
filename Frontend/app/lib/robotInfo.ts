@@ -1,4 +1,4 @@
-import type { RobotRowData } from "@/app/type";
+import type { RobotRowData } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 
 export default async function getRobots(): Promise<RobotRowData[]> {

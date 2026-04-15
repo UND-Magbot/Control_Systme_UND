@@ -3,7 +3,7 @@
 
 import styles from './Modal.module.css';
 import React, { useEffect, useRef, useState } from 'react';
-import type { RobotRowData } from '@/app/type';
+import type { RobotRowData } from '@/app/types';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { apiFetch } from "@/app/lib/api";

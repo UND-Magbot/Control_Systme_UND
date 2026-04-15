@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import type { RobotRowData } from '@/app/type';
+import type { RobotRowData } from '@/app/types';
 import { getRobotCapabilities } from '@/app/constants/robotCapabilities';
 import ChargingIcon from '@/app/components/common/ChargingIcon';
 import styles from './StatusBar.module.css';

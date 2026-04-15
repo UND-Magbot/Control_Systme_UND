@@ -1,12 +1,12 @@
 import time
 import threading
 import queue
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
-from app.Database.models import LogDataInfo, Alert
-from app.Database.database import SessionLocal
+from app.database.models import LogDataInfo, Alert
+from app.database.database import SessionLocal
 
 # ── 중복 로그 억제 (쿨다운) ──
 _cooldown_lock = threading.Lock()

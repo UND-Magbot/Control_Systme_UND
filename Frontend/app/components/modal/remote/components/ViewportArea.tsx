@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import type { Camera } from '@/app/type';
+import type { Camera } from '@/app/types';
 import { CanvasMap } from '@/app/components/map';
 import { OCC_GRID_CONFIG } from '@/app/components/map/mapConfigs';
 import type { RobotPosition } from '@/app/components/map/types';
@@ -43,6 +43,19 @@ export default function ViewportArea({
 }: ViewportAreaProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const cameraImgRef = useRef<HTMLImageElement | null>(null);
+
+  // unmount 시 img DOM 노드의 src를 직접 비워 MJPEG 연결을 즉시 해제
+  // (모달 닫힘/페이지 이탈 시 좀비 연결이 브라우저에 남는 것을 방지)
+  useEffect(() => {
+    return () => {
+      if (cameraImgRef.current) {
+        try {
+          cameraImgRef.current.src = "";
+          cameraImgRef.current.removeAttribute("src");
+        } catch {}
+      }
+    };
+  }, []);
 
   const [scale, setScale] = useState(1);
   const [translate, setTranslate] = useState({ x: 0, y: 0 });

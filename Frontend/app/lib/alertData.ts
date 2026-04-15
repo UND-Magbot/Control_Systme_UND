@@ -1,5 +1,5 @@
 import { apiFetch } from "@/app/lib/api";
-import type { AlertMockData } from "@/app/mock/alerts_data";
+import type { AlertMockData } from "@/app/types";
 
 type NoticeDetail = {
   Title: string;

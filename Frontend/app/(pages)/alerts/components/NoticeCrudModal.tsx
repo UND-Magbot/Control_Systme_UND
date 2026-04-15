@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import type { AlertMockData, NoticeImportance } from '@/app/mock/alerts_data';
+import type { AlertMockData, NoticeImportance } from '@/app/types';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import styles from './NoticeCrudModal.module.css';
 

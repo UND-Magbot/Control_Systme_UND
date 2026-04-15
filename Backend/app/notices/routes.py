@@ -5,10 +5,10 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.Database.database import SessionLocal
-from app.Database.models import UserInfo
+from app.database.database import get_db
+from app.database.models import UserInfo
 from app.auth.audit import write_audit, get_client_ip
-from app.auth.dependencies import get_current_user, require_permission
+from app.auth.dependencies import require_permission
 from app.notices.schemas import NoticeCreateReq, NoticeUpdateReq, NoticeResponse, NoticeListResponse
 from app.notices.service import NoticeService
 
@@ -16,14 +16,6 @@ router = APIRouter(prefix="/DB", tags=["notices"])
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.get("/notices", response_model=NoticeListResponse)
@@ -120,7 +112,7 @@ def download_notice_file(filename: str, db: Session = Depends(get_db), current_u
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다")
 
     # DB에서 원본 파일명 조회
-    from app.Database.models import Notice
+    from app.database.models import Notice
     notice = db.query(Notice).filter(Notice.AttachmentUrl.like(f"%{filename}%"), Notice.DeletedAt.is_(None)).first()
     original_name = notice.AttachmentName if notice and notice.AttachmentName else filename
 

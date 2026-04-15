@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
-import type { RobotRowData } from '@/app/type';
+import type { RobotRowData } from '@/app/types';
 import styles from './Button.module.css';
 
 type RobotSelectBoxProps = {

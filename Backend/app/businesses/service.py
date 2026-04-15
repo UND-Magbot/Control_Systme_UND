@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func as sql_func
 from fastapi import HTTPException
 
-from app.Database.models import BusinessInfo, FloorInfo, RobotInfo, RobotMapInfo
+from app.database.models import BusinessInfo, FloorInfo, RobotInfo, RobotMapInfo
 
 
 class BusinessService:

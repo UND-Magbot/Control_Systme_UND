@@ -2,7 +2,7 @@
 
 import React from 'react';
 import styles from './Button.module.css';
-import type { TabKey, Tab } from '@/app/type';
+import type { TabKey, Tab } from '@/app/types';
 
 type TabMenuProps = {
   tabs: Tab[];

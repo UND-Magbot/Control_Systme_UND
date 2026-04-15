@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './GlobalErrorAlert.module.css';
-import { type AlertMockData } from '@/app/mock/alerts_data';
+import { type AlertMockData } from '@/app/types';
 import { getAlerts, markAlertRead } from '@/app/lib/alertData';
 
 const POLL_INTERVAL = 30_000;

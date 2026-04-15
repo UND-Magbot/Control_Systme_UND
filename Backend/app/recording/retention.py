@@ -5,8 +5,8 @@ import zipfile
 import threading
 from datetime import datetime, timedelta
 
-from app.Database.database import SessionLocal
-from app.Database.models import RecordingInfo
+from app.database.database import SessionLocal
+from app.database.models import RecordingInfo
 from app.logs.service import log_event
 
 RETENTION_DAYS = 7
@@ -14,8 +14,7 @@ CHECK_INTERVAL = 3600  # 1시간
 STORAGE_WARN_PERCENT = 10   # 잔여 10% 미만 → 경고 로그
 STORAGE_CRITICAL_PERCENT = 5  # 잔여 5% 미만 → 녹화 일시 중지
 
-from app.Database.database import BACKEND_ROOT
-RECORDINGS_BASE = os.path.join(BACKEND_ROOT, "recordings")
+from app.recording.service import RECORDINGS_BASE
 
 
 def retention_thread():
