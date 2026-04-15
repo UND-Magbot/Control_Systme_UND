@@ -120,8 +120,9 @@ export default function PathMapView({
           robotMarkerSize={14}
         />
       ) : (
-        <div className={styles.monitoringPlaceholder}>
-          <span>해당 경로에 매핑된 맵이 없습니다.</span>
+        <div className={styles.monitoringLoading}>
+          <div className={styles.monitoringLoadingSpinner} />
+          <span>지도를 불러오는 중...</span>
         </div>
       )}
 

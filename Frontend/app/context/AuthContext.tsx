@@ -26,6 +26,19 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// auth 엔드포인트에 걸 고정 타임아웃 (ms).
+// raw fetch는 브라우저 HTTP 슬롯이 꽉 차면 무제한 대기하므로, 명시적
+// 상한을 두어 pending 지옥을 방지한다.
+const AUTH_REQUEST_TIMEOUT_MS = 10_000;
+
+function authFetch(input: RequestInfo, init: RequestInit = {}): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(AUTH_REQUEST_TIMEOUT_MS);
+  const signal = init.signal
+    ? AbortSignal.any([init.signal, timeoutSignal])
+    : timeoutSignal;
+  return fetch(input, { ...init, signal });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -50,15 +63,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       headers: { "X-Requested-With": "XMLHttpRequest" },
     };
     try {
-      let res = await fetch(`${API_BASE}/api/auth/me`, fetchOpts);
+      let res = await authFetch(`${API_BASE}/api/auth/me`, fetchOpts);
       if (res.status === 401) {
         // access token 만료 → refresh 시도
-        const refreshRes = await fetch(`${API_BASE}/api/auth/refresh`, {
+        const refreshRes = await authFetch(`${API_BASE}/api/auth/refresh`, {
           method: "POST",
           ...fetchOpts,
         });
         if (refreshRes.ok) {
-          res = await fetch(`${API_BASE}/api/auth/me`, fetchOpts);
+          res = await authFetch(`${API_BASE}/api/auth/me`, fetchOpts);
         }
       }
       if (res.ok) {
@@ -68,6 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
       }
     } catch {
+      // 네트워크/타임아웃 에러 — 세션 상태를 알 수 없으므로 null 처리
       setUser(null);
     }
   }, []);
@@ -76,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (loginId: string, password: string, autoLogin: boolean = false) => {
       try {
-        const res = await fetch(`${API_BASE}/api/auth/login`, {
+        const res = await authFetch(`${API_BASE}/api/auth/login`, {
           method: "POST",
           credentials: "include",
           headers: {
@@ -106,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     isManualLogout.current = true;
     try {
-      await fetch(`${API_BASE}/api/auth/logout`, {
+      await authFetch(`${API_BASE}/api/auth/logout`, {
         method: "POST",
         credentials: "include",
         headers: { "X-Requested-With": "XMLHttpRequest" },

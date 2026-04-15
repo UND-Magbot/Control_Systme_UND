@@ -1536,9 +1536,10 @@ export default function MapManagementPage() {
                 </g>
               </svg>
             ) : (
-              <span className={styles.mapPlaceholder}>
-                맵을 불러오거나 맵핑을 시작하세요
-              </span>
+              <div className={styles.mapPlaceholderLoading}>
+                <div className={styles.mapPlaceholderSpinner} />
+                <span>지도를 불러오는 중...</span>
+              </div>
             )}
 
           {/* 장소 생성/삭제 모드 배너 */}

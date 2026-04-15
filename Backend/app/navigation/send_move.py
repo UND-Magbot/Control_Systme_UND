@@ -85,9 +85,11 @@ def start_navigation(loop: int = 3, current_user: UserInfo = Depends(require_per
         rid = get_robot_id()
         if not rid:
             db = SessionLocal()
-            robot = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
-            rid = robot.id if robot else None
-            db.close()
+            try:
+                robot = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+                rid = robot.id if robot else None
+            finally:
+                db.close()
         if rid:
             start_auto_recording(rid)
     except Exception as e:
@@ -276,9 +278,11 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
         rid = get_robot_id()
         if not rid:
             _db = SessionLocal()
-            _robot = _db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
-            rid = _robot.id if _robot else None
-            _db.close()
+            try:
+                _robot = _db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+                rid = _robot.id if _robot else None
+            finally:
+                _db.close()
         if rid:
             start_auto_recording(rid)
     except Exception as e:

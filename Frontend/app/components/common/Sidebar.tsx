@@ -2,7 +2,6 @@
 
 import styles from './common.module.css';
 import React, { useMemo } from "react";
-import Link from "next/link";
 import { useSidebar } from "@/app/context/SidebarContext";
 import { useAuth } from "@/app/context/AuthContext";
 
@@ -40,22 +39,23 @@ export default function Sidebar() {
             <aside className={`${styles.sidebar} ${isOpen ? styles.sidebarOpen : ''}`}>
                 <div>
                     {menuItems.map((item, idx) => (
-                        <Link key={idx} className={styles.menuItems}
+                        // Next.js client-side navigation 대신 하드 네비게이션을 강제한다.
+                        // 페이지 이동 시마다 전체 리로드가 발생하여 MJPEG 좀비 연결 등
+                        // 브라우저 내부 상태가 완전히 리셋된다.
+                        <a key={idx} className={styles.menuItems}
                                 href={item.path}
-                                prefetch={false}
                                 onClick={(e) => {
+                                    e.preventDefault();
                                     close();
-                                    if (window.location.pathname === item.path) {
-                                        e.preventDefault();
-                                        window.location.reload();
-                                    }
+                                    // 같은 경로든 다른 경로든 항상 하드 리로드
+                                    window.location.href = item.path;
                                 }}>
                             <div className={`${item.icon}-icon ${styles.iconWrap}`}>
                                 <img className={styles.iconDefault} src={`/icon/${item.icon}_w.png`} alt={item.label} />
                                 <img className={styles.iconHover} src={`/icon/${item.icon}_d.png`} alt="" />
                             </div>
                             {item.label}
-                        </Link>
+                        </a>
                     ))}
                 </div>
             </aside>

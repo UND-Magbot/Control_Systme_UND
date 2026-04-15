@@ -153,6 +153,17 @@ def startup_event():
     log_event("system", "system_startup", "서버 시작")
 
 
+@app.on_event("startup")
+async def _tune_threadpool():
+    """Starlette(anyio) 기본 스레드풀 토큰을 상향.
+
+    기본값 40은 MJPEG 스트리밍 등 장기 점유 동기 엔드포인트가 몇 개만
+    열려도 고갈되어, 다른 동기 API가 큐에서 대기하게 된다.
+    """
+    from anyio import to_thread
+    to_thread.current_default_thread_limiter().total_tokens = 200
+
+
 @app.on_event("shutdown")
 def shutdown_event():
     from app.recording.manager import stop_all
