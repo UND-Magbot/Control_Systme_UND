@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.Database.models import UserInfo, UserPermission, MenuInfo, AuditLog
+from app.database.models import UserInfo, UserPermission, MenuInfo
 from app.auth.password import hash_password, validate_password_format
+from app.auth.audit import write_audit
 
 
 class UserService:
@@ -95,7 +96,7 @@ class UserService:
         if menu_ids:
             UserService.set_permissions(db, user.id, menu_ids, admin_id, ip_address=ip_address)
 
-        UserService._write_audit(db, admin_id, "user_created", "user", user.id, ip_address=ip_address,
+        write_audit(db, admin_id, "user_created", "user", user.id, ip_address=ip_address,
                                   detail=json.dumps({"login_id": login_id, "user_name": user_name, "permission": permission, "business_id": business_id}, ensure_ascii=False))
 
         return {"id": user.id, "login_id": user.LoginId, "user_name": user.UserName, "permission": user.Permission}
@@ -130,7 +131,7 @@ class UserService:
 
         if changes:
             db.commit()
-            UserService._write_audit(db, admin_id, "user_updated", "user", user_id, ip_address=ip_address,
+            write_audit(db, admin_id, "user_updated", "user", user_id, ip_address=ip_address,
                                       detail=json.dumps(changes, ensure_ascii=False))
 
     # ── 사용자 삭제 ──
@@ -153,7 +154,7 @@ class UserService:
         user.TokenVersion = (user.TokenVersion or 0) + 1
         db.commit()
 
-        UserService._write_audit(db, admin_id, "user_deleted", "user", user_id, ip_address=ip_address,
+        write_audit(db, admin_id, "user_deleted", "user", user_id, ip_address=ip_address,
                                   detail=json.dumps({"login_id": user.LoginId, "user_name": user.UserName}, ensure_ascii=False))
 
     # ── 비밀번호 초기화 ──
@@ -171,7 +172,7 @@ class UserService:
         user.TokenVersion = (user.TokenVersion or 0) + 1  # 기존 세션 무효화
         db.commit()
 
-        UserService._write_audit(db, admin_id, "password_reset", "user", user_id, ip_address=ip_address)
+        write_audit(db, admin_id, "password_reset", "user", user_id, ip_address=ip_address)
 
     # ── 메뉴 권한 조회 ──
 
@@ -236,28 +237,8 @@ class UserService:
             id_to_key = {v: k for k, v in all_key_to_id.items()}
             old_keys = sorted([id_to_key.get(mid, str(mid)) for mid in existing_menu_ids])
             new_keys = sorted(menu_keys)
-            UserService._write_audit(db, admin_id, "permission_changed", "user", user_id, ip_address=ip_address,
+            write_audit(db, admin_id, "permission_changed", "user", user_id, ip_address=ip_address,
                                       detail=json.dumps({"from": old_keys, "to": new_keys}, ensure_ascii=False))
 
     # ── 내부 유틸 ──
 
-    @staticmethod
-    def _write_audit(
-        db: Session,
-        user_id: int | None,
-        action: str,
-        target_type: str | None = None,
-        target_id: int | None = None,
-        detail: str | None = None,
-        ip_address: str | None = None,
-    ):
-        log = AuditLog(
-            UserId=user_id,
-            Action=action,
-            TargetType=target_type,
-            TargetId=target_id,
-            Detail=detail,
-            IpAddress=ip_address,
-        )
-        db.add(log)
-        db.commit()

@@ -10,14 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from app.Database.database import SessionLocal
-from app.Database.models import RobotMapInfo, UserInfo
-from app.auth.dependencies import get_current_user, require_permission
+from app.database.database import get_db
+from app.database.models import RobotMapInfo, UserInfo
+from app.auth.dependencies import require_permission
 
 import paramiko
 import os
-import shutil
-import threading
 import time
 
 mapping_ctrl = APIRouter(prefix="/map/mapping")
@@ -44,14 +42,6 @@ mapping_state = {
     "business_id": None,
     "floor_id": None,
 }
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def get_ssh_client(retries=10):

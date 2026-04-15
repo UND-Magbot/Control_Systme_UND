@@ -1,5 +1,5 @@
 import { apiFetch } from "@/app/lib/api";
-import type { LogItem } from "@/app/type";
+import type { LogItem } from "@/app/types";
 
 export type LogListResponse = {
   items: LogItem[];

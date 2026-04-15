@@ -2,17 +2,17 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import styles from "../dashboard.module.css";
-import type { RobotRowData, Camera, Floor, Video } from "@/app/type";
-import RobotCardList from "./RobotCardList";
-import MapSection from "./MapSection";
-import CameraSlots from "./CameraSlots";
-import NoticeList from "./NoticeList";
+import type { RobotRowData, Camera, Floor, Video } from "@/app/types";
+import RobotCardList from "./sections/robots/RobotCardList";
+import MapSection from "./sections/map/MapSection";
+import CameraSlots from "./sections/cameras/CameraSlots";
+import NoticeList from "./sections/notices/NoticeList";
 import SectionHeader from "./SectionHeader";
 import Link from "next/link";
 import { useRobotLocation } from "@/app/hooks/useRobotLocation";
 import type { POIItem } from "@/app/components/map/types";
-import RobotStats from "./RobotStats";
-import ScheduleTimeline from "./ScheduleTimeline";
+import RobotStats from "./sections/robots/RobotStats";
+import ScheduleTimeline from "./sections/schedule/ScheduleTimeline";
 import { getCamerasForRobot } from "@/app/lib/cameraView";
 import { getStatistics, type PerRobotStats } from "@/app/lib/statisticsApi";
 import { usePageReady } from "@/app/context/PageLoadingContext";

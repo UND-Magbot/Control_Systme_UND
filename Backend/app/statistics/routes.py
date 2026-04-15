@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.auth.dependencies import get_db, require_permission
-from app.Database.models import UserInfo
+from app.database.models import UserInfo
 from app.statistics.schemas import StatisticsResponse
 from app.statistics.service import StatisticsService
 

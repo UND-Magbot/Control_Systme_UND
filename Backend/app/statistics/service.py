@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.Database.models import RobotInfo, LogDataInfo, ScheduleInfo
+from app.database.models import RobotInfo, LogDataInfo, ScheduleInfo
 from app.statistics.schemas import (
     StatisticsResponse, RobotTypeCount, TaskCounts,
     TimeMinutes, ErrorCounts, PerRobotStats,

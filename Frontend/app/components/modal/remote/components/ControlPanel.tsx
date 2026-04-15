@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import TabMenu from '@/app/components/button/TabMenu';
-import type { Tab, TabKey } from '@/app/type';
+import type { Tab, TabKey } from '@/app/types';
 import ModeSpeedControl from './ModeSpeedControl';
 import PositionActions from './PositionActions';
 import WorkAutomationPanel from './WorkAutomationPanel';

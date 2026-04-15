@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { RobotRowData, Video, Camera, PrimaryViewType } from '@/app/type';
+import type { RobotRowData, Video, Camera, PrimaryViewType } from '@/app/types';
 import { getCamerasForRobot } from '@/app/lib/cameraView';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { useRobotPosition } from '@/app/hooks/useRobotPosition';

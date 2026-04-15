@@ -1,6 +1,6 @@
-import type { Camera, RobotModule } from "@/app/type";
+import type { Camera, RobotModule } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
-import { API_BASE } from "@/app/config";
+import { CAMERA_BASE } from "@/app/config";
 
 /**
  * 모듈 트리에서 type="camera"인 노드를 flat 배열로 추출
@@ -19,10 +19,12 @@ function extractCameras(modules: RobotModule[]): Camera[] {
           id: node.id,
           label: node.label,
           streamType: cfg.streamType,
+          // MJPEG(rtsp) 스트림은 CAMERA_BASE(127.0.0.1)로 호출해
+          // API와 다른 origin을 사용 → HTTP/1.1 연결 풀 분리
           webrtcUrl:
             cfg.streamType === "ws"
               ? cfg.streamUrl
-              : `${API_BASE}${cfg.streamUrl}`,
+              : `${CAMERA_BASE}${cfg.streamUrl}`,
         });
       }
       if (node.children?.length) walk(node.children);

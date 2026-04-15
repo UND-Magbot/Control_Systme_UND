@@ -15,7 +15,7 @@ from app.auth.audit import get_client_ip
 from app.auth.service import AuthService
 from app.auth.constants import REFRESH_TOKEN_EXPIRE_DAYS
 from app.auth.jwt_handler import decode_token_allow_expired
-from app.Database.models import UserInfo
+from app.database.models import UserInfo
 
 router = APIRouter(prefix="/api/auth", tags=["인증"])
 

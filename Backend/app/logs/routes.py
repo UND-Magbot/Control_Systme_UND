@@ -2,21 +2,13 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.Database.database import SessionLocal
-from app.Database.models import UserInfo
+from app.database.database import get_db
+from app.database.models import UserInfo
 from app.logs.schemas import LogCreateReq, LogListResponse
 from app.logs.service import LogService
 from app.auth.dependencies import require_permission
 
 router = APIRouter(prefix="/DB", tags=["logs"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.get("/logs", response_model=LogListResponse)

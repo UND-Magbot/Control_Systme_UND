@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_db, get_current_user, require_admin
 from app.auth.schemas import MessageResponse
-from app.Database.models import UserInfo, MenuInfo
+from app.database.models import UserInfo, MenuInfo
 from app.users.schemas import (
     UserCreateRequest,
     UserUpdateRequest,

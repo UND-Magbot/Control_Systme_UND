@@ -1,4 +1,4 @@
-import type { RobotType } from "@/app/type";
+import type { RobotType } from "@/app/types";
 
 export default function getRobotType(): RobotType[] {
   return [

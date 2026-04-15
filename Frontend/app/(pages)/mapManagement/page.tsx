@@ -4,23 +4,42 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useSearchParams } from "next/navigation";
 import PermissionGuard from "@/app/components/common/PermissionGuard";
 import styles from "./mapManagement.module.css";
-import PlaceList from "@/app/(pages)/schedules/components/PlaceList";
-import PathList from "@/app/(pages)/schedules/components/PathList";
-import MapPlaceCreateModal from "./components/MapPlaceCreateModal";
-import type { PendingPlace } from "./components/MapPlaceCreateModal";
-import type { RobotRowData, Floor } from "@/app/type";
+import PlaceList from "./components/tabs/place/PlaceManageTab";
+import PathList from "./components/tabs/path/PathManageTab";
+import MapPlaceCreateModal from "./components/tabs/map/MapPlaceCreateModal";
+import type { PendingPlace } from "./components/tabs/map/MapPlaceCreateModal";
+import type { RobotRowData, Floor } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
 import { usePageReady } from "@/app/context/PageLoadingContext";
-
-type MapTab = "map" | "place" | "path";
-
-type Business = { id: number; BusinessName: string };
-type FloorItem ={ id: number; BusinessId: number; FloorName: string };
-type RobotMap = { id: number; BusinessId: number; FloorId: number; MapName: string; PgmFilePath: string; ImgFilePath: string };
-
-type Robot = { id: number; RobotName: string; ModelName: string; SerialNumber: string; CurrentFloorId: number | null };
-type MappingState = "idle" | "startModal" | "mappingModal" | "success" | "saveModal";
+import type {
+  MapTab,
+  MappingState,
+  Business,
+  FloorItem,
+  RobotMap,
+  Robot,
+  RouteDirection,
+  RouteSegment,
+  DbRoute,
+  UndoAction,
+} from "./types/map";
+import { useRobotPolling } from "./hooks/useRobotPolling";
+import { useMapMeta } from "./hooks/useMapMeta";
+import { useSvgPanZoom } from "./hooks/useSvgPanZoom";
+import { useMappingWebSocket } from "./hooks/useMappingWebSocket";
+import { usePlaceDelete } from "./hooks/usePlaceDelete";
+import { usePathBuilding } from "./hooks/usePathBuilding";
+import { useRouteCreation } from "./hooks/useRouteCreation";
+import { processMapImage } from "./utils/processMapImage";
+import RobotConnectModal from "./components/tabs/map/RobotConnectModal";
+import MapSyncModal from "./components/tabs/map/MapSyncModal";
+import MappingStartModal from "./components/tabs/map/MappingStartModal";
+import MappingProgressModal from "./components/tabs/map/MappingProgressModal";
+import MappingSuccessModal from "./components/tabs/map/MappingSuccessModal";
+import PathBuildPanel from "./components/tabs/map/PathBuildPanel";
+import MapToolbar from "./components/tabs/map/MapToolbar";
+import MapRightPanel from "./components/tabs/map/MapRightPanel";
 
 export default function MapManagementPage() {
   const setPageReady = usePageReady();
@@ -111,8 +130,8 @@ export default function MapManagementPage() {
   const [selectedSyncIds, setSelectedSyncIds] = useState<number[]>([]);
   const [robotPos, setRobotPos] = useState<{ x: number; y: number; yaw: number } | null>(null);
 
-  // ── 맵 메타 (origin, resolution) ──
-  const [mapMeta, setMapMeta] = useState<{ resolution: number; originX: number; originY: number } | null>(null);
+  // ── 맵 메타 (origin, resolution) — 훅으로 분리 ──
+  const mapMeta = useMapMeta(selectedMap);
 
   // ── 맵 위 장소 목록 ──
   const [mapPlaces, setMapPlaces] = useState<
@@ -143,32 +162,13 @@ export default function MapManagementPage() {
   const [pendingPlaces, setPendingPlaces] = useState<PendingPlace[]>([]);
 
   // ── 되돌리기 스택 ──
-  type RouteSegmentData = { tempId: string; startName: string; endName: string; direction: "forward" | "reverse" | "bidirectional" };
-  type UndoAction =
-    | { type: "addPlace"; tempId: string }
-    | { type: "deletePendingPlace"; place: PendingPlace; cascadedDbRoutes: number[]; cascadedPendingRoutes: RouteSegmentData[] }
-    | { type: "deleteDbPlace"; id: number; cascadedDbRoutes: number[]; cascadedPendingRoutes: RouteSegmentData[] }
-    | { type: "addRoute"; tempId: string }
-    | { type: "deletePendingRoute"; route: RouteSegmentData }
-    | { type: "deleteDbRoute"; id: number }
-    | { type: "mapReset";
-        prevPendingPlaces: PendingPlace[];
-        prevPendingRoutes: RouteSegmentData[];
-        prevDeletedDbIds: Set<number>;
-        prevDeletedRouteDbIds: Set<number>;
-        prevMovedPlaces: Map<string, { x: number; y: number }>;
-        prevModifiedDbIds: Set<number>;
-      };
   const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
 
   const clearAllModes = () => {
     setIsPlaceMode(false);
-    setIsDeleteMode(false);
-    setIsRouteMode(false);
-    setRouteStartName(null);
-    setRouteEndName(null);
-    setIsPathBuildMode(false);
-    setPathBuildOrder([]);
+    resetDeleteMode();
+    resetRouteMode();
+    resetPathBuild();
   };
 
   const handleUndo = () => {
@@ -350,44 +350,34 @@ export default function MapManagementPage() {
   const [editValues, setEditValues] = useState({ name: "", x: "", y: "", dir: "", desc: "" });
   const [modifiedDbIds, setModifiedDbIds] = useState<Set<number>>(new Set());
 
-  // ── 장소 삭제 모드 ──
-  const [isDeleteMode, setIsDeleteMode] = useState(false);
-  const [deletedDbIds, setDeletedDbIds] = useState<Set<number>>(new Set());
-  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
-    type: "db" | "pending" | "route_db" | "route_pending";
-    id: number | string;
-    name: string;
-  } | null>(null);
+  // ── 장소 삭제 모드 (훅으로 분리) ──
+  const {
+    isDeleteMode, setIsDeleteMode,
+    deletedDbIds, setDeletedDbIds,
+    deleteConfirmTarget, setDeleteConfirmTarget,
+    reset: resetDeleteMode,
+  } = usePlaceDelete();
 
-  // ── 경로 생성 모드 (way_info) — state만 선언, useMemo는 dbRoutes 뒤에 ──
-  const [isPathBuildMode, setIsPathBuildMode] = useState(false);
-  const [pathBuildOrder, setPathBuildOrder] = useState<string[]>([]);
-  const [pathBuildName, setPathBuildName] = useState("");
-  const [pathBuildWorkType, setPathBuildWorkType] = useState("task1");
+  // ── 경로 생성 모드 (way_info) — 훅으로 분리 ──
+  const {
+    isPathBuildMode, setIsPathBuildMode,
+    pathBuildOrder, setPathBuildOrder,
+    pathBuildName, setPathBuildName,
+    pathBuildWorkType, setPathBuildWorkType,
+    reset: resetPathBuild,
+  } = usePathBuilding();
 
-  // ── 구간 생성 모드 ──
-  type RouteDirection = "forward" | "reverse" | "bidirectional";
-  type RouteSegment = {
-    tempId: string;
-    startName: string;
-    endName: string;
-    direction: RouteDirection;
-  };
-  type DbRoute = {
-    id: number;
-    MapId: number;
-    StartPlaceName: string;
-    EndPlaceName: string;
-    Direction: string;
-  };
-
-  const [isRouteMode, setIsRouteMode] = useState(false);
-  const [routeStartName, setRouteStartName] = useState<string | null>(null);
-  const [routeEndName, setRouteEndName] = useState<string | null>(null);
-  const [routeDirection, setRouteDirection] = useState<RouteDirection>("forward");
-  const [pendingRoutes, setPendingRoutes] = useState<RouteSegment[]>([]);
-  const [dbRoutes, setDbRoutes] = useState<DbRoute[]>([]);
-  const [deletedRouteDbIds, setDeletedRouteDbIds] = useState<Set<number>>(new Set());
+  // ── 구간 생성 모드 (훅으로 분리) ──
+  const {
+    isRouteMode, setIsRouteMode,
+    routeStartName, setRouteStartName,
+    routeEndName, setRouteEndName,
+    routeDirection, setRouteDirection,
+    pendingRoutes, setPendingRoutes,
+    dbRoutes, setDbRoutes,
+    deletedRouteDbIds, setDeletedRouteDbIds,
+    reset: resetRouteMode,
+  } = useRouteCreation();
 
   // 경로 빌드: 현재 마지막 장소에서 갈 수 있는 장소 이름 Set
   const pathReachable = useMemo(() => {
@@ -514,12 +504,10 @@ export default function MapManagementPage() {
 
   // ── SVG 맵 뷰 상태 ──
   const [processedImg, setProcessedImg] = useState<{ url: string; w: number; h: number } | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [rotation, setRotation] = useState(0);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const { zoom, setZoom, rotation, setRotation, offset, setOffset, svgRef } =
+    useSvgPanZoom(processedImg !== null);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0 });
-  const svgRef = useRef<SVGSVGElement>(null);
 
   // ── 저장 모달 폼 ──
   const [saveBizId, setSaveBizId] = useState<number | "">("");
@@ -540,12 +528,8 @@ export default function MapManagementPage() {
   const [isMappingStarting, setIsMappingStarting] = useState(false); // 맵핑 시작 준비 중
   const [isMappingEnding, setIsMappingEnding] = useState(false); // 맵핑 종료(맵 생성) 중
 
-  // ── 맵핑 실시간 시각화 ──
-  const [mappingCloudPoints, setMappingCloudPoints] = useState<number[][]>([]);
-  const [mappingOdom, setMappingOdom] = useState<{ x: number; y: number; yaw: number } | null>(null);
-  const hasReceivedData = useRef(false);
-  const mappingCanvasRef = useRef<HTMLCanvasElement>(null);
-  const mappingWsRef = useRef<WebSocket | null>(null);
+  // ── 맵핑 실시간 시각화 (훅으로 분리) ──
+  const { mappingCanvasRef } = useMappingWebSocket(mappingState);
 
   // ── 사업장 목록 로드 ──
   const loadBusinesses = useCallback(async () => {
@@ -638,17 +622,6 @@ export default function MapManagementPage() {
     }
   }, [saveBizId, loadFloors]);
 
-  // ── 맵 메타 로드 ──
-  useEffect(() => {
-    if (selectedMap === "") {
-      setMapMeta(null);
-      return;
-    }
-    apiFetch(`/map/maps/${selectedMap}/meta`)
-      .then((res) => res.json())
-      .then((data) => setMapMeta(data))
-      .catch(() => setMapMeta(null));
-  }, [selectedMap]);
 
   // ── 맵 이미지 로드 & 회색 제거 ──
   useEffect(() => {
@@ -663,61 +636,8 @@ export default function MapManagementPage() {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(img, 0, 0);
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-
-      // 1단계: 바깥 회색(unknown) 영역만 flood-fill 방식으로 투명 처리
-      const w = canvas.width, h = canvas.height;
-      const isGrayPixel = (idx: number) => {
-        const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-        return Math.abs(r - g) < 20 && Math.abs(r - b) < 20 && r > 100 && r < 253;
-      };
-
-      // 가장자리에서 시작하는 flood fill로 바깥 회색만 마킹
-      const visited = new Uint8Array(w * h);
-      const queue: number[] = [];
-
-      // 4변 가장자리 픽셀 중 회색인 것을 시드로
-      for (let x = 0; x < w; x++) {
-        if (isGrayPixel(x * 4)) queue.push(x);
-        const bottom = (h - 1) * w + x;
-        if (isGrayPixel(bottom * 4)) queue.push(bottom);
-      }
-      for (let y = 0; y < h; y++) {
-        if (isGrayPixel(y * w * 4)) queue.push(y * w);
-        const right = y * w + (w - 1);
-        if (isGrayPixel(right * 4)) queue.push(right);
-      }
-
-      // BFS
-      while (queue.length > 0) {
-        const pos = queue.pop()!;
-        if (visited[pos]) continue;
-        visited[pos] = 1;
-
-        const idx = pos * 4;
-        if (!isGrayPixel(idx)) continue;
-
-        data[idx + 3] = 0; // 투명 처리
-
-        const x = pos % w, y = Math.floor(pos / w);
-        if (x > 0) queue.push(pos - 1);
-        if (x < w - 1) queue.push(pos + 1);
-        if (y > 0) queue.push(pos - w);
-        if (y < h - 1) queue.push(pos + w);
-      }
-
-      ctx.putImageData(imageData, 0, 0);
-      const url = canvas.toDataURL("image/png");
-      const imgW = img.width;
-      const imgH = img.height;
-      setProcessedImg({ url, w: imgW, h: imgH });
+      const processed = processMapImage(img);
+      setProcessedImg(processed);
       setRotation(0);
 
       // SVG가 렌더된 후 중앙 배치 (마운트 대기)
@@ -725,8 +645,8 @@ export default function MapManagementPage() {
         const svgEl = svgRef.current;
         if (svgEl && svgEl.getBoundingClientRect().width > 0) {
           const rect = svgEl.getBoundingClientRect();
-          const scaleX = rect.width / imgW;
-          const scaleY = rect.height / imgH;
+          const scaleX = rect.width / processed.w;
+          const scaleY = rect.height / processed.h;
           const fitZoom = Math.min(scaleX, scaleY) * 0.75;
           setZoom(fitZoom);
           setOffset({ x: rect.width / 2, y: rect.height / 2 });
@@ -738,169 +658,6 @@ export default function MapManagementPage() {
     };
     img.src = imgUrl;
   }, [selectedMap, maps]);
-
-  // ── 맵핑 모달 WebSocket 연결 ──
-  useEffect(() => {
-    if (mappingState !== "mappingModal") {
-      // 모달 닫히면 WebSocket 해제
-      if (mappingWsRef.current) {
-        mappingWsRef.current.close();
-        mappingWsRef.current = null;
-      }
-      setMappingOdom(null);
-      return;
-    }
-
-    const wsUrl =
-      typeof window !== "undefined" && window.location.hostname !== "localhost"
-        ? `ws://${window.location.hostname}:8000/ws/mapping/view`
-        : "ws://localhost:8000/ws/mapping/view";
-
-    const connect = () => {
-      const ws = new WebSocket(wsUrl);
-      mappingWsRef.current = ws;
-
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-
-          if (data.type === "cloud") {
-            hasReceivedData.current = true;
-            setMappingCloudPoints(data.points || []);
-          } else if (data.type === "aligned") {
-            hasReceivedData.current = true;
-            setMappingCloudPoints(prev => [...prev, ...(data.points || [])]);
-          } else if (data.type === "odom") {
-            setMappingOdom({ x: data.x, y: data.y, yaw: data.yaw });
-          }
-        } catch (err) {
-          console.error("WS 메시지 파싱 오류:", err);
-        }
-      };
-
-      ws.onclose = () => {
-        if (mappingState === "mappingModal") {
-          setTimeout(connect, 3000);
-        }
-      };
-
-      ws.onerror = () => ws.close();
-    };
-
-    connect();
-
-    return () => {
-      if (mappingWsRef.current) {
-        mappingWsRef.current.close();
-        mappingWsRef.current = null;
-      }
-    };
-  }, [mappingState]);
-
-  // ── 맵핑 Canvas 렌더링 (PointCloud, 더블 버퍼링) ──
-  useEffect(() => {
-    const canvas = mappingCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const container = canvas.parentElement;
-    if (!container) return;
-
-    const cw = container.clientWidth;
-    const ch = container.clientHeight;
-
-    // 오프스크린 Canvas에 먼저 그리기 (깜빡임 방지)
-    const offscreen = document.createElement("canvas");
-    offscreen.width = cw;
-    offscreen.height = ch;
-    const off = offscreen.getContext("2d")!;
-
-    // 배경
-    off.fillStyle = "#111";
-    off.fillRect(0, 0, cw, ch);
-
-    if (mappingCloudPoints.length === 0) {
-      if (!hasReceivedData.current) {
-        off.fillStyle = "#555";
-        off.font = "15px Pretendard, sans-serif";
-        off.textAlign = "center";
-        off.fillText("맵 데이터 수신 대기 중...", cw / 2, ch / 2);
-        canvas.width = cw;
-        canvas.height = ch;
-        ctx.drawImage(offscreen, 0, 0);
-      }
-      return;
-    }
-
-    // 포인트 클라우드 범위 계산
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const pt of mappingCloudPoints) {
-      if (pt[0] < minX) minX = pt[0];
-      if (pt[0] > maxX) maxX = pt[0];
-      if (pt[1] < minY) minY = pt[1];
-      if (pt[1] > maxY) maxY = pt[1];
-    }
-
-    const rangeX = maxX - minX || 1;
-    const rangeY = maxY - minY || 1;
-    const margin = 40;
-    const scaleX = (cw - margin * 2) / rangeX;
-    const scaleY = (ch - margin * 2) / rangeY;
-    const scale = Math.min(scaleX, scaleY);
-    const ox = (cw - rangeX * scale) / 2;
-    const oy = (ch - rangeY * scale) / 2;
-
-    // ROS 좌표 → Canvas 픽셀
-    const toCanvas = (rx: number, ry: number) => ({
-      x: ox + (rx - minX) * scale,
-      y: oy + (maxY - ry) * scale,
-    });
-
-    // 포인트 클라우드 그리기
-    off.fillStyle = "rgba(0, 200, 255, 0.7)";
-    for (const pt of mappingCloudPoints) {
-      const p = toCanvas(pt[0], pt[1]);
-      off.fillRect(p.x, p.y, 2, 2);
-    }
-
-    // 로봇 위치 그리기 (빨간 삼각형)
-    if (mappingOdom) {
-      const rp = toCanvas(mappingOdom.x, mappingOdom.y);
-      const sz = 8;
-      off.save();
-      off.translate(rp.x, rp.y);
-      off.rotate(-mappingOdom.yaw);
-      off.beginPath();
-      off.moveTo(sz * 1.5, 0);
-      off.lineTo(-sz, -sz);
-      off.lineTo(-sz, sz);
-      off.closePath();
-      off.fillStyle = "rgba(255, 60, 60, 0.9)";
-      off.fill();
-      off.strokeStyle = "#fff";
-      off.lineWidth = 1;
-      off.stroke();
-      off.restore();
-    }
-
-    // 완성된 프레임을 한 번에 복사
-    canvas.width = cw;
-    canvas.height = ch;
-    ctx.drawImage(offscreen, 0, 0);
-  }, [mappingCloudPoints, mappingOdom]);
-
-  // ── SVG 마우스 휠 줌 (passive: false로 등록해야 preventDefault 가능) ──
-  useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return;
-    const handler = (e: WheelEvent) => {
-      e.preventDefault();
-      setZoom((prev) => Math.max(0.1, Math.min(10, prev * (e.deltaY < 0 ? 1.1 : 0.9))));
-    };
-    el.addEventListener("wheel", handler, { passive: false });
-    return () => el.removeEventListener("wheel", handler);
-  }, [processedImg]);
 
   // ── SVG 드래그 팬 ──
   const panDragged = useRef(false);
@@ -1109,6 +866,38 @@ export default function MapManagementPage() {
     setMappingState("startModal");
   };
 
+  const handlePathBuildStart = () => {
+    if (!processedImg || !mapMeta) { alert("맵을 먼저 선택해주세요."); return; }
+    clearAllModes();
+    setIsPathBuildMode(true);
+    setPathBuildName("");
+    setRightPanelOpen(false);
+  };
+
+  const handleMapReset = () => {
+    clearAllModes();
+    if (!processedImg || !mapMeta) {
+      alert("맵을 먼저 선택해주세요.");
+      return;
+    }
+    if (!confirm("맵 위의 모든 장소와 구간을 초기화하시겠습니까?\n저장 버튼을 눌러야 DB에 반영됩니다.")) return;
+    setUndoStack((prev) => [...prev, {
+      type: "mapReset" as const,
+      prevPendingPlaces: [...pendingPlaces],
+      prevPendingRoutes: [...pendingRoutes],
+      prevDeletedDbIds: new Set(deletedDbIds),
+      prevDeletedRouteDbIds: new Set(deletedRouteDbIds),
+      prevMovedPlaces: new Map(movedPlaces),
+      prevModifiedDbIds: new Set(modifiedDbIds),
+    }]);
+    setPendingPlaces([]);
+    setPendingRoutes([]);
+    setDeletedDbIds(new Set(mapPlaces.map((p) => p.id)));
+    setDeletedRouteDbIds(new Set(dbRoutes.map((r) => r.id)));
+    setMovedPlaces(new Map());
+    setModifiedDbIds(new Set());
+  };
+
   // ── 시작 모달: 사업장 선택 시 층 로드 ──
   const handleStartBizChange = async (bizId: number) => {
     setStartBizId(bizId);
@@ -1293,40 +1082,8 @@ export default function MapManagementPage() {
     }
   };
 
-  // ── 로봇 위치 폴링 + 현재 층 갱신 ──
-  useEffect(() => {
-    if (connectedRobots.length === 0) {
-      setRobotPos(null);
-      return;
-    }
-    const poll = async () => {
-      try {
-        const [posRes, statusRes] = await Promise.all([
-          apiFetch(`/robot/position`),
-          apiFetch(`/robot/status`),
-        ]);
-        const posData = await posRes.json();
-        if (posData.timestamp > 0) {
-          setRobotPos({ x: posData.x, y: posData.y, yaw: posData.yaw });
-        }
-        const statuses: { robot_name: string; current_floor_id: number | null }[] = await statusRes.json();
-        setConnectedRobots((prev) =>
-          prev.map((robot) => {
-            const match = statuses.find((s) => s.robot_name === robot.RobotName);
-            if (match && match.current_floor_id !== robot.CurrentFloorId) {
-              return { ...robot, CurrentFloorId: match.current_floor_id };
-            }
-            return robot;
-          })
-        );
-      } catch (e) {
-        console.error("위치 폴링 실패:", e);
-      }
-    };
-    poll();
-    const interval = setInterval(poll, 2000);
-    return () => clearInterval(interval);
-  }, [connectedRobots.length]);
+  // ── 로봇 위치 폴링 + 현재 층 갱신 (훅으로 분리) ──
+  useRobotPolling(connectedRobots, setConnectedRobots, setRobotPos);
 
   // ── 저장 취소 ──
   const handleCancelSave = () => {
@@ -1407,6 +1164,55 @@ export default function MapManagementPage() {
     setShowRobotModal(false);
   };
 
+  // ── 맵 삭제 ──
+  const handleDeleteMap = async () => {
+    clearAllModes();
+    if (selectedMap === "") {
+      alert("삭제할 맵을 먼저 선택해주세요.");
+      return;
+    }
+    const mapName = maps.find((m) => m.id === selectedMap)?.MapName ?? "선택된 맵";
+    if (!confirm(`"${mapName}" 맵을 삭제하시겠습니까?\n맵에 포함된 장소, 구간, 관련 경로가 모두 삭제됩니다.`)) return;
+    try {
+      const res = await apiFetch(`/map/maps/${selectedMap}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("맵 삭제 실패");
+      alert("맵이 삭제되었습니다.");
+      setPendingPlaces([]);
+      setPendingRoutes([]);
+      setDeletedDbIds(new Set());
+      setDeletedRouteDbIds(new Set());
+      setMovedPlaces(new Map());
+      setModifiedDbIds(new Set());
+      setUndoStack([]);
+      // 맵 목록 새로고침 후 다음 맵 자동 선택
+      if (selectedFloor !== "") {
+        const fl = floors.find((a) => a.id === selectedFloor);
+        if (fl) {
+          const mapsRes = await apiFetch(`/map/maps?floor_id=${fl.id}`);
+          if (mapsRes.ok) {
+            const updatedMaps = await mapsRes.json();
+            setMaps(updatedMaps);
+            if (updatedMaps.length > 0) {
+              setSelectedMap(updatedMaps[0].id);
+            } else {
+              setSelectedMap("");
+              setMapPlaces([]);
+              setDbRoutes([]);
+              setProcessedImg(null);
+            }
+          }
+        }
+      } else {
+        setSelectedMap("");
+        setMapPlaces([]);
+        setDbRoutes([]);
+        setProcessedImg(null);
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "삭제 중 오류 발생");
+    }
+  };
+
   return (
     <PermissionGuard requiredPermissions={["map-edit", "place-list", "path-list"]}>
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -1435,103 +1241,23 @@ export default function MapManagementPage() {
 
       {activeTab === "map" && <div className={styles.container}>
         {/* ── 상단 툴바 ── */}
-        <div className={styles.toolbar}>
-          <span className={styles.toolbarLabel}>사업장:</span>
-          <select
-            value={selectedBiz}
-            onChange={(e) => handleBizChange(Number(e.target.value))}
-          >
-            <option value="">사업장 선택</option>
-            {businesses.map((b) => (
-              <option key={b.id} value={b.id}>{b.BusinessName}</option>
-            ))}
-          </select>
-
-          <span className={styles.toolbarLabel}>층:</span>
-          <select
-            value={selectedFloor}
-            onChange={(e) => handleFloorChange(Number(e.target.value))}
-          >
-            <option value="">층 선택</option>
-            {floors.map((a) => (
-              <option key={a.id} value={a.id}>{a.FloorName}</option>
-            ))}
-          </select>
-
-          <span className={styles.toolbarLabel}>영역:</span>
-          <select
-            value={selectedMap}
-            onChange={(e) => setSelectedMap(Number(e.target.value))}
-          >
-            <option value="">영역 선택</option>
-            {maps.map((m) => (
-              <option key={m.id} value={m.id}>{m.MapName}</option>
-            ))}
-          </select>
-
-          <div className={styles.toolbarCenter}>
-            <button className={styles.toolbarBtn} onClick={handleSaveAll}>저장</button>
-            <button className={styles.toolbarBtn} onClick={handleOpenSyncModal}>동기화</button>
-            <button className={styles.toolbarBtn} onClick={clearAllModes}>위치재조정</button>
-            <button
-              className={styles.toolbarBtn}
-              onClick={async () => {
-                clearAllModes();
-                if (selectedMap === "") {
-                  alert("삭제할 맵을 먼저 선택해주세요.");
-                  return;
-                }
-                const mapName = maps.find((m) => m.id === selectedMap)?.MapName ?? "선택된 맵";
-                if (!confirm(`"${mapName}" 맵을 삭제하시겠습니까?\n맵에 포함된 장소, 구간, 관련 경로가 모두 삭제됩니다.`)) return;
-                try {
-                  const res = await apiFetch(`/map/maps/${selectedMap}`, { method: "DELETE" });
-                  if (!res.ok) throw new Error("맵 삭제 실패");
-                  alert("맵이 삭제되었습니다.");
-                  setPendingPlaces([]);
-                  setPendingRoutes([]);
-                  setDeletedDbIds(new Set());
-                  setDeletedRouteDbIds(new Set());
-                  setMovedPlaces(new Map());
-                  setModifiedDbIds(new Set());
-                  setUndoStack([]);
-                  // 맵 목록 새로고침 후 다음 맵 자동 선택
-                  if (selectedFloor !== "") {
-                    const fl = floors.find((a) => a.id === selectedFloor);
-                    if (fl) {
-                      const mapsRes = await apiFetch(`/map/maps?floor_id=${fl.id}`);
-                      if (mapsRes.ok) {
-                        const updatedMaps = await mapsRes.json();
-                        setMaps(updatedMaps);
-                        if (updatedMaps.length > 0) {
-                          setSelectedMap(updatedMaps[0].id);
-                        } else {
-                          setSelectedMap("");
-                          setMapPlaces([]);
-                          setDbRoutes([]);
-                          setProcessedImg(null);
-                          setMapMeta(null);
-                        }
-                      }
-                    }
-                  } else {
-                    setSelectedMap("");
-                    setMapPlaces([]);
-                    setDbRoutes([]);
-                    setProcessedImg(null);
-                    setMapMeta(null);
-                  }
-                } catch (e) {
-                  alert(e instanceof Error ? e.message : "삭제 중 오류 발생");
-                }
-              }}
-            >삭제</button>
-          </div>
-          <div className={styles.toolbarRight}>
-            <button className={styles.robotConnectBtn} onClick={handleOpenRobotModal}>
-              {connectedRobots.length > 0 ? connectedRobots.map((r) => r.RobotName).join(", ") : "로봇 연결"}
-            </button>
-          </div>
-        </div>
+        <MapToolbar
+          businesses={businesses}
+          floors={floors}
+          maps={maps}
+          selectedBiz={selectedBiz}
+          selectedFloor={selectedFloor}
+          selectedMap={selectedMap}
+          connectedRobots={connectedRobots}
+          onBizChange={handleBizChange}
+          onFloorChange={handleFloorChange}
+          onMapChange={setSelectedMap}
+          onSaveAll={handleSaveAll}
+          onOpenSyncModal={handleOpenSyncModal}
+          onClearModes={clearAllModes}
+          onDeleteMap={handleDeleteMap}
+          onOpenRobotModal={handleOpenRobotModal}
+        />
 
         {/* ── 메인 영역 ── */}
         <div className={styles.mainArea}>
@@ -1810,9 +1536,10 @@ export default function MapManagementPage() {
                 </g>
               </svg>
             ) : (
-              <span className={styles.mapPlaceholder}>
-                맵을 불러오거나 맵핑을 시작하세요
-              </span>
+              <div className={styles.mapPlaceholderLoading}>
+                <div className={styles.mapPlaceholderSpinner} />
+                <span>지도를 불러오는 중...</span>
+              </div>
             )}
 
           {/* 장소 생성/삭제 모드 배너 */}
@@ -2081,464 +1808,78 @@ export default function MapManagementPage() {
           </div>
 
           {/* 오른쪽 패널 (오버레이) */}
-          <div className={`${styles.rightPanel} ${rightPanelOpen ? styles.rightPanelOpen : styles.rightPanelClosed}`}>
-            <button
-              className={styles.panelToggle}
-              onClick={() => setRightPanelOpen((v) => !v)}
-            >
-              {rightPanelOpen ? "\u203A" : "\u2039"}
-            </button>
-            <div className={styles.panelCard}>
-              <div className={styles.panelTitle}>맵 관리</div>
+          <MapRightPanel
+            open={rightPanelOpen}
+            onToggle={() => setRightPanelOpen((v) => !v)}
+            onPathBuildStart={handlePathBuildStart}
+            onMappingStart={handleMappingStart}
+            onMapReset={handleMapReset}
+          />
 
-              {/* 경로 */}
-              <button
-                className={`${styles.btnMapping} ${styles.btnMappingStart}`}
-                style={{ width: "100%", marginBottom: 10 }}
-                onClick={() => {
-                  if (!processedImg || !mapMeta) { alert("맵을 먼저 선택해주세요."); return; }
-                  clearAllModes();
-                  setIsPathBuildMode(true);
-                  setPathBuildName("");
-                  setRightPanelOpen(false);
-                }}
-              >
-                경로 만들기
-              </button>
-
-              <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "0 0 10px" }} />
-
-              {/* 맵핑 */}
-              <div className={styles.mappingBtns}>
-                <button className={`${styles.btnMapping} ${styles.btnMappingStart}`} onClick={handleMappingStart}>
-                  맵핑 시작
-                </button>
-                <button
-                  className={`${styles.btnMapping} ${styles.btnMappingReset}`}
-                  onClick={() => {
-                    clearAllModes();
-                    if (!processedImg || !mapMeta) {
-                      alert("맵을 먼저 선택해주세요.");
-                      return;
-                    }
-                    if (!confirm("맵 위의 모든 장소와 구간을 초기화하시겠습니까?\n저장 버튼을 눌러야 DB에 반영됩니다.")) return;
-                    // 현재 상태를 undo 스택에 저장
-                    setUndoStack((prev) => [...prev, {
-                      type: "mapReset" as const,
-                      prevPendingPlaces: [...pendingPlaces],
-                      prevPendingRoutes: [...pendingRoutes],
-                      prevDeletedDbIds: new Set(deletedDbIds),
-                      prevDeletedRouteDbIds: new Set(deletedRouteDbIds),
-                      prevMovedPlaces: new Map(movedPlaces),
-                      prevModifiedDbIds: new Set(modifiedDbIds),
-                    }]);
-                    // pending 데이터 비우기
-                    setPendingPlaces([]);
-                    setPendingRoutes([]);
-                    // DB 장소 전부 삭제 표시
-                    setDeletedDbIds(new Set(mapPlaces.map((p) => p.id)));
-                    // DB 구간 전부 삭제 표시
-                    setDeletedRouteDbIds(new Set(dbRoutes.map((r) => r.id)));
-                    // 이동/수정 상태 초기화
-                    setMovedPlaces(new Map());
-                    setModifiedDbIds(new Set());
-                  }}
-                >
-                  맵 초기화
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 경로 생성 플로팅 패널 */}
-          {isPathBuildMode && (
-            <div style={{
-              position: "absolute", top: 0, right: 0, bottom: 0, zIndex: 15,
-              width: 280, background: "var(--surface-3)",
-              borderLeft: "1px solid rgba(255,255,255,0.08)",
-              boxShadow: "-4px 0 24px rgba(0,0,0,0.3)",
-              display: "flex", flexDirection: "column",
-            }}>
-              {/* 헤더 */}
-              <div style={{
-                padding: "14px 16px 10px", borderBottom: "1px solid rgba(255,255,255,0.06)",
-                display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
-              }}>
-                <span style={{ fontSize: "var(--font-size-lg)", fontWeight: 600, color: "var(--text-primary)" }}>
-                  경로 생성
-                </span>
-                <button
-                  onClick={() => { setIsPathBuildMode(false); setPathBuildOrder([]); setRightPanelOpen(true); }}
-                  style={{
-                    background: "none", border: "none", color: "var(--text-muted)",
-                    cursor: "pointer", fontSize: 18, lineHeight: 1,
-                  }}
-                >×</button>
-              </div>
-
-              {/* 폼 */}
-              <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10, flexShrink: 0 }}>
-                {/* 경로명 */}
-                <div>
-                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-tertiary)", marginBottom: 3, fontWeight: 600 }}>경로명</div>
-                  <input
-                    value={pathBuildName}
-                    onChange={(e) => setPathBuildName(e.target.value)}
-                    maxLength={20}
-                    placeholder="경로명을 입력하세요"
-                    style={{
-                      width: "100%", height: 32, borderRadius: 6,
-                      border: "1px solid var(--border-input)", background: "var(--surface-input)",
-                      color: "var(--text-primary)", padding: "0 10px", fontSize: "var(--font-size-sm)",
-                    }}
-                  />
-                </div>
-                {/* 작업유형 */}
-                <div>
-                  <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-tertiary)", marginBottom: 3, fontWeight: 600 }}>작업유형</div>
-                  <select
-                    value={pathBuildWorkType}
-                    onChange={(e) => setPathBuildWorkType(e.target.value)}
-                    style={{
-                      width: "100%", height: 32, borderRadius: 6,
-                      border: "1px solid var(--border-input)", background: "var(--surface-input)",
-                      color: "var(--text-primary)", padding: "0 8px", fontSize: "var(--font-size-sm)",
-                    }}
-                  >
-                    <option value="task1">task1</option>
-                    <option value="task2">task2</option>
-                    <option value="task3">task3</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* 경로 순서 */}
-              <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-                <div style={{
-                  fontSize: "var(--font-size-xs)", color: "var(--text-tertiary)", marginBottom: 6, fontWeight: 600,
-                  display: "flex", justifyContent: "space-between", alignItems: "center",
-                }}>
-                  <span>경로 순서</span>
-                  <span style={{ color: "var(--color-info)", fontWeight: 700 }}>{pathBuildOrder.length}개</span>
-                </div>
-                <div style={{
-                  flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4,
-                  background: "var(--surface-4)", borderRadius: 8, border: "1px solid var(--border-input)",
-                  padding: pathBuildOrder.length > 0 ? 8 : "20px 8px",
-                  minHeight: 80,
-                }}>
-                  {pathBuildOrder.length === 0 ? (
-                    <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
-                      맵에서 장소를 클릭하세요
-                    </div>
-                  ) : (
-                    pathBuildOrder.map((name, i) => (
-                      <div key={`${name}_${i}`} style={{
-                        display: "flex", alignItems: "center", gap: 8,
-                        padding: "6px 10px", borderRadius: 6,
-                        background: "var(--surface-5)", fontSize: "var(--font-size-sm)",
-                      }}>
-                        <span style={{
-                          width: 22, height: 22, borderRadius: "50%", background: "#FF6B35",
-                          color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 11, fontWeight: 700, flexShrink: 0,
-                        }}>{i + 1}</span>
-                        <span style={{ flex: 1, color: "var(--text-primary)", fontWeight: 500 }}>{name}</span>
-                        {i > 0 && i < pathBuildOrder.length && (
-                          <span style={{ fontSize: "var(--font-size-2xs)", color: "var(--text-muted)" }}>
-                            {(() => {
-                              const prev = placeCoordMap.get(pathBuildOrder[i - 1]);
-                              const cur = placeCoordMap.get(name);
-                              if (!prev || !cur) return "";
-                              const d = Math.sqrt((cur.x - prev.x) ** 2 + (cur.y - prev.y) ** 2);
-                              return `${d.toFixed(1)}m`;
-                            })()}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => setPathBuildOrder((prev) => prev.filter((_, idx) => idx !== i))}
-                          style={{
-                            background: "none", border: "none", color: "var(--text-muted)",
-                            cursor: "pointer", fontSize: 16, padding: 0, lineHeight: 1,
-                          }}
-                          title="제거"
-                        >×</button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* 하단 버튼 */}
-              <div style={{
-                padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)",
-                display: "flex", gap: 8, flexShrink: 0,
-              }}>
-                <button
-                  onClick={() => { setIsPathBuildMode(false); setPathBuildOrder([]); setRightPanelOpen(true); }}
-                  style={{
-                    flex: 1, height: 34, borderRadius: 8,
-                    border: "1px solid var(--border-input)", background: "var(--surface-5)",
-                    color: "var(--text-primary)", fontSize: "var(--font-size-md)", cursor: "pointer",
-                  }}
-                >취소</button>
-                <button
-                  onClick={handleSavePath}
-                  disabled={pathBuildOrder.length < 2 || !pathBuildName.trim()}
-                  style={{
-                    flex: 1, height: 34, borderRadius: 8,
-                    border: "1px solid var(--color-info-border)", background: "var(--color-info-bg)",
-                    color: "var(--text-primary)", fontSize: "var(--font-size-md)", cursor: "pointer",
-                    opacity: (pathBuildOrder.length < 2 || !pathBuildName.trim()) ? 0.5 : 1,
-                  }}
-                >저장</button>
-              </div>
-            </div>
-          )}
+          <PathBuildPanel
+            isOpen={isPathBuildMode}
+            pathBuildName={pathBuildName}
+            setPathBuildName={setPathBuildName}
+            pathBuildWorkType={pathBuildWorkType}
+            setPathBuildWorkType={setPathBuildWorkType}
+            pathBuildOrder={pathBuildOrder}
+            setPathBuildOrder={setPathBuildOrder}
+            placeCoordMap={placeCoordMap}
+            onCancel={() => {
+              setIsPathBuildMode(false);
+              setPathBuildOrder([]);
+              setRightPanelOpen(true);
+            }}
+            onSave={handleSavePath}
+          />
         </div>
       </div>}
 
-      {/* ── 맵핑 시작 모달 ── */}
-      {mappingState === "startModal" && (
-        <div className={styles.startOverlay}>
-          <div className={styles.startModal} onClick={(e) => e.stopPropagation()}>
-            {/* 헤더 */}
-            <div className={styles.startHeader}>
-              <div className={styles.startHeaderLeft}>
-                <img src="/icon/map_w.png" alt="" />
-                <h2>맵핑 시작</h2>
-              </div>
-              <button className={styles.startCloseBtn} onClick={() => setMappingState("idle")}>
-                &times;
-              </button>
-            </div>
+      <MappingStartModal
+        isOpen={mappingState === "startModal"}
+        businesses={businesses}
+        startBizId={startBizId}
+        startBizNew={startBizNew}
+        startBizMode={startBizMode}
+        startFloorId={startFloorId}
+        startFloorNew={startFloorNew}
+        startFloorMode={startFloorMode}
+        startFloors={startFloors}
+        startMapName={startMapName}
+        startMapNameChecked={startMapNameChecked}
+        setStartBizNew={setStartBizNew}
+        setStartBizMode={setStartBizMode}
+        setStartFloorId={setStartFloorId}
+        setStartFloorNew={setStartFloorNew}
+        setStartFloorMode={setStartFloorMode}
+        setStartMapName={setStartMapName}
+        setStartMapNameChecked={setStartMapNameChecked}
+        onStartBizChange={handleStartBizChange}
+        onCheckMapName={handleCheckMapName}
+        onConfirm={handleConfirmMappingStart}
+        onCancel={() => setMappingState("idle")}
+      />
 
-            {/* 본문 */}
-            <div className={styles.startBody}>
-              {/* 사업장 섹션 */}
-              <div className={styles.startSection}>
-                <div className={styles.startSectionTitle}>
-                  <span>사업장 정보</span>
-                  <div className={styles.startSectionLine} />
-                </div>
-                <div className={styles.startRow}>
-                  <span className={styles.startLabel}>사업장 <span className={styles.startRequired}>*</span></span>
-                  <div className={styles.startField}>
-                    {startBizMode === "select" ? (
-                      <select
-                        className={styles.startSelect}
-                        value={startBizId}
-                        onChange={(e) => handleStartBizChange(Number(e.target.value))}
-                      >
-                        <option value="">사업장 선택</option>
-                        {businesses.map((b) => (
-                          <option key={b.id} value={b.id}>{b.BusinessName}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        className={styles.startInput}
-                        type="text"
-                        placeholder="사업장 이름 입력"
-                        value={startBizNew}
-                        onChange={(e) => setStartBizNew(e.target.value)}
-                      />
-                    )}
-                    <button
-                      className={styles.startToggleBtn}
-                      onClick={() => setStartBizMode(startBizMode === "select" ? "new" : "select")}
-                    >
-                      {startBizMode === "select" ? "직접 입력" : "목록 선택"}
-                    </button>
-                  </div>
-                </div>
-                <div className={styles.startRow}>
-                  <span className={styles.startLabel}>층 <span className={styles.startRequired}>*</span></span>
-                  <div className={styles.startField}>
-                    {startFloorMode === "select" ? (
-                      <select
-                        className={styles.startSelect}
-                        value={startFloorId}
-                        onChange={(e) => setStartFloorId(Number(e.target.value))}
-                      >
-                        <option value="">층 선택</option>
-                        {startFloors.map((a) => (
-                          <option key={a.id} value={a.id}>{a.FloorName}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        className={styles.startInput}
-                        type="text"
-                        placeholder="예: B1, 1F, 2F"
-                        value={startFloorNew}
-                        onChange={(e) => setStartFloorNew(e.target.value)}
-                      />
-                    )}
-                    <button
-                      className={styles.startToggleBtn}
-                      onClick={() => setStartFloorMode(startFloorMode === "select" ? "new" : "select")}
-                    >
-                      {startFloorMode === "select" ? "직접 입력" : "목록 선택"}
-                    </button>
-                  </div>
-                </div>
-              </div>
+      <MappingProgressModal
+        isOpen={mappingState === "mappingModal"}
+        isMappingRunning={isMappingRunning}
+        isMappingStarting={isMappingStarting}
+        isMappingEnding={isMappingEnding}
+        saveMapName={saveMapName}
+        mappingCanvasRef={mappingCanvasRef}
+        onStart={handleMappingRun}
+        onEnd={handleMappingEnd}
+        onCancel={async () => {
+          await apiFetch(`/map/mapping/cancel`, { method: "POST" }).catch(() => {});
+          setIsMappingRunning(false);
+          setMappingState("idle");
+        }}
+      />
 
-              {/* 영역 섹션 */}
-              <div className={styles.startSection}>
-                <div className={styles.startSectionTitle}>
-                  <span>영역 정보</span>
-                  <div className={styles.startSectionLine} />
-                </div>
-                <div className={styles.startRow}>
-                  <span className={styles.startLabel}>영역 이름 <span className={styles.startRequired}>*</span></span>
-                  <div className={styles.startField}>
-                    <input
-                      className={styles.startInput}
-                      type="text"
-                      placeholder="영역 이름을 입력하세요"
-                      value={startMapName}
-                      onChange={(e) => {
-                        setStartMapName(e.target.value);
-                        setStartMapNameChecked(null);
-                      }}
-                    />
-                    <button
-                      className={styles.startCheckBtn}
-                      onClick={handleCheckMapName}
-                      disabled={!startMapName.trim()}
-                    >
-                      중복 체크
-                    </button>
-                  </div>
-                </div>
-                {startMapNameChecked === true && (
-                  <div className={styles.startFieldMsg}>
-                    <span className={styles.checkOk}>사용 가능한 이름입니다.</span>
-                  </div>
-                )}
-                {startMapNameChecked === false && (
-                  <div className={styles.startFieldMsg}>
-                    <span className={styles.checkFail}>이미 사용 중인 이름입니다.</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 푸터 */}
-            <div className={styles.startFooter}>
-              <button className={styles.startFooterBtn + " " + styles.startBtnCancel} onClick={() => setMappingState("idle")}>
-                <img src="/icon/arrow-left.png" alt="" />
-                취소
-              </button>
-              <button
-                className={styles.startFooterBtn + " " + styles.startBtnConfirm}
-                onClick={handleConfirmMappingStart}
-                disabled={startMapNameChecked !== true}
-              >
-                맵핑 시작
-                <img src="/icon/arrow-right.png" alt="" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── 맵핑 진행 모달 ── */}
-      {mappingState === "mappingModal" && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.mappingModal}>
-            {/* 로딩 오버레이 */}
-            {(isMappingStarting || isMappingEnding) && (
-              <div className={styles.mappingLoadingOverlay}>
-                <div className={styles.mappingLoadingSpinner} />
-                <span className={styles.mappingLoadingText}>
-                  {isMappingStarting ? "맵핑 준비 중..." : "맵 생성 중..."}
-                </span>
-              </div>
-            )}
-
-            {/* 좌측: 맵 시각화 */}
-            <div className={styles.mappingModalLeft}>
-              <div className={styles.mappingModalCanvas}>
-                <canvas ref={mappingCanvasRef} className={styles.mappingCanvasEl} />
-              </div>
-            </div>
-
-            {/* 우측: 정보 + 컨트롤 */}
-            <div className={styles.mappingModalRight}>
-              <div className={styles.mappingModalTitle}>맵핑</div>
-
-              {/* 상태 표시 */}
-              <div className={styles.mappingStatusSection}>
-                <div className={styles.mappingStatusRow}>
-                  <span className={styles.mappingStatusLabel}>상태</span>
-                  <span className={`${styles.mappingStatusValue} ${isMappingRunning ? styles.statusRunning : styles.statusStopped}`}>
-                    {isMappingRunning ? "진행 중" : "대기"}
-                  </span>
-                </div>
-                <div className={styles.mappingStatusRow}>
-                  <span className={styles.mappingStatusLabel}>영역</span>
-                  <span className={styles.mappingStatusValue}>{saveMapName}</span>
-                </div>
-              </div>
-
-              {/* 맵핑 인디케이터 */}
-              {isMappingRunning && (
-                <div className={styles.mappingIndicator}>
-                  <div className={styles.mappingPulse} />
-                  <span>맵핑 데이터 수집 중...</span>
-                </div>
-              )}
-
-              {/* 컨트롤 버튼 */}
-              <div className={styles.mappingControls}>
-                <button
-                  className={`${styles.mappingCtrlBtn} ${styles.mappingCtrlStart}`}
-                  onClick={handleMappingRun}
-                  disabled={isMappingRunning}
-                >
-                  시작
-                </button>
-                <button
-                  className={`${styles.mappingCtrlBtn} ${styles.mappingCtrlEnd}`}
-                  onClick={handleMappingEnd}
-                  disabled={isMappingEnding}
-                >
-                  종료
-                </button>
-              </div>
-
-              <button
-                className={styles.mappingCancelBtn}
-                onClick={async () => {
-                  await apiFetch(`/map/mapping/cancel`, { method: "POST" }).catch(() => {});
-                  setIsMappingRunning(false);
-                  setMappingState("idle");
-                }}
-              >
-                취소
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── 성공 팝업 ── */}
-      {mappingState === "success" && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.successPopup}>
-            <div className={styles.successIcon}>&#10003;</div>
-            <div className={styles.successText}>
-              성공적으로 맵이 저장되었습니다.
-            </div>
-            <button className={styles.btnConfirm} onClick={handleSuccessConfirm}>
-              확인
-            </button>
-          </div>
-        </div>
-      )}
+      <MappingSuccessModal
+        isOpen={mappingState === "success"}
+        onConfirm={handleSuccessConfirm}
+      />
 
       {/* ── 저장 모달 ── */}
       {mappingState === "saveModal" && (
@@ -2598,154 +1939,24 @@ export default function MapManagementPage() {
       )}
 
       {/* ── 로봇 연결 모달 ── */}
-      {showRobotModal && (
-        <div className={styles.startOverlay} onClick={() => setShowRobotModal(false)}>
-          <div className={styles.robotModal} onClick={(e) => e.stopPropagation()}>
-            {/* 헤더 */}
-            <div className={styles.startHeader}>
-              <div className={styles.startHeaderLeft}>
-                <img src="/icon/robot_w.png" alt="" />
-                <h2>로봇 연결</h2>
-              </div>
-              <button className={styles.startCloseBtn} onClick={() => setShowRobotModal(false)}>
-                &times;
-              </button>
-            </div>
-
-            {/* 본문 */}
-            <div className={styles.robotBody}>
-              {connectedRobots.length > 0 && (
-                <div className={styles.robotConnectedBanner}>
-                  <span className={styles.robotConnectedDot} />
-                  <span>현재 연결: <strong>{connectedRobots.map((r) => r.RobotName).join(", ")}</strong></span>
-                </div>
-              )}
-
-              <div className={styles.startSection}>
-                <div className={styles.startSectionTitle}>
-                  <span>로봇 목록</span>
-                  <div className={styles.startSectionLine} />
-                </div>
-
-                {robots.length === 0 ? (
-                  <div className={styles.robotEmptyMsg}>
-                    {selectedMap !== "" ? "현재 맵을 사용 중인 로봇이 없습니다." : "등록된 로봇이 없습니다."}
-                  </div>
-                ) : (
-                  <div className={styles.robotList}>
-                    {robots.map((robot) => (
-                      <button
-                        key={robot.id}
-                        className={`${styles.robotItem} ${selectedConnectIds.includes(robot.id) ? styles.robotItemActive : ""}`}
-                        onClick={() => setSelectedConnectIds((prev) =>
-                          prev.includes(robot.id) ? prev.filter((id) => id !== robot.id) : [...prev, robot.id]
-                        )}
-                      >
-                        <div className={styles.robotItemLeft}>
-                          <input
-                            type="checkbox"
-                            checked={selectedConnectIds.includes(robot.id)}
-                            readOnly
-                            style={{ marginRight: 8, accentColor: "var(--color-info)" }}
-                          />
-                          <img src="/icon/robot_icon(1).png" alt="" className={styles.robotItemIcon} />
-                          <div>
-                            <div className={styles.robotItemName}>{robot.RobotName}</div>
-                            <div className={styles.robotItemInfo}>
-                              {robot.ModelName && <span>{robot.ModelName}</span>}
-                              {robot.SerialNumber && <span>SN: {robot.SerialNumber}</span>}
-                            </div>
-                          </div>
-                        </div>
-                        {connectedRobots.some((r) => r.id === robot.id) && (
-                          <span className={styles.robotItemBadge}>연결됨</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* 푸터 */}
-            <div className={styles.startFooter}>
-              <button className={styles.startFooterBtn + " " + styles.startBtnCancel} onClick={() => setShowRobotModal(false)}>
-                닫기
-              </button>
-              <button className={styles.startFooterBtn + " " + styles.startBtnStart} onClick={handleConnectConfirm}>
-                확인
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* ── 동기화 모달 ── */}
-      {showSyncModal && (
-        <div className={styles.startOverlay} onClick={() => setShowSyncModal(false)}>
-          <div className={styles.robotModal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.startHeader}>
-              <div className={styles.startHeaderLeft}>
-                <img src="/icon/map_d.png" alt="" />
-                <h2>맵 동기화</h2>
-              </div>
-              <button className={styles.startCloseBtn} onClick={() => setShowSyncModal(false)}>
-                &times;
-              </button>
-            </div>
-
-            <div className={styles.robotBody}>
-              <div className={styles.startSection}>
-                <div className={styles.startSectionTitle}>
-                  <span>동기화할 로봇 선택</span>
-                  <div className={styles.startSectionLine} />
-                </div>
-
-                {syncRobots.length === 0 ? (
-                  <div className={styles.robotEmptyMsg}>등록된 로봇이 없습니다.</div>
-                ) : (
-                  <div className={styles.robotList}>
-                    {syncRobots.map((robot) => (
-                      <button
-                        key={robot.id}
-                        className={`${styles.robotItem} ${selectedSyncIds.includes(robot.id) ? styles.robotItemActive : ""}`}
-                        onClick={() => setSelectedSyncIds((prev) =>
-                          prev.includes(robot.id) ? prev.filter((id) => id !== robot.id) : [...prev, robot.id]
-                        )}
-                      >
-                        <div className={styles.robotItemLeft}>
-                          <input
-                            type="checkbox"
-                            checked={selectedSyncIds.includes(robot.id)}
-                            readOnly
-                            style={{ marginRight: 8, accentColor: "var(--color-info)" }}
-                          />
-                          <img src="/icon/robot_icon(1).png" alt="" className={styles.robotItemIcon} />
-                          <div>
-                            <div className={styles.robotItemName}>{robot.RobotName}</div>
-                            <div className={styles.robotItemInfo}>
-                              {robot.ModelName && <span>{robot.ModelName}</span>}
-                              {robot.SerialNumber && <span>SN: {robot.SerialNumber}</span>}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className={styles.startFooter}>
-              <button className={styles.startFooterBtn + " " + styles.startBtnCancel} onClick={() => setShowSyncModal(false)}>
-                닫기
-              </button>
-              <button className={styles.startFooterBtn + " " + styles.startBtnStart} onClick={handleSyncConfirm}>
-                동기화
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <RobotConnectModal
+        isOpen={showRobotModal}
+        robots={robots}
+        connectedRobots={connectedRobots}
+        selectedConnectIds={selectedConnectIds}
+        setSelectedConnectIds={setSelectedConnectIds}
+        selectedMap={selectedMap}
+        onClose={() => setShowRobotModal(false)}
+        onConfirm={handleConnectConfirm}
+      />
+      <MapSyncModal
+        isOpen={showSyncModal}
+        syncRobots={syncRobots}
+        selectedSyncIds={selectedSyncIds}
+        setSelectedSyncIds={setSelectedSyncIds}
+        onClose={() => setShowSyncModal(false)}
+        onConfirm={handleSyncConfirm}
+      />
 
       {/* ── 장소 인라인 수정 팝오버 ── */}
       {editingPlace && (() => {

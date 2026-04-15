@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import get_db, require_admin
 from app.auth.audit import get_client_ip, write_audit
 from app.backup.service import BackupService
-from app.Database.models import UserInfo
+from app.database.models import UserInfo
 
 router = APIRouter(prefix="/api/backup", tags=["백업"])
 

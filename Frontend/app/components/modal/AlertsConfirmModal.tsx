@@ -4,7 +4,7 @@ import styles from './Modal.module.css';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
-import { type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
+import { type AlertMockData, type AlertType } from '@/app/types';
 import { useCustomScrollbar } from '@/app/hooks/useCustomScrollbar';
 import { useAlertContext } from '@/app/context/AlertContext';
 

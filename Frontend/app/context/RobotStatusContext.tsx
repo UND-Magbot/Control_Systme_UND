@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import type { RobotRowData } from "@/app/type";
+import type { RobotRowData } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 
 const STATUS_API = `/robot/status`;

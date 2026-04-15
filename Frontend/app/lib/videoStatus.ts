@@ -1,4 +1,4 @@
-import type { Video } from "@/app/type";
+import type { Video } from "@/app/types";
 
 export default function getVideoStatus(): Video[] {
   return [

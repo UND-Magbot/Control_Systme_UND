@@ -10,8 +10,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
-from app.Database.database import DATABASE_URL
-from app.Database.models import UserInfo, BusinessInfo
+from app.database.database import DATABASE_URL
+from app.database.models import UserInfo, BusinessInfo
 
 
 def _parse_db_url(url: str) -> dict:

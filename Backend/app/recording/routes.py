@@ -4,23 +4,15 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.Database.database import SessionLocal
-from app.Database.models import UserInfo, RecordingInfo
-from app.auth.dependencies import get_current_user, require_permission
+from app.database.database import get_db
+from app.database.models import UserInfo, RecordingInfo
+from app.auth.dependencies import require_permission
 from app.recording import service as rec_service
 from app.recording import manager as rec_manager
 from app.recording.schemas import RecordingStartRequest, RecordingStopRequest
 from app.recording.service import to_absolute_path
 
 router = APIRouter(prefix="/api/recordings", tags=["recordings"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 # ── 현재 녹화 세션 (/{record_id} 패턴보다 앞에 등록해야 함) ──

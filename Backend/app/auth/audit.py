@@ -1,7 +1,7 @@
 """감사 로그 공통 유틸리티. 각 서비스에서 임포트하여 사용."""
 from fastapi import Request
 from sqlalchemy.orm import Session
-from app.Database.models import AuditLog
+from app.database.models import AuditLog
 
 
 def get_client_ip(request: Request) -> str | None:

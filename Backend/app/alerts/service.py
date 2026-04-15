@@ -1,9 +1,9 @@
 from datetime import datetime
-from sqlalchemy.orm import Session, joinedload, subqueryload
+from sqlalchemy.orm import Session, subqueryload
 from sqlalchemy import desc, func
 from fastapi import HTTPException
 
-from app.Database.models import Alert, AlertReadStatus, Notice, UserInfo
+from app.database.models import Alert, AlertReadStatus, Notice, UserInfo
 
 
 class AlertService:
