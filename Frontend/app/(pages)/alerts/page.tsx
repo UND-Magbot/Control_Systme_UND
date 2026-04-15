@@ -4,12 +4,12 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation';
 import PermissionGuard from "@/app/components/common/PermissionGuard";
 import styles from './Alerts.module.css';
-import { type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
+import { type AlertMockData, type AlertType } from '@/app/types';
 import { getAlerts, markAlertRead, markAllAlertsRead, createNotice, updateNotice, deleteNotice, uploadNoticeFile } from '@/app/lib/alertData';
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from '@/app/config';
 import { usePageReady } from "@/app/context/PageLoadingContext";
-import Pagination from '@/app/components/pagination';
+import Pagination from '@/app/components/common/Pagination';
 import FilterSelectBox, { type FilterOption } from '@/app/components/button/FilterSelectBox';
 import NoticeForm, { type NoticeFormData } from './components/NoticeCrudModal';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';

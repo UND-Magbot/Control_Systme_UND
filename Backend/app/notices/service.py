@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from fastapi import HTTPException
 
-from app.Database.models import Notice, Alert
+from app.database.models import Notice, Alert
 
 
 class NoticeService:

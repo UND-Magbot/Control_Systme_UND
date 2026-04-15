@@ -1,4 +1,4 @@
-import type { Camera, RobotModule } from "@/app/type";
+import type { Camera, RobotModule } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
 

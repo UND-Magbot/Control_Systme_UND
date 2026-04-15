@@ -2,21 +2,13 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.Database.database import SessionLocal
-from app.Database.models import UserInfo
+from app.database.database import get_db
+from app.database.models import UserInfo
 from app.alerts.schemas import AlertListResponse, UnreadCountResponse
 from app.alerts.service import AlertService
 from app.auth.dependencies import get_current_user, require_any_permission
 
 router = APIRouter(prefix="/DB", tags=["alerts"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.get("/alerts", response_model=AlertListResponse)

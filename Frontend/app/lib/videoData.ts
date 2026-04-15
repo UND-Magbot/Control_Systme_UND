@@ -1,4 +1,4 @@
-import type { VideoItem } from "@/app/type";
+import type { VideoItem } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
 

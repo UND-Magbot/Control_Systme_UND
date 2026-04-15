@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import type { Video, PrimaryViewType } from '@/app/type';
+import type { Video, PrimaryViewType } from '@/app/types';
 import styles from './Button.module.css';
 
 type VideoStatusProps = { 

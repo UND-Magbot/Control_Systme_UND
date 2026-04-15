@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import type { Camera } from '@/app/type';
+import type { Camera } from '@/app/types';
 import { CanvasMap } from '@/app/components/map';
 import { OCC_GRID_CONFIG } from '@/app/components/map/mapConfigs';
 import type { RobotPosition } from '@/app/components/map/types';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import type { Camera } from '@/app/type';
+import type { Camera } from '@/app/types';
 import { API_BASE } from '@/app/config';
 
 /** 대시보드와 동일한 타임아웃/재시도 값 */

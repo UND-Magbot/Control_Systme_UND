@@ -6,7 +6,7 @@ import PermissionGuard from "@/app/components/common/PermissionGuard";
 import styles from './dataManagement.module.css';
 import VideoStatus from '@/app/lib/videoStatus';
 import RobotTypeData from "@/app/lib/robotTypeData";
-import VideoList from "./components/VideoList";
+import DataManagementTabs from "./components/DataManagementTabs";
 
 export default function DataPage() {
     const setPageReady = usePageReady();
@@ -17,8 +17,7 @@ export default function DataPage() {
     return (
         <PermissionGuard requiredPermissions={["video", "statistics", "log"]}>
             <div className={styles.tabPosition}>
-                <VideoList
-                    cameras={[]}
+                <DataManagementTabs
                     video={VideoStatus()}
                     robotTypeData={RobotTypeData()}
                     onDataReady={setPageReady}

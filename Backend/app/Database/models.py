@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from app.Database.database import Base
+from app.database.database import Base
 
 # =========================
 # 로봇 기본 정보

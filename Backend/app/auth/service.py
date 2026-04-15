@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.Database.models import UserInfo, UserPermission, MenuInfo, AuditLog
+from app.database.models import UserInfo, UserPermission, MenuInfo
+from app.auth.audit import write_audit
 from app.auth.password import hash_password, verify_password, validate_password_format
 from app.auth.jwt_handler import create_access_token, create_refresh_token, decode_token
 
@@ -22,17 +23,17 @@ class AuthService:
         )
 
         if not user:
-            AuthService._write_audit(db, None, "login_failed", ip_address=ip_address,
+            write_audit(db, None, "login_failed", ip_address=ip_address,
                                      detail=json.dumps({"login_id": login_id, "reason": "USER_NOT_FOUND"}))
             raise HTTPException(status_code=401, detail="존재하지 않는 아이디입니다")
 
         if not user.IsActive:
-            AuthService._write_audit(db, user.id, "login_failed", ip_address=ip_address,
+            write_audit(db, user.id, "login_failed", ip_address=ip_address,
                                      detail=json.dumps({"reason": "USER_DISABLED"}))
             raise HTTPException(status_code=401, detail="비활성화된 계정입니다")
 
         if not verify_password(password, user.Password):
-            AuthService._write_audit(db, user.id, "login_failed", ip_address=ip_address,
+            write_audit(db, user.id, "login_failed", ip_address=ip_address,
                                      detail=json.dumps({"reason": "WRONG_PASSWORD"}))
             raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다")
 
@@ -47,7 +48,7 @@ class AuthService:
         # 권한 목록 조회
         permissions = AuthService._get_permissions(db, user)
 
-        AuthService._write_audit(db, user.id, "login", ip_address=ip_address)
+        write_audit(db, user.id, "login", ip_address=ip_address)
 
         return {
             "access_token": access_token,
@@ -108,7 +109,7 @@ class AuthService:
         if user:
             user.TokenVersion = (user.TokenVersion or 0) + 1
             db.commit()
-        AuthService._write_audit(db, user_id, "logout", ip_address=ip_address)
+        write_audit(db, user_id, "logout", ip_address=ip_address)
 
     # ── 현재 사용자 정보 ──
 
@@ -148,7 +149,7 @@ class AuthService:
         user.TokenVersion = (user.TokenVersion or 0) + 1  # 기존 세션 무효화
         db.commit()
 
-        AuthService._write_audit(db, user_id, "password_changed", ip_address=ip_address)
+        write_audit(db, user_id, "password_changed", ip_address=ip_address)
 
     # ── 본인 탈퇴 ──
 
@@ -175,7 +176,7 @@ class AuthService:
         user.TokenVersion = (user.TokenVersion or 0) + 1
         db.commit()
 
-        AuthService._write_audit(db, user_id, "account_deleted", target_type="user", target_id=user_id, ip_address=ip_address)
+        write_audit(db, user_id, "account_deleted", target_type="user", target_id=user_id, ip_address=ip_address)
 
     # ── 내부 유틸 ──
 
@@ -190,23 +191,3 @@ class AuthService:
         )
         return [r.MenuKey for r in rows]
 
-    @staticmethod
-    def _write_audit(
-        db: Session,
-        user_id: int | None,
-        action: str,
-        target_type: str | None = None,
-        target_id: int | None = None,
-        detail: str | None = None,
-        ip_address: str | None = None,
-    ):
-        log = AuditLog(
-            UserId=user_id,
-            Action=action,
-            TargetType=target_type,
-            TargetId=target_id,
-            Detail=detail,
-            IpAddress=ip_address,
-        )
-        db.add(log)
-        db.commit()

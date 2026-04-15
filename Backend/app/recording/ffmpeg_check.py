@@ -6,12 +6,11 @@ import os
 import platform
 import shutil
 import subprocess
-import sys
 import zipfile
 import urllib.request
 
 # FFmpeg 바이너리를 저장할 로컬 디렉토리
-from app.Database.database import BACKEND_ROOT
+from app.database.database import BACKEND_ROOT
 FFMPEG_DIR = os.path.join(BACKEND_ROOT, "ffmpeg_bin")
 
 # Windows용 FFmpeg 릴리스 (gyan.dev — essentials 빌드, ~80MB)

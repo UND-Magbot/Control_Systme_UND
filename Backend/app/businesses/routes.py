@@ -2,25 +2,17 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional, List
 
-from app.Database.database import SessionLocal
-from app.Database.models import UserInfo
+from app.database.database import get_db
+from app.database.models import UserInfo
 from app.businesses.schemas import (
     BusinessCreateReq, BusinessUpdateReq, BusinessResponse, BusinessListResponse,
     FloorCreateReq, FloorResponse,
 )
 from app.businesses.service import BusinessService, FloorService
-from app.auth.dependencies import get_current_user, require_permission
+from app.auth.dependencies import require_permission
 from app.auth.audit import write_audit, get_client_ip
 
 router = APIRouter(prefix="/DB", tags=["businesses"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 # ─── 사업자 CRUD ───
@@ -97,7 +89,7 @@ def create_floor(biz_id: int, req: FloorCreateReq, request: Request, db: Session
 
 @router.delete("/floors/{floor_id}")
 def delete_floor(floor_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("business-list"))):
-    from app.Database.models import FloorInfo
+    from app.database.models import FloorInfo
     floor = db.query(FloorInfo).filter(FloorInfo.id == floor_id).first()
     floor_name = floor.FloorName if floor else None
     FloorService(db).delete(floor_id)

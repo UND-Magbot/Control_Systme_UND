@@ -1,4 +1,4 @@
-import type { Floor } from "@/app/type";
+import type { Floor } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 
 const FALLBACK_FLOORS: Floor[] = [

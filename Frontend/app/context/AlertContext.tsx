@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { getAlerts, markAlertRead, markAllAlertsRead } from "@/app/lib/alertData";
-import type { AlertMockData } from "@/app/mock/alerts_data";
+import type { AlertMockData } from "@/app/types";
 
 type UnreadCounts = {
   total: number;

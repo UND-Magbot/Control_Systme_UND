@@ -6,19 +6,11 @@ import time
 
 # 🔥 main.py의 전역변수 직접 가져오기
 import app.main
-from app.Database.database import SessionLocal
-from app.Database.models import LocationInfo, UserInfo
-from app.current_user import get_user_id
+from app.database.database import get_db
+from app.database.models import LocationInfo, UserInfo
 from app.auth.dependencies import require_any_permission
 
 point = APIRouter(prefix="/nav")
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 WAYPOINT_FILE = "./data/waypoints.json"
 
@@ -48,8 +40,8 @@ def _next_cur_name(db: Session) -> str:
 def save_current_waypoint(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit"))):
 
     # runtime에서 현재 로봇 위치 조회
-    import app.robot_runtime as runtime
-    from app.Database.models import RobotInfo, RobotMapInfo
+    import app.robot_io.runtime as runtime
+    from app.database.models import RobotInfo, RobotMapInfo
 
     rid = runtime.get_first_robot_id()
     current_pos = runtime.get_position(rid) if rid else {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
@@ -130,11 +122,3 @@ if not os.path.exists(WAYPOINT_FILE):
         json.dump([], f, indent=4)
 
 
-def load_waypoints():
-    with open(WAYPOINT_FILE, "r") as f:
-        return json.load(f)
-
-
-def save_waypoints(data):
-    with open(WAYPOINT_FILE, "w") as f:
-        json.dump(data, f, indent=4)

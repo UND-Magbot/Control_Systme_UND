@@ -4,8 +4,8 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from app.Database.database import SessionLocal
-from app.Database.models import RecordingInfo, RobotInfo
+from app.database.database import SessionLocal
+from app.database.models import RecordingInfo, RobotInfo
 from app.recording.worker import CameraRecordingWorker
 from app.recording import service as rec_service
 
@@ -13,8 +13,7 @@ from app.recording import service as rec_service
 _sessions: dict[tuple, dict] = {}   # (robot_id, module_id) → SessionInfo
 _lock = threading.Lock()
 
-from app.Database.database import BACKEND_ROOT
-RECORDINGS_BASE = os.path.join(BACKEND_ROOT, "recordings")
+from app.recording.service import RECORDINGS_BASE
 print(f"[REC] RECORDINGS_BASE = {RECORDINGS_BASE}")
 
 
@@ -28,7 +27,7 @@ def _get_current_schedule_id() -> Optional[int]:
     try:
         db = SessionLocal()
         try:
-            from app.Database.models import ScheduleInfo
+            from app.database.models import ScheduleInfo
             sched = (
                 db.query(ScheduleInfo)
                 .filter(ScheduleInfo.TaskStatus == "running")
@@ -355,7 +354,7 @@ def _log_recording_error(robot_id: int, module_id: int, reason: str):
     """녹화 실패를 운영 로그(log_event)에 기록"""
     try:
         from app.logs.service import log_event
-        from app.current_user import get_robot_name
+        from app.user_cache import get_robot_name
         log_event(
             "error", "recording_error",
             f"녹화 실패 (cam={module_id}): {reason}",
