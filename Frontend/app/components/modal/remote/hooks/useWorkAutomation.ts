@@ -5,6 +5,12 @@ import { apiFetch } from '@/app/lib/api';
 
 const NAV_POLL_INTERVAL = 2000;
 
+type PathOption = {
+  id: number;
+  wayName: string;
+  wayPoints: string;
+};
+
 type UseWorkAutomationOptions = {
   onAlert?: (message: string) => void;
 };
@@ -15,12 +21,42 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
   const [loopCount, setLoopCount] = useState<number | string>(10);
   const [isPending, setIsPending] = useState(false);
 
+  // 경로 목록
+  const [paths, setPaths] = useState<PathOption[]>([]);
+  const [selectedPath, setSelectedPath] = useState<PathOption | null>(null);
+
+  // 직접 경로 생성 모드
+  type CreatedPoint = { x: number; y: number; yaw: number };
+  const [isCreating, setIsCreating] = useState(false);
+  const [createdPoints, setCreatedPoints] = useState<CreatedPoint[]>([]);
+
   const navPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const consecutiveFailRef = useRef(0);
-
-  // 모달 열려있는 동안 항상 폴링 → 실시간 상태 반영
   const wasWorkingRef = useRef(false);
 
+  // 경로 목록 fetch
+  const fetchPaths = useCallback(async () => {
+    try {
+      const res = await apiFetch('/DB/paths');
+      if (!res.ok) return;
+      const data = await res.json();
+      const list: PathOption[] = data.map((p: any) => ({
+        id: p.id,
+        wayName: p.WayName,
+        wayPoints: p.WayPoints || '',
+      }));
+      setPaths(list);
+      return list;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) fetchPaths();
+  }, [isOpen, fetchPaths]);
+
+  // 네비게이션 상태 폴링
   useEffect(() => {
     if (!isOpen) {
       if (navPollRef.current) {
@@ -42,7 +78,6 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
           setIsWorking(true);
           wasWorkingRef.current = true;
         } else {
-          // 작업 중이었다가 완료된 경우만 알림
           if (wasWorkingRef.current) {
             onAlert?.('작업이 완료되었습니다.');
             wasWorkingRef.current = false;
@@ -57,7 +92,7 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
       }
     };
 
-    poll(); // 즉시 1회 조회
+    poll();
     navPollRef.current = setInterval(poll, NAV_POLL_INTERVAL);
 
     return () => {
@@ -65,19 +100,16 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
     };
   }, [isOpen, onAlert]);
 
-  useEffect(() => {
-    if (!isOpen && navPollRef.current) {
-      clearInterval(navPollRef.current);
-      navPollRef.current = null;
-    }
-  }, [isOpen]);
-
+  // 경로 기반 작업 시작
   const startWork = useCallback(
     async (loop: number) => {
-      if (isPending) return;
+      if (isPending || !selectedPath) return;
       setIsPending(true);
       try {
-        const res = await apiFetch(`/nav/startmove?loop=${loop}`, { method: 'POST' });
+        const res = await apiFetch(
+          `/nav/startpath?way_name=${encodeURIComponent(selectedPath.wayName)}&loop=${loop}`,
+          { method: 'POST' },
+        );
         if (!res.ok) {
           const text = await res.text().catch(() => '');
           throw new Error(`HTTP ${res.status}: ${text}`);
@@ -90,7 +122,7 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
         setIsPending(false);
       }
     },
-    [isPending, onAlert],
+    [isPending, selectedPath, onAlert],
   );
 
   const stopWork = useCallback(async () => {
@@ -98,7 +130,7 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
     setIsPending(true);
     try {
       await apiFetch('/nav/stopmove', { method: 'POST' });
-      wasWorkingRef.current = false;  // 폴링에서 "완료" 알림 방지
+      wasWorkingRef.current = false;
       setIsWorking(false);
       onAlert?.('작업이 중지되었습니다.');
     } catch {
@@ -107,6 +139,71 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
       setIsPending(false);
     }
   }, [isPending, onAlert]);
+
+  // 직접 경로 생성
+  const startCreating = useCallback(() => {
+    setCreatedPoints([]);
+    setIsCreating(true);
+  }, []);
+
+  const savePoint = useCallback(async () => {
+    try {
+      const res = await apiFetch('/nav/savepoint', { method: 'POST' });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (data.status === 'ok') {
+        setCreatedPoints((prev) => [...prev, { x: data.x, y: data.y, yaw: data.yaw }]);
+      }
+    } catch {
+      onAlert?.('위치 저장에 실패했습니다.');
+    }
+  }, [onAlert]);
+
+  const clearPoints = useCallback(() => {
+    setCreatedPoints([]);
+  }, []);
+
+  const finishCreating = useCallback(async (wayName?: string) => {
+    if (createdPoints.length < 2) {
+      onAlert?.('최소 2개 이상의 위치를 저장해야 합니다.');
+      return;
+    }
+
+    try {
+      const body: any = { waypoints: createdPoints };
+      if (wayName && wayName.trim()) body.way_name = wayName.trim();
+
+      const res = await apiFetch('/nav/createpath', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (data.status === 'error') {
+        onAlert?.(data.msg);
+        return;
+      }
+
+      // 경로 목록 새로고침 후 새 경로 자동 선택
+      const updatedPaths = await fetchPaths();
+      if (updatedPaths && data.way_name) {
+        const newPath = updatedPaths.find((p) => p.wayName === data.way_name);
+        if (newPath) setSelectedPath(newPath);
+      }
+
+      setIsCreating(false);
+      setCreatedPoints([]);
+      onAlert?.(`경로 '${data.way_name}'이(가) 생성되었습니다.`);
+    } catch {
+      onAlert?.('경로 생성에 실패했습니다.');
+    }
+  }, [createdPoints, fetchPaths, onAlert]);
+
+  const cancelCreating = useCallback(() => {
+    setIsCreating(false);
+    setCreatedPoints([]);
+  }, []);
 
   const handleLoopCountChange = useCallback((value: string) => {
     setLoopCount(value === '' ? '' : parseInt(value) || '');
@@ -125,5 +222,17 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
     stopWork,
     handleLoopCountChange,
     handleLoopCountBlur,
+    // 경로 선택
+    paths,
+    selectedPath,
+    setSelectedPath,
+    // 직접 경로 생성
+    isCreating,
+    createdPoints,
+    startCreating,
+    savePoint,
+    clearPoints,
+    finishCreating,
+    cancelCreating,
   };
 }

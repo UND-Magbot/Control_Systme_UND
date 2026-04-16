@@ -126,6 +126,7 @@ class LogService:
         end_date: str = None,
         page: int = 1,
         size: int = 20,
+        robot_ids: list[int] = None,
     ):
         query = self.db.query(LogDataInfo)
 
@@ -133,6 +134,9 @@ class LogService:
         query = query.filter(
             LogDataInfo.Action.notin_(["robot_online", "robot_offline"])
         )
+
+        if robot_ids is not None:
+            query = query.filter(LogDataInfo.RobotId.in_(robot_ids))
 
         if category:
             query = query.filter(LogDataInfo.Category == category)

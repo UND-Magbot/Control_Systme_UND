@@ -205,10 +205,9 @@ def return_to_work(mode: str = "direct"):
     time.sleep(1)
 
     if mode == "retrace":
-        # 경로 역주행: 현재 웨이포인트 위치부터 역순으로 출발 지점까지
+        # 경로 역주행: 현재 목적지 이전까지 지나온 포인트를 역순으로 출발 지점까지
         wp_index = min(wp_index_snapshot, len(waypoints_snapshot))
-        passed = max(wp_index - 1, 0)  # 실제 도착 완료한 포인트까지
-        retrace_wps = list(reversed(waypoints_snapshot[:max(passed, 1)]))
+        retrace_wps = list(reversed(waypoints_snapshot[:max(wp_index, 1)]))
 
         # yaw를 역방향으로 재계산
         for i in range(len(retrace_wps)):

@@ -6,7 +6,7 @@ from typing import Optional
 
 from app.database.database import get_db
 from app.database.models import UserInfo, RecordingInfo
-from app.auth.dependencies import require_permission
+from app.auth.dependencies import require_permission, is_admin, get_business_robot_ids
 from app.recording import service as rec_service
 from app.recording import manager as rec_manager
 from app.recording.schemas import RecordingStartRequest, RecordingStopRequest
@@ -41,10 +41,14 @@ def list_recordings(
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(require_permission("video")),
 ):
+    biz_robot_ids = None
+    if not is_admin(current_user) and current_user.BusinessId:
+        biz_robot_ids = get_business_robot_ids(db, current_user.BusinessId)
     return rec_service.get_recordings_grouped(
         db, robot_id=robot_id, record_type=record_type,
         start_date=start_date, end_date=end_date,
         page=page, size=size,
+        robot_ids=biz_robot_ids,
     )
 
 

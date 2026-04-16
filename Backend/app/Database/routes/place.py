@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.database.models import LocationInfo, UserInfo, FloorInfo
-from app.auth.dependencies import require_any_permission, get_current_user
+from app.auth.dependencies import require_any_permission, get_current_user, is_admin, get_business_map_ids
 from app.auth.audit import write_audit, get_client_ip
 
 from app.database.routes import database, get_db
@@ -60,9 +60,12 @@ def get_places(
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(get_current_user),  # 맵 뷰는 어느 탭에서든 표시 가능
 ):
-    q = db.query(LocationInfo)
+    q = db.query(LocationInfo).filter(LocationInfo.Category != "remote")
     if map_id is not None:
         q = q.filter(LocationInfo.MapId == map_id)
+    elif not is_admin(current_user) and current_user.BusinessId:
+        biz_map_ids = get_business_map_ids(db, current_user.BusinessId)
+        q = q.filter(LocationInfo.MapId.in_(biz_map_ids))
     places = q.order_by(LocationInfo.id.desc()).all()
 
     floor_ids = {p.FloorId for p in places if p.FloorId}
