@@ -5,7 +5,7 @@ from typing import Optional
 
 from app.database.database import get_db
 from app.database.models import FloorInfo, UserInfo
-from app.auth.dependencies import require_permission, get_current_user
+from app.auth.dependencies import require_permission, get_current_user, is_admin
 from app.auth.audit import write_audit, get_client_ip
 
 router = APIRouter()
@@ -25,6 +25,8 @@ def get_floors(
     q = db.query(FloorInfo)
     if business_id is not None:
         q = q.filter(FloorInfo.BusinessId == business_id)
+    elif not is_admin(current_user) and current_user.BusinessId:
+        q = q.filter(FloorInfo.BusinessId == current_user.BusinessId)
     return q.order_by(FloorInfo.id.asc()).all()
 
 

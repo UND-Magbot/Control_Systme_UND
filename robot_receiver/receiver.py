@@ -303,8 +303,8 @@ def wait_stand_ready():
 # ============================================================
 # 기본 동작 함수
 # ============================================================
-current_speed = 5.0
-turn_speed = 1.0
+current_speed = 0.5
+turn_speed = 0.5
 
 def stand_robot():
     set_control_mode(0)
@@ -356,20 +356,20 @@ def stop_robot():
 
 def set_slow():
     global current_speed, turn_speed
-    current_speed = 0.35
-    turn_speed = 20
+    current_speed = 0.3
+    turn_speed = 0.3
     print("▶ SPEED = SLOW")
 
 def set_normal():
     global current_speed, turn_speed
-    current_speed = 0.55
-    turn_speed = 35
+    current_speed = 0.6
+    turn_speed = 0.6
     print("▶ SPEED = NORMAL")
 
 def set_fast():
     global current_speed, turn_speed
     current_speed = 1.0
-    turn_speed = 45
+    turn_speed = 1.0
     print("▶ SPEED = FAST")
 
 def set_wake():

@@ -14,8 +14,10 @@ class UserService:
     # ── 사용자 목록 ──
 
     @staticmethod
-    def list_users(db: Session, search: str | None = None, page: int = 1, size: int = 20) -> dict:
+    def list_users(db: Session, search: str | None = None, page: int = 1, size: int = 20, business_id: int | None = None) -> dict:
         query = db.query(UserInfo).filter(UserInfo.DeletedAt.is_(None))
+        if business_id is not None:
+            query = query.filter(UserInfo.BusinessId == business_id)
         if search:
             query = query.filter(
                 (UserInfo.UserName.contains(search)) | (UserInfo.LoginId.contains(search))
@@ -92,7 +94,7 @@ class UserService:
         db.commit()
         db.refresh(user)
 
-        # 메뉴 권한 자동 설정
+        # 메뉴 권한 설정
         if menu_ids:
             UserService.set_permissions(db, user.id, menu_ids, admin_id, ip_address=ip_address)
 

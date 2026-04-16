@@ -121,6 +121,7 @@ def get_recordings_grouped(
     end_date: Optional[str] = None,
     page: int = 1,
     size: int = 20,
+    robot_ids: list[int] = None,
 ):
     """GroupId 기준으로 묶어서 녹화 목록 반환 (error 상태 제외)"""
     # 1) 그룹별 요약 서브쿼리
@@ -128,6 +129,8 @@ def get_recordings_grouped(
         RecordingInfo.DeletedAt.is_(None),
         RecordingInfo.Status == "completed",
     )
+    if robot_ids is not None:
+        base = base.filter(RecordingInfo.RobotId.in_(robot_ids))
     if robot_id:
         base = base.filter(RecordingInfo.RobotId == robot_id)
     if record_type:

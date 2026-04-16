@@ -28,6 +28,7 @@ class UserResponse(BaseModel):
     user_name: Optional[str] = None
     role: Optional[int] = None
     permissions: list[str] = []
+    business_id: Optional[int] = None
 
     class Config:
         from_attributes = True

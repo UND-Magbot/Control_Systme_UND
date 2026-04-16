@@ -145,7 +145,8 @@ function MenuTreeNode({
 }
 
 export default function PermissionsTab() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const isManager = isAdmin || user?.role === 2;
 
   // API에서 로드한 메뉴 트리
   const [menuTree, setMenuTree] = useState<MenuNode[]>([]);
@@ -176,7 +177,7 @@ export default function PermissionsTab() {
 
   // 사용자 목록 API 로드
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isManager) return;
     (async () => {
       try {
         const res = await apiFetch("/api/users?size=100");
@@ -187,7 +188,7 @@ export default function PermissionsTab() {
       } catch { /* ignore */ }
       setIsLoadingUsers(false);
     })();
-  }, [isAdmin]);
+  }, [isManager]);
 
 
 
@@ -320,7 +321,7 @@ export default function PermissionsTab() {
   const sortedUsers = useMemo(() => {
     const visible = isAdmin ? apiUsers : apiUsers.filter((u) => u.permission !== 1);
     return [...visible].sort((a, b) => a.permission - b.permission);
-  }, [apiUsers, isAdmin]);
+  }, [apiUsers, isAdmin, isManager]);
   const filteredUsers = useMemo(() => {
     if (!searchLower) return sortedUsers;
     return sortedUsers.filter((u) =>
@@ -338,7 +339,7 @@ export default function PermissionsTab() {
       <div className={styles.leftPanel}>
         <div className={styles.leftHeader}>
           <h3 className={styles.panelTitle}>사용자 선택</h3>
-          {isAdmin && (
+          {isManager && (
             <button
               className={styles.registerBtn}
               onClick={() => setShowRegisterModal(true)}

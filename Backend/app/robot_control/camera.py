@@ -52,18 +52,23 @@ async def _rtsp_to_mjpeg(rtsp_url: str, request: Request):
             pass
 
     cap = await loop.run_in_executor(executor, _open)
+    consecutive_fail = 0
+    max_consecutive_fail = 15  # 연속 N회 실패 시 스트림 종료
+
     try:
         if not cap.isOpened():
             return
         while True:
-            # 클라이언트 disconnect 감지 — 페이지 이탈/탭 닫기/컴포넌트
-            # 언마운트 시 브라우저가 TCP를 닫으면 여기서 감지해 루프 종료
             if await request.is_disconnected():
                 break
-            # cv2.read는 전용 단일 스레드에서 실행 (동일 스레드 보장)
             ret, frame = await loop.run_in_executor(executor, _read, cap)
             if not ret or frame is None:
-                break
+                consecutive_fail += 1
+                if consecutive_fail >= max_consecutive_fail:
+                    break
+                await asyncio.sleep(0.1)
+                continue
+            consecutive_fail = 0
             ok, jpeg = cv2.imencode(".jpg", frame)
             if not ok:
                 continue

@@ -123,6 +123,7 @@ class AuthService:
             "user_name": user.UserName,
             "role": user.Permission,
             "permissions": permissions,
+            "business_id": user.BusinessId,
         }
 
     # ── 비밀번호 변경 ──

@@ -537,7 +537,7 @@ export default function RobotManageTab({
         <RobotInsertModal isOpen={robotInsertModalOpen} onClose={() => setRobotInsertModalOpen(false)} />
         <RobotDetailModal isOpen={robotDetailModalOpen} onClose={() => { setRobotDetailModalOpen(false); setRobotDetailEditMode(false); }} selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} initialEditMode={robotDetailEditMode} activeSchedule={selectedRobot ? getActiveScheduleForRobot(selectedRobot.no) : null} />
         {remoteModalOpen && remoteTargetRobot && (
-          <RemoteMapModal isOpen={remoteModalOpen} onClose={() => setRemoteModalOpen(false)} selectedRobots={remoteTargetRobot} robots={robots} video={video} camera={cameras} primaryView="map" />
+          <RemoteMapModal isOpen={remoteModalOpen} onClose={() => setRemoteModalOpen(false)} selectedRobots={robots.find((r) => r.id === remoteTargetRobot.id) ?? remoteTargetRobot} robots={robots} video={video} camera={cameras} primaryView="map" />
         )}
         {moduleModalOpen && moduleTargetRobot && (
           <ModuleManageModal

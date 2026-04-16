@@ -19,6 +19,7 @@ class AlertService:
         UserId: int = 0,
         page: int = 1,
         size: int = 20,
+        robot_names: list[str] = None,
     ):
         query = (
             self.db.query(Alert)
@@ -26,6 +27,8 @@ class AlertService:
             .filter(Alert.DeletedAt.is_(None))
         )
 
+        if robot_names is not None:
+            query = query.filter(Alert.RobotName.in_(robot_names))
         if alert_type:
             query = query.filter(Alert.Type == alert_type)
         if status:

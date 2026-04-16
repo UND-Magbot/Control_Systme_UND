@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db  # re-export (하위 호환)
-from app.database.models import UserInfo, UserPermission, MenuInfo
+from app.database.models import UserInfo, UserPermission, MenuInfo, RobotInfo, RobotMapInfo
 from app.auth.jwt_handler import decode_token, decode_token_allow_expired
 
 
@@ -74,3 +74,42 @@ def require_any_permission(*menu_keys: str):
             raise HTTPException(status_code=403, detail="해당 메뉴에 대한 접근 권한이 없습니다")
         return current_user
     return _checker
+
+
+# ── BusinessId 기반 필터링 헬퍼 ──
+
+def get_business_robot_names(db: Session, business_id: int) -> list[str]:
+    """사업장 소속 로봇 이름 목록."""
+    rows = db.query(RobotInfo.RobotName).filter(
+        RobotInfo.BusinessId == business_id,
+        RobotInfo.DeletedAt.is_(None),
+    ).all()
+    return [r.RobotName for r in rows]
+
+
+def get_business_robot_ids(db: Session, business_id: int) -> list[int]:
+    """사업장 소속 로봇 ID 목록."""
+    rows = db.query(RobotInfo.id).filter(
+        RobotInfo.BusinessId == business_id,
+        RobotInfo.DeletedAt.is_(None),
+    ).all()
+    return [r.id for r in rows]
+
+
+def get_business_map_ids(db: Session, business_id: int) -> list[int]:
+    """사업장 소속 맵 ID 목록."""
+    rows = db.query(RobotMapInfo.id).filter(
+        RobotMapInfo.BusinessId == business_id,
+    ).all()
+    return [r.id for r in rows]
+
+
+def is_admin(user: UserInfo) -> bool:
+    return user.Permission == 1
+
+
+def require_manager(current_user: UserInfo = Depends(get_current_user)) -> UserInfo:
+    """관리자(Permission 1 또는 2) 필수."""
+    if current_user.Permission not in (1, 2):
+        raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
+    return current_user
