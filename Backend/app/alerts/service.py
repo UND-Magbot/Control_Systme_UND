@@ -110,6 +110,57 @@ class AlertService:
             "unread_count": unread_count,
         }
 
+    def get_one(self, alert_id: int, UserId: int = 0):
+        """단일 알림 상세 조회. 목록과 동일한 item 포맷 반환."""
+        alert = (
+            self.db.query(Alert)
+            .options(subqueryload(Alert.notice))
+            .filter(Alert.id == alert_id, Alert.DeletedAt.is_(None))
+            .first()
+        )
+        if not alert:
+            return None
+
+        read_row = (
+            self.db.query(AlertReadStatus)
+            .filter(
+                AlertReadStatus.AlertId == alert_id,
+                AlertReadStatus.UserId == UserId,
+            )
+            .first()
+        )
+
+        item = {
+            "id": alert.id,
+            "Type": alert.Type,
+            "Status": alert.Status,
+            "Content": alert.Content,
+            "Detail": alert.Detail,
+            "ErrorJson": alert.ErrorJson,
+            "RobotName": alert.RobotName,
+            "date": alert.CreatedAt.strftime("%Y-%m-%d %H:%M"),
+            "isRead": read_row is not None,
+            "NoticeId": alert.NoticeId,
+            "notice": None,
+        }
+        if alert.Type == "Notice" and alert.notice and alert.notice.DeletedAt is None:
+            user = (
+                self.db.query(UserInfo)
+                .filter(UserInfo.id == alert.notice.UserId)
+                .first()
+            )
+            item["notice"] = {
+                "Title": alert.notice.Title,
+                "Content": alert.notice.Content,
+                "Importance": alert.notice.Importance,
+                "UserId": alert.notice.UserId,
+                "UserName": user.UserName if user else None,
+                "AttachmentName": alert.notice.AttachmentName,
+                "AttachmentUrl": alert.notice.AttachmentUrl,
+                "AttachmentSize": alert.notice.AttachmentSize,
+            }
+        return item
+
     def mark_read(self, alert_id: int, UserId: int = 0):
         alert = self.db.query(Alert).filter(
             Alert.id == alert_id,

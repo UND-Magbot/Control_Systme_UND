@@ -12,6 +12,7 @@ const OFFLINE_THRESHOLD = 3; // 연속 실패 횟수 — 이 횟수 이상 실�
 const _chargingDropCount: Record<number, number> = {};
 const CHARGING_DROP_THRESHOLD = 2;
 
+
 type StatusEntry = {
   robot_id: number;
   robot_name: string;
@@ -19,6 +20,9 @@ type StatusEntry = {
   battery: Record<string, unknown>;
   network: "Online" | "Offline" | "Error" | "-";
   power: "On" | "Off" | "-";
+  sleep: number | null;
+  power_management: 0 | 1 | null;
+  motion_state: number | null;
   is_charging: boolean;
   charge_state: number;
   charge_state_label: string;
@@ -72,6 +76,9 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
             chargeErrorMsg: existing.chargeErrorMsg,
             network: existing.network,
             power: existing.power,
+            sleep: existing.sleep,
+            powerManagement: existing.powerManagement,
+            motionState: existing.motionState,
             position: existing.position,
             battery: existing.battery,
             batteryLeft: existing.batteryLeft,
@@ -139,6 +146,9 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
               position: match.position ?? r.position,
               network: match.network,
               power: match.power,
+              sleep: match.sleep,
+              powerManagement: match.power_management,
+              motionState: match.motion_state,
             };
           }
 
@@ -156,6 +166,9 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
             position: match.position ?? r.position,
             network: match.network,
             power: match.power,
+            sleep: match.sleep,
+            powerManagement: match.power_management,
+            motionState: match.motion_state,
           };
         })
       );

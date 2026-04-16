@@ -130,6 +130,13 @@ export async function getAlerts(params?: {
   };
 }
 
+export async function getAlertById(alertId: number): Promise<AlertMockData | null> {
+  const res = await apiFetch(`/DB/alerts/${alertId}`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return toAlertMockData(data);
+}
+
 export async function markAlertRead(alertId: number): Promise<void> {
   await apiFetch(`/DB/alerts/${alertId}/read`, { method: "PUT" });
 }

@@ -68,11 +68,15 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
     console.log("전체 정지 클릭");
   }, []);
 
-  // 현재 선택된 층에 있는 로봇들
+  // 현재 선택된 층에 있는 로봇들 — 전원이 On인 경우만 표시
   const floorRobots: RobotOnMap[] = useMemo(() => {
     if (!selectedFloor) return [];
     return robots
-      .filter((r) => r.currentFloorId === selectedFloor.id && r.position?.timestamp > 0)
+      .filter((r) =>
+        r.currentFloorId === selectedFloor.id
+        && r.position?.timestamp > 0
+        && r.power === "On"
+      )
       .map((r) => ({
         id: r.id,
         name: r.no,
@@ -80,35 +84,46 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
       }));
   }, [robots, selectedFloor?.id]);
 
-  // robotFloorId가 나중에 도착하면 최초 1회만 반영
-  const initialFloorSet = useRef(initial.floor !== null);
+  // robotFloorId가 나중에 도착하면 최초 1회 반영.
+  // 초기 마운트 때 robotFloorId가 실제로 적용됐는지를 기준으로 판단해야 하며
+  // 단순히 initial.floor가 truthy한지로 판단하면 안 됨 (빈 로봇 상태에서 floors[0]
+  // 폴백이 이미 들어가 있어 false positive 발생).
+  const robotFloorApplied = useRef(robotFloorId != null);
   useEffect(() => {
-    if (!hasFloors || initialFloorSet.current) return;
+    if (!hasFloors || robotFloorApplied.current) return;
     if (robotFloorId == null) return;
     const idx = floors.findIndex((f) => f.id === robotFloorId);
     if (idx >= 0) {
       setFloorActiveIndex(idx);
       setSelectedFloor(floors[idx]);
-      initialFloorSet.current = true;
+      robotFloorApplied.current = true;
     }
-  }, [robotFloorId]);
+  }, [robotFloorId, hasFloors]);
 
   // 선택된 층의 맵 로드 (캐시 있으면 스킵)
   useEffect(() => {
     if (!selectedFloor) { setMapLoading(false); return; }
 
-    // 캐시 히트 → fetch 불필요
+    // 층 이동 시 이전 canvas를 완전히 언마운트하고 로딩 오버레이로 가린 뒤
+    // 새 맵을 마운트한다. React의 commit/paint 타이밍상 key 리마운트만으로는
+    // 이전 프레임이 몇 ms 남아 보일 수 있어, 명시적으로 mapConfig=null 경유.
+    setMapConfig(null);
+    setActiveMapId(null);
+    setMapLoading(true);
+
+    // 캐시 히트 → 다음 tick에 새 config 세팅 (이 사이 오버레이가 캔버스 전환을 가림)
     const cached = _cache.mapConfigs[selectedFloor.id];
     if (cached !== undefined) {
-      setMapConfig(cached?.config ?? null);
-      setActiveMapId(cached?.mapId ?? null);
-      setMapLoading(false);
-      return;
+      const t = setTimeout(() => {
+        setMapConfig(cached?.config ?? null);
+        setActiveMapId(cached?.mapId ?? null);
+        setMapLoading(false);
+      }, 80);
+      return () => clearTimeout(t);
     }
 
     // 캐시 미스 → fetch
     let cancelled = false;
-    setMapLoading(true);
 
     (async () => {
       try {
@@ -191,6 +206,9 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
       return;
     }
 
+    // 캐시 미스 → 이전 층의 navPath가 새 씬에 그려지지 않도록 즉시 초기화
+    setNavPath(null);
+
     let cancelled = false;
     (async () => {
       try {
@@ -225,12 +243,24 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
     return () => { cancelled = true; };
   }, [activeMapId, places]);
 
-  // 선택된 층의 장소만 필터
-  const floorPois = selectedFloor
-    ? places.filter((p) => p.floorId === selectedFloor.id)
-    : [];
+  // 선택된 층의 장소만 필터 — useMemo로 레퍼런스 안정화
+  // (매 렌더마다 새 배열이 만들어지면 CanvasMap/Map3DCanvas의 POI effect가
+  //  불필요하게 재실행되어 씬이 깜빡이는 원인이 됨)
+  const floorPois = useMemo(
+    () => (selectedFloor ? places.filter((p) => p.floorId === selectedFloor.id) : []),
+    [places, selectedFloor?.id]
+  );
 
   const handleFloorSelect = (idx: number, floor: Floor) => {
+    // 층 변경 시 mapConfig/activeMapId를 즉시 null 로 만들어
+    // CanvasMap을 곧바로 언마운트시킨다. 이렇게 하지 않으면
+    // (setSelectedFloor만 먼저 반영되는) 한 프레임 동안
+    // selectedFloor=새 층 + mapConfig=이전 층 상태가 되어,
+    // floorPois는 새 층의 POI인데 좌표 변환은 이전 층 config로 계산되어
+    // POI가 엉뚱한 위치에 잠깐 보이는 잔상이 생긴다.
+    setMapConfig(null);
+    setActiveMapId(null);
+    setMapLoading(true);
     setFloorActiveIndex(idx);
     setSelectedFloor(floor);
     mapRef.current?.handleZoom("reset");
@@ -273,6 +303,13 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           </div>
         )}
 
+        {hasRobots && hasFloors && mapLoading && (
+          <div className={styles.loadingOverlay}>
+            <div className={styles.loadingSpinner} />
+            <span>지도를 불러오는 중...</span>
+          </div>
+        )}
+
         <button
           type="button"
           className={`${styles.stopAllBtn} ${!hasRunningTask ? styles.stopAllBtnDisabled : ""}`}
@@ -301,7 +338,10 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
         )}
 
         {mapConfig && (
+          // key로 mapId + view를 합친 값을 사용 → 층 이동 또는 2D↔3D 전환 시
+          // CanvasMap 전체가 언마운트/리마운트되어 이전 씬 잔상이 남지 않음
           <CanvasMap
+            key={`map-${activeMapId ?? 0}-${mapView}`}
             ref={mapRef}
             config={mapConfig}
             view={mapView}

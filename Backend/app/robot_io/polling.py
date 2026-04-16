@@ -60,16 +60,15 @@ def position_thread():
 # ─────────────────────────────────────────────────────────
 _was_online: dict[int, bool] = {}  # robot_id → 이전 온라인 상태
 
-RETRY_COUNT = 3          # 실패 시 즉시 재시도 횟수
-RETRY_INTERVAL = 0.5     # 재시도 간격(초)
-ERROR_THRESHOLD = 3      # Error 상태 전환 기준 (연속 실패 횟수)
-OFFLINE_THRESHOLD = 10   # Offline 확정 기준 (연속 실패 횟수)
+# 시간 기반 임계값 — 마지막 성공 시각으로부터 경과한 시간으로 판정
+UNSTABLE_ALARM_AFTER_SEC = 10.0   # 10초 이상 끊김 → 불안정 알람 (1회)
+OFFLINE_AFTER_SEC = 12.0          # 12초 이상 끊김 → 오프라인 확정
 
 
 def _try_status_once() -> dict | None:
     """STATUS 요청 1회 시도. 성공 시 응답 dict, 실패 시 None."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(2.0)
+    sock.settimeout(1.0)
     try:
         msg = json.dumps({"action": "STATUS"}).encode("utf-8")
         sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
@@ -85,52 +84,68 @@ def _try_status_once() -> dict | None:
 
 
 def status_thread():
-    """receiver.py 경유로 배터리 상태 폴링 + 온라인/오프라인 전환 로그."""
+    """receiver.py 경유로 배터리 상태 폴링 + 온라인/오프라인 전환 로그.
+
+    시간 기반 판정: 마지막 성공 시각 기준 경과 시간으로 불안정/오프라인 알람.
+    - 10초 이상 끊김 → 불안정 알람 (1회만)
+    - 12초 이상 끊김 → 오프라인 확정
+    """
     print(f"[LISTEN] 상태 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
-    fail_count = 0
+    last_success_time = time.time()   # 마지막 성공 수신 시각
+    unstable_alarm_fired = False       # 이 끊김 구간에서 불안정 알람 이미 발생했는가
 
     while True:
-        # 1차 시도 + 실패 시 즉시 재시도
         resp = _try_status_once()
-        if resp is None:
-            for _ in range(RETRY_COUNT):
-                time.sleep(RETRY_INTERVAL)
-                resp = _try_status_once()
-                if resp is not None:
-                    break
 
         success = False
         if resp is not None:
-            battery = resp.get("BatteryStatus", {})
+            battery = resp.get("BatteryStatus", {}) or {}
             charge_state = resp.get("ChargeStatus")
             device_temp = resp.get("DeviceTemperature", {})
-            if battery:
-                rid = runtime.get_robot_id_by_ip(ROBOT_IP)
-                if rid is not None:
-                    runtime.update_status(rid, battery, time.time(), charge_state=charge_state, device_temp=device_temp)
-                    success = True
-                    fail_count = 0
+            basic_status = resp.get("BasicStatus", {}) or {}
+            # 응답이 도달했으면 last_heartbeat는 반드시 갱신한다
+            # (battery가 아직 비어있을 수 있지만 네트워크는 살아있음).
+            rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+            if rid is not None:
+                runtime.update_status(
+                    rid, battery, time.time(),
+                    charge_state=charge_state,
+                    device_temp=device_temp,
+                    basic_status=basic_status,
+                )
+                success = True
+                last_success_time = time.time()
+                unstable_alarm_fired = False  # 성공 시 알람 플래그 리셋
 
-                    # 오프라인 → 온라인 전환 감지
-                    if not _was_online.get(rid, False):
-                        _was_online[rid] = True
-                        log_event("robot", "robot_online", "로봇 온라인",
-                                  robot_id=get_robot_id(), robot_name=get_robot_name())
-
-        if not success:
-            fail_count += 1
-
-            # Error 기준 도달 시 로그 (최초 1회)
-            if fail_count == ERROR_THRESHOLD:
-                rid = runtime.get_robot_id_by_ip(ROBOT_IP)
-                if rid is not None:
-                    log_event("error", "robot_connection_error", "로봇 통신 연결 불안정",
-                              error_json=f"연속 {fail_count}회 실패",
+                # 오프라인 → 온라인 전환 감지
+                if not _was_online.get(rid, False):
+                    _was_online[rid] = True
+                    log_event("robot", "robot_online", "로봇 온라인",
                               robot_id=get_robot_id(), robot_name=get_robot_name())
 
-            # Offline 확정
-            if fail_count >= OFFLINE_THRESHOLD:
+        if not success:
+            elapsed = time.time() - last_success_time
+
+            # 10초 이상 끊김 → 불안정 알람 (이 끊김 구간에서 1회만).
+            # 단, 로봇이 마지막으로 알려진 상태가 '켜짐(Sleep=0)'이 아니라면
+            # heartbeat가 끊어지는 것이 당연하므로 알람을 띄우지 않는다.
+            if elapsed >= UNSTABLE_ALARM_AFTER_SEC and not unstable_alarm_fired:
+                unstable_alarm_fired = True
+                rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+                if rid is not None:
+                    # 로봇이 켜진 상태였을 때만 알람 발화
+                    with runtime._lock:
+                        entry = runtime._runtime.get(rid)
+                    last_basic = (entry or {}).get("basic_status") or {}
+                    last_sleep = last_basic.get("Sleep")
+                    if last_sleep == 0:
+                        log_event("error", "robot_connection_error", "로봇 통신 연결 불안정",
+                                  error_json=f"{elapsed:.1f}초 간 응답 없음",
+                                  robot_id=get_robot_id(), robot_name=get_robot_name())
+
+            # 12초 이상 끊김 → 오프라인 확정
+            if elapsed >= OFFLINE_AFTER_SEC:
                 rid = runtime.get_robot_id_by_ip(ROBOT_IP)
                 if rid is not None and _was_online.get(rid, False):
                     _was_online[rid] = False

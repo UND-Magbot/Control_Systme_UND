@@ -10,8 +10,8 @@ import threading
 from typing import Optional
 
 # ── 상수 ──────────────────────────────────────────────
-ONLINE_MAX_AGE = 10     # 10초 이내 → Online
-ERROR_MAX_AGE = 30      # 10~30초 → Error, 30초 초과 → Offline
+ONLINE_MAX_AGE = 10     # ≤10초 → Online
+ERROR_MAX_AGE = 12      # 10~12초 → Error (짧은 과도기), >12초 → Offline
 
 # ── 내부 저장소 ───────────────────────────────────────
 _lock = threading.Lock()
@@ -37,6 +37,7 @@ def init_runtime(robots) -> None:
                 "battery": {},
                 "charge_state": {"state": 0, "error_code": 0, "timestamp": 0},
                 "device_temp": {},
+                "basic_status": {},  # {Sleep, PowerManagement} — 1002/6 응답
                 "last_heartbeat": 0,
                 "nav": {"arrived": False, "last_state": None, "timestamp": 0},
             }
@@ -47,16 +48,28 @@ def init_runtime(robots) -> None:
 
 def update_status(robot_id: int, battery: dict, timestamp: float,
                    charge_state: dict | None = None,
-                   device_temp: dict | None = None) -> None:
-    """heartbeat 수신 시 배터리, 충전 상태, 디바이스 온도 및 타임스탬프 갱신."""
+                   device_temp: dict | None = None,
+                   basic_status: dict | None = None) -> None:
+    """heartbeat 수신 시 배터리, 충전 상태, 디바이스 온도, 기본 상태(Sleep/PowerManagement) 갱신."""
     with _lock:
         entry = _runtime.get(robot_id)
         if not entry:
             return
-        entry["battery"] = battery
+        # 응답이 도달했으면 last_heartbeat는 항상 갱신.
+        # battery는 빈 dict로 왔을 때 기존 값을 덮어쓰지 않도록 한다.
         entry["last_heartbeat"] = timestamp
+        if battery:
+            entry["battery"] = battery
         if charge_state:
             entry["charge_state"] = charge_state
+        if basic_status is not None:
+            # None이 들어올 수 있으므로 기존 값 유지 방식으로 병합
+            merged = dict(entry.get("basic_status") or {})
+            for k in ("Sleep", "PowerManagement", "MotionState"):
+                v = basic_status.get(k)
+                if v is not None:
+                    merged[k] = v
+            entry["basic_status"] = merged
 
         # is_charging 디바운스: 충전→비충전 전환은 5회 연속 확인 후 반영
         now_charging = _check_charging(battery)
@@ -134,17 +147,26 @@ def _derive_network(last_heartbeat: float) -> str:
     return "Offline"
 
 
-def _derive_power(network: str) -> str:
-    """network 상태에서 power 도출.
-    - "-" (미확인) → "-"
-    - "Offline" → "Off"
-    - 그 외 → "On"
+def _derive_power(
+    basic_status: dict | None,
+    battery: dict | None = None,
+    network: str | None = None,
+) -> str:
+    """전원 상태 도출 — Sleep=0이 현재 수신되고 있을 때만 On, 그 외 Off.
+
+    규칙:
+    - basic_status도 battery도 전혀 없음 → "-" (미확인)
+    - 네트워크가 확정 Offline → "Off" (Sleep 값이 있어도 stale이므로 무시)
+    - Sleep == 0 → "On" (로봇 켜져 있음)
+    - 그 외 (Sleep != 0 또는 Sleep 없음) → "Off"
     """
-    if network == "-":
+    if not basic_status and not battery:
         return "-"
+    # 네트워크가 끊어진 지 오래되면(Offline 확정) Sleep 값은 stale이므로 Off
     if network == "Offline":
         return "Off"
-    return "On"
+    sleep_val = (basic_status or {}).get("Sleep")
+    return "On" if sleep_val == 0 else "Off"
 
 
 def get_all_statuses() -> list[dict]:
@@ -178,8 +200,12 @@ _CHARGE_ERROR_MSG = {
 def _build_status(entry: dict) -> dict:
     """내부 엔트리를 API 응답 형태로 변환."""
     network = _derive_network(entry["last_heartbeat"])
-    power = _derive_power(network)
+    basic_status = entry.get("basic_status") or {}
     battery = entry["battery"]
+    power = _derive_power(basic_status, battery, network)
+    sleep_val = basic_status.get("Sleep")
+    power_mgmt = basic_status.get("PowerManagement")
+    motion_state = basic_status.get("MotionState")
     cs = entry.get("charge_state", {})
     charge_st = cs.get("state", 0)
     charge_err = cs.get("error_code", 0)
@@ -190,6 +216,11 @@ def _build_status(entry: dict) -> dict:
         "battery": battery,
         "network": network,
         "power": power,
+        "sleep": sleep_val,
+        # 0=regular(배터리 2개) / 1=single battery — 로봇이 켜진 상태(Sleep=0)일 때만 유효
+        "power_management": power_mgmt if sleep_val == 0 else None,
+        # 1=Stand, 4=Sit (로봇 자세)
+        "motion_state": motion_state,
         "is_charging": entry.get("_is_charging", False),
         "charge_state": charge_st,
         "charge_state_label": _CHARGE_STATE_LABEL.get(charge_st, f"알 수 없음({charge_st})"),

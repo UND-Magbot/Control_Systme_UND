@@ -87,17 +87,32 @@ class LogService:
         rule = ALERT_TRIGGER_RULES.get(action)
         if rule:
             alert_type, alert_status = rule
-            alert_title = ACTION_TITLES.get(action, message)
-            alert = Alert(
-                Type=alert_type,
-                Status=alert_status,
-                Content=alert_title,
-                Detail=message,
-                ErrorJson=error_json or detail,
-                RobotName=robot_name,
-                LogId=log.id,
-            )
-            self.db.add(alert)
+            # Robot 타입 알림: 대상 로봇이 현재 오프라인(네트워크 확정 Offline)
+            # 이면 알림을 만들지 않는다. 로그는 그대로 남김.
+            should_create_alert = True
+            if alert_type == "Robot" and robot_id is not None:
+                try:
+                    import app.robot_io.runtime as rt_mod
+                    with rt_mod._lock:
+                        entry = rt_mod._runtime.get(robot_id)
+                    if entry is not None:
+                        last_hb = entry.get("last_heartbeat", 0)
+                        if rt_mod._derive_network(last_hb) == "Offline":
+                            should_create_alert = False
+                except Exception:
+                    pass
+            if should_create_alert:
+                alert_title = ACTION_TITLES.get(action, message)
+                alert = Alert(
+                    Type=alert_type,
+                    Status=alert_status,
+                    Content=alert_title,
+                    Detail=message,
+                    ErrorJson=error_json or detail,
+                    RobotName=robot_name,
+                    LogId=log.id,
+                )
+                self.db.add(alert)
 
         self.db.commit()
         self.db.refresh(log)
