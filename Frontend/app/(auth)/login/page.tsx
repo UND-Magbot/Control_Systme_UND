@@ -13,6 +13,7 @@ type LoginForm = {
 type LoginErrors = {
   userId?: string;
   password?: string;
+  form?: string;
 };
 
 const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,16}$/;
@@ -44,7 +45,7 @@ export default function Login() {
         (key: keyof LoginForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setLoginForm((prev) => ({ ...prev, [key]: value }));
-        setErrors((prev) => ({ ...prev, [key]: undefined }));
+        setErrors((prev) => ({ ...prev, [key]: undefined, form: undefined }));
         if (isSessionExpired) setIsSessionExpired(false);
         };
 
@@ -59,11 +60,6 @@ export default function Login() {
         if (!userId.trim()) newErrors.userId = "아이디를 입력하세요";
         if (!password) newErrors.password = "비밀번호를 입력하세요";
 
-        // 비밀번호 정규식 검증 (빈 값이 아닐 때만)
-        if (password && !PASSWORD_REGEX.test(password)) {
-            newErrors.password = "영문, 숫자, 특수문자 조합 6~16자리로 입력하세요";
-        }
-
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
             return;
@@ -76,14 +72,14 @@ export default function Login() {
 
         if (!result.success) {
             const errMsg = result.error ?? "로그인에 실패했습니다";
-            if (errMsg.includes("아이디")) {
-                setErrors({ userId: errMsg });
-            } else if (errMsg.includes("비밀번호")) {
-                setErrors({ password: errMsg });
-            } else if (errMsg.includes("비활성화")) {
-                setErrors({ userId: errMsg });
+            if (errMsg.includes("비활성화")) {
+                setErrors({ form: errMsg });
+            } else if (errMsg.includes("아이디")) {
+                setErrors({ userId: "존재하지 않는 아이디입니다" });
+            } else if (!PASSWORD_REGEX.test(password)) {
+                setErrors({ password: "영문, 숫자, 특수문자 조합 6~16자리로 입력하세요" });
             } else {
-                setErrors({ password: errMsg });
+                setErrors({ password: "비밀번호가 일치하지 않습니다" });
             }
             return;
         }
@@ -125,7 +121,7 @@ export default function Login() {
                             onChange={handleChange("userId")}
                             autoComplete="off"
                         />
-                        {errors.userId && <span className={styles.errorMsg}>{errors.userId}</span>}
+                        {errors.userId && !errors.form && <span className={styles.errorMsg}>{errors.userId}</span>}
                     </div>
 
                     {/* 비밀번호 */}
@@ -140,7 +136,7 @@ export default function Login() {
                             onChange={handleChange("password")}
                             autoComplete="off"
                         />
-                        {errors.password && <span className={styles.errorMsg}>{errors.password}</span>}
+                        {errors.password && !errors.form && <span className={styles.errorMsg}>{errors.password}</span>}
                     </div>
 
                     {/* 자동 로그인 */}
@@ -157,6 +153,10 @@ export default function Login() {
                         </span>
                         <span>자동 로그인</span>
                     </label>
+
+                    {errors.form && (
+                        <div className={styles.errorMsg}>{errors.form}</div>
+                    )}
 
                     {/* 로그인 버튼 */}
                     <button type="submit" className={styles.loginButton} disabled={isSubmitting}>

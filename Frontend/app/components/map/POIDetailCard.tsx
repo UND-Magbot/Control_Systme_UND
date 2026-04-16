@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { MapPin, BatteryCharging, Home, Navigation, AlertTriangle, Crosshair, Layers } from "lucide-react";
 import type { POIItem, POICategory } from "./types";
 import styles from "./POIDetailCard.module.css";
@@ -14,18 +15,28 @@ const CATEGORY_META: Record<POICategory, { label: string; color: string; icon: t
 
 type Props = {
   poi: POIItem;
-  screenX: number;
-  screenY: number;
+  screenX?: number;
+  screenY?: number;
+  /**
+   * 카드 위치를 바깥 래퍼에서 지정하는 경우 사용.
+   * - false/undefined: 기존 동작(screenX/Y에 absolute + 말풍선 transform)
+   * - true: 카드 위치를 상위 컨테이너에 맡기고 내부 transform/absolute 해제
+   */
+  anchored?: boolean;
   onClose: () => void;
   onNavigate?: (poi: POIItem) => void;
 };
 
-export default function POIDetailCard({ poi, screenX, screenY, onClose, onNavigate }: Props) {
+export default function POIDetailCard({ poi, screenX = 0, screenY = 0, anchored = false, onClose, onNavigate }: Props) {
   const cat = poi.category ?? "work";
   const meta = CATEGORY_META[cat];
 
+  const cardStyle: React.CSSProperties = anchored
+    ? { position: "relative", transform: "none" }
+    : { left: screenX, top: screenY };
+
   return (
-    <div className={styles.card} style={{ left: screenX, top: screenY }}>
+    <div className={styles.card} style={cardStyle}>
       <button className={styles.closeBtn} onClick={onClose}>✕</button>
 
       <div className={styles.header}>

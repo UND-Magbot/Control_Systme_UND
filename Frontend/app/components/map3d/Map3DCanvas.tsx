@@ -32,6 +32,9 @@ type SceneCtx = {
   floorMesh: Mesh | null;
   pathGroup: Group | null;
   needsRender: boolean;
+  // 맵 이미지 로드가 끝나기 전에는 렌더를 하지 않는다 — 바닥 없는
+  // POI/경로만 잠깐 비쳐 "잔상"처럼 보이는 것을 방지
+  floorReady: boolean;
 
   animId: number;
 };
@@ -145,17 +148,31 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps>(function Map3DCa
     controls.zoomSpeed = 0.8;
     controls.rotateSpeed = 0.6;
 
-    let needsRender = true;
-    controls.addEventListener("change", () => { needsRender = true; });
+    // ctx를 먼저 만들고 모든 render 트리거는 ctx.needsRender 하나로 통일.
+    // (이전에는 로컬 `let needsRender`와 `ctx.needsRender` 두 개가 따로 살아
+    //  navPath/robot/poi 등 외부 effect가 ctx.needsRender를 true로 바꿔도
+    //  animate loop는 로컬 변수만 보고 있어 스크린 갱신이 안 되는 버그 존재)
+    const ctx: SceneCtx = {
+      renderer, scene, camera, controls,
+      robot: null, robotLabel: null, poiLabels: [],
+      floorMesh: null, pathGroup: null,
+      needsRender: false,          // floorReady 되기 전까지 렌더 금지
+      floorReady: false,
+      animId: 0,
+    };
+    sceneRef.current = ctx;
 
-    // on-demand render loop (idle 시 0fps)
-    let animId = 0;
+    controls.addEventListener("change", () => { ctx.needsRender = true; });
+
+    // on-demand render loop (idle 시 0fps).
+    // floorReady 되기 전까지는 렌더하지 않아 바닥 없는 POI/경로가 잠깐 비치는
+    // 현상을 차단.
     const animate = () => {
-      animId = requestAnimationFrame(animate);
+      ctx.animId = requestAnimationFrame(animate);
       controls.update();
-      if (needsRender) {
+      if (ctx.needsRender && ctx.floorReady) {
         renderer.render(scene, camera);
-        needsRender = false;
+        ctx.needsRender = false;
       }
     };
     animate();
@@ -167,17 +184,10 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps>(function Map3DCa
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         renderer.setSize(w, h);
-        needsRender = true;
+        ctx.needsRender = true;
       }
     });
     ro.observe(container);
-
-    const ctx: SceneCtx = {
-      renderer, scene, camera, controls,
-      robot: null, robotLabel: null, poiLabels: [],
-      floorMesh: null, pathGroup: null, needsRender: true, animId,
-    };
-    sceneRef.current = ctx;
 
     // 맵 로딩
     setIsLoading(true);
@@ -207,21 +217,61 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps>(function Map3DCa
         const wallMesh = buildBorderWalls(borderMap, mw, mh);
         if (wallMesh) scene.add(wallMesh);
 
-        needsRender = true;
+        // 바닥이 준비되어야 POI/경로/로봇이 "공중에 떠있는" 상태로 먼저
+        // 그려지지 않는다. 여기서 처음으로 렌더 허가를 낸다.
+        ctx.floorReady = true;
+        ctx.needsRender = true;
         setIsLoading(false);
       })
       .catch(() => setIsLoading(false));
 
     return () => {
-      cancelAnimationFrame(animId);
+      cancelAnimationFrame(ctx.animId);
       ro.disconnect();
+      // 씬을 완전히 비우고 한 번 더 렌더 → 캔버스 버퍼가 빈 프레임으로 덮여씀.
+      // React가 canvas를 DOM에서 떼어내는 타이밍이 한두 프레임 늦더라도
+      // 잔상이 보이지 않도록 물리적으로 비움.
+      try {
+        while (scene.children.length > 0) scene.remove(scene.children[0]);
+        renderer.setClearColor(new Color("#12151f"), 1);
+        renderer.clear(true, true, true);
+        renderer.render(scene, camera);
+      } catch {}
       controls.dispose();
-      renderer.dispose();
-      renderer.domElement.parentNode?.removeChild(renderer.domElement);
       if (sceneRef.current) {
+        // pathGroup dispose
+        const pg = sceneRef.current.pathGroup;
+        if (pg) {
+          pg.traverse((obj) => {
+            const mesh = obj as Mesh;
+            if (mesh.isMesh) {
+              mesh.geometry?.dispose();
+              const mat = mesh.material;
+              if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+              else mat?.dispose();
+            }
+          });
+          sceneRef.current.scene.remove(pg);
+          sceneRef.current.pathGroup = null;
+        }
+        // POI mesh dispose (scene.children에서 isPoi 플래그로 식별)
+        const poiChildren = [...sceneRef.current.scene.children].filter((c) => c.userData.isPoi);
+        poiChildren.forEach((c) => {
+          const mesh = c as Mesh;
+          if (mesh.isMesh) {
+            mesh.geometry?.dispose();
+            const mat = mesh.material;
+            if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+            else mat?.dispose();
+          }
+          sceneRef.current!.scene.remove(c);
+        });
         sceneRef.current.robotLabel?.remove();
         sceneRef.current.poiLabels.forEach((l) => l.remove());
+        sceneRef.current.poiLabels = [];
       }
+      renderer.dispose();
+      renderer.domElement.parentNode?.removeChild(renderer.domElement);
       sceneRef.current = null;
     };
   }, [config]);
@@ -289,9 +339,25 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps>(function Map3DCa
     const ctx = sceneRef.current;
     if (!ctx) return;
 
-    ctx.poiLabels.forEach((l) => l.remove());
-    ctx.poiLabels = [];
-    [...ctx.scene.children].filter((c) => c.userData.isPoi).forEach((c) => ctx.scene.remove(c));
+    // 이전 POI 메시·재질·지오메트리를 확실히 dispose 하고 제거
+    const clearPois = () => {
+      ctx.poiLabels.forEach((l) => l.remove());
+      ctx.poiLabels = [];
+      const poiChildren = [...ctx.scene.children].filter((c) => c.userData.isPoi);
+      poiChildren.forEach((c) => {
+        const mesh = c as Mesh;
+        if (mesh.isMesh) {
+          mesh.geometry?.dispose();
+          const mat = mesh.material;
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+          else mat?.dispose();
+        }
+        ctx.scene.remove(c);
+      });
+      ctx.needsRender = true;
+    };
+
+    clearPois();
 
     if (!showPois || !pois || pois.length === 0) return;
     const container = containerRef.current;
@@ -355,7 +421,11 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps>(function Map3DCa
     ctx.needsRender = true;
     const onChange = () => updateFns.forEach((fn) => fn());
     ctx.controls.addEventListener("change", onChange);
-    return () => { ctx.controls.removeEventListener("change", onChange); };
+    return () => {
+      ctx.controls.removeEventListener("change", onChange);
+      // effect 재실행/언마운트 시 POI 리소스 확실히 정리
+      clearPois();
+    };
   }, [pois, showPois, showLabels, selectedPoiId, config, onPoiClick]);
 
   /* ═══ NavPath ═══ */
@@ -363,48 +433,127 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps>(function Map3DCa
     const ctx = sceneRef.current;
     if (!ctx) return;
 
-    if (ctx.pathGroup) { ctx.scene.remove(ctx.pathGroup); ctx.pathGroup = null; }
+    // 이전 pathGroup의 geometry/material을 명시적으로 dispose (GPU 리소스 회수)
+    const disposePathGroup = (group: Group | null) => {
+      if (!group) return;
+      group.traverse((obj) => {
+        const mesh = obj as Mesh;
+        if (mesh.isMesh) {
+          mesh.geometry?.dispose();
+          const mat = mesh.material;
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+          else mat?.dispose();
+        }
+      });
+    };
+
+    if (ctx.pathGroup) {
+      ctx.scene.remove(ctx.pathGroup);
+      disposePathGroup(ctx.pathGroup);
+      ctx.pathGroup = null;
+      ctx.needsRender = true;
+    }
     if (!showPath || !navPath || navPath.segments.length === 0) return;
 
     const pathGroup = new Group();
-    const arrowMat = new MeshStandardMaterial({
-      color: "#64b4ff", emissive: new Color("#64b4ff"), emissiveIntensity: 0.5,
-    });
 
-    navPath.segments.forEach((seg) => {
-      const pts = [seg.from, ...(seg.waypoints || []), seg.to].map((pt) => {
-        const p = worldTo3D(pt.x, pt.y, config);
-        return new Vector3(p.x, 0.03, p.z);
+    // 2D와 동일한 팔레트: 단방향=주황 / 양방향=청록
+    // 2D: rgba(255,180,50) / rgba(0,230,180)
+    const COLOR_ONE_WAY = "#ffb432";
+    const COLOR_BIDI = "#00e6b4";
+
+    const makeTubeMat = (isBidi: boolean) =>
+      new MeshStandardMaterial({
+        color: isBidi ? COLOR_BIDI : COLOR_ONE_WAY,
+        emissive: new Color(isBidi ? "#00a87e" : "#b86d00"),
+        emissiveIntensity: 0.6,
+        metalness: 0.4,
+        roughness: 0.25,
+        transparent: true,
+        opacity: 0.92,
       });
 
-      if (pts.length >= 2) {
-        const curve = new CatmullRomCurve3(pts, false, "catmullrom", 0.5);
-        const tubeGeo = new TubeGeometry(curve, pts.length * 6, 0.02, 4, false);
-        const tubeMat = new MeshStandardMaterial({
-          color: "#64b4ff", emissive: new Color("#3388cc"),
-          emissiveIntensity: 0.3, transparent: true, opacity: 0.7, roughness: 0.3,
-        });
-        pathGroup.add(new Mesh(tubeGeo, tubeMat));
-      }
+    const makeArrowMat = (isBidi: boolean) =>
+      new MeshStandardMaterial({
+        color: isBidi ? "#9cffe0" : "#ffd98a",
+        emissive: new Color(isBidi ? COLOR_BIDI : COLOR_ONE_WAY),
+        emissiveIntensity: 1.1,
+        metalness: 0.7,
+        roughness: 0.15,
+      });
 
-      const mid = Math.floor(pts.length / 2);
-      const from = pts[Math.max(0, mid - 1)];
-      const to = pts[Math.min(pts.length - 1, mid)];
-      const midPt = new Vector3().lerpVectors(from, to, 0.5);
+    const makeNodeMat = (isBidi: boolean) =>
+      new MeshStandardMaterial({
+        color: isBidi ? "#c4ffec" : "#ffe3a8",
+        emissive: new Color(isBidi ? COLOR_BIDI : COLOR_ONE_WAY),
+        emissiveIntensity: 0.9,
+        metalness: 0.6,
+        roughness: 0.2,
+      });
 
-      const coneGeo = new ConeGeometry(0.06, 0.18, 6);
-      const cone = new Mesh(coneGeo, arrowMat);
-      cone.position.copy(midPt).setY(0.06);
-      cone.lookAt(new Vector3(to.x, 0.06, to.z));
-      cone.rotateX(Math.PI / 2);
-      pathGroup.add(cone);
+    // 바닥(floorMesh)이 y=0.15이라 경로·화살표는 그 위에 배치
+    const PATH_Y = 0.22;          // 튜브 중심 높이 (바닥 + 여유 + 튜브 반경)
+    const TUBE_RADIUS = 0.05;     // 두께감 있는 3D 튜브
+    const ARROW_RADIUS = 0.14;    // 뾰족한 화살촉
+    const ARROW_HEIGHT = 0.32;    // 뾰족한 길이
+    const ARROW_INSET = 0.45;     // 끝점으로부터 안쪽으로 들여서 배치
 
-      if (seg.direction === "two-way") {
-        const cone2 = new Mesh(coneGeo, arrowMat);
-        cone2.position.copy(midPt).setY(0.06);
-        cone2.lookAt(new Vector3(from.x, 0.06, from.z));
-        cone2.rotateX(Math.PI / 2);
-        pathGroup.add(cone2);
+    navPath.segments.forEach((seg) => {
+      const isBidi = seg.direction === "two-way";
+      const tubeMat = makeTubeMat(isBidi);
+      const arrowMatSeg = makeArrowMat(isBidi);
+      const nodeMat = makeNodeMat(isBidi);
+
+      const pts = [seg.from, ...(seg.waypoints || []), seg.to].map((pt) => {
+        const p = worldTo3D(pt.x, pt.y, config);
+        return new Vector3(p.x, PATH_Y, p.z);
+      });
+
+      if (pts.length < 2) return;
+
+      // ── 튜브 (두께감 있는 파이프) ──
+      const curve = new CatmullRomCurve3(pts, false, "catmullrom", 0.5);
+      const tubeGeo = new TubeGeometry(curve, pts.length * 8, TUBE_RADIUS, 8, false);
+      const tubeMesh = new Mesh(tubeGeo, tubeMat);
+      tubeMesh.castShadow = true;
+      pathGroup.add(tubeMesh);
+
+      // ── 끝점 구 (노드 장식) ──
+      const nodeGeo = new SphereGeometry(TUBE_RADIUS * 1.6, 12, 12);
+      [pts[0], pts[pts.length - 1]].forEach((p) => {
+        const s = new Mesh(nodeGeo, nodeMat);
+        s.position.copy(p);
+        s.castShadow = true;
+        pathGroup.add(s);
+      });
+
+      // ── 화살촉: 끝점에서 안쪽으로 들여 배치, 끝쪽을 바라봄 ──
+      // "< --------- >" 스타일. 단방향은 to 쪽만, 양방향은 양쪽 다.
+      const mkArrow = (base: Vector3, tip: Vector3) => {
+        const dir = new Vector3().subVectors(tip, base).normalize();
+        const pos = new Vector3().copy(tip).addScaledVector(dir, -ARROW_INSET);
+        const cone = new Mesh(
+          new ConeGeometry(ARROW_RADIUS, ARROW_HEIGHT, 10),
+          arrowMatSeg
+        );
+        cone.position.copy(pos);
+        const up = new Vector3(0, 1, 0);
+        cone.quaternion.setFromUnitVectors(up, dir);
+        cone.castShadow = true;
+        pathGroup.add(cone);
+      };
+
+      const first = pts[0];
+      const second = pts[1];
+      const penultimate = pts[pts.length - 2];
+      const last = pts[pts.length - 1];
+
+      // to 방향 화살표 (끝쪽)
+      mkArrow(penultimate, last);
+
+      // 양방향이면 from 방향 화살표 (시작쪽, 바깥 향함)
+      if (isBidi) {
+        mkArrow(second, first);
       }
     });
 

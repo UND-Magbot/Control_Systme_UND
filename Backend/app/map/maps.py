@@ -41,7 +41,12 @@ class SyncMapReq(BaseModel):
 # 맵 CRUD
 # =========================
 @router.get("/maps")
-def get_maps(floor_id: Optional[int] = None, business_id: Optional[int] = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
+def get_maps(
+    floor_id: Optional[int] = None,
+    business_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user),  # 맵 뷰는 어느 탭에서든 표시 가능
+):
     q = db.query(RobotMapInfo)
     if floor_id is not None:
         q = q.filter(RobotMapInfo.FloorId == floor_id)
@@ -72,7 +77,11 @@ def save_map(req: MapSaveReq, request: Request, db: Session = Depends(get_db), c
 
 
 @router.get("/maps/{map_id}/meta")
-def get_map_meta(map_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
+def get_map_meta(
+    map_id: int,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user),  # 맵 뷰는 어느 탭에서든 표시 가능
+):
     """맵의 yaml 파싱해서 origin, resolution 반환"""
     m = db.query(RobotMapInfo).filter(RobotMapInfo.id == map_id).first()
     if not m:

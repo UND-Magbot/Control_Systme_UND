@@ -16,6 +16,7 @@ type CameraSlotsProps = {
   selectedRobot: RobotRowData | null;
   robots: RobotRowData[];
   video: Video[];
+  loading?: boolean;
 };
 
 const SLOTS_PER_PAGE = 3;
@@ -27,6 +28,7 @@ export default function CameraSlots({
   selectedRobot,
   robots,
   video,
+  loading = false,
 }: CameraSlotsProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalCam, setModalCam] = useState<Camera | null>(null);
@@ -55,7 +57,19 @@ export default function CameraSlots({
 
   return (
     <>
-      {!isOnline ? (
+      {loading ? (
+        // 초기 로드 중: 카메라/로봇 fetch가 끝나기 전이면 로딩 슬롯 2개 표시
+        // (끝나기 전 "로봇 연결 끊김" / "카메라를 등록해주세요" 로 깜빡이는 것 방지)
+        <>
+          {[0, 1].map((i) => (
+            <div key={i} className={`${dashStyles.cameraPanel} ${styles.camSlotWrapper}`}>
+              <div className={styles.emptySlot}>
+                <div className={styles.spinner} />
+              </div>
+            </div>
+          ))}
+        </>
+      ) : !isOnline ? (
         <div className={dashStyles.cameraPanel}>
           <div className={styles.emptySlot}>
             <span>로봇 연결 끊김</span>

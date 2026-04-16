@@ -6,7 +6,7 @@ from typing import Optional
 
 from app.database.database import get_db
 from app.database.models import BusinessInfo, FloorInfo, UserInfo
-from app.auth.dependencies import require_permission
+from app.auth.dependencies import require_permission, get_current_user
 from app.auth.audit import write_audit, get_client_ip
 
 router = APIRouter()
@@ -18,7 +18,10 @@ class BusinessReq(BaseModel):
 
 
 @router.get("/businesses")
-def get_businesses(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
+def get_businesses(
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user),  # 맵 뷰는 어느 탭에서든 표시 가능
+):
     rows = db.query(BusinessInfo).order_by(BusinessInfo.id.asc()).all()
     floor_counts = dict(
         db.query(FloorInfo.BusinessId, sql_func.count(FloorInfo.id))

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import styles from "./CameraModal.module.css";
 import type { Camera, RobotRowData } from "@/app/types";
 import CameraSlot from "./CameraSlot";
-import { getBatteryColor } from "@/app/constants/robotIcons";
+import { getBatteryColor, isQuadrupedSingleBatteryMode } from "@/app/constants/robotIcons";
 
 type ViewMode = "all" | "single";
 
@@ -86,11 +86,17 @@ export default function CameraModal({
                   <span className={styles.statusDivider}>|</span>
                   <span className={styles.statusItem}>
                     {robot.type === "QUADRUPED" ? (
-                      <>
-                        L <span style={{ color: getBatteryColor(robot.batteryLeft ?? 0, robot.return) }}>{robot.batteryLeft ?? "-"}%</span>
-                        {" / "}
-                        R <span style={{ color: getBatteryColor(robot.batteryRight ?? 0, robot.return) }}>{robot.batteryRight ?? "-"}%</span>
-                      </>
+                      isQuadrupedSingleBatteryMode(robot) ? (
+                        <span style={{ color: getBatteryColor(robot.batteryLeft ?? robot.batteryRight ?? 0, robot.return) }}>
+                          {robot.batteryLeft ?? robot.batteryRight ?? "-"}%
+                        </span>
+                      ) : (
+                        <>
+                          L <span style={{ color: getBatteryColor(robot.batteryLeft ?? 0, robot.return) }}>{robot.batteryLeft ?? "-"}%</span>
+                          {" / "}
+                          R <span style={{ color: getBatteryColor(robot.batteryRight ?? 0, robot.return) }}>{robot.batteryRight ?? "-"}%</span>
+                        </>
+                      )
                     ) : (
                       <span style={{ color: getBatteryColor(robot.battery, robot.return) }}>{robot.battery}%</span>
                     )}

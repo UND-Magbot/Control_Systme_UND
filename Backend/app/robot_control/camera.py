@@ -1,13 +1,11 @@
 """카메라 MJPEG 스트리밍 엔드포인트.
 
-클라이언트 disconnect 감지와 최대 스트림 지속시간(MAX_STREAM_DURATION)을
-적용해, Chromium의 multipart/x-mixed-replace pending-close 버그로 인한
-좀비 연결 누적을 서버 쪽에서 끊어낸다. 클라이언트는 onError 핸들러로
-자동 재연결.
+클라이언트 disconnect를 async 루프에서 감지해 연결 정리. 페이지 네비게이션은
+프론트가 하드 리로드하므로 브라우저가 TCP를 직접 닫아 별도의 주기적 종료가
+필요 없다.
 """
 
 import asyncio
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 import cv2
@@ -19,10 +17,6 @@ from app.database.models import RobotModule, RobotInfo
 
 router = APIRouter()
 
-# 한 연결의 최대 지속 시간. 이 시간이 지나면 서버가 스스로 generator를
-# 종료하고 Connection: close 헤더와 함께 소켓을 닫아 브라우저의 stale
-# 연결 풀에서 확실히 제거되도록 한다. 클라이언트는 onError로 즉시 재연결.
-MAX_STREAM_DURATION = 30.0
 READ_TIMEOUT_SEC = 5.0
 
 
@@ -58,16 +52,13 @@ async def _rtsp_to_mjpeg(rtsp_url: str, request: Request):
             pass
 
     cap = await loop.run_in_executor(executor, _open)
-    start = time.time()
     try:
         if not cap.isOpened():
             return
         while True:
-            # 클라이언트 disconnect 감지
+            # 클라이언트 disconnect 감지 — 페이지 이탈/탭 닫기/컴포넌트
+            # 언마운트 시 브라우저가 TCP를 닫으면 여기서 감지해 루프 종료
             if await request.is_disconnected():
-                break
-            # 최대 지속시간 초과 시 정상 종료 → 클라이언트 재연결 유도
-            if time.time() - start > MAX_STREAM_DURATION:
                 break
             # cv2.read는 전용 단일 스레드에서 실행 (동일 스레드 보장)
             ret, frame = await loop.run_in_executor(executor, _read, cap)
@@ -121,9 +112,6 @@ async def stream_camera(module_id: int, request: Request):
         _rtsp_to_mjpeg(url, request),
         media_type="multipart/x-mixed-replace; boundary=frame",
         headers={
-            # 스트림 종료 시 TCP 소켓을 keep-alive 풀에 반환하지 않고 완전 종료
-            # → 브라우저가 stale 연결을 확실히 정리
-            "Connection": "close",
             "Cache-Control": "no-cache, no-store, must-revalidate",
         },
     )

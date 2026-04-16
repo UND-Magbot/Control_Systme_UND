@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.database.models import LocationInfo, UserInfo, FloorInfo
-from app.auth.dependencies import require_any_permission
+from app.auth.dependencies import require_any_permission, get_current_user
 from app.auth.audit import write_audit, get_client_ip
 
 from app.database.routes import database, get_db
@@ -55,7 +55,11 @@ def insert_robot_place(
 
 
 @database.get("/places")
-def get_places(map_id: int | None = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit", "schedule-list"))):
+def get_places(
+    map_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user),  # 맵 뷰는 어느 탭에서든 표시 가능
+):
     q = db.query(LocationInfo)
     if map_id is not None:
         q = q.filter(LocationInfo.MapId == map_id)

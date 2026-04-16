@@ -104,7 +104,9 @@ export default function Header() {
                             <img src="/icon/bell_zero.png" alt="알림" />
                             {unreadAlarmCount > 0 && (
                                 <div className={styles.alarmBegs}>
-                                    <span aria-hidden="true">{unreadAlarmCount}</span>
+                                    <span aria-hidden="true">
+                                        {unreadAlarmCount > 999 ? "999+" : unreadAlarmCount}
+                                    </span>
                                 </div>
                             )}
                         </button>

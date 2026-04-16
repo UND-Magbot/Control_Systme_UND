@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import PermissionGuard from "@/app/components/common/PermissionGuard";
 import styles from './Alerts.module.css';
 import { type AlertMockData, type AlertType } from '@/app/types';
-import { getAlerts, markAlertRead, markAllAlertsRead, createNotice, updateNotice, deleteNotice, uploadNoticeFile } from '@/app/lib/alertData';
+import { getAlerts, getAlertById, markAlertRead, markAllAlertsRead, createNotice, updateNotice, deleteNotice, uploadNoticeFile } from '@/app/lib/alertData';
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from '@/app/config';
 import { usePageReady } from "@/app/context/PageLoadingContext";
@@ -88,6 +88,8 @@ export default function AlertsPage() {
   const [appliedSearch, setAppliedSearch] = useState('');
   const [appliedStatus, setAppliedStatus] = useState<StatusFilter>('');
   const [selectedAlertId, setSelectedAlertId] = useState<number | null>(paramId ? Number(paramId) : null);
+  // URL paramId로 진입한 알림이 현재 페이지 목록에 없을 때를 대비한 직접 로드 캐시
+  const [directLoadedAlert, setDirectLoadedAlert] = useState<AlertMockData | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
   const [pageSizeReady, setPageSizeReady] = useState(false);
@@ -164,14 +166,25 @@ export default function AlertsPage() {
     if (pageSizeReady) fetchAlerts();
   }, [pageSizeReady, currentPage, activeTab, appliedSearch, appliedStatus, pageSize]);
 
-  // URL 파라미터 id로 상세 패널 열기 (데이터 로드 후 적용)
+  // URL 파라미터 id로 상세 패널 열기
+  // - 현재 페이지 목록에 있으면 그걸 선택
+  // - 없으면 단일 조회 API로 직접 로드해서 상세패널에 노출
   useEffect(() => {
-    if (paramId && alerts.length > 0) {
-      const id = Number(paramId);
-      if (alerts.some(a => a.id === id)) {
+    if (!paramId) return;
+    const id = Number(paramId);
+    if (Number.isNaN(id)) return;
+    if (alerts.some(a => a.id === id)) {
+      setSelectedAlertId(id);
+      setDirectLoadedAlert(null);
+      return;
+    }
+    // 페이지 목록엔 없지만 파라미터로 지정된 id — 직접 fetch
+    getAlertById(id).then((a) => {
+      if (a) {
+        setDirectLoadedAlert(a);
         setSelectedAlertId(id);
       }
-    }
+    });
   }, [paramId, alerts]);
 
   const tabs = useMemo<{ id: TabKey; label: string }[]>(() => [
@@ -187,11 +200,14 @@ export default function AlertsPage() {
     return { total: totalItems, unread: unreadCounts.total, error };
   }, [alerts, totalItems, unreadCounts]);
 
-  // 선택된 알림 상세
+  // 선택된 알림 상세 — 현재 페이지 목록 우선, 없으면 직접 로드 캐시에서 조회
   const selectedAlert = useMemo(() => {
     if (selectedAlertId === null) return null;
-    return alerts.find(a => a.id === selectedAlertId) ?? null;
-  }, [alerts, selectedAlertId]);
+    const found = alerts.find(a => a.id === selectedAlertId);
+    if (found) return found;
+    if (directLoadedAlert && directLoadedAlert.id === selectedAlertId) return directLoadedAlert;
+    return null;
+  }, [alerts, selectedAlertId, directLoadedAlert]);
 
   // 핸들러
   const handleSelectAlert = (id: number) => {

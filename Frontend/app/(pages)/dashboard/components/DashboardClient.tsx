@@ -31,8 +31,8 @@ export default function DashboardClient({
   const [robots, setRobots] = useState<RobotRowData[]>([]);
   const [selectedRobotId, setSelectedRobotId] = useState<number | null>(null);
   const [robotCameras, setRobotCameras] = useState<Camera[]>([]);
+  const [camerasLoading, setCamerasLoading] = useState(true);
   const [robotStats, setRobotStats] = useState<PerRobotStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const robotLocation = useRobotLocation();
 
   // useRobotLocation에서 가져온 places를 MapSection용 POIItem으로 변환
@@ -49,20 +49,14 @@ export default function DashboardClient({
   );
   const setPageReady = usePageReady();
 
-  // 컨텍스트 로드 완료 시 첫 번째 로봇 선택 + 카메라 로드
+  // 컨텍스트 로드 완료 → 즉시 대시보드 표시.
+  // 카메라 로드는 백그라운드에서 진행되며 완료되면 CameraSlots가 자동 반영한다.
+  // (NoticeList / MapSection 등 독립 컴포넌트가 카메라 로드에 블록되지 않도록 게이트 제거)
   useEffect(() => {
     if (!statusLoaded) return;
     const firstId = liveRobots[0]?.id ?? null;
     setSelectedRobotId((prev) => prev ?? firstId);
-    if (firstId && isLoading) {
-      getCamerasForRobot(firstId).then(setRobotCameras).finally(() => {
-        setIsLoading(false);
-        setPageReady();
-      });
-    } else {
-      setIsLoading(false);
-      setPageReady();
-    }
+    setPageReady();
   }, [statusLoaded]);
 
   const selectedRobot = useMemo(
@@ -72,15 +66,28 @@ export default function DashboardClient({
 
   const selectedRobotNetwork = selectedRobot?.network;
 
-  // 로봇 선택 변경 또는 online 복귀 시 카메라 재로드
+  // 로봇 선택 변경 또는 online 복귀 시 카메라 로드 (초기 로드 포함)
   useEffect(() => {
-    if (isLoading) return;
+    // statusLoaded 전에는 로봇/네트워크 상태가 아직 정착되지 않았으므로
+    // camerasLoading을 true로 유지해 CameraSlots가 로딩 UI를 계속 표시하도록 둔다.
+    // (이 상태에서 false로 뒤집으면 "로봇 연결 끊김" 이 잠깐 깜빡임)
+    if (!statusLoaded) return;
     if (!selectedRobotId || selectedRobotNetwork !== "Online") {
       setRobotCameras([]);
+      setCamerasLoading(false);
       return;
     }
-    getCamerasForRobot(selectedRobotId).then(setRobotCameras);
-  }, [selectedRobotId, selectedRobotNetwork]);
+    let cancelled = false;
+    setCamerasLoading(true);
+    getCamerasForRobot(selectedRobotId)
+      .then((cams) => {
+        if (!cancelled) setRobotCameras(cams);
+      })
+      .finally(() => {
+        if (!cancelled) setCamerasLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [statusLoaded, selectedRobotId, selectedRobotNetwork]);
 
   // 선택된 로봇의 통계 데이터 로드
   useEffect(() => {
@@ -94,8 +101,6 @@ export default function DashboardClient({
     });
     return () => { cancelled = true; };
   }, [selectedRobot?.no]);
-
-  if (isLoading) return null;
 
   return (
     <div className={styles.dashboardGrid}>
@@ -155,6 +160,7 @@ export default function DashboardClient({
           selectedRobot={selectedRobot}
           robots={liveRobots}
           video={videoStatus}
+          loading={camerasLoading}
         />
       </div>
     </div>

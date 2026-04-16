@@ -5,7 +5,7 @@ from typing import Optional
 
 from app.database.database import get_db
 from app.database.models import FloorInfo, UserInfo
-from app.auth.dependencies import require_permission
+from app.auth.dependencies import require_permission, get_current_user
 from app.auth.audit import write_audit, get_client_ip
 
 router = APIRouter()
@@ -17,7 +17,11 @@ class FloorReq(BaseModel):
 
 
 @router.get("/floors")
-def get_floors(business_id: Optional[int] = None, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
+def get_floors(
+    business_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user),  # 맵 뷰는 어느 탭에서든 표시 가능
+):
     q = db.query(FloorInfo)
     if business_id is not None:
         q = q.filter(FloorInfo.BusinessId == business_id)
