@@ -15,6 +15,7 @@ const TABS: Tab[] = [
 
 type ControlPanelProps = {
   robotType: string;
+  motionState?: number | null;
   isWorking: boolean;
   isWorkPending: boolean;
   loopCount: number | string;
@@ -27,6 +28,7 @@ type ControlPanelProps = {
 
 export default function ControlPanel({
   robotType,
+  motionState,
   isWorking,
   isWorkPending,
   loopCount,
@@ -45,7 +47,7 @@ export default function ControlPanel({
 
       <div className={styles.tabContent}>
         {activeTab === 'control' && (
-          <ModeSpeedControl robotType={robotType} disabled={controlDisabled} />
+          <ModeSpeedControl robotType={robotType} motionState={motionState} disabled={controlDisabled} />
         )}
 
         {activeTab === 'automation' && (

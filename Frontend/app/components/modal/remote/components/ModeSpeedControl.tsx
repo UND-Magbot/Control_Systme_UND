@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useRemoteCommand } from '../hooks/useRemoteCommand';
 import { getRobotCapabilities } from '@/app/constants/robotCapabilities';
 import styles from './ControlPanel.module.css';
 
 type ModeSpeedControlProps = {
   robotType: string;
+  /** 로봇 자세 (1=Stand, 4=Sit). null이면 미확인 — 버튼 모두 비활성. */
+  motionState?: number | null;
   disabled?: boolean;
 };
 
@@ -15,7 +17,7 @@ type Speed = 'slow' | 'normal' | 'fast';
 type Terrain = 'flat' | 'stair';
 type RobotMode = 'regular' | 'navigation' | 'assist';
 
-export default function ModeSpeedControl({ robotType, disabled = false }: ModeSpeedControlProps) {
+export default function ModeSpeedControl({ robotType, motionState, disabled = false }: ModeSpeedControlProps) {
   const caps = getRobotCapabilities(robotType);
   const { execute: execMode, state: modeState } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execSpeed, state: speedState } = useRemoteCommand({ debounceMs: 300 });
@@ -23,7 +25,16 @@ export default function ModeSpeedControl({ robotType, disabled = false }: ModeSp
   const { execute: execTerrain } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execRobotMode } = useRemoteCommand({ debounceMs: 300 });
 
-  const [activeMode, setActiveMode] = useState<Mode>('stand');
+  // motionState → activeMode 동기화 (1=Stand, 4=Sit)
+  const derivedMode: Mode | null =
+    motionState === 1 ? 'stand' : motionState === 4 ? 'sit' : null;
+  const [activeMode, setActiveMode] = useState<Mode>(derivedMode ?? 'stand');
+  useEffect(() => {
+    if (derivedMode && derivedMode !== activeMode) {
+      setActiveMode(derivedMode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derivedMode]);
   const [activeSpeed, setActiveSpeed] = useState<Speed>('normal');
   const [activeTerrain, setActiveTerrain] = useState<Terrain>('flat');
   const [activeRobotMode, setActiveRobotMode] = useState<RobotMode>('regular');
@@ -83,13 +94,30 @@ export default function ModeSpeedControl({ robotType, disabled = false }: ModeSp
 
   return (
     <div className={`${styles.section} ${disabled ? styles.disabled : ''}`}>
-      {/* 자세: Stand/Sit */}
+      {/* 자세: Stand/Sit
+          - motionState가 알려지지 않으면(null) 둘 다 disabled
+          - 현재 자세와 같은 쪽 버튼은 disabled (연속 동일 명령 방지)
+          - 반대 쪽 버튼만 활성화 */}
       {caps.hasStandSit && (
         <div className={styles.controlGroup}>
           <div className={styles.controlLabel}>자세</div>
           <div className={styles.segmentGroup}>
-            <button type="button" className={`${styles.segmentBtn} ${activeMode === 'stand' ? styles.active : ''}`} onClick={() => handleMode('stand')} disabled={disabled}>Stand</button>
-            <button type="button" className={`${styles.segmentBtn} ${activeMode === 'sit' ? styles.active : ''}`} onClick={() => handleMode('sit')} disabled={disabled}>Sit</button>
+            <button
+              type="button"
+              className={`${styles.segmentBtn} ${activeMode === 'stand' ? styles.active : ''}`}
+              onClick={() => handleMode('stand')}
+              disabled={disabled || derivedMode === null || activeMode === 'stand'}
+            >
+              Stand
+            </button>
+            <button
+              type="button"
+              className={`${styles.segmentBtn} ${activeMode === 'sit' ? styles.active : ''}`}
+              onClick={() => handleMode('sit')}
+              disabled={disabled || derivedMode === null || activeMode === 'sit'}
+            >
+              Sit
+            </button>
           </div>
         </div>
       )}

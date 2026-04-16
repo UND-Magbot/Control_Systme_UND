@@ -184,6 +184,7 @@ export default function RemoteModal({
 
             <ControlPanel
               robotType={selectedRobot?.type ?? ''}
+              motionState={selectedRobot?.motionState ?? null}
               isWorking={work.isWorking}
               isWorkPending={work.isPending}
               loopCount={work.loopCount}

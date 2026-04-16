@@ -40,6 +40,7 @@ latest_nav_status = {"status": None, "timestamp": 0}
 latest_battery = {}
 latest_device_temp = {}
 latest_charge_state = {"state": 0, "error_code": 0, "timestamp": 0}  # /CHARGE_STATUS
+latest_basic_status = {}  # Type=1002, Command=6 (Obtain Basic Status) — Sleep 값 등 포함
 
 def nav_poll_loop():
     global latest_nav_status
@@ -93,9 +94,11 @@ def nav_poll_loop():
 
 def battery_poll_loop():
     """heartbeat(Type=100, Command=100) 전송 → 로봇이 push하는 패킷 중
-    Type=1002, Command=5 에서 BatteryStatus 추출,
-    /CHARGE_STATUS 패킷에서 충전 상태 추출"""
-    global latest_battery, latest_charge_state, latest_device_temp
+    - Type=1002, Command=5 에서 BatteryStatus 추출
+    - Type=1002, Command=6 (Obtain Basic Status)에서 Sleep / PowerManagement 추출
+    - /CHARGE_STATUS 패킷에서 충전 상태 추출
+    """
+    global latest_battery, latest_charge_state, latest_device_temp, latest_basic_status
     bat_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     bat_sock.settimeout(1.0)
 
@@ -149,6 +152,18 @@ def battery_poll_loop():
                         device_temp = items.get("DeviceTemperature", {})
                         if device_temp:
                             latest_device_temp = device_temp
+
+                    elif ptype == 1002 and pcmd == 6:
+                        # Obtain Basic Status — items.BasicStatus에 중첩돼 있음
+                        # - Sleep: 0=On, 1/2=Sleep/Off
+                        # - PowerManagement: 0=regular dual battery, 1=single battery
+                        # - MotionState: 1=Stand, 4=Sit
+                        basic = items.get("BasicStatus", {}) or {}
+                        latest_basic_status = {
+                            "Sleep": basic.get("Sleep"),
+                            "PowerManagement": basic.get("PowerManagement"),
+                            "MotionState": basic.get("MotionState"),
+                        }
 
                 except socket.timeout:
                     break
@@ -497,7 +512,8 @@ def udp_receiver_loop():
                 server_sock.sendto(json.dumps({
                     "BatteryStatus": latest_battery,
                     "ChargeStatus": latest_charge_state,
-                    "DeviceTemperature": latest_device_temp
+                    "DeviceTemperature": latest_device_temp,
+                    "BasicStatus": latest_basic_status,
                 }).encode("utf-8"), addr)
 
             elif action == "NAV_STATUS":

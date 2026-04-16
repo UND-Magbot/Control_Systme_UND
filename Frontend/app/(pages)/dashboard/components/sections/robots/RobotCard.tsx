@@ -8,6 +8,7 @@ import {
   ROBOT_TYPE_INDEX,
   getBatteryColor,
   isCriticalBattery,
+  isQuadrupedSingleBatteryMode,
 } from "@/app/constants/robotIcons";
 import ChargingIcon from "@/app/components/common/ChargingIcon";
 import { apiFetch } from "@/app/lib/api";
@@ -150,18 +151,51 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
           <div className={styles.cardBottom}>
             <span className={isCriticalBattery(robot) ? styles.criticalBattery : ""}>
               {robot.type === "QUADRUPED" ? (
-                <>
-                  <span style={{ color: "var(--text-primary)" }}>L </span>
-                  {robot.batteryLeft != null ? (
-                    <span style={{ color: getBatteryColor(robot.batteryLeft, robot.return) }}>{robot.batteryLeft}%</span>
-                  ) : <span>-</span>}
-                  <span style={{ color: "var(--text-muted)" }}> / </span>
-                  <span style={{ color: "var(--text-primary)" }}>R </span>
-                  {robot.batteryRight != null ? (
-                    <span style={{ color: getBatteryColor(robot.batteryRight, robot.return) }}>{robot.batteryRight}%</span>
-                  ) : <span>-</span>}
-                  <span style={{ color: "var(--text-muted)" }}> ({robot.return}%)</span>
-                </>
+                isQuadrupedSingleBatteryMode(robot) ? (
+                  (() => {
+                    const left = robot.batteryLeft ?? 0;
+                    const right = robot.batteryRight ?? 0;
+                    const isLeft = left >= right;
+                    const single = isLeft ? robot.batteryLeft : robot.batteryRight;
+                    return single != null ? (
+                      <>
+                        <span style={{ color: "var(--text-primary)" }}>{isLeft ? "L" : "R"} </span>
+                        <span style={{ color: getBatteryColor(single, robot.return) }}>{single}%</span>
+                        <span style={{ color: "var(--text-muted)" }}> ({robot.return}%)</span>
+                      </>
+                    ) : (
+                      <span>- ({robot.return}%)</span>
+                    );
+                  })()
+                ) : (
+                  (() => {
+                    const hasLeft = robot.batteryLeft != null;
+                    const hasRight = robot.batteryRight != null;
+                    if (hasLeft && hasRight) {
+                      return (
+                        <>
+                          <span style={{ color: "var(--text-primary)" }}>L </span>
+                          <span style={{ color: getBatteryColor(robot.batteryLeft!, robot.return) }}>{robot.batteryLeft}%</span>
+                          <span style={{ color: "var(--text-muted)" }}> / </span>
+                          <span style={{ color: "var(--text-primary)" }}>R </span>
+                          <span style={{ color: getBatteryColor(robot.batteryRight!, robot.return) }}>{robot.batteryRight}%</span>
+                          <span style={{ color: "var(--text-muted)" }}> ({robot.return}%)</span>
+                        </>
+                      );
+                    }
+                    const active = hasLeft ? robot.batteryLeft! : hasRight ? robot.batteryRight! : null;
+                    const label = hasLeft ? "L" : "R";
+                    return active != null ? (
+                      <>
+                        <span style={{ color: "var(--text-primary)" }}>{label} </span>
+                        <span style={{ color: getBatteryColor(active, robot.return) }}>{active}%</span>
+                        <span style={{ color: "var(--text-muted)" }}> ({robot.return}%)</span>
+                      </>
+                    ) : (
+                      <span>- ({robot.return}%)</span>
+                    );
+                  })()
+                )
               ) : (
                 <span style={{ color: getBatteryColor(robot.battery, robot.return) }}>
                   {robot.battery}% ({robot.return}%)

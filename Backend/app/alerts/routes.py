@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -31,6 +31,19 @@ def get_alerts(
         page=page,
         size=size,
     )
+
+
+@router.get("/alerts/{alert_id}")
+def get_alert(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_any_permission("alert-total", "alert-schedule", "alert-robot", "alert-notice")),
+):
+    """페이지에 없는 알림도 직접 로드 가능 — 상세 패널 열기용."""
+    item = AlertService(db).get_one(alert_id, UserId=current_user.id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다")
+    return item
 
 
 @router.put("/alerts/{alert_id}/read")

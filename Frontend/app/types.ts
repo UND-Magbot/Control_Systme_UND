@@ -56,7 +56,10 @@ export type RobotRowData = {
     currentMapId: number | null;
     position: { x: number; y: number; yaw: number; timestamp: number };
     network: 'Online' | 'Offline' | 'Error' | '-';
-    power: 'On' | 'Off' | '-';
+    power: 'On' | 'Off' | '-';                   // Sleep=0 → On, 그 외 → Off
+    sleep?: number | null;                       // 원시 Sleep 값 (0=켜짐, 그 외=꺼짐)
+    powerManagement?: 0 | 1 | null;              // 0=regular(배터리 2개), 1=single battery, Sleep=0일 때만 유효
+    motionState?: number | null;                 // 1=Stand, 4=Sit
     mark: 'Yes' | 'No';
     tasks: RobotStatistic[];
     chargingTime: number;  // 충전 시간(분)

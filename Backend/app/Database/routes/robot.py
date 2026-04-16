@@ -11,6 +11,7 @@ from app.database.models import (
 from app.auth.dependencies import require_permission, require_any_permission
 from app.auth.audit import write_audit, get_client_ip
 from app.robot_io.runtime import _derive_network, _derive_power
+import app.robot_io.runtime as runtime
 
 from app.database.routes import database, get_db
 from app.database.routes._helpers import get_floor_name
@@ -108,12 +109,25 @@ def get_robots(db: Session = Depends(get_db), current_user: UserInfo = Depends(r
             data["PosY"] = status.PosY
             data["PosYaw"] = status.PosYaw
             data["LastHeartbeat"] = status.LastHeartbeat.isoformat() if status.LastHeartbeat else None
-        if status and status.LastHeartbeat:
+        # Network/Power 는 in-memory runtime의 last_heartbeat를 우선 사용.
+        # DB의 LastHeartbeat는 폴링 시 갱신되지 않아 stale — 사용 금지.
+        rt_entry = runtime._runtime.get(robot.id)
+        rt_last_hb = (rt_entry or {}).get("last_heartbeat") if rt_entry else None
+        if rt_last_hb and rt_last_hb > 0:
+            net = _derive_network(rt_last_hb)
+        elif status and status.LastHeartbeat:
             net = _derive_network(status.LastHeartbeat.timestamp())
         else:
             net = "-"
         data["Network"] = net
-        data["Power"] = _derive_power(net)
+        # Power/Sleep/PowerManagement는 runtime의 in-memory basic_status에서 조회
+        basic = (rt_entry or {}).get("basic_status") if rt_entry else None
+        rt_battery = (rt_entry or {}).get("battery") if rt_entry else None
+        data["Power"] = _derive_power(basic, rt_battery, net)
+        sleep_val = (basic or {}).get("Sleep") if basic else None
+        data["Sleep"] = sleep_val
+        data["PowerManagement"] = (basic or {}).get("PowerManagement") if basic and sleep_val == 0 else None
+        data["MotionState"] = (basic or {}).get("MotionState") if basic else None
         result.append(data)
     return result
 

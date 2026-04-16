@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import styles from "./CameraSlots.module.css";
 import type { Camera, RobotRowData } from "@/app/types";
 import { CAMERA_BASE } from "@/app/config";
-import { getBatteryColor } from "@/app/constants/robotIcons";
+import { getBatteryColor, isQuadrupedSingleBatteryMode } from "@/app/constants/robotIcons";
 
 type CameraSlotProps = {
   camera: Camera;
@@ -18,6 +18,9 @@ const CAM_RETRY_MS = 5_000;
 // 서버가 MAX_STREAM_DURATION(30s)마다 스트림을 닫으므로, 스트림 종료/에러 시
 // 짧은 지연 후 자동 재연결하여 사용자에게 끊김이 보이지 않게 한다.
 const AUTO_RECONNECT_DELAY_MS = 300;
+// Chromium이 MJPEG 스트림 종료 시 onError를 발생시키지 않는 경우 대비 —
+// 서버 타임아웃(30s) 이전에 클라이언트가 선제적으로 재연결해 프레임 정지 방지.
+const PROACTIVE_RECONNECT_MS = 25_000;
 
 export default function CameraSlot({ camera, robotName, robot, onExpand }: CameraSlotProps) {
   const [isLoading, setIsLoading] = useState(true);
@@ -231,11 +234,18 @@ export default function CameraSlot({ camera, robotName, robot, onExpand }: Camer
               {robot.network}
               <span className={styles.robotLabelDivider}>|</span>
               {robot.type === "QUADRUPED" ? (
-                <>
-                  L <span style={{ color: getBatteryColor(robot.batteryLeft ?? 0, robot.return) }}>{robot.batteryLeft ?? "-"}%</span>
-                  {" / "}
-                  R <span style={{ color: getBatteryColor(robot.batteryRight ?? 0, robot.return) }}>{robot.batteryRight ?? "-"}%</span>
-                </>
+                isQuadrupedSingleBatteryMode(robot) ? (
+                  // 단일 배터리 모드: L/R 중 값이 있는 쪽 하나만 표시
+                  <span style={{ color: getBatteryColor(robot.batteryLeft ?? robot.batteryRight ?? 0, robot.return) }}>
+                    {robot.batteryLeft ?? robot.batteryRight ?? "-"}%
+                  </span>
+                ) : (
+                  <>
+                    L <span style={{ color: getBatteryColor(robot.batteryLeft ?? 0, robot.return) }}>{robot.batteryLeft ?? "-"}%</span>
+                    {" / "}
+                    R <span style={{ color: getBatteryColor(robot.batteryRight ?? 0, robot.return) }}>{robot.batteryRight ?? "-"}%</span>
+                  </>
+                )
               ) : (
                 <span style={{ color: getBatteryColor(robot.battery, robot.return) }}>{robot.battery}%</span>
               )}
