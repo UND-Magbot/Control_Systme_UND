@@ -42,7 +42,22 @@ def robot_stop(current_user: UserInfo = Depends(require_permission("robot-list")
     return {"status": "ok"}
 
 @router.post("/rightTurn")
-def robot_stop(current_user: UserInfo = Depends(require_permission("robot-list"))):
+def robot_right_turn(current_user: UserInfo = Depends(require_permission("robot-list"))):
     print("rightTurn 명령 받음")
     send_to_robot("RIGHTTURN")
+    return {"status": "ok"}
+
+@router.post("/slow")
+def robot_slow(current_user: UserInfo = Depends(require_permission("robot-list"))):
+    send_to_robot("SLOW")
+    return {"status": "ok"}
+
+@router.post("/normal")
+def robot_normal(current_user: UserInfo = Depends(require_permission("robot-list"))):
+    send_to_robot("NORMAL")
+    return {"status": "ok"}
+
+@router.post("/fast")
+def robot_fast(current_user: UserInfo = Depends(require_permission("robot-list"))):
+    send_to_robot("FAST")
     return {"status": "ok"}

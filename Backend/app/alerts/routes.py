@@ -6,7 +6,7 @@ from app.database.database import get_db
 from app.database.models import UserInfo
 from app.alerts.schemas import AlertListResponse, UnreadCountResponse
 from app.alerts.service import AlertService
-from app.auth.dependencies import get_current_user, require_any_permission
+from app.auth.dependencies import get_current_user, require_any_permission, is_admin, get_business_robot_names
 
 router = APIRouter(prefix="/DB", tags=["alerts"])
 
@@ -22,6 +22,9 @@ def get_alerts(
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(require_any_permission("alert-total", "alert-schedule", "alert-robot", "alert-notice")),
 ):
+    robot_names = None
+    if not is_admin(current_user) and current_user.BusinessId:
+        robot_names = get_business_robot_names(db, current_user.BusinessId)
     return AlertService(db).get_list(
         alert_type=type,
         status=status,
@@ -30,6 +33,7 @@ def get_alerts(
         UserId=current_user.id,
         page=page,
         size=size,
+        robot_names=robot_names,
     )
 
 

@@ -193,6 +193,16 @@ export default function RemoteModal({
               onStopWork={work.stopWork}
               onLoopCountChange={work.handleLoopCountChange}
               onLoopCountBlur={work.handleLoopCountBlur}
+              paths={work.paths}
+              selectedPath={work.selectedPath}
+              onSelectPath={work.setSelectedPath}
+              isCreating={work.isCreating}
+              createdPoints={work.createdPoints}
+              onStartCreating={work.startCreating}
+              onSavePoint={work.savePoint}
+              onClearPoints={work.clearPoints}
+              onFinishCreating={work.finishCreating}
+              onCancelCreating={work.cancelCreating}
             />
           </div>
         </div>

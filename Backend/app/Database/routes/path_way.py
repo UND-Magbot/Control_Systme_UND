@@ -5,7 +5,7 @@ from datetime import datetime
 from fastapi.encoders import jsonable_encoder
 
 from app.database.models import WayInfo, RouteInfo, UserInfo
-from app.auth.dependencies import require_any_permission
+from app.auth.dependencies import require_any_permission, is_admin, get_business_robot_names
 from app.auth.audit import write_audit, get_client_ip
 
 from app.database.routes import database, get_db
@@ -38,12 +38,11 @@ def insert_path(req: PathInsertReq, request: Request, db: Session = Depends(get_
 
 @database.get("/paths")
 def get_paths(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit", "schedule-list"))):
-    paths = (
-        db.query(WayInfo)
-        .order_by(WayInfo.id.desc())
-        .all()
-    )
-    return paths
+    q = db.query(WayInfo)
+    if not is_admin(current_user) and current_user.BusinessId:
+        biz_names = get_business_robot_names(db, current_user.BusinessId)
+        q = q.filter(WayInfo.RobotName.in_(biz_names) | (WayInfo.RobotName == "") | (WayInfo.RobotName.is_(None)))
+    return q.order_by(WayInfo.id.desc()).all()
 
 
 class PathRes(BaseModel):
@@ -61,21 +60,20 @@ class PathRes(BaseModel):
 
 @database.get("/getpath")
 def get_paths_legacy(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit", "schedule-list"))):
-    paths = db.query(WayInfo).all()
-    return jsonable_encoder(paths)
+    q = db.query(WayInfo)
+    if not is_admin(current_user) and current_user.BusinessId:
+        biz_names = get_business_robot_names(db, current_user.BusinessId)
+        q = q.filter(WayInfo.RobotName.in_(biz_names) | (WayInfo.RobotName == "") | (WayInfo.RobotName.is_(None)))
+    return jsonable_encoder(q.all())
 
 
 @database.get("/way-names")
 def get_way_names(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit", "schedule-list"))):
-    paths = (
-        db.query(
-            WayInfo.id,
-            WayInfo.WayName,
-            WayInfo.RobotName
-        )
-        .order_by(WayInfo.id.desc())
-        .all()
-    )
+    q = db.query(WayInfo.id, WayInfo.WayName, WayInfo.RobotName)
+    if not is_admin(current_user) and current_user.BusinessId:
+        biz_names = get_business_robot_names(db, current_user.BusinessId)
+        q = q.filter(WayInfo.RobotName.in_(biz_names) | (WayInfo.RobotName == "") | (WayInfo.RobotName.is_(None)))
+    paths = q.order_by(WayInfo.id.desc()).all()
 
     return [
         {

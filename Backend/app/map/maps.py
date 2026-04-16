@@ -12,7 +12,7 @@ from app.database.database import get_db
 from app.database.models import (
     RobotMapInfo, UserInfo, LocationInfo, RouteInfo, WayInfo, MapInitPose,
 )
-from app.auth.dependencies import get_current_user, require_permission
+from app.auth.dependencies import get_current_user, require_permission, is_admin
 from app.auth.audit import write_audit, get_client_ip
 
 router = APIRouter()
@@ -52,6 +52,8 @@ def get_maps(
         q = q.filter(RobotMapInfo.FloorId == floor_id)
     if business_id is not None:
         q = q.filter(RobotMapInfo.BusinessId == business_id)
+    elif not is_admin(current_user) and current_user.BusinessId:
+        q = q.filter(RobotMapInfo.BusinessId == current_user.BusinessId)
     return q.order_by(RobotMapInfo.id.desc()).all()
 
 

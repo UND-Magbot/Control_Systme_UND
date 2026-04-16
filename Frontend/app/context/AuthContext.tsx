@@ -10,6 +10,7 @@ export type AuthUser = {
   user_name: string;
   role: number; // 1=admin, 2=user
   permissions: string[];
+  business_id: number | null;
 };
 
 type AuthContextType = {

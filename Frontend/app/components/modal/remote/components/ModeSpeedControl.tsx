@@ -25,9 +25,9 @@ export default function ModeSpeedControl({ robotType, motionState, disabled = fa
   const { execute: execTerrain } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execRobotMode } = useRemoteCommand({ debounceMs: 300 });
 
-  // motionState → activeMode 동기화 (1=Stand, 4=Sit)
+  // motionState → activeMode 동기화 (1=Stand, 17=RL Control(Stand), 4=Sit)
   const derivedMode: Mode | null =
-    motionState === 1 ? 'stand' : motionState === 4 ? 'sit' : null;
+    motionState === 1 || motionState === 17 ? 'stand' : motionState === 4 ? 'sit' : null;
   const [activeMode, setActiveMode] = useState<Mode>(derivedMode ?? 'stand');
   useEffect(() => {
     if (derivedMode && derivedMode !== activeMode) {
@@ -143,17 +143,19 @@ export default function ModeSpeedControl({ robotType, motionState, disabled = fa
         </div>
       </div> */}
 
-      {/* 속도 */}
-      <div className={styles.controlGroup}>
-        <div className={styles.controlLabel}>속도</div>
-        <div className={styles.segmentGroup}>
-          {(['slow', 'normal', 'fast'] as Speed[]).map((sp) => (
-            <button key={sp} type="button" className={`${styles.segmentBtn} ${activeSpeed === sp ? styles.active : ''}`} onClick={() => handleSpeed(sp)} disabled={disabled}>
-              {sp === 'slow' ? 'Slow' : sp === 'normal' ? 'Normal' : 'Fast'}
-            </button>
-          ))}
+      {/* 속도 — Stand/RL Control 상태에서만 표시 */}
+      {(derivedMode === 'stand' || derivedMode === null) && (
+        <div className={styles.controlGroup}>
+          <div className={styles.controlLabel}>속도</div>
+          <div className={styles.segmentGroup}>
+            {(['slow', 'normal', 'fast'] as Speed[]).map((sp) => (
+              <button key={sp} type="button" className={`${styles.segmentBtn} ${activeSpeed === sp ? styles.active : ''}`} onClick={() => handleSpeed(sp)} disabled={disabled}>
+                {sp === 'slow' ? 'Slow' : sp === 'normal' ? 'Normal' : 'Fast'}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 조명 (타이틀 + 토글 한 줄) */}
       <div className={styles.controlGroup}>

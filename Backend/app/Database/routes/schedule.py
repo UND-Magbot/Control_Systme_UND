@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from app.database.models import ScheduleInfo, UserInfo
-from app.auth.dependencies import require_permission
+from app.auth.dependencies import require_permission, is_admin, get_business_robot_names
 from app.auth.audit import write_audit, get_client_ip
 
 from app.database.routes import database, get_db
@@ -235,11 +235,11 @@ def insert_schedule(
 
 @database.get("/schedule")
 def get_schedules(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("schedule-list"))):
-    schedules = (
-        db.query(ScheduleInfo)
-        .order_by(ScheduleInfo.StartDate.asc())
-        .all()
-    )
+    q = db.query(ScheduleInfo)
+    if not is_admin(current_user) and current_user.BusinessId:
+        biz_names = get_business_robot_names(db, current_user.BusinessId)
+        q = q.filter(ScheduleInfo.RobotName.in_(biz_names))
+    schedules = q.order_by(ScheduleInfo.StartDate.asc()).all()
     return [
         {
             "id": s.id,

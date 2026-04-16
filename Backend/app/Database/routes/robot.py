@@ -8,7 +8,7 @@ from app.database.models import (
     RobotInfo, UserInfo, RobotModule, ModuleCameraInfo,
     RobotLastStatus, BusinessInfo,
 )
-from app.auth.dependencies import require_permission, require_any_permission
+from app.auth.dependencies import require_permission, require_any_permission, is_admin
 from app.auth.audit import write_audit, get_client_ip
 from app.robot_io.runtime import _derive_network, _derive_power
 import app.robot_io.runtime as runtime
@@ -85,13 +85,14 @@ def insert_Robot(req: RobotInsertReq, request: Request, db: Session = Depends(ge
 
 @database.get("/robots")
 def get_robots(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("dashboard", "robot-list", "schedule-list"))):
-    rows = (
+    q = (
         db.query(RobotInfo, RobotLastStatus, BusinessInfo.BusinessName)
         .outerjoin(RobotLastStatus, RobotInfo.id == RobotLastStatus.RobotId)
         .outerjoin(BusinessInfo, RobotInfo.BusinessId == BusinessInfo.id)
-        .order_by(RobotInfo.id.asc())
-        .all()
     )
+    if not is_admin(current_user) and current_user.BusinessId:
+        q = q.filter(RobotInfo.BusinessId == current_user.BusinessId)
+    rows = q.order_by(RobotInfo.id.asc()).all()
     result = []
     for robot, status, biz_name in rows:
         data = jsonable_encoder(robot)

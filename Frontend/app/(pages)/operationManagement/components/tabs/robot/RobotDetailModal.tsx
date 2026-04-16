@@ -583,7 +583,9 @@ export default function RobotDetailModal({
             loading={workScheduleLoading}
             error={workScheduleError}
             onConfirmReturn={() => {
-              // TODO: 작업 복귀 기능 연결 예정
+              apiFetch(`/robot/return-to-work?mode=direct`, {
+                method: "POST",
+              }).catch((err) => console.error("작업 복귀 실패", err));
             }}
             onConfirmWhenNone={() => {
               window.location.href = "/scheduleManagement";

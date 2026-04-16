@@ -338,3 +338,311 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ── WorkProgressPanel ── */
+.wpPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wpSection {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 충전소 좌표 텍스트 */
+.wpInitPoseCoord {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* 섹션 헤더 (제목 + 우측 버튼) */
+.wpSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wpCreateBtnSmall {
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.wpCreateBtnSmall:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.wpCreateBtnSmall:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 드롭다운 */
+.wpDropdown {
+  position: relative;
+  margin-top: 6px;
+}
+
+.wpDropdownBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.wpDropdownBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wpDropdownText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  text-align: left;
+}
+
+.wpDropdownArrow {
+  font-size: 10px;
+  margin-left: 6px;
+  color: var(--text-muted);
+}
+
+.wpDropdownList {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--surface-4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.wpDropdownEmpty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.wpDropdownItem {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.wpDropdownItem:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.wpDropdownItemActive {
+  background: rgba(var(--accent-blue-rgb, 59, 130, 246), 0.15);
+}
+
+.wpDropdownItemName {
+  font-weight: 600;
+}
+
+.wpDropdownItemPath {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wpDropdownItem:hover .wpDropdownItemPath {
+  white-space: normal;
+  word-break: break-all;
+}
+
+/* 경로 미리보기 */
+.wpPathPreview {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--surface-3);
+  border-radius: 6px;
+}
+
+.wpPathLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-right: 6px;
+}
+
+.wpPathDetail {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+/* 직접 경로 생성 버튼 */
+.wpCreateBtn {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wpCreateBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.wpCreateBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 직접 경로 생성 모드 */
+.wpCreateHeader {
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--text-primary);
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wpCreatePreviewLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.wpCreatePreviewPath {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  line-height: 1.5;
+  word-break: break-all;
+  min-height: 20px;
+}
+
+.wpCreatePreviewCount {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-top: 4px;
+  text-align: right;
+}
+
+.wpCreateActions {
+  display: flex;
+  gap: 6px;
+}
+
+/* 경로 이름 입력 */
+.wpCreateNameSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wpAutoNameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.wpAutoNameLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.wpNameInput {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.wpNameInput:focus {
+  border-color: var(--color-info);
+}
+
+.wpNameInput::placeholder {
+  color: var(--text-muted);
+}
+
+.wpCreateFooter {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.wpCancelBtn {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wpConfirmBtn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-info);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.wpConfirmBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

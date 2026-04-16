@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 import time
-import json
 from app.robot_io.sender import send_nav_to_robot
 from app.database.database import SessionLocal, get_db
 from app.database.models import LocationInfo, WayInfo, UserInfo, RobotInfo
@@ -18,7 +17,6 @@ is_navigating = False
 nav_sent_time = 0
 nav_loop_remaining = 0
 charge_on_arrival = False  # 도착 후 자동 충전 플래그
-WAYPOINT_FILE = "./data/waypoints.json"
 
 # nav_thread 상태 리셋 신호 (새 주행/정지 시 nav_thread가 감지)
 _nav_reset_flag = False
@@ -52,51 +50,6 @@ def _signal_nav_reset(full=False):
     global _nav_reset_flag, _nav_full_reset_flag
     _nav_reset_flag = True
     _nav_full_reset_flag = full
-
-@move.post("/startmove")
-def start_navigation(loop: int = 3, current_user: UserInfo = Depends(require_permission("robot-list"))):
-
-    waypoints = load_waypoints()
-
-    global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining
-
-    # 직접 주행: name 없으면 좌표로 표시
-    for wp in waypoints:
-        if "name" not in wp:
-            wp["name"] = f"x:{wp['x']:.1f}, y:{wp['y']:.1f}"
-
-    waypoints_list = waypoints
-    current_wp_index = 0
-    is_navigating = True
-    nav_loop_remaining = loop - 1
-
-    # nav_thread 상태 리셋 (last_status, zero_count, retry_count 초기화)
-    _signal_nav_reset(full=True)
-
-    route_detail = " → ".join(wp.get("name", f"WP{i+1}") for i, wp in enumerate(waypoints_list))
-    print(f"🚗 NAV START — 총 {len(waypoints_list)}개 웨이포인트, 반복: {loop}회")
-    log_event("schedule", "nav_start",
-              f"네비게이션 시작 ({len(waypoints_list)}개 웨이포인트, {loop}회 반복)",
-              detail=f"경로: {route_detail}",
-              robot_id=get_robot_id(), robot_name=get_robot_name())
-
-    try:
-        from app.recording.manager import start_auto_recording
-        rid = get_robot_id()
-        if not rid:
-            db = SessionLocal()
-            try:
-                robot = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
-                rid = robot.id if robot else None
-            finally:
-                db.close()
-        if rid:
-            start_auto_recording(rid)
-    except Exception as e:
-        print(f"[WARN] 자동 녹화 시작 실패: {e}")
-
-    navigation_send_next()
-    return {"status": "ok", "msg": f"네비게이션 명령 전송 완료 ({loop}회)"}
 
 @move.post("/stopmove")
 def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
@@ -210,9 +163,64 @@ def navigation_send_next():
     current_wp_index += 1
     nav_sent_time = time.time()
 
-def load_waypoints():
-    with open(WAYPOINT_FILE, "r") as f:
-        return json.load(f)
+@move.post("/startpath")
+def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo = Depends(require_permission("robot-list"))):
+    """DB 경로(WayInfo)를 읽어 네비게이션 시작."""
+    global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining
+
+    db = SessionLocal()
+    try:
+        path = db.query(WayInfo).filter(WayInfo.WayName == way_name).first()
+        if not path:
+            return {"status": "error", "msg": f"경로 '{way_name}'을(를) 찾을 수 없습니다."}
+
+        place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+        waypoints = []
+        for name in place_names:
+            place = db.query(LocationInfo).filter(LocationInfo.LacationName == name).first()
+            if place:
+                waypoints.append({
+                    "x": place.LocationX,
+                    "y": place.LocationY,
+                    "yaw": place.Yaw or 0.0,
+                    "name": place.LacationName,
+                })
+
+        if not waypoints:
+            return {"status": "error", "msg": f"경로 '{way_name}'에 유효한 장소가 없습니다."}
+    finally:
+        db.close()
+
+    waypoints_list = waypoints
+    current_wp_index = 0
+    is_navigating = True
+    nav_loop_remaining = loop - 1
+    _signal_nav_reset(full=True)
+
+    route_detail = " → ".join(wp["name"] for wp in waypoints_list)
+    print(f"🚗 NAV START (경로: {way_name}) — {len(waypoints_list)}개 웨이포인트, 반복: {loop}회")
+    log_event("schedule", "nav_start",
+              f"경로 주행 시작: {way_name} ({len(waypoints_list)}개 웨이포인트, {loop}회 반복)",
+              detail=f"경로: {route_detail}",
+              robot_id=get_robot_id(), robot_name=get_robot_name())
+
+    try:
+        from app.recording.manager import start_auto_recording
+        rid = get_robot_id()
+        if not rid:
+            db2 = SessionLocal()
+            try:
+                robot = db2.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+                rid = robot.id if robot else None
+            finally:
+                db2.close()
+        if rid:
+            start_auto_recording(rid)
+    except Exception as e:
+        print(f"[WARN] 자동 녹화 시작 실패: {e}")
+
+    navigation_send_next()
+    return {"status": "ok", "msg": f"경로 '{way_name}' 주행 시작 ({loop}회)", "way_name": way_name}
 
 
 @move.post("/placemove/{place_id}")

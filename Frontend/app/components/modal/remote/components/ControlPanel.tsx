@@ -4,14 +4,19 @@ import React, { useState } from 'react';
 import TabMenu from '@/app/components/button/TabMenu';
 import type { Tab, TabKey } from '@/app/types';
 import ModeSpeedControl from './ModeSpeedControl';
-import PositionActions from './PositionActions';
-import WorkAutomationPanel from './WorkAutomationPanel';
+import WorkProgressPanel from './WorkProgressPanel';
 import styles from './ControlPanel.module.css';
 
 const TABS: Tab[] = [
   { id: 'control', label: '제어' },
-  { id: 'automation', label: '작업 자동화' },
+  { id: 'work', label: '작업 진행' },
 ];
+
+type PathOption = {
+  id: number;
+  wayName: string;
+  wayPoints: string;
+};
 
 type ControlPanelProps = {
   robotType: string;
@@ -24,6 +29,18 @@ type ControlPanelProps = {
   onStopWork: () => void;
   onLoopCountChange: (value: string) => void;
   onLoopCountBlur: () => void;
+  // 경로 선택
+  paths: PathOption[];
+  selectedPath: PathOption | null;
+  onSelectPath: (path: PathOption | null) => void;
+  // 직접 경로 생성
+  isCreating: boolean;
+  createdPoints: { x: number; y: number; yaw: number }[];
+  onStartCreating: () => void;
+  onSavePoint: () => void;
+  onClearPoints: () => void;
+  onFinishCreating: (wayName?: string) => void;
+  onCancelCreating: () => void;
 };
 
 export default function ControlPanel({
@@ -37,6 +54,16 @@ export default function ControlPanel({
   onStopWork,
   onLoopCountChange,
   onLoopCountBlur,
+  paths,
+  selectedPath,
+  onSelectPath,
+  isCreating,
+  createdPoints,
+  onStartCreating,
+  onSavePoint,
+  onClearPoints,
+  onFinishCreating,
+  onCancelCreating,
 }: ControlPanelProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('control');
   const controlDisabled = isWorking || isDisconnected;
@@ -50,20 +77,27 @@ export default function ControlPanel({
           <ModeSpeedControl robotType={robotType} motionState={motionState} disabled={controlDisabled} />
         )}
 
-        {activeTab === 'automation' && (
-          <>
-            <PositionActions disabled={controlDisabled} />
-            <WorkAutomationPanel
-              isWorking={isWorking}
-              isPending={isWorkPending}
-              loopCount={loopCount}
-              disabled={isDisconnected}
-              onStartWork={onStartWork}
-              onStopWork={onStopWork}
-              onLoopCountChange={onLoopCountChange}
-              onLoopCountBlur={onLoopCountBlur}
-            />
-          </>
+        {activeTab === 'work' && (
+          <WorkProgressPanel
+            isWorking={isWorking}
+            isPending={isWorkPending}
+            loopCount={loopCount}
+            disabled={isDisconnected}
+            onStartWork={onStartWork}
+            onStopWork={onStopWork}
+            onLoopCountChange={onLoopCountChange}
+            onLoopCountBlur={onLoopCountBlur}
+            paths={paths}
+            selectedPath={selectedPath}
+            onSelectPath={onSelectPath}
+            isCreating={isCreating}
+            createdPoints={createdPoints}
+            onStartCreating={onStartCreating}
+            onSavePoint={onSavePoint}
+            onClearPoints={onClearPoints}
+            onFinishCreating={onFinishCreating}
+            onCancelCreating={onCancelCreating}
+          />
         )}
       </div>
     </div>
