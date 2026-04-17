@@ -11,7 +11,7 @@
  */
 export function processMapImage(
   img: HTMLImageElement
-): { url: string; w: number; h: number } {
+): { url: string; w: number; h: number; mask: Uint8Array } {
   const canvas = document.createElement("canvas");
   canvas.width = img.width;
   canvas.height = img.height;
