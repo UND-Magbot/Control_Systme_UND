@@ -70,6 +70,7 @@ class LogDataInfo(Base):
     Detail = Column(Text, nullable=True)                   # JSON 문자열 (상세 정보)
     RobotId = Column(Integer, nullable=True)
     RobotName = Column(String(100), nullable=True)
+    BusinessId = Column(Integer, nullable=True, comment="사업장 ID (system 로그는 NULL)")
     CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
 
     alert = relationship("Alert", back_populates="log", uselist=False)
@@ -86,6 +87,7 @@ class Notice(Base):
     Content = Column(Text, nullable=False)                 # 본문 (max 2000자)
     Importance = Column(String(10), nullable=False, default="normal")  # high|normal
     UserId = Column(Integer, nullable=False, comment="작성자 ID")
+    BusinessId = Column(Integer, nullable=False, comment="사업장 ID")
     AttachmentName = Column(String(255), nullable=True)
     AttachmentUrl = Column(String(500), nullable=True)
     AttachmentSize = Column(Integer, nullable=True, comment="첨부파일 크기(bytes)")
@@ -112,6 +114,7 @@ class Alert(Base):
     RobotName = Column(String(100), nullable=True)
     LogId = Column(Integer, ForeignKey("logdata_info.id", ondelete="SET NULL"), nullable=True)
     NoticeId = Column(Integer, ForeignKey("notice_info.id", ondelete="SET NULL"), nullable=True)
+    BusinessId = Column(Integer, nullable=True, comment="사업장 ID (system 알림은 NULL)")
     CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
     DeletedAt = Column(DateTime, nullable=True, default=None)
 

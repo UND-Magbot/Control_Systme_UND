@@ -42,7 +42,6 @@ export default function BusinessManageTab() {
   const [businessRows, setBusinessRows] = useState<BusinessItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [appliedQuery, setAppliedQuery] = useState("");
 
   const [selectedBusinessId, setSelectedBusinessId] = useState<number | null>(null);
   const [checkedBusinessIds, setCheckedBusinessIds] = useState<number[]>([]);
@@ -90,23 +89,18 @@ export default function BusinessManageTab() {
     fetchBusinessList();
   }, []);
 
-  // 조회
-  const handleSearch = () => {
-    setAppliedQuery(searchQuery);
-  };
-
   const filteredRows = useMemo(() => {
-    if (!appliedQuery.trim()) return businessRows;
-    const q = appliedQuery.trim().toLowerCase();
+    if (!searchQuery.trim()) return businessRows;
+    const q = searchQuery.trim().toLowerCase();
     return businessRows.filter(b =>
       b.businessName.toLowerCase().includes(q) ||
       b.address.toLowerCase().includes(q)
     );
-  }, [businessRows, appliedQuery]);
+  }, [businessRows, searchQuery]);
 
   const { currentPage: page, setPage, pagedItems: currentItems, totalItems } = usePaginatedList(filteredRows, {
     pageSize: BUSINESS_PAGE_SIZE,
-    resetDeps: [appliedQuery],
+    resetDeps: [searchQuery],
   });
 
   const handlePageChange = (p: number) => {
@@ -193,7 +187,6 @@ export default function BusinessManageTab() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <button type="button" className={styles.primaryActionBtn} onClick={handleSearch}>조회</button>
           </div>
 
           <div className={styles.topRightGroup}>
@@ -248,7 +241,7 @@ export default function BusinessManageTab() {
                 <th>No</th>
                 <th>사업장명</th>
                 <th>주소</th>
-                <th>영역 수</th>
+                <th>맵 수</th>
                 <th>로봇 수</th>
                 <th>정보</th>
               </tr>

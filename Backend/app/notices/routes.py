@@ -8,7 +8,7 @@ from typing import Optional
 from app.database.database import get_db
 from app.database.models import UserInfo
 from app.auth.audit import write_audit, get_client_ip
-from app.auth.dependencies import require_permission
+from app.auth.dependencies import require_permission, is_admin
 from app.notices.schemas import NoticeCreateReq, NoticeUpdateReq, NoticeResponse, NoticeListResponse
 from app.notices.service import NoticeService
 
@@ -27,12 +27,14 @@ def get_notices(
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(require_permission("alert-notice")),
 ):
-    return NoticeService(db).get_list(search=search, importance=importance, page=page, size=size)
+    business_id = None if is_admin(current_user) else current_user.BusinessId
+    return NoticeService(db).get_list(search=search, importance=importance, page=page, size=size, business_id=business_id)
 
 
 @router.get("/notices/{notice_id}", response_model=NoticeResponse)
 def get_notice(notice_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("alert-notice"))):
-    return NoticeService(db).get_by_id(notice_id)
+    business_id = None if is_admin(current_user) else current_user.BusinessId
+    return NoticeService(db).get_by_id(notice_id, business_id=business_id)
 
 
 @router.post("/notices")
@@ -42,6 +44,7 @@ def create_notice(req: NoticeCreateReq, request: Request, db: Session = Depends(
         content=req.Content,
         importance=req.Importance,
         user_id=req.UserId,
+        business_id=current_user.BusinessId,
         attachment_name=req.AttachmentName,
         attachment_url=req.AttachmentUrl,
         attachment_size=req.AttachmentSize,
@@ -54,6 +57,7 @@ def create_notice(req: NoticeCreateReq, request: Request, db: Session = Depends(
 
 @router.put("/notices/{notice_id}", response_model=NoticeResponse)
 def update_notice(notice_id: int, req: NoticeUpdateReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("alert-notice"))):
+    business_id = None if is_admin(current_user) else current_user.BusinessId
     notice, changes = NoticeService(db).update(
         notice_id=notice_id,
         title=req.Title,
@@ -62,6 +66,7 @@ def update_notice(notice_id: int, req: NoticeUpdateReq, request: Request, db: Se
         attachment_name=req.AttachmentName,
         attachment_url=req.AttachmentUrl,
         attachment_size=req.AttachmentSize,
+        business_id=business_id,
     )
     detail = ", ".join(changes) if changes else None
     write_audit(db, current_user.id, "notice_updated", "notice", notice_id, detail=detail,
@@ -71,10 +76,11 @@ def update_notice(notice_id: int, req: NoticeUpdateReq, request: Request, db: Se
 
 @router.delete("/notices/{notice_id}")
 def delete_notice(notice_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("alert-notice"))):
+    business_id = None if is_admin(current_user) else current_user.BusinessId
     svc = NoticeService(db)
-    notice = svc.get_by_id(notice_id)
+    notice = svc.get_by_id(notice_id, business_id=business_id)
     title = notice.Title
-    svc.delete(notice_id)
+    svc.delete(notice_id, business_id=business_id)
     write_audit(db, current_user.id, "notice_deleted", "notice", notice_id,
                 detail=f"제목: {title}",
                 ip_address=get_client_ip(request))

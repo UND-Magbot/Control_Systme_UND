@@ -11,7 +11,7 @@ from datetime import datetime
 from app.database.database import SessionLocal
 from app.database.models import ScheduleInfo
 from app.logs.service import log_event
-from app.user_cache import get_robot_id, get_robot_name
+from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
 from app.scheduler.run_conditions import should_run_now
 from app.scheduler.executor import execute_schedule
 
@@ -113,7 +113,7 @@ def on_navigation_complete():
         log_event("schedule", "nav_complete",
                   f"스케줄 완료: {sched.WorkName} (실행 {sched.RunCount}회)",
                   detail=f"경로: {route_summary}" if route_summary else None,
-                  robot_id=get_robot_id(), robot_name=get_robot_name())
+                  robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
     except Exception as e:
         print(f"[SCHEDULER ERR] 완료 처리 실패: {e}")

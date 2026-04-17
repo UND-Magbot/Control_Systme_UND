@@ -85,8 +85,6 @@ export default function AlertsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
-  const [appliedSearch, setAppliedSearch] = useState('');
-  const [appliedStatus, setAppliedStatus] = useState<StatusFilter>('');
   const [selectedAlertId, setSelectedAlertId] = useState<number | null>(paramId ? Number(paramId) : null);
   // URL paramId로 진입한 알림이 현재 페이지 목록에 없을 때를 대비한 직접 로드 캐시
   const [directLoadedAlert, setDirectLoadedAlert] = useState<AlertMockData | null>(null);
@@ -103,10 +101,11 @@ export default function AlertsPage() {
   currentPageRef.current = currentPage;
   const activeTabRef = useRef(activeTab);
   activeTabRef.current = activeTab;
-  const appliedSearchRef = useRef(appliedSearch);
-  appliedSearchRef.current = appliedSearch;
-  const appliedStatusRef = useRef(appliedStatus);
-  appliedStatusRef.current = appliedStatus;
+  const searchRef = useRef(searchQuery);
+  searchRef.current = searchQuery;
+  const statusRef = useRef(statusFilter);
+  statusRef.current = statusFilter;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const calcPageSize = useCallback(() => {
     if (listRef.current) {
@@ -131,9 +130,9 @@ export default function AlertsPage() {
       size: pageSizeRef.current,
     };
     if (filterType) params.type = filterType;
-    if (appliedStatusRef.current === 'read') params.is_read = 'true';
-    if (appliedStatusRef.current === 'unread') params.is_read = 'false';
-    if (appliedSearchRef.current.trim()) params.search = appliedSearchRef.current.trim();
+    if (statusRef.current === 'read') params.is_read = 'true';
+    if (statusRef.current === 'unread') params.is_read = 'false';
+    if (searchRef.current.trim()) params.search = searchRef.current.trim();
 
     const data = await getAlerts(params);
     setAlerts(data.items);
@@ -162,16 +161,28 @@ export default function AlertsPage() {
     return () => window.removeEventListener('alert-read-changed', handleExternalRead);
   }, []);
 
-  // pageSizeReady 후 최초 fetch + 이후 페이지/탭/필터 변경 시 재조회
+  // 텍스트 검색 — 디바운스 (타이핑을 멈춘 후 400ms 뒤 실행)
   useEffect(() => {
-    if (pageSizeReady) fetchAlerts();
-  }, [pageSizeReady, currentPage, activeTab, appliedSearch, appliedStatus, pageSize]);
+    if (!pageSizeReady) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setCurrentPage(1);
+      fetchAlerts();
+    }, 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchQuery]);
+
+  // 드롭다운/탭/페이지/사이즈 — 즉시
+  useEffect(() => {
+    if (!pageSizeReady) return;
+    fetchAlerts();
+  }, [pageSizeReady, currentPage, activeTab, statusFilter, pageSize]);
 
   // 탭/필터/검색어 변경 시 상세 패널 닫기
   useEffect(() => {
     setSelectedAlertId(null);
     setDirectLoadedAlert(null);
-  }, [activeTab, appliedSearch, appliedStatus]);
+  }, [activeTab, searchQuery, statusFilter]);
 
   // URL 파라미터 id로 상세 패널 열기
   // - 현재 페이지 목록에 있으면 그걸 선택
@@ -242,12 +253,6 @@ export default function AlertsPage() {
     } catch {
       // API 실패 시 상태 변경하지 않음
     }
-  };
-
-  const handleSearch = () => {
-    setCurrentPage(1);
-    setAppliedSearch(searchQuery);
-    setAppliedStatus(statusFilter);
   };
 
   const handleOpenCreateNotice = () => {
@@ -338,8 +343,6 @@ export default function AlertsPage() {
     setCurrentPage(1);
     setSearchQuery('');
     setStatusFilter('');
-    setAppliedSearch('');
-    setAppliedStatus('');
   };
 
   const handleTabConfirm = () => {
@@ -349,8 +352,6 @@ export default function AlertsPage() {
       setCurrentPage(1);
       setSearchQuery('');
       setStatusFilter('');
-      setAppliedSearch('');
-      setAppliedStatus('');
       setShowTabConfirm(null);
     }
   };
@@ -408,12 +409,10 @@ export default function AlertsPage() {
               placeholder="읽음 여부"
               onSelect={(item) => {
                 setStatusFilter(item ? (item.id as StatusFilter) : 'all');
+                setCurrentPage(1);
               }}
               width={140}
             />
-            <button className={styles.searchBtn} onClick={handleSearch}>
-              조회
-            </button>
             <button className={styles.markAllReadBtn} onClick={handleMarkAllRead}>
               전체 읽음
             </button>
@@ -427,7 +426,7 @@ export default function AlertsPage() {
           <div ref={listRef} className={`${styles.alertList} ${styles.fadeIn}`} key={`${activeTab}-${currentPage}`}>
             {alerts.length === 0 ? (
               <div className={styles.emptyList}>
-                {appliedSearch.trim() ? '검색 결과가 없습니다' : '알림이 없습니다'}
+                {searchQuery.trim() ? '검색 결과가 없습니다' : '알림이 없습니다'}
               </div>
             ) : (
               alerts.map((item) => {
@@ -518,7 +517,7 @@ export default function AlertsPage() {
                       className={`${styles.viewLogBtn} ${logDetailOpen ? styles.viewLogBtnActive : ''}`}
                       onClick={() => setLogDetailOpen(v => !v)}
                     >
-                      상세 로그 {logDetailOpen ? '▲' : '▼'}
+                      상세 로그
                     </button>
                   )}
                   {isAdmin && selectedAlert.type === 'Notice' && (

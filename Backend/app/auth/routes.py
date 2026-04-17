@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,7 @@ router = APIRouter(prefix="/api/auth", tags=["인증"])
 
 
 REFRESH_MAX_AGE = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600  # 7일
+COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", "localhost")
 
 def _set_token_cookies(response: Response, access_token: str, refresh_token: str, remember: bool = False):
     """HttpOnly 쿠키에 토큰 설정.
@@ -28,29 +31,23 @@ def _set_token_cookies(response: Response, access_token: str, refresh_token: str
     remember=True: max_age=7일 → 자동 로그인
     """
     max_age = REFRESH_MAX_AGE if remember else None
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        samesite="lax",
-        path="/",
-        max_age=max_age,
-    )
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        samesite="lax",
-        path="/",
-        max_age=max_age,
-    )
+    for key, value in [("access_token", access_token), ("refresh_token", refresh_token)]:
+        response.set_cookie(
+            key=key,
+            value=value,
+            httponly=True,
+            samesite="lax",
+            path="/",
+            max_age=max_age,
+            domain=COOKIE_DOMAIN,
+        )
 
 
 def _clear_token_cookies(response: Response):
     """인증 쿠키 삭제."""
-    response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/")
-    response.delete_cookie("refresh_token", path="/api/auth")
+    response.delete_cookie("access_token", path="/", domain=COOKIE_DOMAIN)
+    response.delete_cookie("refresh_token", path="/", domain=COOKIE_DOMAIN)
+    response.delete_cookie("refresh_token", path="/api/auth", domain=COOKIE_DOMAIN)
 
 
 # ── 로그인 ──
@@ -86,6 +83,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         samesite="lax",
         path="/",
         max_age=max_age,
+        domain=COOKIE_DOMAIN,
     )
     return LoginResponse(user=UserResponse(**result["user"]))
 
@@ -93,9 +91,17 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
 # ── 로그아웃 ──
 
 @router.post("/logout", response_model=MessageResponse)
-def logout(request: Request, response: Response, current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)):
+def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     ip = get_client_ip(request)
-    AuthService.logout(db, current_user.id, ip_address=ip)
+    # 토큰이 유효하면 감사 로그 기록 (실패해도 쿠키는 반드시 삭제)
+    token = request.cookies.get("access_token")
+    if token:
+        payload = decode_token_allow_expired(token)
+        if payload and payload.get("sub"):
+            try:
+                AuthService.logout(db, int(payload["sub"]), ip_address=ip)
+            except Exception:
+                pass
     _clear_token_cookies(response)
     return MessageResponse(message="로그아웃 되었습니다")
 

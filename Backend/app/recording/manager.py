@@ -371,12 +371,13 @@ def _log_recording_error(robot_id: int, module_id: int, reason: str):
     """녹화 실패를 운영 로그(log_event)에 기록"""
     try:
         from app.logs.service import log_event
-        from app.user_cache import get_robot_name
+        from app.user_cache import get_robot_name, get_robot_business_id
         log_event(
             "error", "recording_error",
             f"녹화 실패 (cam={module_id}): {reason}",
             robot_id=robot_id,
             robot_name=get_robot_name(),
+            business_id=get_robot_business_id(),
         )
     except Exception:
         pass

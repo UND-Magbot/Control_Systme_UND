@@ -5,6 +5,8 @@ import styles from '@/app/components/modal/Modal.module.css';
 import listStyles from '../../OperationManagementTabs.module.css';
 import type { BusinessItem } from './BusinessManageTab';
 import { apiFetch } from "@/app/lib/api";
+import { useAuth } from "@/app/context/AuthContext";
+import { Pencil } from "lucide-react";
 
 type BusinessDetailModalProps = {
   isOpen: boolean;
@@ -18,6 +20,8 @@ type BusinessDetailModalProps = {
 export default function BusinessDetailModal({
   isOpen, mode, businessId, initialEditMode = false, onClose, onSaved,
 }: BusinessDetailModalProps) {
+  const { user } = useAuth();
+  const isAdminOrManager = user?.role === 1 || user?.role === 2;
   const [isEditMode, setIsEditMode] = useState(false);
   const [business, setBusiness] = useState<BusinessItem | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({});
@@ -257,7 +261,14 @@ export default function BusinessDetailModal({
               {mode === "create" ? "사업장 등록"
                 : `${business?.businessName ?? "사업장"} ${isEditMode ? "수정" : "상세정보"}`}
             </h2>
-            <button className={styles.detailCloseBtn} onClick={onClose} aria-label="닫기">✕</button>
+            <div className={styles.detailHeaderBtns}>
+              {!isEditMode && mode === "view" && isAdminOrManager && (
+                <button className={styles.detailEditBtn} onClick={() => setIsEditMode(true)} aria-label="수정">
+                  <Pencil size={16} />
+                </button>
+              )}
+              <button className={styles.detailCloseBtn} onClick={onClose} aria-label="닫기">✕</button>
+            </div>
           </div>
         </div>
 
@@ -370,7 +381,7 @@ export default function BusinessDetailModal({
                   <span className={styles.detailInfoLabel}>주소</span>
                   <span className={styles.detailInfoValue}>{fullAddressDisplay}</span>
                 </div>
-                {infoField("영역 수", null, `${business?.floorCount ?? 0}개`, true)}
+                {infoField("맵 수", null, `${business?.floorCount ?? 0}개`, true)}
                 {infoField("로봇 수", null, `${business?.robotCount ?? 0}대`, true)}
                 <div className={`${styles.detailInfoRow} ${styles.detailInfoFull}`}>
                   <span className={styles.detailInfoLabel}>회사 설명</span>

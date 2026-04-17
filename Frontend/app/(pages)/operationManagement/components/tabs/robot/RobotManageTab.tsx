@@ -18,6 +18,7 @@ import {
   ROBOT_COLORS,
   getRobotIndexFromNo,
 } from "@/app/constants/robotIcons";
+import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 import ChargingIcon from "@/app/components/common/ChargingIcon";
 import { useAuth } from "@/app/context/AuthContext";
 import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
@@ -61,7 +62,7 @@ export type RobotDraft = {
 
 /** 로봇 상태를 계산하는 헬퍼 (대시보드와 통일) */
 function getRobotStatus(r: RobotRowData, hasActiveSchedule = false): { label: string; className: string; tooltip: string } {
-  if (r.power === "-") return { label: "미확인", className: styles.statusOffline, tooltip: "" };
+  if (r.power === "-") return { label: "오프라인", className: styles.statusOffline, tooltip: "" };
   if (r.network === "Offline" || r.power === "Off") return { label: "오프라인", className: styles.statusOffline, tooltip: "" };
   if (r.network === "Error") return { label: "오류", className: styles.statusError, tooltip: "" };
   // 충전 관련 상태 (chargeState: 1=부두 이동, 2=충전 중, 3=나가기, 4=오류, 5=전류 없음)
@@ -79,28 +80,29 @@ function getRobotStatus(r: RobotRowData, hasActiveSchedule = false): { label: st
 // TODO: 백엔드 로봇별 실시간 위치 API (/robot/positions) 완성 후
 //       useRobotLocations(robots) 훅으로 교체하여 "1F 대기실" 형태로 표시
 function getRobotLocation(r: RobotRowData): string {
-  if (r.power === "Off" || r.power === "-") return "-";
+  if (r.power === "-") return "-";
   // 현재는 site 필드로 대체. API 연동 시 floor + placeName 조합으로 교체
   return r.site || "-";
 }
 
 /** 로봇 현재 작업 표시 */
 function getRobotCurrentTask(r: RobotRowData): string {
-  if (r.power === "Off" || r.power === "-") return "";
+  if (r.power === "Off" || r.power === "-") return "-";
   if (r.tasks.length === 0) return "-";
   return r.tasks[0].taskName;
 }
 
 /** 배터리 값으로 CSS 클래스 반환 */
-function batColorClass(level: number): string {
+function batColorClass(level: number, isOnline = true): string {
+  if (!isOnline) return styles.batDisabled;
   if (level > 25) return styles.batSuccess;
   if (level > 10) return styles.batWarning;
   return styles.batDanger;
 }
 
-/** 듀얼 배터리 여부 (4족이면 통신 여부와 무관하게 L/R 표시) */
+/** 듀얼 배터리 여부 (한글 로봇타입 기준 L/R 표시) */
 function isDualBattery(r: RobotRowData): boolean {
-  return r.type === "QUADRUPED";
+  return isDualBatteryType(r.type);
 }
 
 export default function RobotManageTab({
@@ -193,10 +195,7 @@ export default function RobotManageTab({
     let matchSearch = true;
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
-      matchSearch =
-        robot.no.toLowerCase().includes(q) ||
-        robot.serialNumber.toLowerCase().includes(q) ||
-        robot.site.toLowerCase().includes(q);
+      matchSearch = robot.no.toLowerCase().includes(q);
     }
 
     let matchStatus = true;
@@ -316,13 +315,10 @@ export default function RobotManageTab({
               <input
                 type="text"
                 className={styles.searchInput}
-                placeholder="로봇명, 시리얼, 사이트 검색"
+                placeholder="로봇명 검색"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-              {searchQuery && (
-                <button className={styles.searchClear} onClick={() => setSearchQuery("")}>✕</button>
-              )}
             </div>
 
             <FilterSelectBox
@@ -343,7 +339,7 @@ export default function RobotManageTab({
           </div>
 
           <div className={styles.topRightGroup}>
-            {deleteMode ? (
+            {admin && (deleteMode ? (
               <>
                 <div
                   className={`${styles.placePrimaryBtn} ${checkedRobotIds.length === 0 ? styles.btnDisabled : ""}`}
@@ -386,7 +382,7 @@ export default function RobotManageTab({
                   삭제
                 </div>
               </>
-            )}
+            ))}
           </div>
         </div>
 
@@ -422,13 +418,17 @@ export default function RobotManageTab({
               const robotIndex = getRobotIndexFromNo(r.no);
               const robotColor = ROBOT_COLORS[robotIndex];
               const status = getRobotStatus(r, !!getActiveScheduleForRobot(r.no));
+              const isRobotOnline = r.network === "Online" && r.power !== "Off" && r.power !== "-";
+
+              const isInactive = r.power === "Off" || r.power === "-";
 
               return (
                 <tr
                   key={r.no}
-                  className={checkedRobotIds.includes(r.id) ? styles.selectedRow : undefined}
+                  className={`${checkedRobotIds.includes(r.id) ? styles.selectedRow : ""} ${isInactive ? styles.rowInactive : ""}`}
                   style={{ "--robot-color": robotColor } as React.CSSProperties}
                   onClick={() => {
+                    if (isInactive) return;
                     if (deleteMode) return;
                     // 일반 모드: 행 클릭으로 단일 선택 토글
                     if (checkedRobotIds.includes(r.id)) {
@@ -446,9 +446,10 @@ export default function RobotManageTab({
                     <td>
                       <img
                         src={checkedRobotIds.includes(r.id) ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
-                        alt={`${r.no} 선택`} role="button" tabIndex={0} style={{ cursor: "pointer" }}
-                        onClick={() => toggleRobotChecked(r.id, !checkedRobotIds.includes(r.id))}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleRobotChecked(r.id, !checkedRobotIds.includes(r.id)); }}
+                        alt={`${r.no} 선택`} role="button" tabIndex={0}
+                        style={{ cursor: isInactive ? "default" : "pointer", opacity: isInactive ? 0.3 : 1 }}
+                        onClick={() => { if (!isInactive) toggleRobotChecked(r.id, !checkedRobotIds.includes(r.id)); }}
+                        onKeyDown={(e) => { if (!isInactive && (e.key === "Enter" || e.key === " ")) toggleRobotChecked(r.id, !checkedRobotIds.includes(r.id)); }}
                       />
                     </td>
                   )}
@@ -498,27 +499,42 @@ export default function RobotManageTab({
                     })()}
                   </td>
                   <td>
-                    {isDualBattery(r) ? (
+                    {isDualBattery(r) ? (() => {
+                      const singleMode = isDualBatteryType(r.type) && r.powerManagement === 1;
+                      return (
+                        <>
+                          <span style={{ color: "#e0e0e0" }}>L </span>
+                          {r.batteryLeft != null
+                            ? <span className={batColorClass(r.batteryLeft, isRobotOnline)}>{r.batteryLeft}%</span>
+                            : singleMode
+                              ? <span>-</span>
+                              : <span className={batColorClass(0, isRobotOnline)}>0%</span>
+                          }
+                          <span style={{ color: "var(--text-muted)" }}> / </span>
+                          <span style={{ color: "#e0e0e0" }}>R </span>
+                          {r.batteryRight != null
+                            ? <span className={batColorClass(r.batteryRight, isRobotOnline)}>{r.batteryRight}%</span>
+                            : singleMode
+                              ? <span>-</span>
+                              : <span className={batColorClass(0, isRobotOnline)}>0%</span>
+                          }
+                          <span style={{ color: "var(--text-muted)" }}> ({r.return}%)</span>
+                        </>
+                      );
+                    })() : (
                       <>
-                        <span style={{ color: "#e0e0e0" }}>L </span><span className={r.batteryLeft != null ? batColorClass(r.batteryLeft) : ""}>{r.batteryLeft != null ? `${r.batteryLeft}%` : "-"}</span>
-                        <span style={{ color: "var(--text-muted)" }}> / </span>
-                        <span style={{ color: "#e0e0e0" }}>R </span><span className={r.batteryRight != null ? batColorClass(r.batteryRight) : ""}>{r.batteryRight != null ? `${r.batteryRight}%` : "-"}</span>
-                        <span style={{ color: "var(--text-muted)" }}> ({r.return}%)</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className={batColorClass(r.battery)}>{r.battery}%</span>
+                        <span className={batColorClass(r.battery, isRobotOnline)}>{r.battery}%</span>
                         <span style={{ color: "var(--text-muted)" }}> ({r.return}%)</span>
                       </>
                     )}
                   </td>
-                  <td>{r.network === "Online" ? r.power : "Off"}</td>
+                  <td>{r.power === "-" ? "Off" : r.power}</td>
                   <td>
                     <div className={styles.infoBtnGroup}>
                       <div className={styles["info-box"]} onClick={(e) => { e.stopPropagation(); ViewInfoClick(idx, r); }}>상세보기</div>
                       <div
-                        className={styles["viewMap"]}
-                        onClick={(e) => { e.stopPropagation(); handleModuleClick(r); }}
+                        className={`${styles["viewMap"]} ${r.power !== "On" ? styles.btnDisabled : ""}`}
+                        onClick={(e) => { e.stopPropagation(); if (r.power === "On") handleModuleClick(r); }}
                       >장치관리</div>
                       <div
                         className={`${styles["viewMap"]} ${!admin || r.power !== "On" ? styles.btnDisabled : ""}`}

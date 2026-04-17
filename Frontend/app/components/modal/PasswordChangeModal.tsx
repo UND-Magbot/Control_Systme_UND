@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/app/lib/api';
+import { apiFetch, markSessionExpired } from '@/app/lib/api';
 import formStyles from './PasswordChangeModal.module.css';
 
 const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,16}$/;
@@ -17,11 +16,9 @@ type Props = {
 };
 
 export default function PasswordChangeModal({ onClose }: Props) {
-  const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [errors, setErrors] = useState<Errors>({});
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -34,7 +31,6 @@ export default function PasswordChangeModal({ onClose }: Props) {
 
   const handleSubmit = async () => {
     const newErrors: Errors = {};
-    setSuccessMessage(null);
 
     if (!currentPassword) {
       newErrors.currentPassword = "현재 비밀번호를 입력하세요";
@@ -63,11 +59,9 @@ export default function PasswordChangeModal({ onClose }: Props) {
       });
 
       if (res.ok) {
-        setCurrentPassword("");
-        setNewPassword("");
-        setErrors({});
-        setSuccessMessage("비밀번호가 변경되었습니다. 다시 로그인해주세요.");
-        setTimeout(() => router.replace("/login"), 2000);
+        markSessionExpired();
+        window.location.href = "/login?reason=password_changed";
+        return;
       } else {
         const data = await res.json().catch(() => ({ detail: "비밀번호 변경에 실패했습니다" }));
         const msg = data.detail;
@@ -107,7 +101,6 @@ export default function PasswordChangeModal({ onClose }: Props) {
             onChange={(e) => {
               setCurrentPassword(e.target.value);
               setErrors((prev) => ({ ...prev, currentPassword: undefined }));
-              setSuccessMessage(null);
             }}
             autoComplete="off"
           />
@@ -126,7 +119,6 @@ export default function PasswordChangeModal({ onClose }: Props) {
             onChange={(e) => {
               setNewPassword(e.target.value);
               setErrors((prev) => ({ ...prev, newPassword: undefined }));
-              setSuccessMessage(null);
             }}
             autoComplete="off"
           />
@@ -134,10 +126,6 @@ export default function PasswordChangeModal({ onClose }: Props) {
             <span className={formStyles.errorMsg}>{errors.newPassword}</span>
           )}
         </div>
-
-        {successMessage && (
-          <div className={formStyles.successMsg}>{successMessage}</div>
-        )}
 
         <button
           type="button"

@@ -88,6 +88,12 @@
   box-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
 }
 
+.statusLabel {
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-right: 2px;
+}
+
 .statusDivider {
   color: var(--text-muted);
   opacity: 0.4;

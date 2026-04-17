@@ -26,12 +26,18 @@ export default function Login() {
     const [errors, setErrors] = useState<LoginErrors>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSessionExpired, setIsSessionExpired] = useState(false);
+    const [isPasswordChanged, setIsPasswordChanged] = useState(false);
 
-    // 세션 만료 쿼리 파라미터 감지 후 URL에서 제거
+    // 쿼리 파라미터 감지 후 URL에서 제거
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        if (params.get("reason") === "session_expired") {
+        const reason = params.get("reason");
+        if (reason === "session_expired") {
             setIsSessionExpired(true);
+        } else if (reason === "password_changed") {
+            setIsPasswordChanged(true);
+        }
+        if (reason) {
             window.history.replaceState({}, "", "/login");
         }
     }, []);
@@ -47,6 +53,7 @@ export default function Login() {
         setLoginForm((prev) => ({ ...prev, [key]: value }));
         setErrors((prev) => ({ ...prev, [key]: undefined, form: undefined }));
         if (isSessionExpired) setIsSessionExpired(false);
+        if (isPasswordChanged) setIsPasswordChanged(false);
         };
 
     const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -84,7 +91,7 @@ export default function Login() {
             return;
         }
 
-        router.push("/dashboard");
+        window.location.href = "/dashboard";
     };
 
     return(
@@ -103,6 +110,13 @@ export default function Login() {
                 {isSessionExpired && (
                     <div className={styles.sessionExpiredBanner}>
                         세션이 만료되었습니다. 다시 로그인해주세요.
+                    </div>
+                )}
+
+                {/* 비밀번호 변경 완료 안내 */}
+                {isPasswordChanged && (
+                    <div className={styles.sessionExpiredBanner}>
+                        비밀번호가 변경되었습니다. 다시 로그인해주세요.
                     </div>
                 )}
 

@@ -10,7 +10,7 @@ import threading
 import time
 
 import app.robot_io.runtime as runtime
-from app.user_cache import get_robot_id, get_robot_name
+from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
 from app.logs.service import log_event
 from app.robot_io.config import (
     ROBOT_IP,
@@ -48,7 +48,7 @@ def position_thread():
             print("[ERR POS]", e)
             log_event("error", "position_recv_error", "로봇 위치 수신 실패",
                       error_json=str(e),
-                      robot_id=get_robot_id(), robot_name=get_robot_name())
+                      robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         finally:
             sock.close()
 
@@ -128,7 +128,7 @@ def status_thread():
                 if not _was_online.get(rid, False):
                     _was_online[rid] = True
                     log_event("robot", "robot_online", "로봇 온라인",
-                              robot_id=get_robot_id(), robot_name=get_robot_name())
+                              robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
         if not success:
             elapsed = time.time() - last_success_time
@@ -154,7 +154,7 @@ def status_thread():
                     if last_sleep == 0:
                         log_event("error", "robot_connection_error", "로봇 통신 연결 불안정",
                                   error_json=f"{elapsed:.1f}초 간 응답 없음",
-                                  robot_id=get_robot_id(), robot_name=get_robot_name())
+                                  robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
             # 12초 이상 끊김 → 오프라인 확정
             if elapsed >= OFFLINE_AFTER_SEC:
@@ -162,7 +162,7 @@ def status_thread():
                 if rid is not None and _was_online.get(rid, False):
                     _was_online[rid] = False
                     log_event("robot", "robot_offline", "로봇 오프라인",
-                              robot_id=get_robot_id(), robot_name=get_robot_name())
+                              robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
         time.sleep(REQ_INTERVAL_HB)
 
@@ -262,7 +262,7 @@ def nav_thread():
                     wp_name = waypoints_list[current_wp_index - 1].get("name", f"WP{current_wp_index}") if current_wp_index > 0 else f"WP{current_wp_index}"
                     log_event("schedule", "nav_arrival",
                               f"{wp_name} 도착 ({current_wp_index}/{len(waypoints_list)})",
-                              robot_id=get_robot_id(), robot_name=get_robot_name())
+                              robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
                 # 이동 미감지: status=0이 지속될 때 처리
                 sent_time = get_nav_sent_time()
@@ -360,7 +360,7 @@ def nav_thread():
                 err_detail += f"\n경로: {err_route}"
             log_event("error", "nav_error", "네비게이션 오류 발생",
                       detail=err_detail, error_json=str(e),
-                      robot_id=get_robot_id(), robot_name=get_robot_name())
+                      robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         finally:
             if sock:
                 try: sock.close()
@@ -384,7 +384,7 @@ def nav_thread():
                     err_detail2 += f"\n경로: {err_route2}"
                 log_event("error", "nav_error", "다음 웨이포인트 이동 실패",
                           detail=err_detail2, error_json=str(e),
-                          robot_id=get_robot_id(), robot_name=get_robot_name())
+                          robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
                 if get_active_schedule_id() is not None:
                     on_navigation_error(str(e))
 

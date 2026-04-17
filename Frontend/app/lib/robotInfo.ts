@@ -1,5 +1,6 @@
 import type { RobotRowData } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
+import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 
 export default async function getRobots(): Promise<RobotRowData[]> {
   let raw: any[] = [];
@@ -14,8 +15,8 @@ export default async function getRobots(): Promise<RobotRowData[]> {
   }
 
   const robots = raw.map((item: any): RobotRowData => {
-    // 배터리 통합: QUADRUPED → 1=Left,2=Right / 기타 → 1=SOC
-    const isQuadruped = item.RobotType === "QUADRUPED";
+    // 배터리 통합: 로봇(4족) → 1=Left,2=Right / 모듈 → 1=SOC
+    const isDual = isDualBatteryType(item.RobotType ?? "");
 
     return {
     id: item.id,
@@ -28,15 +29,15 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     info: item.RobotName ?? "",
 
     // 상태 (DB 마지막 값 → 실시간 폴링으로 덮어씌워짐)
-    battery: isQuadruped ? 0 : (item.BatteryLevel1 ?? 0),
-    batteryLeft: isQuadruped ? (item.BatteryLevel1 ?? undefined) : undefined,
-    batteryRight: isQuadruped ? (item.BatteryLevel2 ?? undefined) : undefined,
-    voltageLeft: isQuadruped ? (item.Voltage1 ?? undefined) : undefined,
-    voltageRight: isQuadruped ? (item.Voltage2 ?? undefined) : undefined,
-    batteryTempLeft: isQuadruped ? (item.BatteryTemp1 ?? undefined) : undefined,
-    batteryTempRight: isQuadruped ? (item.BatteryTemp2 ?? undefined) : undefined,
-    chargeLeft: isQuadruped ? (item.IsCharging1 === 1 ? true : item.IsCharging1 === 0 ? false : undefined) : undefined,
-    chargeRight: isQuadruped ? (item.IsCharging2 === 1 ? true : item.IsCharging2 === 0 ? false : undefined) : undefined,
+    battery: isDual ? 0 : (item.BatteryLevel1 ?? 0),
+    batteryLeft: isDual ? (item.BatteryLevel1 ?? 0) : undefined,
+    batteryRight: isDual ? (item.BatteryLevel2 ?? 0) : undefined,
+    voltageLeft: isDual ? (item.Voltage1 ?? undefined) : undefined,
+    voltageRight: isDual ? (item.Voltage2 ?? undefined) : undefined,
+    batteryTempLeft: isDual ? (item.BatteryTemp1 ?? undefined) : undefined,
+    batteryTempRight: isDual ? (item.BatteryTemp2 ?? undefined) : undefined,
+    chargeLeft: isDual ? (item.IsCharging1 === 1 ? true : item.IsCharging1 === 0 ? false : undefined) : undefined,
+    chargeRight: isDual ? (item.IsCharging2 === 1 ? true : item.IsCharging2 === 0 ? false : undefined) : undefined,
     return: item.LimitBattery ?? 30,
     isCharging: false,  // 런타임 폴링으로만 갱신 (DB 값은 미갱신 상태이므로 무시)
     chargeState: 0,
@@ -66,8 +67,6 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     softwareVersion: item.SWversion ?? "",
     site: item.Site ?? "",
     registrationDateTime: item.CreatedAt ?? "",
-    robotIP: item.RobotIP ?? undefined,
-    robotPort: item.RobotPort ?? undefined,
   }});
 
   return robots;

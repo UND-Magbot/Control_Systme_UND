@@ -8,8 +8,9 @@ import {
   ROBOT_TYPE_INDEX,
   getBatteryColor,
   isCriticalBattery,
-  isQuadrupedSingleBatteryMode,
+  isSingleBatteryMode,
 } from "@/app/constants/robotIcons";
+import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 import ChargingIcon from "@/app/components/common/ChargingIcon";
 import { apiFetch } from "@/app/lib/api";
 import { useModalAlert } from "@/app/hooks/useModalAlert";
@@ -50,6 +51,9 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
   const { modal, modalAlert, closeModal } = useModalAlert();
   const currentFloorName = floors.find((f) => f.id === robot.currentFloorId)?.label ?? "층";
   const typeIdx = ROBOT_TYPE_INDEX[robot.type] ?? 0;
+  const isUnregistered = robot.power === "-";
+  const isPowerOff = robot.power === "Off";
+  const isInactive = isUnregistered || isPowerOff;
   const dotClass = styles[`dot${robot.network}`] ?? styles.dotOffline;
   const badgeClass = styles[`badge${robot.network}`] ?? styles.badgeOffline;
   const isOnline = robot.network === "Online";
@@ -130,8 +134,8 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
   return (
     <>
       <div
-        className={`${styles.card} ${isSelected ? styles.cardSelected : ""}`}
-        onClick={onClick}
+        className={`${styles.card} ${isSelected ? styles.cardSelected : ""} ${isInactive ? styles.cardPowerOff : ""}`}
+        onClick={isInactive ? undefined : onClick}
       >
         <div className={styles.cardInfo}>
           <div className={styles.cardTop}>
@@ -139,22 +143,23 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
               {robot.no}
             </span>
             <button
-              className={styles.floorChangeBtn}
-              onClick={(e) => { e.stopPropagation(); setFloorChangeOpen(true); }}
+              className={`${styles.floorChangeBtn} ${isInactive ? styles.floorChangeBtnDisabled : ""}`}
+              onClick={(e) => { e.stopPropagation(); if (!isInactive) setFloorChangeOpen(true); }}
               title="현재 층 변경"
+              disabled={isInactive}
             >
               현재 층 변경
             </button>
             <span className={`${styles.networkBadge} ${badgeClass}`}>
               <span className={`${styles.dot} ${dotClass}`} />
-              {robot.network}
+              {isUnregistered ? "Offline" : robot.network}
             </span>
           </div>
 
           <div className={styles.cardBottom}>
             <span className={isCriticalBattery(robot) ? styles.criticalBattery : ""}>
-              {robot.type === "QUADRUPED" ? (
-                isQuadrupedSingleBatteryMode(robot) ? (
+              {isDualBatteryType(robot.type) ? (
+                isSingleBatteryMode(robot) ? (
                   (() => {
                     const left = robot.batteryLeft ?? 0;
                     const right = robot.batteryRight ?? 0;
@@ -163,7 +168,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
                     return single != null ? (
                       <>
                         <span style={{ color: "var(--text-primary)" }}>{isLeft ? "L" : "R"} </span>
-                        <span style={{ color: getBatteryColor(single, robot.return) }}>{single}%</span>
+                        <span style={{ color: getBatteryColor(single, robot.return, isOnline) }}>{single}%</span>
                         <span style={{ color: "var(--text-muted)" }}> ({robot.return}%)</span>
                       </>
                     ) : (
@@ -178,10 +183,10 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
                       return (
                         <>
                           <span style={{ color: "var(--text-primary)" }}>L </span>
-                          <span style={{ color: getBatteryColor(robot.batteryLeft!, robot.return) }}>{robot.batteryLeft}%</span>
+                          <span style={{ color: getBatteryColor(robot.batteryLeft!, robot.return, isOnline) }}>{robot.batteryLeft}%</span>
                           <span style={{ color: "var(--text-muted)" }}> / </span>
                           <span style={{ color: "var(--text-primary)" }}>R </span>
-                          <span style={{ color: getBatteryColor(robot.batteryRight!, robot.return) }}>{robot.batteryRight}%</span>
+                          <span style={{ color: getBatteryColor(robot.batteryRight!, robot.return, isOnline) }}>{robot.batteryRight}%</span>
                           <span style={{ color: "var(--text-muted)" }}> ({robot.return}%)</span>
                         </>
                       );
@@ -191,7 +196,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
                     return active != null ? (
                       <>
                         <span style={{ color: "var(--text-primary)" }}>{label} </span>
-                        <span style={{ color: getBatteryColor(active, robot.return) }}>{active}%</span>
+                        <span style={{ color: getBatteryColor(active, robot.return, isOnline) }}>{active}%</span>
                         <span style={{ color: "var(--text-muted)" }}> ({robot.return}%)</span>
                       </>
                     ) : (
@@ -200,18 +205,22 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
                   })()
                 )
               ) : (
-                <span style={{ color: getBatteryColor(robot.battery, robot.return) }}>
+                <span style={{ color: getBatteryColor(robot.battery, robot.return, isOnline) }}>
                   {robot.battery}% ({robot.return}%)
                 </span>
               )}
             </span>
             <span className={styles.floorLabel}>
-              {robotLocation.floor}{robotLocation.placeName ? ` · ${robotLocation.placeName}` : ""}
+              {isUnregistered ? "-" : (
+                <>{robotLocation.floor}{robotLocation.placeName ? ` · ${robotLocation.placeName}` : ""}</>
+              )}
             </span>
-            <span className={`${styles.taskBadge} ${taskStatus.className}`} title={taskStatus.tooltip || undefined}>
-              {robot.isCharging && <ChargingIcon size={12} style={{ marginLeft: 0, marginRight: 3 }} />}
-              {taskStatus.label}
-            </span>
+            {(!isPowerOff && !isUnregistered) && (
+              <span className={`${styles.taskBadge} ${taskStatus.className}`} title={taskStatus.tooltip || undefined}>
+                {robot.isCharging && isOnline && <ChargingIcon size={12} style={{ marginLeft: 0, marginRight: 3 }} />}
+                {taskStatus.label}
+              </span>
+            )}
           </div>
 
           {/* 선택된 카드에만 액션 버튼 표시 */}

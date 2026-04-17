@@ -108,7 +108,7 @@ def startup_event():
 
     # 기본 데이터 시드
     from app.database.database import SessionLocal
-    from app.database.models import UserInfo, RobotInfo
+    from app.database.models import UserInfo, RobotInfo, RobotLastStatus
     from app.database.seed import seed_all
     db = SessionLocal()
     try:
@@ -126,11 +126,16 @@ def startup_event():
         if robot:
             cached_robot["id"] = robot.id
             cached_robot["RobotName"] = robot.RobotName
+            cached_robot["BusinessId"] = robot.BusinessId
             print(f"[OK] 현재 로봇: {cached_robot['RobotName']} (id={cached_robot['id']})")
 
-        # 전체 로봇 런타임 상태 초기화
+        # 전체 로봇 런타임 상태 초기화 (DB 마지막 상태 복원 포함)
         all_robots = db.query(RobotInfo).order_by(RobotInfo.id.asc()).all()
-        runtime.init_runtime(all_robots)
+        last_statuses = {
+            ls.RobotId: ls
+            for ls in db.query(RobotLastStatus).all()
+        }
+        runtime.init_runtime(all_robots, last_statuses)
     finally:
         db.close()
 
@@ -143,6 +148,9 @@ def startup_event():
     ensure_ffmpeg()
     cleanup_orphaned_recordings()
     start_retention_thread()
+
+    from app.robot_io.persistence import start_persistence_thread
+    start_persistence_thread()
 
     log_event("system", "system_startup", "서버 시작")
 
@@ -160,6 +168,8 @@ async def _tune_threadpool():
 
 @app.on_event("shutdown")
 def shutdown_event():
+    from app.robot_io.persistence import flush_all
+    flush_all()
     from app.recording.manager import stop_all
     stop_all()
 

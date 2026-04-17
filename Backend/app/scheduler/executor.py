@@ -13,7 +13,7 @@ from datetime import datetime
 from app.database.database import SessionLocal
 from app.database.models import ScheduleInfo, WayInfo, LocationInfo, RobotInfo
 from app.logs.service import log_event
-from app.user_cache import get_robot_id, get_robot_name
+from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
 
 
 def execute_schedule(schedule: ScheduleInfo) -> bool:
@@ -41,7 +41,7 @@ def execute_schedule(schedule: ScheduleInfo) -> bool:
             log_event("error", "nav_error",
                       "스케줄 실행 실패: 경로를 찾을 수 없습니다",
                       error_json=f'{{"wayName": "{schedule.WayName}"}}',
-                      robot_id=get_robot_id(), robot_name=get_robot_name())
+                      robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
             sched.TaskStatus = "오류"
             db.commit()
             return False
@@ -68,7 +68,7 @@ def execute_schedule(schedule: ScheduleInfo) -> bool:
                 log_event("error", "nav_error",
                           "스케줄 실행 실패: 등록되지 않은 장소입니다",
                           error_json=f'{{"placeName": "{name}"}}',
-                          robot_id=get_robot_id(), robot_name=get_robot_name())
+                          robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
                 sched.TaskStatus = "오류"
                 db.commit()
                 return False

@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import styles from "./CameraModal.module.css";
 import type { Camera, RobotRowData } from "@/app/types";
 import CameraSlot from "./CameraSlot";
-import { getBatteryColor, isQuadrupedSingleBatteryMode } from "@/app/constants/robotIcons";
+import { getBatteryColor, isSingleBatteryMode } from "@/app/constants/robotIcons";
+import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 
 type ViewMode = "all" | "single";
 
@@ -80,13 +81,19 @@ export default function CameraModal({
               {robot && (
                 <span className={styles.robotStatus}>
                   <span className={styles.statusItem}>
-                    <span className={`${styles.statusDot} ${robot.network === "Online" ? styles.statusDotOnline : styles.statusDotOffline}`} />
+                    <span className={styles.statusLabel}>전원</span>
+                    {robot.power}
+                  </span>
+                  <span className={styles.statusDivider}>|</span>
+                  <span className={styles.statusItem}>
+                    <span className={styles.statusLabel}>네트워크</span>
                     {robot.network}
                   </span>
                   <span className={styles.statusDivider}>|</span>
                   <span className={styles.statusItem}>
-                    {robot.type === "QUADRUPED" ? (
-                      isQuadrupedSingleBatteryMode(robot) ? (
+                    <span className={styles.statusLabel}>배터리</span>
+                    {isDualBatteryType(robot.type) ? (
+                      isSingleBatteryMode(robot) ? (
                         <span style={{ color: getBatteryColor(robot.batteryLeft ?? robot.batteryRight ?? 0, robot.return) }}>
                           {robot.batteryLeft ?? robot.batteryRight ?? "-"}%
                         </span>
@@ -101,8 +108,6 @@ export default function CameraModal({
                       <span style={{ color: getBatteryColor(robot.battery, robot.return) }}>{robot.battery}%</span>
                     )}
                   </span>
-                  <span className={styles.statusDivider}>|</span>
-                  <span className={styles.statusItem}>{robot.power}</span>
                 </span>
               )}
             </h3>

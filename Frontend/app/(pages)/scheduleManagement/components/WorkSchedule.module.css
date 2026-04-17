@@ -581,7 +581,12 @@
 .dateNumber {
   font-size: 12px;
   color: #cdd1db;
-  margin-bottom: 4px;
+  margin: 0 auto 4px;
+  width: 22px;
+  height: 19px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .monthToday {
@@ -637,9 +642,11 @@
   pointer-events: none;
   text-align: left;
   width: 100%;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.cellEvent + .cellEvent {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
 
 .cellEventDot {
   width: 7px;
@@ -691,7 +698,6 @@
   text-align: center;
   padding: 2px 0;
   pointer-events: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* 주간 */
@@ -1109,7 +1115,6 @@
   text-align: center;
   padding: 1px 0;
   pointer-events: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* ── 주간 리스트 뷰 ── */
@@ -1215,6 +1220,7 @@
   max-height: 80vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .dayListFilters {
@@ -1225,21 +1231,6 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.dayListSelect {
-  height: 30px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle, #8AACC7);
-  background: var(--surface-5, #454B67);
-  color: #ffffff;
-  font-size: 12px;
-  cursor: pointer;
-  outline: none;
-}
-
-.dayListSelect:focus {
-  border-color: #0E85B7;
-}
 
 .dayListCount {
   margin-left: auto;
@@ -1281,18 +1272,58 @@
   transition: background 0.15s ease;
 }
 
-.dayListClose:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
+.dayListScrollWrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  max-height: 50vh;
 }
 
 .dayListBody {
   padding: 14px 20px;
-  overflow-y: auto;
+  overflow-y: scroll;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 50vh;
+  flex: 1;
+  min-height: 0;
+  scrollbar-width: none;
+}
+
+.dayListBody::-webkit-scrollbar {
+  display: none;
+}
+
+.dayListScrollGutter {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  right: 6px;
+  width: 4px;
+}
+
+.dayListScrollTrack {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50px;
+  background: transparent;
+}
+
+.dayListScrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  border-radius: 50px;
+  background: rgba(234, 234, 237, 0.3);
+  transition: background 0.15s ease;
+}
+
+.dayListScrollThumb:hover {
+  background: rgba(234, 234, 237, 0.5);
 }
 
 .dayListItem {
@@ -1300,6 +1331,8 @@
   align-items: stretch;
   gap: 0;
   padding: 0;
+  width: 100%;
+  flex-shrink: 0;
   border-radius: 10px;
   border: 1px solid var(--border-subtle);
   background: var(--surface-5);
@@ -1338,6 +1371,8 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .dayListTitle {
@@ -1397,7 +1432,6 @@
 .dayListRobot {
   font-size: 11px;
   color: rgba(160, 100, 255, 0.9);
-  white-space: nowrap;
   font-weight: 500;
 }
 

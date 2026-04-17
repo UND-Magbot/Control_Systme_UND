@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { RobotRowData } from '@/app/types';
-import { getRobotCapabilities } from '@/app/constants/robotCapabilities';
+import { isDualBatteryType } from '@/app/constants/robotCapabilities';
 import ChargingIcon from '@/app/components/common/ChargingIcon';
 import styles from './StatusBar.module.css';
 
@@ -43,10 +43,9 @@ export default function StatusBar({
   recordingDisabled = false,
 }: StatusBarProps) {
   const robot = selectedRobot;
-  const caps = getRobotCapabilities(robot?.type ?? '');
   const power = robot?.power ?? '-';
   const network = robot?.network ?? '-';
-  const isDual = caps.hasDualBattery;
+  const isDual = isDualBatteryType(robot?.type ?? '');
 
   // 녹화 경과 시간 카운터
   const [elapsed, setElapsed] = useState(0);

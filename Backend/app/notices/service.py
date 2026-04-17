@@ -10,12 +10,13 @@ class NoticeService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create(self, title: str, content: str, importance: str, user_id: str, attachment_name: str = None, attachment_url: str = None, attachment_size: int = None) -> Notice:
+    def create(self, title: str, content: str, importance: str, user_id: str, business_id: int, attachment_name: str = None, attachment_url: str = None, attachment_size: int = None) -> Notice:
         notice = Notice(
             Title=title,
             Content=content,
             Importance=importance,
             UserId=user_id,
+            BusinessId=business_id,
             AttachmentName=attachment_name,
             AttachmentUrl=attachment_url,
             AttachmentSize=attachment_size,
@@ -29,6 +30,7 @@ class NoticeService:
             Status="info",
             Content=title,
             NoticeId=notice.id,
+            BusinessId=business_id,
         )
         self.db.add(alert)
 
@@ -37,11 +39,14 @@ class NoticeService:
         return notice
 
     def update(self, notice_id: int, title: str = None, content: str = None,
-               importance: str = None, attachment_name: str = None, attachment_url: str = None, attachment_size: int = None):
-        notice = self.db.query(Notice).filter(
+               importance: str = None, attachment_name: str = None, attachment_url: str = None, attachment_size: int = None, business_id: int = None):
+        query = self.db.query(Notice).filter(
             Notice.id == notice_id,
             Notice.DeletedAt.is_(None),
-        ).first()
+        )
+        if business_id is not None:
+            query = query.filter(Notice.BusinessId == business_id)
+        notice = query.first()
         if not notice:
             raise HTTPException(status_code=404, detail="공지사항을 찾을 수 없습니다.")
 
@@ -78,11 +83,14 @@ class NoticeService:
         self.db.refresh(notice)
         return notice, changes
 
-    def delete(self, notice_id: int):
-        notice = self.db.query(Notice).filter(
+    def delete(self, notice_id: int, business_id: int = None):
+        query = self.db.query(Notice).filter(
             Notice.id == notice_id,
             Notice.DeletedAt.is_(None),
-        ).first()
+        )
+        if business_id is not None:
+            query = query.filter(Notice.BusinessId == business_id)
+        notice = query.first()
         if not notice:
             raise HTTPException(status_code=404, detail="공지사항을 찾을 수 없습니다.")
 
@@ -99,17 +107,23 @@ class NoticeService:
 
         self.db.commit()
 
-    def get_by_id(self, notice_id: int) -> Notice:
-        notice = self.db.query(Notice).filter(
+    def get_by_id(self, notice_id: int, business_id: int = None) -> Notice:
+        query = self.db.query(Notice).filter(
             Notice.id == notice_id,
             Notice.DeletedAt.is_(None),
-        ).first()
+        )
+        if business_id is not None:
+            query = query.filter(Notice.BusinessId == business_id)
+        notice = query.first()
         if not notice:
             raise HTTPException(status_code=404, detail="공지사항을 찾을 수 없습니다.")
         return notice
 
-    def get_list(self, search: str = None, importance: str = None, page: int = 1, size: int = 20):
+    def get_list(self, search: str = None, importance: str = None, page: int = 1, size: int = 20, business_id: int = None):
         query = self.db.query(Notice).filter(Notice.DeletedAt.is_(None))
+
+        if business_id is not None:
+            query = query.filter(Notice.BusinessId == business_id)
 
         if search:
             query = query.filter(

@@ -4,7 +4,8 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import styles from "./CameraSlots.module.css";
 import type { Camera, RobotRowData } from "@/app/types";
 import { CAMERA_BASE } from "@/app/config";
-import { getBatteryColor, isQuadrupedSingleBatteryMode } from "@/app/constants/robotIcons";
+import { getBatteryColor, isSingleBatteryMode } from "@/app/constants/robotIcons";
+import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 
 type CameraSlotProps = {
   camera: Camera;
@@ -221,8 +222,8 @@ export default function CameraSlot({ camera, robotName, robot, onExpand }: Camer
               <span className={`${styles.robotLabelDot} ${robot.network === "Online" ? styles.robotLabelDotOnline : styles.robotLabelDotOffline}`} />
               {robot.network}
               <span className={styles.robotLabelDivider}>|</span>
-              {robot.type === "QUADRUPED" ? (
-                isQuadrupedSingleBatteryMode(robot) ? (
+              {isDualBatteryType(robot.type) ? (
+                isSingleBatteryMode(robot) ? (
                   <span style={{ color: getBatteryColor(robot.batteryLeft ?? robot.batteryRight ?? 0, robot.return) }}>
                     {robot.batteryLeft ?? robot.batteryRight ?? "-"}%
                   </span>

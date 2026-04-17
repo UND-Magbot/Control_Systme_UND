@@ -34,7 +34,7 @@ export type RobotRowData = {
     id: number;
     no: string;
     info: string;
-    type: "QUADRUPED" | "COBOT" | "AMR" | "HUMANOID";
+    type: string;
     battery: number;
     batteryLeft?: number;           // BatteryLevelLeft
     batteryRight?: number;          // BatteryLevelRight
@@ -73,8 +73,6 @@ export type RobotRowData = {
     softwareVersion: string;     
     site: string;                
     registrationDateTime: string;
-    robotIP?: string;
-    robotPort?: number;
 };
 
 export type PowerItem = {

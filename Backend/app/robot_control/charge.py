@@ -7,7 +7,7 @@ from fastapi import APIRouter
 
 from app.database.database import SessionLocal
 from app.database.models import LocationInfo
-from app.user_cache import get_robot_id, get_robot_name
+from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
 from app.logs.service import log_event
 
 router = APIRouter()
@@ -32,7 +32,7 @@ def start_charge():
     try:
         sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
         log_event("robot", "robot_charging_start", "충전소 이동 명령 전송",
-                  robot_id=get_robot_id(), robot_name=get_robot_name())
+                  robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         return {"status": "ok", "msg": "충전소 이동 명령 전송 완료"}
     except Exception as e:
         return {"status": "error", "msg": str(e)}
@@ -104,7 +104,7 @@ def return_to_charge():
         print(f"🔋 작업 복귀: {dock_name} → x={dock_point.LocationX}, y={dock_point.LocationY}")
         log_event("schedule", "return_to_charge",
                   f"작업 복귀 시작: {dock_name}(으)로 이동",
-                  robot_id=get_robot_id(), robot_name=get_robot_name())
+                  robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
         navigation_send_next()
         return {

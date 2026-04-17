@@ -31,7 +31,7 @@ export default function RobotInfoViewSection({
   onPathMoveOpen,
   onChargeMoveOpen,
 }: Props) {
-  const isRobotOffline = r.power === 'Off';
+  const isRobotOffline = r.power !== 'On';
 
   return (
     <div className={styles.detailInfoSection}>
@@ -44,8 +44,6 @@ export default function RobotInfoViewSection({
         <InfoRow label="로봇 타입" value={r.type ?? '-'} />
         <InfoRow label="사이트" value={r.site ?? '-'} />
         <InfoRow label="S/W 버전" value={r.softwareVersion ?? '-'} />
-        <InfoRow label="로봇 IP" value={r.robotIP ?? '-'} />
-        <InfoRow label="로봇 Port" value={r.robotPort != null ? String(r.robotPort) : '-'} />
 
         {/* 복귀 배터리 (좌) / 등록일시 (우) */}
         <div className={styles.detailInfoRow}>

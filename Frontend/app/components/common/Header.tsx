@@ -66,8 +66,8 @@ export default function Header() {
 
     const handleLogout = useCallback(async () => {
         await logout();
-        router.replace("/login");
-    }, [logout, router]);
+        window.location.href = "/login";
+    }, [logout]);
 
     return(
         <header className={styles.header} onClick={() => isOpen && close()}>

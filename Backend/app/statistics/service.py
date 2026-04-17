@@ -8,6 +8,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+from sqlalchemy import or_, and_
+
 from app.database.models import RobotInfo, LogDataInfo, ScheduleInfo
 from app.statistics.schemas import (
     StatisticsResponse, RobotTypeCount, TaskCounts,
@@ -15,6 +17,9 @@ from app.statistics.schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Python weekday() → 한국어 요일 (run_conditions.py 와 동일)
+DAY_MAP = {0: "월", 1: "화", 2: "수", 3: "목", 4: "금", 5: "토", 6: "일"}
 
 # ── 에러 Action → 카테고리 매핑 ──
 ERROR_ACTION_MAP = {
@@ -33,6 +38,68 @@ TASK_STATUS_MAP = {
     "작업중(오류)": "failed",
     "취소":     "cancelled",
 }
+
+
+def _get_schedule_mode(schedule: ScheduleInfo) -> str:
+    """스케줄 모드 반환 (legacy Repeat='Y' 호환)."""
+    return getattr(schedule, 'ScheduleMode', None) or (
+        "weekly" if schedule.Repeat == "Y" else "once"
+    )
+
+
+def _count_today_tasks(schedule: ScheduleInfo, target_date) -> int:
+    """스케줄이 target_date에 해당하면 1, 아니면 0 (등록 작업 1건 = 1 카운트)."""
+    mode = _get_schedule_mode(schedule)
+
+    if mode == "once":
+        # once 는 StartDate 날짜에만 해당
+        if schedule.StartDate and schedule.StartDate.date() == target_date:
+            return 1
+        return 0
+
+    if mode == "weekly":
+        # 시리즈 범위 확인
+        series_start = getattr(schedule, 'SeriesStartDate', None)
+        series_end = getattr(schedule, 'SeriesEndDate', None)
+        if series_start and target_date < series_start:
+            return 0
+        if series_end and target_date > series_end:
+            return 0
+        # 요일 확인
+        repeat_day = getattr(schedule, 'Repeat_Day', None) or ""
+        if repeat_day:
+            today_name = DAY_MAP.get(target_date.weekday())
+            allowed_days = [d.strip() for d in repeat_day.split(",") if d.strip()]
+            if today_name not in allowed_days:
+                return 0
+        return 1
+
+    if mode == "interval":
+        # 시리즈 범위 확인
+        series_start = getattr(schedule, 'SeriesStartDate', None)
+        series_end = getattr(schedule, 'SeriesEndDate', None)
+        if series_start and target_date < series_start:
+            return 0
+        if series_end and target_date > series_end:
+            return 0
+        # 요일 확인
+        repeat_day = getattr(schedule, 'Repeat_Day', None) or ""
+        if repeat_day:
+            today_name = DAY_MAP.get(target_date.weekday())
+            allowed_days = [d.strip() for d in repeat_day.split(",") if d.strip()]
+            if today_name not in allowed_days:
+                return 0
+        return 1
+
+    # 알 수 없는 모드
+    return 1
+
+
+def _count_completed_today(schedule: ScheduleInfo, target_date, now: datetime) -> int:
+    """스케줄이 target_date에 완료 상태이면 1, 아니면 0."""
+    if schedule.TaskStatus == "완료":
+        return 1
+    return 0
 
 
 def _pair_events(
@@ -120,9 +187,16 @@ class StatisticsService:
             if end_date
             else now
         )
-        # 종료일이 미래(오늘 포함)인 경우 현재 시각으로 캡
+        # 종료일이 미래(오늘 포함)인 경우 현재 시각으로 캡 (로그 조회용)
         if dt_end > now:
             dt_end = now
+
+        # 스케줄 총 작업수 산출용: 오늘 끝까지 (미래 작업 포함)
+        dt_end_scheds = (
+            datetime.strptime(end_date, "%Y-%m-%d") + timedelta(hours=23, minutes=59, seconds=59)
+            if end_date
+            else now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        )
 
         # ── 1) 로봇 타입 분포 (날짜 무관) ──
         robot_query = self.db.query(RobotInfo).filter(RobotInfo.DeletedAt.is_(None))
@@ -166,8 +240,23 @@ class StatisticsService:
             schedules = []
         else:
             sched_query = self.db.query(ScheduleInfo).filter(
-                ScheduleInfo.StartDate <= dt_end,
-                ScheduleInfo.EndDate >= dt_start,
+                or_(
+                    # once: StartDate 가 조회 범위 내
+                    and_(
+                        or_(ScheduleInfo.ScheduleMode == "once",
+                            ScheduleInfo.ScheduleMode.is_(None)),
+                        ScheduleInfo.StartDate <= dt_end_scheds,
+                        ScheduleInfo.EndDate >= dt_start,
+                    ),
+                    # weekly / interval: 시리즈 범위가 조회 범위와 겹침
+                    and_(
+                        ScheduleInfo.ScheduleMode.in_(["weekly", "interval"]),
+                        or_(ScheduleInfo.SeriesStartDate.is_(None),
+                            ScheduleInfo.SeriesStartDate <= dt_end_scheds.date()),
+                        or_(ScheduleInfo.SeriesEndDate.is_(None),
+                            ScheduleInfo.SeriesEndDate >= dt_start.date()),
+                    ),
+                )
             )
             if len(filtered_robot_names) < len(all_robots):
                 sched_query = sched_query.filter(ScheduleInfo.RobotName.in_(filtered_robot_names))
@@ -243,13 +332,22 @@ class StatisticsService:
         for l in error_logs:
             error_by_robot[l.RobotName] = error_by_robot.get(l.RobotName, 0) + 1
 
-        # 로봇별 작업 완료/전체 (스케줄 기준)
+        # 로봇별 작업 완료/전체 (스케줄 모드별 실제 작업 건수 기준)
+        target_date = dt_start.date()
         completed_by_robot: dict[str, int] = {}
         total_by_robot: dict[str, int] = {}
         for s in schedules:
-            total_by_robot[s.RobotName] = total_by_robot.get(s.RobotName, 0) + 1
-            if s.TaskStatus == "완료":
-                completed_by_robot[s.RobotName] = completed_by_robot.get(s.RobotName, 0) + 1
+            today_count = _count_today_tasks(s, target_date)
+            if today_count <= 0:
+                continue
+            # 취소 포함 모든 상태를 total 에 반영
+            total_by_robot[s.RobotName] = total_by_robot.get(s.RobotName, 0) + today_count
+            # 완료 건수
+            done_count = _count_completed_today(s, target_date, now)
+            if done_count > 0:
+                completed_by_robot[s.RobotName] = (
+                    completed_by_robot.get(s.RobotName, 0) + done_count
+                )
 
         for robot in filtered_robots:
             rname = robot.RobotName

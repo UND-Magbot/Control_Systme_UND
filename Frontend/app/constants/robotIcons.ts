@@ -1,7 +1,9 @@
 import type { RobotRowData } from "@/app/types";
+import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 
 // ── 배터리 색상 ──
-export function getBatteryColor(level: number, limitBattery: number): string {
+export function getBatteryColor(level: number, limitBattery: number, isOnline = true): string {
+  if (!isOnline) return "var(--text-muted)";
   if (level > limitBattery) return "var(--color-success)";
   if (level > 10) return "var(--color-warning)";
   return "var(--color-error-soft)";
@@ -12,22 +14,22 @@ export function isCriticalBattery(r: RobotRowData): boolean {
   return r.power === "On" && !r.isCharging && r.battery <= 10;
 }
 
-// ── 4족 배터리 모드 판정 ──
+// ── 배터리 싱글 모드 판정 ──
 // PowerManagement는 Sleep=0(전원 On) 상태에서만 유효하며,
 // 0=regular(배터리 2개), 1=single(단일 배터리). 값이 없으면 regular로 간주.
-export function isQuadrupedSingleBatteryMode(r: RobotRowData): boolean {
-  return r.type === "QUADRUPED" && r.powerManagement === 1;
+export function isSingleBatteryMode(r: RobotRowData): boolean {
+  return isDualBatteryType(r.type) && r.powerManagement === 1;
 }
 
-// ── 로봇 타입별 색상 (대시보드용 4색) ──
-export const ROBOT_TYPE_COLOR: Record<RobotRowData["type"], string> = {
+// ── 로봇 타입별 색상 (대시보드용) ──
+export const ROBOT_TYPE_COLOR: Record<string, string> = {
   QUADRUPED: "#fa0203",
   COBOT: "#03abf3",
   AMR: "#97ce4f",
   HUMANOID: "#f79418",
 };
 
-export const ROBOT_TYPE_INDEX: Record<RobotRowData["type"], number> = {
+export const ROBOT_TYPE_INDEX: Record<string, number> = {
   QUADRUPED: 0,
   COBOT: 1,
   AMR: 2,
