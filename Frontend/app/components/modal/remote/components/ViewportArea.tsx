@@ -3,7 +3,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import type { Camera } from '@/app/types';
 import { CanvasMap } from '@/app/components/map';
-import { OCC_GRID_CONFIG } from '@/app/components/map/mapConfigs';
+import { getOccGridConfig } from '@/app/components/map/mapConfigs';
 import type { RobotPosition } from '@/app/components/map/types';
 import styles from './ViewportArea.module.css';
 
@@ -267,7 +267,7 @@ export default function ViewportArea({
           {/* 맵 영역 */}
           <div className={styles.pipMapArea} onClick={() => setMapState('expanded')}>
             <CanvasMap
-              config={OCC_GRID_CONFIG}
+              config={getOccGridConfig()}
               robotPos={robotPos}
               showRobot={robotConnected}
               robotMarkerSize={14}
@@ -281,7 +281,7 @@ export default function ViewportArea({
       {mapState === 'expanded' && (
         <div className={styles.pipExpanded}>
           <CanvasMap
-            config={OCC_GRID_CONFIG}
+            config={getOccGridConfig()}
             robotPos={robotPos}
             showRobot={robotConnected}
             robotMarkerSize={20}

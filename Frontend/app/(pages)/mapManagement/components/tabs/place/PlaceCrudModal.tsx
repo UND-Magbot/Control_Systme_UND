@@ -6,7 +6,7 @@ import styles from "./PlaceCrudModal.module.css";
 import type { RobotRowData } from "@/app/types";
 import { CanvasMap } from "@/app/components/map";
 import type { CanvasMapHandle } from "@/app/components/map";
-import { TEST_MAP_CONFIG } from "@/app/components/map/mapConfigs";
+import { getOccGridConfig } from "@/app/components/map/mapConfigs";
 import { useRobotPosition } from "@/app/hooks/useRobotPosition";
 import PathAlertsModal from "../path/PathAlertsModal";
 import PlaceDeleteConfirmModal from "./PlaceDeleteConfirmModal";
@@ -701,7 +701,7 @@ export default function PlaceCrudModal({
 
                 <CanvasMap
                   ref={mapRef}
-                  config={TEST_MAP_CONFIG}
+                  config={getOccGridConfig()}
                   robotPos={robotPosForMap}
                   showRobot={robotPosReady}
                   pois={mapPois}
