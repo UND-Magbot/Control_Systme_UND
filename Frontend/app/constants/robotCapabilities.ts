@@ -15,3 +15,9 @@ export const ROBOT_CAPABILITIES: Record<string, RobotCapabilities> = {
 export function getRobotCapabilities(type: string): RobotCapabilities {
   return ROBOT_CAPABILITIES[type] ?? ROBOT_CAPABILITIES.AMR;
 }
+
+const DUAL_BATTERY_TYPES = new Set(["기본 4족", "순찰 4족", "보안 4족"]);
+
+export function isDualBatteryType(type: string): boolean {
+  return DUAL_BATTERY_TYPES.has(type);
+}

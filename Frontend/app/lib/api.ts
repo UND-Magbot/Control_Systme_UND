@@ -17,6 +17,11 @@ export function resetSessionExpired() {
   sessionExpired = false;
 }
 
+/** 비밀번호 변경 등 토큰 무효화 후 추가 API 호출 차단 */
+export function markSessionExpired() {
+  sessionExpired = true;
+}
+
 // ── 탭 간 refresh 동기화 ──
 const refreshChannel =
   typeof BroadcastChannel !== "undefined"
@@ -132,10 +137,10 @@ export async function apiFetch(
     signal,
   };
 
-  // // 이미 세션 만료가 확정된 경우 네트워크 요청 없이 즉시 반환
-  // if (sessionExpired) {
-  //   return new Response(null, { status: 401, statusText: "Session Expired" });
-  // }
+  // 이미 세션 만료가 확정된 경우 네트워크 요청 없이 즉시 반환
+  if (sessionExpired) {
+    return new Response(null, { status: 401, statusText: "Session Expired" });
+  }
 
   let res = await fetch(url, fetchOptions);
 

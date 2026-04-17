@@ -14,6 +14,8 @@ import { expandRepeatSchedules, extractOriginalId, type DBSchedule } from "../ut
 import { formatDate, parseYmdDate, hourLabel, timeLabel } from "../utils/datetime";
 import { clampMinutes, parseMinuteValue, normalizeMinuteRange, type ParsedMinutes } from "../utils/minuteParse";
 import { buildMonthCells, type MonthDayCell } from "../utils/monthCalendar";
+import { WORK_TYPES } from "../constants";
+import CustomSelect, { type SelectOption } from "@/app/components/select/CustomSelect";
 
 
 // 주간
@@ -149,7 +151,7 @@ export default function Page({ robots }: RobotScheduleProps) {
     // 필터 항목 다중 선택
     const [selectedRobotTypes, setSelectedRobotTypes] = useState<string[]>([]);
     const [selectedRobotNames, setSelectedRobotNames] = useState<string[]>([]);
-    const robotTypes = ["task1", "task2", "task3"];
+    const robotTypes = WORK_TYPES.map(w => w.label);
 
     const toggleRobotType = (label: string) => {
         setSelectedRobotTypes((prev) =>
@@ -566,8 +568,24 @@ export default function Page({ robots }: RobotScheduleProps) {
     const [isDayListOpen, setIsDayListOpen] = useState(false);
     const [dayListDate, setDayListDate] = useState<string>("");
     const [dayListEvents, setDayListEvents] = useState<LayoutEvent[]>([]);
-    const [dayListFilterType, setDayListFilterType] = useState<string>("all");
-    const [dayListFilterRobot, setDayListFilterRobot] = useState<string>("all");
+    const ALL_TYPE_OPTION: SelectOption = { id: "all", label: "전체 작업유형" };
+    const ALL_ROBOT_OPTION: SelectOption = { id: "all", label: "전체 로봇" };
+    const [dayListFilterType, setDayListFilterType] = useState<SelectOption>(ALL_TYPE_OPTION);
+    const [dayListFilterRobot, setDayListFilterRobot] = useState<SelectOption>(ALL_ROBOT_OPTION);
+
+    // dayList 모달 커스텀 스크롤바
+    const dayListScrollRef = useRef<HTMLDivElement>(null);
+    const dayListTrackRef = useRef<HTMLDivElement>(null);
+    const dayListThumbRef = useRef<HTMLDivElement>(null);
+
+    useCustomScrollbar({
+        enabled: isDayListOpen,
+        scrollRef: dayListScrollRef,
+        trackRef: dayListTrackRef,
+        thumbRef: dayListThumbRef,
+        minThumbHeight: 30,
+        deps: [isDayListOpen, dayListEvents.length, dayListFilterType, dayListFilterRobot],
+    });
 
     const handleClickWeekEvent = (event: WeekEvent) => {
         // 같은 시간대(시작 시간 기준)의 이벤트를 모아서 목록 모달 열기
@@ -589,7 +607,7 @@ export default function Page({ robots }: RobotScheduleProps) {
             const dateStr = weekDates[event.dayIndex];
             setDayListDate(dateStr ? `${dateStr.getMonth() + 1}월 ${dateStr.getDate()}일 ${hourLabel12}` : "");
             setDayListEvents(hourEvents);
-            setDayListFilterType(selectedRobotTypes.length === 1 ? selectedRobotTypes[0] : "all"); setDayListFilterRobot(selectedRobotNames.length === 1 ? selectedRobotNames[0] : "all"); setIsDayListOpen(true);
+            setDayListFilterType(ALL_TYPE_OPTION); setDayListFilterRobot(ALL_ROBOT_OPTION); setIsDayListOpen(true);
         }
     };
 
@@ -1013,7 +1031,7 @@ useEffect(() => {
                                                                     : `오후 ${h === 12 ? 12 : h - 12}시`;
                                                                 setDayListDate(dateStr ? `${dateStr.getMonth() + 1}월 ${dateStr.getDate()}일 ${hourLabel12}` : "");
                                                                 setDayListEvents(hourEvts.sort((a, b) => a.startMin - b.startMin));
-                                                                setDayListFilterType(selectedRobotTypes.length === 1 ? selectedRobotTypes[0] : "all"); setDayListFilterRobot(selectedRobotNames.length === 1 ? selectedRobotNames[0] : "all"); setIsDayListOpen(true);
+                                                                setDayListFilterType(ALL_TYPE_OPTION); setDayListFilterRobot(ALL_ROBOT_OPTION); setIsDayListOpen(true);
                                                             }}
                                                         />
                                                     );
@@ -1103,19 +1121,13 @@ useEffect(() => {
 
                 {/* 날짜별 작업 목록 모달 */}
                 {isDayListOpen && (() => {
-                    // 필터용: 현재 목록의 작업유형/로봇명 추출
-                    const typeSet = new Set<string>();
-                    const robotSet = new Set<string>();
-                    dayListEvents.forEach((ev) => {
-                        if (ev.robotType) typeSet.add(ev.robotType);
-                        if (ev.robotNo) robotSet.add(ev.robotNo);
-                    });
-                    const typeOptions = Array.from(typeSet);
-                    const robotOptions = Array.from(robotSet);
+                    // 전체 작업유형/로봇명 목록을 옵션으로 사용
+                    const typeOptions = robotTypes;
+                    const robotFilterOptions = robotNameOptions.map(r => r.no);
 
                     const filtered = dayListEvents.filter((ev) => {
-                        if (dayListFilterType !== "all" && ev.robotType !== dayListFilterType) return false;
-                        if (dayListFilterRobot !== "all" && ev.robotNo !== dayListFilterRobot) return false;
+                        if (dayListFilterType.id !== "all" && ev.robotType !== dayListFilterType.id) return false;
+                        if (dayListFilterRobot.id !== "all" && ev.robotNo !== dayListFilterRobot.id) return false;
                         return true;
                     });
 
@@ -1127,63 +1139,72 @@ useEffect(() => {
                                 <button type="button" onClick={() => setIsDayListOpen(false)} className={styles.dayListClose}>✕</button>
                             </div>
                             <div className={styles.dayListFilters}>
-                                <select
+                                <CustomSelect
+                                    options={[ALL_TYPE_OPTION, ...typeOptions.map(t => ({ id: t, label: t }))]}
                                     value={dayListFilterType}
-                                    onChange={(e) => setDayListFilterType(e.target.value)}
-                                    className={styles.dayListSelect}
-                                >
-                                    <option value="all">전체 작업유형</option>
-                                    {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                                <select
+                                    onChange={(opt) => setDayListFilterType(opt)}
+                                    placeholder="전체 작업유형"
+                                    compact
+                                    overlay
+                                    width={140}
+                                />
+                                <CustomSelect
+                                    options={[ALL_ROBOT_OPTION, ...robotFilterOptions.map(r => ({ id: r, label: r }))]}
                                     value={dayListFilterRobot}
-                                    onChange={(e) => setDayListFilterRobot(e.target.value)}
-                                    className={styles.dayListSelect}
-                                >
-                                    <option value="all">전체 로봇</option>
-                                    {robotOptions.map((r) => <option key={r} value={r}>{r}</option>)}
-                                </select>
+                                    onChange={(opt) => setDayListFilterRobot(opt)}
+                                    placeholder="전체 로봇"
+                                    compact
+                                    overlay
+                                    width={200}
+                                />
                                 <span className={styles.dayListCount}>{filtered.length}건</span>
                             </div>
-                            <div className={styles.dayListBody}>
-                                {filtered.length === 0 && (
-                                    <div className={styles.dayListEmpty}>해당 조건의 작업이 없습니다.</div>
-                                )}
-                                {filtered.map((ev) => {
-                                    const origId = extractOriginalId(ev.id);
-                                    const full = schedules.find((s) => String(s.id) === origId);
-                                    const mode = full?.ScheduleMode || (full?.Repeat === "Y" ? "weekly" : "once");
-                                    const isRepeat = mode === "weekly" || mode === "interval";
-                                    const timeText = mode === 'interval'
-                                        ? `${timeLabel(ev.startMin)} ~ ${timeLabel(ev.endMin)}`
-                                        : timeLabel(ev.startMin);
-                                    return (
-                                    <button
-                                        key={ev.id}
-                                        type="button"
-                                        className={styles.dayListItem}
-                                        onClick={() => handleDayListSelect(ev)}
-                                    >
-                                        <div className={`${styles.dayListColor} ${colorClass(ev.color)}`} />
-                                        <div className={styles.dayListInfo}>
-                                            <div className={styles.dayListRowTop}>
-                                                <span className={styles.dayListTitle}>{ev.title}</span>
-                                                <span className={styles.dayListStatus} data-color={ev.color}>{ev.status || full?.TaskStatus}</span>
+                            <div className={styles.dayListScrollWrap}>
+                                <div ref={dayListScrollRef} className={styles.dayListBody}>
+                                    {filtered.length === 0 && (
+                                        <div className={styles.dayListEmpty}>해당 조건의 작업이 없습니다.</div>
+                                    )}
+                                    {filtered.map((ev) => {
+                                        const origId = extractOriginalId(ev.id);
+                                        const full = schedules.find((s) => String(s.id) === origId);
+                                        const mode = full?.ScheduleMode || (full?.Repeat === "Y" ? "weekly" : "once");
+                                        const isRepeat = mode === "weekly" || mode === "interval";
+                                        const timeText = mode === 'interval'
+                                            ? `${timeLabel(ev.startMin)} ~ ${timeLabel(ev.endMin)}`
+                                            : timeLabel(ev.startMin);
+                                        return (
+                                        <button
+                                            key={ev.id}
+                                            type="button"
+                                            className={styles.dayListItem}
+                                            onClick={() => handleDayListSelect(ev)}
+                                        >
+                                            <div className={`${styles.dayListColor} ${colorClass(ev.color)}`} />
+                                            <div className={styles.dayListInfo}>
+                                                <div className={styles.dayListRowTop}>
+                                                    <span className={styles.dayListTitle}>{ev.title}</span>
+                                                    <span className={styles.dayListStatus} data-color={ev.color}>{ev.status || full?.TaskStatus}</span>
+                                                </div>
+                                                <div className={styles.dayListRowBottom}>
+                                                    <span className={styles.dayListModeBadge} data-mode={mode}>
+                                                        {mode === 'once' ? '단일' : mode === 'weekly' ? '요일반복' : '주기반복'}
+                                                    </span>
+                                                    <span className={styles.dayListTime}>{timeText}</span>
+                                                    <span className={styles.dayListDivider}>·</span>
+                                                    <img src="/icon/robot_w.png" alt="" className={styles.dayListRobotIcon} />
+                                                    <span className={styles.dayListRobot}>{ev.robotNo}</span>
+                                                </div>
                                             </div>
-                                            <div className={styles.dayListRowBottom}>
-                                                <span className={styles.dayListModeBadge} data-mode={mode}>
-                                                    {mode === 'once' ? '단일' : mode === 'weekly' ? '요일반복' : '주기반복'}
-                                                </span>
-                                                <span className={styles.dayListTime}>{timeText}</span>
-                                                <span className={styles.dayListDivider}>·</span>
-                                                <img src="/icon/robot_w.png" alt="" className={styles.dayListRobotIcon} />
-                                                <span className={styles.dayListRobot}>{ev.robotNo}</span>
-                                            </div>
-                                        </div>
-                                        <span className={styles.dayListArrow}>›</span>
-                                    </button>
-                                    );
-                                })}
+                                            <span className={styles.dayListArrow}>›</span>
+                                        </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className={styles.dayListScrollGutter}>
+                                    <div ref={dayListTrackRef} className={styles.dayListScrollTrack}>
+                                        <div ref={dayListThumbRef} className={styles.dayListScrollThumb} />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1255,7 +1276,7 @@ useEffect(() => {
                                         };
                                     });
                                     setDayListEvents(mapped.sort((a, b) => a.startMin - b.startMin));
-                                    setDayListFilterType(selectedRobotTypes.length === 1 ? selectedRobotTypes[0] : "all"); setDayListFilterRobot(selectedRobotNames.length === 1 ? selectedRobotNames[0] : "all"); setIsDayListOpen(true);
+                                    setDayListFilterType(ALL_TYPE_OPTION); setDayListFilterRobot(ALL_ROBOT_OPTION); setIsDayListOpen(true);
                                 };
 
                                 return (

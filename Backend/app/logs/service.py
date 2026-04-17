@@ -71,6 +71,7 @@ class LogService:
         robot_id: int = None,
         robot_name: str = None,
         error_json: str = None,
+        business_id: int = None,
     ) -> LogDataInfo:
         log = LogDataInfo(
             Category=category,
@@ -79,6 +80,7 @@ class LogService:
             Detail=detail,
             RobotId=robot_id,
             RobotName=robot_name,
+            BusinessId=business_id,
         )
         self.db.add(log)
         self.db.flush()
@@ -111,6 +113,7 @@ class LogService:
                     ErrorJson=error_json or detail,
                     RobotName=robot_name,
                     LogId=log.id,
+                    BusinessId=business_id,
                 )
                 self.db.add(alert)
 
@@ -126,7 +129,7 @@ class LogService:
         end_date: str = None,
         page: int = 1,
         size: int = 20,
-        robot_ids: list[int] = None,
+        business_id: int = None,
     ):
         query = self.db.query(LogDataInfo)
 
@@ -135,8 +138,8 @@ class LogService:
             LogDataInfo.Action.notin_(["robot_online", "robot_offline"])
         )
 
-        if robot_ids is not None:
-            query = query.filter(LogDataInfo.RobotId.in_(robot_ids))
+        if business_id is not None:
+            query = query.filter(LogDataInfo.BusinessId == business_id)
 
         if category:
             query = query.filter(LogDataInfo.Category == category)
@@ -216,6 +219,7 @@ def log_event(
     robot_id: int = None,
     robot_name: str = None,
     error_json: str = None,
+    business_id: int = None,
 ):
     """스레드에서 안전하게 로그를 큐에 추가 (동일 action 30초 쿨다운)"""
     now = time.time()
@@ -240,6 +244,7 @@ def log_event(
         robot_id=robot_id,
         robot_name=robot_name,
         error_json=error_json,
+        business_id=business_id,
     )
 
     try:

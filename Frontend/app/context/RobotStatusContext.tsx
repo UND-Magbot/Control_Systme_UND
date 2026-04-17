@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { RobotRowData } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
+import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 
 const STATUS_API = `/robot/status`;
 const POLL_INTERVAL = 5000;
@@ -123,7 +124,7 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
             stableCharging = rawCharging;
           }
 
-          if (r.type === "QUADRUPED") {
+          if (isDualBatteryType(r.type)) {
             return {
               ...r,
               batteryLeft: (bat.BatteryLevelLeft as number) ?? r.batteryLeft,

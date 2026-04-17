@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { API_BASE } from "@/app/config";
-import { resetSessionExpired } from "@/app/lib/api";
+import { resetSessionExpired, markSessionExpired } from "@/app/lib/api";
 
 export type AuthUser = {
   id: number;
@@ -65,14 +65,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     try {
       let res = await authFetch(`${API_BASE}/api/auth/me`, fetchOpts);
+      console.debug("[Auth] refreshUser: /me status =", res.status);
       if (res.status === 401) {
         // access token 만료 → refresh 시도
         const refreshRes = await authFetch(`${API_BASE}/api/auth/refresh`, {
           method: "POST",
           ...fetchOpts,
         });
+        console.debug("[Auth] refreshUser: /refresh status =", refreshRes.status);
         if (refreshRes.ok) {
           res = await authFetch(`${API_BASE}/api/auth/me`, fetchOpts);
+          console.debug("[Auth] refreshUser: /me retry status =", res.status);
         }
       }
       if (res.ok) {
@@ -81,8 +84,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setUser(null);
       }
-    } catch {
+    } catch (err) {
       // 네트워크/타임아웃 에러 — 세션 상태를 알 수 없으므로 null 처리
+      console.debug("[Auth] refreshUser error:", err);
       setUser(null);
     }
   }, []);
@@ -120,6 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // 로그아웃
   const logout = useCallback(async () => {
     isManualLogout.current = true;
+    markSessionExpired();
     try {
       await authFetch(`${API_BASE}/api/auth/logout`, {
         method: "POST",

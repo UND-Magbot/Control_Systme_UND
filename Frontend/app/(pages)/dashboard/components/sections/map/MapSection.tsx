@@ -36,6 +36,9 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
       const idx = floors.findIndex((f) => f.id === robotFloorId);
       if (idx >= 0) return { idx, floor: floors[idx] };
     }
+    // 기본 층: "1F" 라벨이 있으면 해당 층, 없으면 첫 번째 층
+    const f1Idx = floors.findIndex((f) => f.label === "1F");
+    if (f1Idx >= 0) return { idx: f1Idx, floor: floors[f1Idx] };
     return { idx: 0, floor: floors[0] };
   };
   const initial = getInitialFloor();

@@ -25,8 +25,6 @@ class RobotInsertReq(BaseModel):
     robot_name: str
     robot_model: str
     robot_type: Optional[str] = None
-    robot_ip: Optional[str] = None
-    robot_port: Optional[int] = 30000
     limit_battery: int = 30
     business_id: Optional[int] = None
     sw_version: Optional[str] = None
@@ -50,8 +48,6 @@ def insert_Robot(req: RobotInsertReq, request: Request, db: Session = Depends(ge
         UserId=current_user.id,
         RobotName=req.robot_name,
         RobotType=req.robot_type,
-        RobotIP=req.robot_ip,
-        RobotPort=req.robot_port,
         ModelName=req.robot_model,
         LimitBattery=req.limit_battery,
         SerialNumber=req.robot_id,
@@ -75,6 +71,10 @@ def insert_Robot(req: RobotInsertReq, request: Request, db: Session = Depends(ge
 
     db.commit()
     db.refresh(robot)
+
+    # 런타임에 즉시 반영 (서버 재시작 불필요)
+    import app.robot_io.runtime as runtime
+    runtime.add_or_update_robot(robot)
 
     write_audit(db, current_user.id, "robot_created", "robot", robot.id,
                 detail=f"로봇명: {req.robot_name}, 시리얼: {req.robot_id}, 모델: {req.robot_model}",
@@ -162,6 +162,7 @@ class RobotUpdateReq(BaseModel):
     limit_battery: int | None = None
     business_id: int | None = None
     current_floor_id: int | None = None
+    robot_type: str | None = None
 
 
 @database.put("/robots/{robot_id}")
@@ -193,6 +194,7 @@ def update_robot(
         "배터리제한": ("LimitBattery", req.limit_battery),
         "사업장": ("BusinessId", req.business_id),
         "현재층": ("CurrentFloorId", req.current_floor_id),
+        "로봇타입": ("RobotType", req.robot_type),
     }
 
     for label, (attr, new_val) in field_map.items():
@@ -210,6 +212,10 @@ def update_robot(
 
     db.commit()
     db.refresh(robot)
+
+    # 런타임에 즉시 반영 (서버 재시작 불필요)
+    import app.robot_io.runtime as runtime
+    runtime.add_or_update_robot(robot)
 
     detail = ", ".join(changes) if changes else None
     write_audit(db, current_user.id, "robot_updated", "robot", robot_id, detail=detail,

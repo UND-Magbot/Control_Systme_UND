@@ -13,7 +13,7 @@ import type { WorkScheduleCase } from "@/app/(pages)/operationManagement/compone
 import PlacePathModal from "@/app/components/modal/PlacePathModal";
 import BatteryPathModal from "@/app/components/modal/BatteryChargeModal";
 import PathMoveModal from "@/app/(pages)/operationManagement/components/tabs/robot/PathMoveModal";
-import { MapPin, Route } from "lucide-react";
+import { MapPin, Route, Pencil } from "lucide-react";
 import { getBatteryColor } from "@/app/constants/robotIcons";
 import ChargingIcon from "@/app/components/common/ChargingIcon";
 import WaypointProgress from "./WaypointProgress";
@@ -22,6 +22,8 @@ import RobotActiveScheduleSection, { type ActiveScheduleInfo } from "./RobotActi
 import RobotRealtimeStatusSection from "./RobotRealtimeStatusSection";
 import RobotInfoViewSection from "./RobotInfoViewSection";
 import RobotInfoEditSection from "./RobotInfoEditSection";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
+import { useAuth } from "@/app/context/AuthContext";
 
 type DetailModalProps = {
     isOpen: boolean;
@@ -46,6 +48,9 @@ export default function RobotDetailModal({
     activeSchedule = null,
 }:DetailModalProps ){
 
+    const { refresh: refreshRobots } = useRobotStatusContext();
+    const { user } = useAuth();
+    const isAdminOrManager = user?.role === 1 || user?.role === 2;
     const [robotDetail, setRobotDetail] = useState<RobotRowData | null>(null);
 
     // B-1: 로딩 / 에러 상태
@@ -78,8 +83,6 @@ export default function RobotDetailModal({
                     site: data.Site ?? selectedRobot.site,
                     registrationDateTime: data.Adddate ?? selectedRobot.registrationDateTime,
                     return: data.LimitBattery ?? selectedRobot.return ?? DEFAULT_RETURN_BATTERY,
-                    robotIP: data.RobotIP ?? selectedRobot.robotIP,
-                    robotPort: data.RobotPort ?? selectedRobot.robotPort,
                 };
 
                 setRobotDetail(detail);
@@ -93,6 +96,7 @@ export default function RobotDetailModal({
                     site: detail.site,
                     registrationDateTime: detail.registrationDateTime,
                     returnBattery: detail.return ?? DEFAULT_RETURN_BATTERY,
+                    robotType: detail.type ?? "",
                 });
                 battery.reset(limitBattery);
             })
@@ -137,6 +141,7 @@ export default function RobotDetailModal({
     site: string;
     registrationDateTime: string;
     returnBattery: number;
+    robotType: string;
     };
 
     const [draft, setDraft] = useState<RobotDraft>({
@@ -149,6 +154,7 @@ export default function RobotDetailModal({
     site: "",
     registrationDateTime: "",
     returnBattery: DEFAULT_RETURN_BATTERY,
+    robotType: "",
     });
 
     const battery = useBatterySlider({ min: 15, max: 30, defaultValue: DEFAULT_RETURN_BATTERY });
@@ -256,16 +262,18 @@ export default function RobotDetailModal({
         ((robotDetail ?? selectedRobot) as any)?.return ??
         DEFAULT_RETURN_BATTERY;
 
+    const src = robotDetail ?? selectedRobot;
     setDraft({
-        robotName: (robotDetail ?? selectedRobot)?.no ?? "",
-        operator: (robotDetail ?? selectedRobot)?.operator ?? "",
-        serialNumber: (robotDetail ?? selectedRobot)?.serialNumber ?? "",
-        model: (robotDetail ?? selectedRobot)?.model ?? "",
-        group: (robotDetail ?? selectedRobot)?.group ?? "",
-        softwareVersion: (robotDetail ?? selectedRobot)?.softwareVersion ?? "",
-        site: (robotDetail ?? selectedRobot)?.site ?? "",
-        registrationDateTime: (robotDetail ?? selectedRobot)?.registrationDateTime ?? "",
+        robotName: src?.no ?? "",
+        operator: src?.operator ?? "",
+        serialNumber: src?.serialNumber ?? "",
+        model: src?.model ?? "",
+        group: src?.group ?? "",
+        softwareVersion: src?.softwareVersion ?? "",
+        site: src?.site ?? "",
+        registrationDateTime: src?.registrationDateTime ?? "",
         returnBattery: typeof rb === "number" ? rb : DEFAULT_RETURN_BATTERY,
+        robotType: src?.type ?? "",
     });
 
     // 2) 배터리 입력 UI도 원복
@@ -313,6 +321,7 @@ export default function RobotDetailModal({
             softwareVersion: draft.softwareVersion,
             site: draft.site,
             limit_battery: rb,
+            robot_type: draft.robotType || "기본 4족",
         };
 
         setIsSubmitting(true);
@@ -341,6 +350,7 @@ export default function RobotDetailModal({
                     softwareVersion: payload.softwareVersion,
                     site: payload.site,
                     return: rb,
+                    type: payload.robot_type as any,
                 }
                 : prev
             );
@@ -348,10 +358,13 @@ export default function RobotDetailModal({
             // 2. draft도 동기화
             setDraft((p) => ({ ...p, returnBattery: rb }));
 
-            // 3. 보기모드 전환
+            // 3. 목록(Context) 갱신 — DB 변경을 테이블에 즉시 반영
+            refreshRobots();
+
+            // 4. 보기모드 전환
             setIsEditMode(false);
 
-            // 4. 저장 완료 알림
+            // 5. 저장 완료 알림
             setSaveSuccessOpen(true);
         } catch (err) {
             console.error("robot update error:", err);
@@ -453,7 +466,14 @@ export default function RobotDetailModal({
                 <div className={styles.detailHeader} style={isEditMode ? { paddingBottom: 0 } : undefined}>
                   <div className={styles.detailHeaderTop}>
                     <h2>{(robotDetail ?? selectedRobot)?.no ?? "로봇"} {isEditMode ? "수정" : "상세정보"}</h2>
-                    <button className={styles.detailCloseBtn} onClick={onClose} disabled={isSubmitting} aria-label="닫기">✕</button>
+                    <div className={styles.detailHeaderBtns}>
+                      {!isEditMode && isAdminOrManager && (
+                        <button className={styles.detailEditBtn} onClick={handleUdate} disabled={isSubmitting} aria-label="수정">
+                          <Pencil size={16} />
+                        </button>
+                      )}
+                      <button className={styles.detailCloseBtn} onClick={onClose} disabled={isSubmitting} aria-label="닫기">✕</button>
+                    </div>
                   </div>
                 </div>
 

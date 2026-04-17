@@ -1447,7 +1447,7 @@ button.workPopoverItem:hover {
 /* 비활성화 스타일 */
 .btnDisabled {
   opacity: 0.45;
-  cursor: not-allowed;
+  cursor: default !important;
 }
 
 /* 로딩 스피너 */
@@ -1466,8 +1466,8 @@ button.workPopoverItem:hover {
 }
 
 .insertConfrimBtn img {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
 }
 
 .btnTotal {
@@ -1903,10 +1903,6 @@ button.workPopoverItem:hover {
   margin-right: 10px;
 }
 
-.btnBgGray:focus,
-.btnBgGray:hover {
-  background: #484e64;
-}
 
 
 /* 모달 delete 추가 알림 css */
@@ -1981,9 +1977,6 @@ button.workPopoverItem:hover {
   transition: background 0.15s ease, transform 0.1s ease;
 }
 
-.btnItemCommon:active {
-  transform: scale(0.97);
-}
 
 .btnItemCommon img {
   height: 11px;
@@ -2013,9 +2006,6 @@ button.workPopoverItem:hover {
   margin-right: 10px;
 }
 
-.btnBgRed:hover {
-  background: var(--surface-elevated);
-}
 
 .btnBgBlue {
   border: none;
@@ -2023,9 +2013,6 @@ button.workPopoverItem:hover {
   font-weight: 600;
 }
 
-.btnBgBlue:hover {
-  background: #0097d4;
-}
 
 
 /* ===== VideoPlayModal ===== */

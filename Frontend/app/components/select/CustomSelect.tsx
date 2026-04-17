@@ -124,7 +124,9 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
 
   const wrapperStyle: React.CSSProperties = {};
   if (width !== undefined) {
-    wrapperStyle.width = typeof width === "number" ? `${width}px` : width;
+    const w = typeof width === "number" ? `${width}px` : width;
+    wrapperStyle.width = w;
+    wrapperStyle.flex = `0 0 ${w}`;
   }
 
   const selectClasses = [

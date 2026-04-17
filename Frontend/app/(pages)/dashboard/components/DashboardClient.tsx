@@ -54,10 +54,16 @@ export default function DashboardClient({
   // (NoticeList / MapSection 등 독립 컴포넌트가 카메라 로드에 블록되지 않도록 게이트 제거)
   useEffect(() => {
     if (!statusLoaded) return;
-    const firstId = liveRobots[0]?.id ?? null;
-    setSelectedRobotId((prev) => prev ?? firstId);
     setPageReady();
-  }, [statusLoaded]);
+    const firstOnline = liveRobots.find((r) => r.power === "On");
+    const firstId = firstOnline?.id ?? null;
+    setSelectedRobotId((prev) => {
+      // 이미 선택된 로봇이 아직 online이면 유지
+      if (prev != null && liveRobots.some((r) => r.id === prev && r.power === "On")) return prev;
+      // 선택된 로봇이 없거나 offline으로 전환된 경우 → 첫 online 로봇 자동 선택
+      return firstId;
+    });
+  }, [statusLoaded, liveRobots]);
 
   const selectedRobot = useMemo(
     () => liveRobots.find((r) => r.id === selectedRobotId) ?? robots.find((r) => r.id === selectedRobotId) ?? null,

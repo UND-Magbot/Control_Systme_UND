@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter
 
-from app.user_cache import get_robot_id, get_robot_name
+from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
 from app.logs.service import log_event
 from app.robot_io.error_codes import ROBOT_ERROR_CODES
 
@@ -30,6 +30,6 @@ def test_robot_error(error_code: str):
     log_event("error", "robot_error_code",
               f"로봇 에러: {error_msg}",
               error_json=json.dumps({"error_code": error_hex, "test": True}, ensure_ascii=False),
-              robot_id=get_robot_id(), robot_name=get_robot_name())
+              robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
     return {"status": "ok", "error_code": error_hex, "message": error_msg}

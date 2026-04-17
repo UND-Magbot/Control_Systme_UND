@@ -19,6 +19,7 @@ export default function ComparisonCard({
   title, color, current, previous, prevPeriodLabel, delta, tooltip,
 }: Props) {
   const hasPrev = previous.length > 0;
+  const gridClass = hasPrev ? "" : styles.colSingle;
 
   return (
     <div className={styles.card}>
@@ -37,7 +38,7 @@ export default function ComparisonCard({
       </div>
 
       {/* 열 헤더 */}
-      <div className={styles.colHeaders}>
+      <div className={`${styles.colHeaders} ${gridClass}`}>
         <span className={styles.labelCol} />
         <span className={styles.valCol}>현재</span>
         {hasPrev && <span className={styles.valCol}>{prevPeriodLabel}</span>}
@@ -48,7 +49,7 @@ export default function ComparisonCard({
         {current.map((item, i) => {
           const prev = previous[i];
           return (
-            <div key={item.label} className={styles.row}>
+            <div key={item.label} className={`${styles.row} ${gridClass}`}>
               <span className={styles.labelCol}>{item.label}</span>
               <span className={styles.valCol} style={{ color }}>{item.value}</span>
               {hasPrev && (

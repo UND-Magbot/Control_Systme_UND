@@ -98,7 +98,6 @@ export default function VerticalBarChart({
               </div>
               {/* 라벨 */}
               <div className={styles.label}>
-                <span className={styles.dot} style={{ background: itemColor }} />
                 <span>{item.label}</span>
               </div>
             </div>

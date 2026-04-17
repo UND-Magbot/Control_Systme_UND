@@ -6,7 +6,7 @@ from app.database.database import get_db
 from app.database.models import UserInfo
 from app.logs.schemas import LogCreateReq, LogListResponse
 from app.logs.service import LogService
-from app.auth.dependencies import require_permission, is_admin, get_business_robot_ids
+from app.auth.dependencies import require_permission, is_admin
 
 router = APIRouter(prefix="/DB", tags=["logs"])
 
@@ -22,9 +22,7 @@ def get_logs(
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(require_permission("log")),
 ):
-    robot_ids = None
-    if not is_admin(current_user) and current_user.BusinessId:
-        robot_ids = get_business_robot_ids(db, current_user.BusinessId)
+    business_id = None if is_admin(current_user) else current_user.BusinessId
     return LogService(db).get_list(
         category=category,
         search=search,
@@ -32,7 +30,7 @@ def get_logs(
         end_date=end_date,
         page=page,
         size=size,
-        robot_ids=robot_ids,
+        business_id=business_id,
     )
 
 

@@ -45,7 +45,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 22px;
+  padding: 12px 22px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
 }
@@ -83,11 +83,6 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-}
-
-.CloseBtn:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.08);
 }
 
 .Title {
@@ -935,6 +930,12 @@
   width: 12px;
   height: 12px;
   flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.insertConfrimBtn span {
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .btnBgRed {
@@ -942,18 +943,9 @@
   background: var(--surface-button);
 }
 
-.btnBgRed:hover {
-  border-color: #BF0E14;
-  background: #941621;
-}
-
 .btnBgBlue {
   border: 1px solid #0E85B7;
   background: #196189;
-}
-
-.btnBgBlue:hover {
-  background: #1a7aaa;
 }
 
 
@@ -1006,23 +998,20 @@
   width: 12px;
   height: 12px;
   flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.btnItemCommon span {
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .btnBgGray {
   background: #626a81;
 }
 
-.btnBgGray:hover {
-  background: #4e5570;
-}
-
 .mr10 {
   margin-right: 10px;
-}
-
-.btnBgGray:focus,
-.btnBgGray:hover {
-  background: #484e64;
 }
 
 .itemDetail {
@@ -1285,10 +1274,11 @@
   cursor: pointer;
 }
 
-.repeatEveryday input {
+.repeatEverydayChk {
   width: 14px;
   height: 14px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 /* ====== 유효 기간 ====== */
@@ -1386,6 +1376,7 @@
   align-items: center;
   gap: 8px;
   flex: 1;
+  flex-wrap: wrap;
 }
 
 .intervalUnit {
@@ -1397,28 +1388,31 @@
 .intervalPresets {
   display: flex;
   gap: 4px;
-  margin-left: 8px;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .intervalPresetBtn {
-  height: 34px;
+  height: 26px;
   padding: 0 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-subtle, #8AACC7);
-  background: var(--surface-5, #454B67);
-  color: #ffffff;
-  font-size: 12px;
+  border-radius: 20px;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.intervalPresetBtn:hover {
-  background: #196189;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .intervalPresetActive {
-  background: #196189;
-  border-color: #0E85B7;
+  background: rgba(14, 133, 183, 0.2);
+  border: 1px solid #0E85B7;
+  color: #64d2ff;
 }
 
 /* ====== 다중 실행 시각 ====== */
@@ -1482,6 +1476,7 @@
   font-size: 12px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
+  margin-bottom: 10px;
 }
 
 .execTimeAddBtn:hover {
@@ -1634,17 +1629,9 @@
   background: #626a81;
 }
 
-.confirmBtnStay:hover {
-  background: #484e64;
-}
-
 .confirmBtnLeave {
   background: #941621;
   border: 1px solid #BF0E14;
-}
-
-.confirmBtnLeave:hover {
-  background: #7a1019;
 }
 
 /* ====== 상태 색상 dot ====== */
@@ -1749,11 +1736,6 @@
   background: var(--surface-5);
   border: 1px solid rgba(255, 255, 255, 0.06);
   transition: border-color 0.2s, background 0.2s;
-}
-
-.timeCard:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: var(--surface-elevated);
 }
 
 .timeCardIcon {
@@ -1924,10 +1906,6 @@
   flex-shrink: 0;
 }
 
-.pathStep:hover {
-  border-color: rgba(255, 255, 255, 0.18);
-}
-
 .pathStepDot {
   width: 20px;
   height: 20px;
@@ -1961,30 +1939,16 @@
   border: 1px solid transparent;
 }
 
-.btnItemCommon.btnBgRed:hover {
-  background: #941621;
-  border-color: #BF0E14;
-}
-
 /* ====== 삭제 버튼 (등록 모달용 - insertConfrimBtn에서 사용) ====== */
 .insertConfrimBtn.btnBgRed {
   background: var(--surface-button, #626a81);
   border: 1px solid var(--border-subtle);
 }
 
-.insertConfrimBtn.btnBgRed:hover {
-  background: #941621;
-  border-color: #BF0E14;
-}
-
 /* ====== 저장 버튼 ====== */
 .btnBgBlue {
   background: #196189;
   border: 1px solid #0E85B7;
-}
-
-.btnBgBlue:hover {
-  background: #0d4f70;
 }
 
 /* ====== 버튼 비활성화 ====== */

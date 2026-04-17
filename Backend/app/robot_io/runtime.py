@@ -13,6 +13,12 @@ from typing import Optional
 ONLINE_MAX_AGE = 10     # ≤10초 → Online
 ERROR_MAX_AGE = 12      # 10~12초 → Error (짧은 과도기), >12초 → Offline
 
+_DUAL_BATTERY_TYPES = {"기본 4족", "순찰 4족", "보안 4족"}
+
+def _is_dual_battery(robot_type: str) -> bool:
+    """한글 로봇타입 기준으로 듀얼 배터리(L/R) 여부 판별."""
+    return (robot_type or "") in _DUAL_BATTERY_TYPES
+
 # ── 내부 저장소 ───────────────────────────────────────
 _lock = threading.Lock()
 _runtime: dict[int, dict] = {}      # robot_info.id → 런타임 상태
@@ -20,12 +26,18 @@ _runtime: dict[int, dict] = {}      # robot_info.id → 런타임 상태
 
 # ── 초기화 ────────────────────────────────────────────
 
-def init_runtime(robots) -> None:
-    """서버 시작 시 DB의 RobotInfo 목록으로 런타임 초기화."""
+def init_runtime(robots, last_statuses: Optional[dict] = None) -> None:
+    """서버 시작 시 DB의 RobotInfo 목록으로 런타임 초기화.
+
+    last_statuses: {robot_id: RobotLastStatus} — DB에서 읽은 마지막 상태.
+    값이 있으면 인메모리 초기값으로 복원하여 서버 재시작 시 상태 유실을 방지.
+    """
+    last_statuses = last_statuses or {}
     with _lock:
         _runtime.clear()
+        restored = 0
         for r in robots:
-            _runtime[r.id] = {
+            entry = {
                 "robot_id": r.id,
                 "robot_name": r.RobotName or "",
                 "robot_type": r.RobotType or "",
@@ -33,6 +45,7 @@ def init_runtime(robots) -> None:
                 "robot_port": r.RobotPort or 30000,
                 "current_floor_id": r.CurrentFloorId,
                 "current_map_id": getattr(r, "CurrentMapId", None),
+                "business_id": r.BusinessId,
                 "position": {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0},
                 "battery": {},
                 "charge_state": {"state": 0, "error_code": 0, "timestamp": 0},
@@ -41,7 +54,42 @@ def init_runtime(robots) -> None:
                 "last_heartbeat": 0,
                 "nav": {"arrived": False, "last_state": None, "timestamp": 0},
             }
-        print(f"[OK] robot_runtime 초기화 완료: {len(_runtime)}대")
+
+            # DB에서 마지막 상태 복원
+            ls = last_statuses.get(r.id)
+            if ls and ls.LastHeartbeat:
+                if _is_dual_battery(r.RobotType):
+                    entry["battery"] = {
+                        "BatteryLevelLeft": ls.BatteryLevel1,
+                        "BatteryLevelRight": ls.BatteryLevel2,
+                        "VoltageLeft": ls.Voltage1,
+                        "VoltageRight": ls.Voltage2,
+                        "battery_temperatureLeft": ls.BatteryTemp1,
+                        "battery_temperatureRight": ls.BatteryTemp2,
+                        "chargeLeft": bool(ls.IsCharging1),
+                        "chargeRight": bool(ls.IsCharging2),
+                    }
+                else:
+                    entry["battery"] = {
+                        "SOC": ls.BatteryLevel1,
+                        "Voltage": ls.Voltage1,
+                        "BatteryTemp": ls.BatteryTemp1,
+                        "Charging": bool(ls.IsCharging1),
+                    }
+                if ls.PosX is not None:
+                    entry["position"] = {
+                        "x": ls.PosX or 0.0,
+                        "y": ls.PosY or 0.0,
+                        "yaw": ls.PosYaw or 0.0,
+                        "timestamp": 0,
+                    }
+                if ls.CurrentFloorId is not None:
+                    entry["current_floor_id"] = ls.CurrentFloorId
+                entry["last_heartbeat"] = ls.LastHeartbeat.timestamp()
+                restored += 1
+
+            _runtime[r.id] = entry
+        print(f"[OK] robot_runtime 초기화 완료: {len(_runtime)}대 (DB 복원: {restored}대)")
 
 
 # ── 상태 업데이트 ─────────────────────────────────────
@@ -254,6 +302,15 @@ def get_robot_id_by_ip(ip: str) -> Optional[int]:
         return None
 
 
+def get_business_id(robot_id: int) -> Optional[int]:
+    """로봇의 사업장 ID 반환."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return None
+        return entry.get("business_id")
+
+
 def is_charging(robot_id: int) -> bool:
     """로봇이 충전 중인지 확인."""
     with _lock:
@@ -293,3 +350,32 @@ def get_nav(robot_id: int) -> dict:
         if not entry:
             return {"arrived": False, "last_state": None, "timestamp": 0}
         return dict(entry["nav"])
+
+
+def add_or_update_robot(robot) -> None:
+    """DB의 RobotInfo 객체로 런타임 엔트리 추가 또는 갱신 (서버 재시작 불필요)."""
+    with _lock:
+        existing = _runtime.get(robot.id)
+        if existing:
+            existing["robot_name"] = robot.RobotName or ""
+            existing["robot_type"] = robot.RobotType or ""
+            existing["robot_ip"] = robot.RobotIP
+            existing["robot_port"] = robot.RobotPort or 30000
+        else:
+            _runtime[robot.id] = {
+                "robot_id": robot.id,
+                "robot_name": robot.RobotName or "",
+                "robot_type": robot.RobotType or "",
+                "robot_ip": robot.RobotIP,
+                "robot_port": robot.RobotPort or 30000,
+                "current_floor_id": robot.CurrentFloorId,
+                "current_map_id": getattr(robot, "CurrentMapId", None),
+                "position": {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0},
+                "battery": {},
+                "charge_state": {"state": 0, "error_code": 0, "timestamp": 0},
+                "device_temp": {},
+                "basic_status": {},
+                "last_heartbeat": 0,
+                "nav": {"arrived": False, "last_state": None, "timestamp": 0},
+            }
+        print(f"[OK] 런타임 갱신: robot_id={robot.id}, name={robot.RobotName}")

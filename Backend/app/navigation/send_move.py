@@ -5,7 +5,7 @@ from app.robot_io.sender import send_nav_to_robot
 from app.database.database import SessionLocal, get_db
 from app.database.models import LocationInfo, WayInfo, UserInfo, RobotInfo
 from app.logs.service import log_event
-from app.user_cache import get_robot_id, get_robot_name
+from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
 from app.auth.dependencies import get_current_user, require_permission
 
 
@@ -115,7 +115,7 @@ def navigation_send_next():
             print(f"[SYNC] 반복 시작 (남은 횟수: {nav_loop_remaining + 1})")
             log_event("schedule", "nav_loop",
                       f"반복 시작 (남은 횟수: {nav_loop_remaining + 1})",
-                      robot_id=get_robot_id(), robot_name=get_robot_name())
+                      robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         else:
             is_navigating = False
 
@@ -131,7 +131,7 @@ def navigation_send_next():
                 charge_on_arrival = False
                 print("🔋 도킹 포인트 도착 완료 — 충전소 이동 명령 전송")
                 log_event("schedule", "dock_arrival", "도킹 포인트 도착 완료, 충전 명령 전송",
-                          robot_id=get_robot_id(), robot_name=get_robot_name())
+                          robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
                 try:
                     from app.robot_control.charge import start_charge
                     start_charge()
@@ -140,7 +140,7 @@ def navigation_send_next():
             else:
                 print("🎉 모든 웨이포인트 이동 완료!")
                 log_event("schedule", "nav_complete", "모든 웨이포인트 이동 완료",
-                          robot_id=get_robot_id(), robot_name=get_robot_name())
+                          robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
             return
 
@@ -202,7 +202,7 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
     log_event("schedule", "nav_start",
               f"경로 주행 시작: {way_name} ({len(waypoints_list)}개 웨이포인트, {loop}회 반복)",
               detail=f"경로: {route_detail}",
-              robot_id=get_robot_id(), robot_name=get_robot_name())
+              robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
     try:
         from app.recording.manager import start_auto_recording
@@ -236,7 +236,7 @@ def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: Us
 
     print(f"🚗 장소 이동: {place.LacationName} → x={x}, y={y}, yaw={yaw}")
     log_event("schedule", "place_move_start", f"장소 이동: {place.LacationName}",
-              robot_id=get_robot_id(), robot_name=get_robot_name())
+              robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
     send_nav_to_robot(1, x, y, yaw)
 
     return {"status": "ok", "msg": f"{place.LacationName}(으)로 이동 명령 전송 완료"}
@@ -279,7 +279,7 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
     log_event("schedule", "path_move_start",
               f"경로 이동 시작: {path.WayName} ({len(waypoints)}개 포인트)",
               detail=f"경로: {route_names}",
-              robot_id=get_robot_id(), robot_name=get_robot_name())
+              robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
     try:
         from app.recording.manager import start_auto_recording

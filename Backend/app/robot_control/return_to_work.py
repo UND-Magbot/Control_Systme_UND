@@ -7,7 +7,7 @@ from fastapi import APIRouter
 
 from app.database.database import SessionLocal
 from app.database.models import LocationInfo, WayInfo, ScheduleInfo
-from app.user_cache import get_robot_id, get_robot_name
+from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
 from app.logs.service import log_event
 
 router = APIRouter()
@@ -234,7 +234,7 @@ def return_to_work(mode: str = "direct"):
     origin_name = origin.get("name", f"({origin['x']:.1f}, {origin['y']:.1f})")
     log_event("schedule", "return_to_work",
               f"작업 복귀 시작 ({mode_label}): {origin_name}(으)로 이동",
-              robot_id=get_robot_id(), robot_name=get_robot_name())
+              robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
     navigation_send_next()
     return {

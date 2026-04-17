@@ -134,8 +134,8 @@ export default function RobotCardList({
             <RobotCard
               key={robot.id}
               robot={robot}
-              isSelected={robot.id === selectedRobotId}
-              onClick={() => onSelectRobot(robot.id)}
+              isSelected={robot.id === selectedRobotId && robot.power === "On"}
+              onClick={() => { if (robot.power === "On") onSelectRobot(robot.id); }}
               robots={robots}
               video={videoStatus}
               cameras={cameras}

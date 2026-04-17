@@ -202,6 +202,8 @@
 
 .batDanger  { color: #ef4444; }
 
+.batDisabled { color: var(--text-muted); }
+
 /* 행 hover */
 
 /* ✅ 로봇 인덱스별 색상 지정 */
@@ -356,12 +358,12 @@
   border: 1px solid var(--border-default);
 }
 
-.viewMap:hover {
+.viewMap:not(.btnDisabled):hover {
   background: var(--surface-elevated);
   border-color: var(--text-tertiary);
 }
 
-.viewMap:active {
+.viewMap:not(.btnDisabled):active {
   transform: scale(0.96);
 }
 
@@ -1066,40 +1068,32 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 12px;
-  border-radius: 6px;
-  font-size: var(--font-size-sm);
-  font-weight: 700;
+  font-size: var(--font-size-md);
+  font-weight: 600;
   line-height: 20px;
 }
 
 .statusOperating {
-  background: rgba(0, 176, 238, 0.15);
   color: var(--color-info);
 }
 
 .statusStandby {
-  background: rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
 }
 
 .statusCharging {
-  background: rgba(146, 208, 80, 0.15);
   color: var(--color-success);
 }
 
 .statusDocking {
-  background: rgba(146, 208, 80, 0.15);
   color: var(--color-success);
 }
 
 .statusOffline {
-  background: rgba(107, 114, 128, 0.15);
   color: #6b7280;
 }
 
 .statusError {
-  background: rgba(255, 0, 0, 0.12);
   color: var(--color-error-soft);
 }
 
@@ -1492,17 +1486,8 @@
   box-shadow: inset 3px 0 0 var(--color-info);
 }
 
-.status tbody tr.selectedRow:hover td {
-  background: var(--color-info-selected);
-}
-
 .status tbody tr {
   cursor: pointer;
-  transition: background 0.1s ease;
-}
-
-.status tbody tr:hover td {
-  background: rgba(255, 255, 255, 0.03);
 }
 
 .status td img {
@@ -1593,16 +1578,13 @@
 
 .status tbody tr.rowInactive td {
   opacity: 0.4;
+  cursor: default;
 }
 
-.status tbody tr.rowInactive:hover td {
-  opacity: 0.55;
-}
 
 .btnDisabled {
-  pointer-events: none;
   opacity: 0.4;
-  cursor: default;
+  cursor: default !important;
 }
 
 .emptyState {

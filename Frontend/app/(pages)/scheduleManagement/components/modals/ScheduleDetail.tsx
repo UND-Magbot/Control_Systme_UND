@@ -111,8 +111,13 @@ export default function ScheduleDetail({
 
     const [modifiedAtText, setModifiedAtText] = useState<string | null>(null);
 
-    const initialForm = useMemo(() => buildInitialForm(event), [event]);
+    const [initialForm, setInitialForm] = useState<FormState>(() => buildInitialForm(event));
     const [form, setForm] = useState<FormState>(initialForm);
+
+    // event prop 변경 시 initialForm 재계산
+    useEffect(() => {
+        setInitialForm(buildInitialForm(event));
+    }, [event]);
     const [startDateText, setStartDateText] = useState(formatDate(new Date()));
     const [endDateText, setEndDateText] = useState(formatDate(new Date()));
 
@@ -405,7 +410,7 @@ export default function ScheduleDetail({
 
     const mode = (data.ScheduleMode || (data.Repeat === "Y" ? "weekly" : "once")) as FormState["scheduleMode"];
 
-    setForm({
+    const newForm: FormState = {
       robotNo: data.RobotName,
       title: data.TaskName,
       workType: data.TaskType,
@@ -450,7 +455,10 @@ export default function ScheduleDetail({
 
       seriesStartDate: data.SeriesStartDate ?? formatDate(start),
       seriesEndDate: data.SeriesEndDate ?? data.Repeat_End ?? '',
-    });
+    };
+
+    setForm(newForm);
+    setInitialForm(newForm);
 
     setStartDateText(formatDate(start));
     setEndDateText(formatDate(end));
@@ -860,8 +868,12 @@ export default function ScheduleDetail({
                               >{d}</button>
                             ))}
                           </div>
-                          <label className={styles.repeatEveryday}>
-                            <input type="checkbox" checked={form.repeatEveryday} onChange={(e) => toggleEveryday(e.target.checked)} />
+                          <label className={styles.repeatEveryday} onClick={() => toggleEveryday(!form.repeatEveryday)}>
+                            <img
+                              src={form.repeatEveryday ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                              alt=""
+                              className={styles.repeatEverydayChk}
+                            />
                             매일
                           </label>
                         </div>
@@ -1002,10 +1014,11 @@ export default function ScheduleDetail({
                               >{d}</button>
                             ))}
                           </div>
-                          <label className={styles.repeatEveryday}>
-                            <input type="checkbox"
-                              checked={form.intervalRepeatDays.length === 7}
-                              onChange={(e) => setForm((p) => ({ ...p, intervalRepeatDays: e.target.checked ? [...DOWS] as any : [] }))}
+                          <label className={styles.repeatEveryday} onClick={() => setForm((p) => ({ ...p, intervalRepeatDays: p.intervalRepeatDays.length === 7 ? [] : [...DOWS] as any }))}>
+                            <img
+                              src={form.intervalRepeatDays.length === 7 ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
+                              alt=""
+                              className={styles.repeatEverydayChk}
                             />
                             매일
                           </label>
@@ -1254,7 +1267,7 @@ export default function ScheduleDetail({
                 </FieldRow>
 
                 {isEditMode && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14, marginBottom: 14 }}>
                     <button
                       type="button"
                       className={styles.detailLinkBtn}

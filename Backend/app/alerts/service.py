@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy.orm import Session, subqueryload
-from sqlalchemy import desc, func, or_
+from sqlalchemy import desc, func
 from fastapi import HTTPException
 
 from app.database.models import Alert, AlertReadStatus, Notice, UserInfo
@@ -19,7 +19,7 @@ class AlertService:
         UserId: int = 0,
         page: int = 1,
         size: int = 20,
-        robot_names: list[str] = None,
+        business_id: int = None,
     ):
         query = (
             self.db.query(Alert)
@@ -27,10 +27,8 @@ class AlertService:
             .filter(Alert.DeletedAt.is_(None))
         )
 
-        if robot_names is not None:
-            query = query.filter(
-                or_(Alert.RobotName.in_(robot_names), Alert.Type == "Notice")
-            )
+        if business_id is not None:
+            query = query.filter(Alert.BusinessId == business_id)
         if alert_type:
             query = query.filter(Alert.Type == alert_type)
         if status:
@@ -115,7 +113,7 @@ class AlertService:
                 }
             items.append(item)
 
-        unread_count = self._get_unread_count(UserId)
+        unread_count = self._get_unread_count(UserId, business_id=business_id)
 
         return {
             "items": items,
@@ -203,7 +201,7 @@ class AlertService:
             self.db.add(read_status)
             self.db.commit()
 
-    def mark_all_read(self, UserId: int = 0, alert_type: str = None):
+    def mark_all_read(self, UserId: int = 0, alert_type: str = None, business_id: int = None):
         query = (
             self.db.query(Alert.id)
             .outerjoin(
@@ -212,6 +210,8 @@ class AlertService:
             )
             .filter(Alert.DeletedAt.is_(None), AlertReadStatus.id.is_(None))
         )
+        if business_id is not None:
+            query = query.filter(Alert.BusinessId == business_id)
         if alert_type:
             query = query.filter(Alert.Type == alert_type)
         unread_alerts = query.all()
@@ -221,17 +221,18 @@ class AlertService:
 
         self.db.commit()
 
-    def _get_unread_count(self, UserId: int = 0) -> dict:
-        results = (
+    def _get_unread_count(self, UserId: int = 0, business_id: int = None) -> dict:
+        query = (
             self.db.query(Alert.Type, func.count(Alert.id))
             .outerjoin(
                 AlertReadStatus,
                 (AlertReadStatus.AlertId == Alert.id) & (AlertReadStatus.UserId == UserId),
             )
             .filter(Alert.DeletedAt.is_(None), AlertReadStatus.id.is_(None))
-            .group_by(Alert.Type)
-            .all()
         )
+        if business_id is not None:
+            query = query.filter(Alert.BusinessId == business_id)
+        results = query.group_by(Alert.Type).all()
 
         counts = {"total": 0, "robot": 0, "schedule": 0, "notice": 0}
         for alert_type, count in results:
@@ -242,5 +243,5 @@ class AlertService:
 
         return counts
 
-    def get_unread_count(self, UserId: int = 0) -> dict:
-        return self._get_unread_count(UserId)
+    def get_unread_count(self, UserId: int = 0, business_id: int = None) -> dict:
+        return self._get_unread_count(UserId, business_id=business_id)
