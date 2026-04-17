@@ -9,7 +9,7 @@ from app.businesses.schemas import (
     FloorCreateReq, FloorResponse,
 )
 from app.businesses.service import BusinessService, FloorService
-from app.auth.dependencies import require_permission
+from app.auth.dependencies import require_permission, is_admin
 from app.auth.audit import write_audit, get_client_ip
 
 router = APIRouter(prefix="/DB", tags=["businesses"])
@@ -25,11 +25,14 @@ def get_businesses(
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(require_permission("business-list")),
 ):
-    return BusinessService(db).get_list(search=search, page=page, size=size)
+    business_id = None if is_admin(current_user) else current_user.BusinessId
+    return BusinessService(db).get_list(search=search, page=page, size=size, business_id=business_id)
 
 
 @router.get("/businesses/{biz_id}", response_model=BusinessResponse)
 def get_business(biz_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("business-list"))):
+    if not is_admin(current_user) and current_user.BusinessId and current_user.BusinessId != biz_id:
+        return BusinessService(db).get_one(current_user.BusinessId)
     return BusinessService(db).get_one(biz_id)
 
 
@@ -75,7 +78,8 @@ def delete_business(biz_id: int, request: Request, db: Session = Depends(get_db)
 
 @router.get("/businesses/{biz_id}/floors", response_model=List[FloorResponse])
 def get_floors(biz_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("business-list"))):
-    return FloorService(db).get_list(business_id=biz_id)
+    effective_id = biz_id if is_admin(current_user) else (current_user.BusinessId or biz_id)
+    return FloorService(db).get_list(business_id=effective_id)
 
 
 @router.post("/businesses/{biz_id}/floors")

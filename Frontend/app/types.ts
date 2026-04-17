@@ -212,6 +212,14 @@ export interface AlertMockData {
   attachmentUrl?: string;
   attachmentSize?: number;
   noticeId?: number;
+  log?: {
+    Category: string;
+    Action: string;
+    Message: string;
+    Detail: string | null;
+    RobotName: string | null;
+    CreatedAt: string;
+  };
 }
 
 // ────────────────────────────────────────────────────────

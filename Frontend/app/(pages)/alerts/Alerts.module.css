@@ -718,6 +718,48 @@
     white-space: pre;
 }
 
+/* 로그 상세 박스 */
+.logDetailBox {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(130, 190, 255, 0.10);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.logDetailRow {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding: 10px 16px;
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.logDetailRow:last-child {
+    border-bottom: none;
+}
+
+.logDetailLabel {
+    flex-shrink: 0;
+    width: 56px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.logDetailValue {
+    color: var(--text-secondary);
+    word-break: break-all;
+    line-height: 1.6;
+}
+
 /* 빈 상태 (우측) */
 .emptyDetail {
     display: flex;
@@ -825,6 +867,12 @@
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.viewLogBtnActive {
+  background: rgba(130, 190, 255, 0.1);
+  border-color: rgba(130, 190, 255, 0.4);
+  color: var(--color-info);
 }
 
 /* 리스트 - 중요 뱃지 (statusTag와 동일 크기) */

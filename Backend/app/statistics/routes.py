@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from app.auth.dependencies import get_db, require_permission
+from app.auth.dependencies import get_db, require_permission, is_admin, get_business_robot_names
 from app.database.models import UserInfo
 from app.statistics.schemas import StatisticsResponse
 from app.statistics.service import StatisticsService
@@ -34,11 +34,15 @@ def get_statistics(
     if robot_type and robot_type not in _VALID_ROBOT_TYPES:
         raise HTTPException(422, f"유효하지 않은 로봇 타입: {robot_type}")
 
+    robot_names = None
+    if not is_admin(current_user) and current_user.BusinessId:
+        robot_names = get_business_robot_names(db, current_user.BusinessId)
     return StatisticsService(db).get_all(
         start_date=start_date,
         end_date=end_date,
         robot_type=robot_type,
         robot_name=robot_name,
+        biz_robot_names=robot_names,
     )
 
 

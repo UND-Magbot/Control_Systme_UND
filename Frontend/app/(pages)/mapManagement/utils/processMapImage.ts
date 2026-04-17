@@ -63,9 +63,17 @@ export function processMapImage(
   }
 
   ctx.putImageData(imageData, 0, 0);
+
+  // 맵 유효 영역 마스크 생성 (alpha > 0 인 픽셀 = 맵 내부)
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    mask[i] = data[i * 4 + 3] > 0 ? 1 : 0;
+  }
+
   return {
     url: canvas.toDataURL("image/png"),
     w: img.width,
     h: img.height,
+    mask,
   };
 }
