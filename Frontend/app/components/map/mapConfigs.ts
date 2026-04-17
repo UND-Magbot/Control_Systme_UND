@@ -1,7 +1,8 @@
 import type { MapConfig } from "./types";
+import { API_BASE } from "@/app/config";
 
 export const OCC_GRID_CONFIG: MapConfig = {
-  imageSrc: "/static/maps/gumi-v1.png",
+  imageSrc: `${API_BASE}/static/maps/gumi-v1.png`,
   resolution: 0.1,
   originX: -11,
   originY: -15.9,

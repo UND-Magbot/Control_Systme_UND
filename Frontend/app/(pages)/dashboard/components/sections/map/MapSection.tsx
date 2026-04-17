@@ -8,6 +8,7 @@ import type { MapConfig, POIItem, RobotOnMap, NavPath, NavPathSegment, MapView }
 import type { CanvasMapHandle } from "@/app/components/map/CanvasMap";
 import CanvasMap from "@/app/components/map/CanvasMap";
 import { apiFetch } from "@/app/lib/api";
+import { API_BASE } from "@/app/config";
 
 // ── 모듈 레벨 캐시 — 탭 전환해도 유지, npm run dev 재시작 시 초기화 ──
 const _cache: {
@@ -146,7 +147,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
 
         // 이미지 프리로드
         const img = new Image();
-        img.src = imgPath;
+        img.src = `${API_BASE}${imgPath}`;
         await new Promise<void>((resolve) => {
           img.onload = () => resolve();
           img.onerror = () => resolve();
@@ -154,7 +155,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
         if (cancelled) return;
 
         const config: MapConfig = {
-          imageSrc: imgPath,
+          imageSrc: `${API_BASE}${imgPath}`,
           resolution: meta.resolution ?? 0.1,
           originX: meta.originX ?? 0,
           originY: meta.originY ?? 0,
