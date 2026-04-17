@@ -254,7 +254,13 @@ export default function BusinessManageTab() {
               </tr>
             </thead>
             <tbody>
-              {currentItems.length === 0 && (
+              {loading && currentItems.length === 0 && (
+                <tr><td colSpan={colCount} className={styles.emptyState}>
+                  <div className={styles.spinner} style={{ margin: '0 auto 12px' }} />
+                  데이터를 불러오는 중...
+                </td></tr>
+              )}
+              {!loading && currentItems.length === 0 && (
                 <tr><td colSpan={colCount} className={styles.emptyState}>등록된 사업장이 없습니다.</td></tr>
               )}
               {currentItems.map((b, idx) => {

@@ -12,6 +12,8 @@ import {
 } from "@/app/constants/robotIcons";
 import ChargingIcon from "@/app/components/common/ChargingIcon";
 import { apiFetch } from "@/app/lib/api";
+import { useModalAlert } from "@/app/hooks/useModalAlert";
+import AlertModal from "@/app/components/modal/AlertModal";
 import dynamic from "next/dynamic";
 
 const PlacePathModal = dynamic(() => import("@/app/components/modal/PlacePathModal"), { ssr: false });
@@ -45,6 +47,7 @@ const ROBOT_ICONS = [
 ];
 
 export default function RobotCard({ robot, isSelected, onClick, robots, video, cameras, robotLocation, floors = [], canControlRobot = true, hasActiveSchedule = false }: RobotCardProps) {
+  const { modal, modalAlert, closeModal } = useModalAlert();
   const currentFloorName = floors.find((f) => f.id === robot.currentFloorId)?.label ?? "층";
   const typeIdx = ROBOT_TYPE_INDEX[robot.type] ?? 0;
   const dotClass = styles[`dot${robot.network}`] ?? styles.dotOffline;
@@ -83,7 +86,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
     apiFetch(`/robot/return-to-work?mode=${mode}`, { method: "POST" })
       .then((res) => res.json())
       .then((data) => {
-        if (data.status === "error") alert(data.msg);
+        if (data.status === "error") modalAlert(data.msg);
       })
       .catch((err) => console.error("작업 복귀 실패", err));
     setReturnModalOpen(false);
@@ -102,7 +105,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
   const handleEmergencyConfirm = () => {
     apiFetch(`/nav/stopmove`, { method: "POST" })
       .then((res) => {
-        if (res.ok) alert("작업이 중지되었습니다.");
+        if (res.ok) modalAlert("작업이 중지되었습니다.");
       })
       .catch((err) => console.error("긴급 정지 실패", err));
     setEmergencyConfirmOpen(false);
@@ -111,7 +114,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
   const handleChargeMove = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (robot.isCharging) {
-      alert("이미 충전 중입니다.");
+      modalAlert("이미 충전 중입니다.");
       return;
     }
     setChargeConfirmOpen(true);
@@ -272,6 +275,14 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
           onComplete={() => {}}
         />
       )}
+
+      <AlertModal
+        open={modal.open}
+        message={modal.message}
+        mode={modal.mode}
+        onConfirm={closeModal}
+        onClose={closeModal}
+      />
     </>
   );
 }

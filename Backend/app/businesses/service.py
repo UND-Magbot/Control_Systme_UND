@@ -11,9 +11,11 @@ class BusinessService:
 
     # ─── 목록 조회 (페이지네이션 + 검색) ───
 
-    def get_list(self, search: str = None, page: int = 1, size: int = 20):
+    def get_list(self, search: str = None, page: int = 1, size: int = 20, business_id: int = None):
         query = self.db.query(BusinessInfo).order_by(BusinessInfo.id.asc())
 
+        if business_id is not None:
+            query = query.filter(BusinessInfo.id == business_id)
         if search:
             keyword = f"%{search}%"
             query = query.filter(

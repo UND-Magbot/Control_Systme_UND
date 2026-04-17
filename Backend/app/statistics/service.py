@@ -86,11 +86,12 @@ class StatisticsService:
         end_date: str | None = None,
         robot_type: str | None = None,
         robot_name: str | None = None,
+        biz_robot_names: list[str] | None = None,
     ) -> StatisticsResponse:
         t0 = _time.monotonic()
 
         try:
-            return self._build_statistics(start_date, end_date, robot_type, robot_name)
+            return self._build_statistics(start_date, end_date, robot_type, robot_name, biz_robot_names)
         except SQLAlchemyError as e:
             logger.error("통계 조회 DB 오류: %s", e, exc_info=True)
             raise HTTPException(500, "통계 조회 실패")
@@ -104,6 +105,7 @@ class StatisticsService:
         end_date: str | None,
         robot_type: str | None,
         robot_name: str | None,
+        biz_robot_names: list[str] | None = None,
     ) -> StatisticsResponse:
 
         # ── 날짜 파싱 (미지정 시 당일 기준) ──
@@ -124,6 +126,8 @@ class StatisticsService:
 
         # ── 1) 로봇 타입 분포 (날짜 무관) ──
         robot_query = self.db.query(RobotInfo).filter(RobotInfo.DeletedAt.is_(None))
+        if biz_robot_names is not None:
+            robot_query = robot_query.filter(RobotInfo.RobotName.in_(biz_robot_names))
         all_robots = robot_query.all()
 
         # 필터 적용된 로봇 목록

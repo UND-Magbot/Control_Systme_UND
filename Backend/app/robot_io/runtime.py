@@ -89,16 +89,6 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
 
         if device_temp:
             entry["device_temp"] = device_temp
-            nonzero = {k: round(v, 1) for k, v in device_temp.items() if v != 0.0}
-            if nonzero:
-                max_key = max(nonzero, key=nonzero.get)
-                max_val = nonzero[max_key]
-                # 50도 이상 + 30초마다 1번만 로그
-                if max_val >= 50.0:
-                    last_log = entry.get("_last_temp_log", 0)
-                    if timestamp - last_log >= 30:
-                        entry["_last_temp_log"] = timestamp
-                        print(f"[TEMP WARN] 최고 온도: {max_key}={max_val}°C")
 
 
 def update_position(robot_id: int, x: float, y: float, yaw: float) -> None:

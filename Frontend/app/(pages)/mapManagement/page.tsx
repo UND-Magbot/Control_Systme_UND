@@ -12,6 +12,8 @@ import type { RobotRowData, Floor } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
 import { usePageReady } from "@/app/context/PageLoadingContext";
+import { useModalAlert } from "@/app/hooks/useModalAlert";
+import MapAlertModal from "@/app/components/modal/AlertModal";
 import type {
   MapTab,
   MappingState,
@@ -43,6 +45,11 @@ import MapRightPanel from "./components/tabs/map/MapRightPanel";
 
 export default function MapManagementPage() {
   const setPageReady = usePageReady();
+  const { modal, modalAlert, modalConfirm, closeModal, handleConfirm } = useModalAlert();
+  const readyFlags = useRef({ robots: false, maps: false });
+  const checkReady = () => {
+    if (readyFlags.current.robots && readyFlags.current.maps) setPageReady();
+  };
   // ── URL query에서 초기 탭 결정 ──
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as MapTab) || "map";
@@ -90,7 +97,8 @@ export default function MapManagementPage() {
       } catch (e) {
         console.error("로봇 데이터 로드 실패:", e);
       } finally {
-        setPageReady();
+        readyFlags.current.robots = true;
+        checkReady();
       }
     };
     fetchTabRobots();
@@ -224,7 +232,7 @@ export default function MapManagementPage() {
       || pendingRoutes.length > 0 || deletedRouteDbIds.size > 0
       || movedPlaces.size > 0;
     if (!hasChanges) {
-      alert("저장할 변경사항이 없습니다.");
+      modalAlert("저장할 변경사항이 없습니다.");
       return;
     }
 
@@ -314,7 +322,7 @@ export default function MapManagementPage() {
         if (!res.ok) throw new Error(`구간 "${r.startName}→${r.endName}" 저장 실패`);
       }
 
-      alert("저장되었습니다.");
+      modalAlert("저장되었습니다.");
       setPendingPlaces([]);
       setDeletedDbIds(new Set());
       setPendingRoutes([]);
@@ -328,12 +336,13 @@ export default function MapManagementPage() {
       }
     } catch (e) {
       console.error(e);
-      alert(e instanceof Error ? e.message : "저장 중 오류 발생");
+      modalAlert(e instanceof Error ? e.message : "저장 중 오류 발생");
     }
   };
 
   // ── 장소 생성 모드 ──
   const [isPlaceMode, setIsPlaceMode] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
   const [showPlaceModal, setShowPlaceModal] = useState(false);
   const [placeClickCoords, setPlaceClickCoords] = useState<{
     worldX: number; worldY: number; pixelX: number; pixelY: number;
@@ -401,8 +410,8 @@ export default function MapManagementPage() {
 
   // 경로 저장
   const handleSavePath = async () => {
-    if (!pathBuildName.trim()) { alert("경로명을 입력해주세요."); return; }
-    if (pathBuildOrder.length < 2) { alert("장소를 2개 이상 선택해주세요."); return; }
+    if (!pathBuildName.trim()) { modalAlert("경로명을 입력해주세요."); return; }
+    if (pathBuildOrder.length < 2) { modalAlert("장소를 2개 이상 선택해주세요."); return; }
 
     // RobotName: 연결된 로봇 > 첫 번째 장소의 RobotName > 빈 문자열
     const robotName =
@@ -411,7 +420,7 @@ export default function MapManagementPage() {
       ?? pendingPlaces.find((p) => p.LacationName === pathBuildOrder[0])?.RobotName
       ?? "";
 
-    if (!robotName) { alert("로봇 정보를 확인할 수 없습니다. 로봇을 연결하거나 장소에 로봇을 지정해주세요."); return; }
+    if (!robotName) { modalAlert("로봇 정보를 확인할 수 없습니다. 로봇을 연결하거나 장소에 로봇을 지정해주세요."); return; }
 
     try {
       const res = await apiFetch(`/DB/path`, {
@@ -425,14 +434,14 @@ export default function MapManagementPage() {
         }),
       });
       if (!res.ok) throw new Error("경로 저장 실패");
-      alert("경로가 저장되었습니다.");
+      modalAlert("경로가 저장되었습니다.");
       setIsPathBuildMode(false);
       setPathBuildOrder([]);
       setPathBuildName("");
       setRightPanelOpen(true);
     } catch (e) {
       console.error(e);
-      alert(e instanceof Error ? e.message : "저장 중 오류 발생");
+      modalAlert(e instanceof Error ? e.message : "저장 중 오류 발생");
     }
   };
 
@@ -503,11 +512,26 @@ export default function MapManagementPage() {
   }, [isPlaceMode, isDeleteMode, isRouteMode, isPathBuildMode]);
 
   // ── SVG 맵 뷰 상태 ──
-  const [processedImg, setProcessedImg] = useState<{ url: string; w: number; h: number } | null>(null);
+  const [processedImg, setProcessedImg] = useState<{ url: string; w: number; h: number; mask?: Uint8Array } | null>(null);
   const { zoom, setZoom, rotation, setRotation, offset, setOffset, svgRef } =
     useSvgPanZoom(processedImg !== null);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0 });
+
+  /** 맵을 SVG 컨테이너 중앙에 맞춤 (로드 시 & 초기화 버튼) */
+  const centerMapView = useCallback((img?: { w: number; h: number }) => {
+    const target = img ?? processedImg;
+    if (!target) return;
+    const svgEl = svgRef.current;
+    if (!svgEl || svgEl.getBoundingClientRect().width === 0) return;
+    const rect = svgEl.getBoundingClientRect();
+    const scaleX = rect.width / target.w;
+    const scaleY = rect.height / target.h;
+    const fitZoom = Math.min(scaleX, scaleY) * 0.75;
+    setZoom(fitZoom);
+    setRotation(0);
+    setOffset({ x: rect.width / 2, y: rect.height / 2 });
+  }, [processedImg, svgRef, setZoom, setRotation, setOffset]);
 
   // ── 저장 모달 폼 ──
   const [saveBizId, setSaveBizId] = useState<number | "">("");
@@ -610,6 +634,11 @@ export default function MapManagementPage() {
         }
       } catch (e) {
         if (!cancelled) console.error("초기 맵 로드 실패:", e);
+      } finally {
+        if (!cancelled) {
+          readyFlags.current.maps = true;
+          checkReady();
+        }
       }
     };
     loadFirstMap();
@@ -638,23 +667,17 @@ export default function MapManagementPage() {
     img.onload = () => {
       const processed = processMapImage(img);
       setProcessedImg(processed);
-      setRotation(0);
 
       // SVG가 렌더된 후 중앙 배치 (마운트 대기)
-      const centerMap = () => {
+      const waitAndCenter = () => {
         const svgEl = svgRef.current;
         if (svgEl && svgEl.getBoundingClientRect().width > 0) {
-          const rect = svgEl.getBoundingClientRect();
-          const scaleX = rect.width / processed.w;
-          const scaleY = rect.height / processed.h;
-          const fitZoom = Math.min(scaleX, scaleY) * 0.75;
-          setZoom(fitZoom);
-          setOffset({ x: rect.width / 2, y: rect.height / 2 });
+          centerMapView(processed);
         } else {
-          requestAnimationFrame(centerMap);
+          requestAnimationFrame(waitAndCenter);
         }
       };
-      requestAnimationFrame(centerMap);
+      requestAnimationFrame(waitAndCenter);
     };
     img.src = imgUrl;
   }, [selectedMap, maps]);
@@ -788,6 +811,14 @@ export default function MapManagementPage() {
     const imgPx = rx + processedImg.w / 2;
     const imgPy = ry + processedImg.h / 2;
     if (imgPx < 0 || imgPx > processedImg.w || imgPy < 0 || imgPy > processedImg.h) return null;
+    // 맵 바깥(투명) 영역 체크
+    if (processedImg.mask) {
+      const px = Math.floor(imgPx);
+      const py = Math.floor(imgPy);
+      if (px >= 0 && px < processedImg.w && py >= 0 && py < processedImg.h) {
+        if (processedImg.mask[py * processedImg.w + px] === 0) return null;
+      }
+    }
     const worldX = imgPx * mapMeta.resolution + mapMeta.originX;
     const worldY = (processedImg.h - imgPy) * mapMeta.resolution + mapMeta.originY;
     return { worldX, worldY, pixelX: imgPx, pixelY: imgPy };
@@ -803,7 +834,7 @@ export default function MapManagementPage() {
     // 장소 생성 모드 (최우선)
     if (isPlaceMode) {
       const coords = svgEventToWorld(e);
-      if (!coords) return;
+      if (!coords) { modalAlert("맵 범위를 벗어난 위치입니다."); return; }
       setPlaceClickCoords(coords);
       setShowPlaceModal(true);
       setIsPlaceMode(false);
@@ -813,7 +844,7 @@ export default function MapManagementPage() {
     // 구간 모드: 빈 공간 클릭 → 시작점 선택된 상태에서만 새 장소 생성
     if (isRouteMode && routeStartName) {
       const coords = svgEventToWorld(e);
-      if (!coords) return;
+      if (!coords) { modalAlert("맵 범위를 벗어난 위치입니다."); return; }
       setPlaceClickCoords(coords);
       setShowPlaceModal(true);
       return;
@@ -851,7 +882,7 @@ export default function MapManagementPage() {
   const handleMappingStart = () => {
     clearAllModes();
     if (connectedRobots.length === 0) {
-      alert("로봇이 연결되어 있지 않습니다. 먼저 로봇을 연결해주세요.");
+      modalAlert("로봇이 연결되어 있지 않습니다. 먼저 로봇을 연결해주세요.");
       return;
     }
     setStartBizId("");
@@ -867,7 +898,7 @@ export default function MapManagementPage() {
   };
 
   const handlePathBuildStart = () => {
-    if (!processedImg || !mapMeta) { alert("맵을 먼저 선택해주세요."); return; }
+    if (!processedImg || !mapMeta) { modalAlert("맵을 먼저 선택해주세요."); return; }
     clearAllModes();
     setIsPathBuildMode(true);
     setPathBuildName("");
@@ -877,25 +908,26 @@ export default function MapManagementPage() {
   const handleMapReset = () => {
     clearAllModes();
     if (!processedImg || !mapMeta) {
-      alert("맵을 먼저 선택해주세요.");
+      modalAlert("맵을 먼저 선택해주세요.");
       return;
     }
-    if (!confirm("맵 위의 모든 장소와 구간을 초기화하시겠습니까?\n저장 버튼을 눌러야 DB에 반영됩니다.")) return;
-    setUndoStack((prev) => [...prev, {
-      type: "mapReset" as const,
-      prevPendingPlaces: [...pendingPlaces],
-      prevPendingRoutes: [...pendingRoutes],
-      prevDeletedDbIds: new Set(deletedDbIds),
-      prevDeletedRouteDbIds: new Set(deletedRouteDbIds),
-      prevMovedPlaces: new Map(movedPlaces),
-      prevModifiedDbIds: new Set(modifiedDbIds),
-    }]);
-    setPendingPlaces([]);
-    setPendingRoutes([]);
-    setDeletedDbIds(new Set(mapPlaces.map((p) => p.id)));
-    setDeletedRouteDbIds(new Set(dbRoutes.map((r) => r.id)));
-    setMovedPlaces(new Map());
-    setModifiedDbIds(new Set());
+    modalConfirm("맵 위의 모든 장소와 구간을 초기화하시겠습니까?\n저장 버튼을 눌러야 DB에 반영됩니다.", () => {
+      setUndoStack((prev) => [...prev, {
+        type: "mapReset" as const,
+        prevPendingPlaces: [...pendingPlaces],
+        prevPendingRoutes: [...pendingRoutes],
+        prevDeletedDbIds: new Set(deletedDbIds),
+        prevDeletedRouteDbIds: new Set(deletedRouteDbIds),
+        prevMovedPlaces: new Map(movedPlaces),
+        prevModifiedDbIds: new Set(modifiedDbIds),
+      }]);
+      setPendingPlaces([]);
+      setPendingRoutes([]);
+      setDeletedDbIds(new Set(mapPlaces.map((p) => p.id)));
+      setDeletedRouteDbIds(new Set(dbRoutes.map((r) => r.id)));
+      setMovedPlaces(new Map());
+      setModifiedDbIds(new Set());
+    });
   };
 
   // ── 시작 모달: 사업장 선택 시 층 로드 ──
@@ -928,7 +960,7 @@ export default function MapManagementPage() {
   // ── 맵핑 실제 시작 ──
   const handleConfirmMappingStart = async () => {
     if (startMapNameChecked !== true) {
-      alert("영역 이름 중복 체크를 해주세요.");
+      modalAlert("영역 이름 중복 체크를 해주세요.");
       return;
     }
 
@@ -945,7 +977,7 @@ export default function MapManagementPage() {
         bizId = biz.id;
         loadBusinesses();
       } catch (e) {
-        alert("사업장 생성 실패");
+        modalAlert("사업장 생성 실패");
         return;
       }
     }
@@ -962,7 +994,7 @@ export default function MapManagementPage() {
         const newFloor = await res.json();
         floorId = newFloor.id;
       } catch (e) {
-        alert("층 생성 실패");
+        modalAlert("층 생성 실패");
         return;
       }
     }
@@ -993,7 +1025,7 @@ export default function MapManagementPage() {
       setIsMappingRunning(true);
     } catch (e) {
       console.error("맵핑 시작 실패:", e);
-      alert("맵핑 시작 실패");
+      modalAlert("맵핑 시작 실패");
     } finally {
       setIsMappingStarting(false);
     }
@@ -1017,11 +1049,11 @@ export default function MapManagementPage() {
         setMappingState("success");
       } else {
         const err = await res.json();
-        alert(err.detail || "맵 저장 실패");
+        modalAlert(err.detail || "맵 저장 실패");
       }
     } catch (e) {
       console.error("맵핑 종료 실패:", e);
-      alert("맵핑 종료 중 오류 발생");
+      modalAlert("맵핑 종료 중 오류 발생");
     } finally {
       setIsMappingEnding(false);
     }
@@ -1055,7 +1087,7 @@ export default function MapManagementPage() {
   // ── 맵 저장 ──
   const handleSaveMap = async () => {
     if (saveBizId === "" || saveFloorId === "" || !saveMapName.trim()) {
-      alert("모든 항목을 입력해주세요.");
+      modalAlert("모든 항목을 입력해주세요.");
       return;
     }
 
@@ -1071,14 +1103,14 @@ export default function MapManagementPage() {
       });
 
       if (res.ok) {
-        alert("맵이 저장되었습니다.");
+        modalAlert("맵이 저장되었습니다.");
         setMappingState("idle");
       } else {
-        alert("저장 실패");
+        modalAlert("저장 실패");
       }
     } catch (e) {
       console.error("맵 저장 실패:", e);
-      alert("저장 중 오류 발생");
+      modalAlert("저장 중 오류 발생");
     }
   };
 
@@ -1113,7 +1145,7 @@ export default function MapManagementPage() {
   const handleOpenSyncModal = async () => {
     clearAllModes();
     if (selectedMap === "") {
-      alert("동기화할 맵을 먼저 선택해주세요.");
+      modalAlert("동기화할 맵을 먼저 선택해주세요.");
       return;
     }
     try {
@@ -1131,86 +1163,126 @@ export default function MapManagementPage() {
     const mapData = maps.find((m) => m.id === selectedMap);
     if (!mapData) return;
     const selected = syncRobots.filter((r) => selectedSyncIds.includes(r.id));
-    if (selected.length === 0) { alert("동기화할 로봇을 선택해주세요."); return; }
+    if (selected.length === 0) { modalAlert("동기화할 로봇을 선택해주세요."); return; }
 
     const names = selected.map((r) => r.RobotName).join(", ");
-    if (!confirm(`로봇 [${names}]에 맵 '${mapData.MapName}'을(를) 동기화하시겠습니까?`)) return;
-    setShowSyncModal(false);
+    modalConfirm(`로봇 [${names}]에 맵 '${mapData.MapName}'을(를) 동기화하시겠습니까?`, async () => {
+      setShowSyncModal(false);
 
-    const results: string[] = [];
-    for (const robot of selected) {
-      try {
-        const res = await apiFetch(`/map/maps/sync`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ map_id: mapData.id, robot_id: robot.id }),
-        });
-        if (!res.ok) {
-          const err = await res.json();
-          results.push(`${robot.RobotName}: 실패 - ${err.detail || "오류"}`);
-        } else {
-          results.push(`${robot.RobotName}: 성공`);
+      const results: string[] = [];
+      for (const robot of selected) {
+        try {
+          const res = await apiFetch(`/map/maps/sync`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ map_id: mapData.id, robot_id: robot.id }),
+          });
+          if (!res.ok) {
+            const err = await res.json();
+            results.push(`${robot.RobotName}: 실패 - ${err.detail || "오류"}`);
+          } else {
+            results.push(`${robot.RobotName}: 성공`);
+          }
+        } catch (e: any) {
+          results.push(`${robot.RobotName}: 실패 - ${e.message}`);
         }
-      } catch (e: any) {
-        results.push(`${robot.RobotName}: 실패 - ${e.message}`);
       }
-    }
-    alert(results.join("\n"));
+      modalAlert(results.join("\n"));
+    });
   };
 
-  const handleConnectConfirm = () => {
+  const [connectChecking, setConnectChecking] = useState(false);
+
+  const handleConnectConfirm = async () => {
     const selected = robots.filter((r) => selectedConnectIds.includes(r.id));
-    setConnectedRobots(selected);
-    setShowRobotModal(false);
+    if (selected.length === 0) {
+      setConnectedRobots([]);
+      setShowRobotModal(false);
+      return;
+    }
+
+    setConnectChecking(true);
+    try {
+      const res = await apiFetch(`/robot/status`);
+      if (!res.ok) throw new Error();
+      const statuses: { robot_id: number; network: string }[] = await res.json();
+
+      const offline: string[] = [];
+      const online: typeof selected = [];
+      for (const r of selected) {
+        const st = statuses.find((s) => s.robot_id === r.id);
+        if (st && st.network === "Online") {
+          online.push(r);
+        } else {
+          offline.push(r.RobotName);
+        }
+      }
+
+      if (offline.length > 0) {
+        modalAlert(`다음 로봇이 응답하지 않습니다:\n${offline.join(", ")}\n\n온라인 상태의 로봇만 연결됩니다.`);
+      }
+
+      if (online.length === 0) {
+        modalAlert("연결 가능한 로봇이 없습니다.");
+        return;
+      }
+
+      setConnectedRobots(online);
+      setShowRobotModal(false);
+    } catch {
+      modalAlert("로봇 상태 확인에 실패했습니다.");
+    } finally {
+      setConnectChecking(false);
+    }
   };
 
   // ── 맵 삭제 ──
   const handleDeleteMap = async () => {
     clearAllModes();
     if (selectedMap === "") {
-      alert("삭제할 맵을 먼저 선택해주세요.");
+      modalAlert("삭제할 맵을 먼저 선택해주세요.");
       return;
     }
     const mapName = maps.find((m) => m.id === selectedMap)?.MapName ?? "선택된 맵";
-    if (!confirm(`"${mapName}" 맵을 삭제하시겠습니까?\n맵에 포함된 장소, 구간, 관련 경로가 모두 삭제됩니다.`)) return;
-    try {
-      const res = await apiFetch(`/map/maps/${selectedMap}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("맵 삭제 실패");
-      alert("맵이 삭제되었습니다.");
-      setPendingPlaces([]);
-      setPendingRoutes([]);
-      setDeletedDbIds(new Set());
-      setDeletedRouteDbIds(new Set());
-      setMovedPlaces(new Map());
-      setModifiedDbIds(new Set());
-      setUndoStack([]);
-      // 맵 목록 새로고침 후 다음 맵 자동 선택
-      if (selectedFloor !== "") {
-        const fl = floors.find((a) => a.id === selectedFloor);
-        if (fl) {
-          const mapsRes = await apiFetch(`/map/maps?floor_id=${fl.id}`);
-          if (mapsRes.ok) {
-            const updatedMaps = await mapsRes.json();
-            setMaps(updatedMaps);
-            if (updatedMaps.length > 0) {
-              setSelectedMap(updatedMaps[0].id);
-            } else {
-              setSelectedMap("");
-              setMapPlaces([]);
-              setDbRoutes([]);
-              setProcessedImg(null);
+    modalConfirm(`"${mapName}" 맵을 삭제하시겠습니까?\n맵에 포함된 장소, 구간, 관련 경로가 모두 삭제됩니다.`, async () => {
+      try {
+        const res = await apiFetch(`/map/maps/${selectedMap}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("맵 삭제 실패");
+        modalAlert("맵이 삭제되었습니다.");
+        setPendingPlaces([]);
+        setPendingRoutes([]);
+        setDeletedDbIds(new Set());
+        setDeletedRouteDbIds(new Set());
+        setMovedPlaces(new Map());
+        setModifiedDbIds(new Set());
+        setUndoStack([]);
+        if (selectedFloor !== "") {
+          const fl = floors.find((a) => a.id === selectedFloor);
+          if (fl) {
+            const mapsRes = await apiFetch(`/map/maps?floor_id=${fl.id}`);
+            if (mapsRes.ok) {
+              const updatedMaps = await mapsRes.json();
+              setMaps(updatedMaps);
+              if (updatedMaps.length > 0) {
+                setSelectedMap(updatedMaps[0].id);
+              } else {
+                setSelectedMap("");
+                setMapPlaces([]);
+                setDbRoutes([]);
+                setProcessedImg(null);
+              }
             }
           }
+        } else {
+          setSelectedMap("");
+          setMapPlaces([]);
+          setDbRoutes([]);
+          setProcessedImg(null);
         }
-      } else {
-        setSelectedMap("");
-        setMapPlaces([]);
-        setDbRoutes([]);
-        setProcessedImg(null);
+      } catch (e) {
+        modalAlert(e instanceof Error ? e.message : "삭제 중 오류 발생");
       }
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "삭제 중 오류 발생");
-    }
+    });
   };
 
   return (
@@ -1228,7 +1300,13 @@ export default function MapManagementPage() {
             <div
               key={tab.id}
               className={activeTab === tab.id ? styles.mapTabActive : ""}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                if (tab.id !== activeTab) {
+                  clearAllModes();
+                  setRightPanelOpen(true);
+                }
+                setActiveTab(tab.id);
+              }}
             >
               {tab.label}
             </div>
@@ -1282,6 +1360,20 @@ export default function MapManagementPage() {
                     width={processedImg.w}
                     height={processedImg.h}
                   />
+                  {/* 격자 오버레이 (1m 간격) */}
+                  {showGrid && mapMeta && (() => {
+                    const cellPx = 1 / mapMeta.resolution; // 1미터 = N 픽셀
+                    const x0 = -processedImg.w / 2;
+                    const y0 = -processedImg.h / 2;
+                    const lines: React.ReactNode[] = [];
+                    for (let x = 0; x <= processedImg.w; x += cellPx) {
+                      lines.push(<line key={`gv${x}`} x1={x0 + x} y1={y0} x2={x0 + x} y2={y0 + processedImg.h} stroke="rgba(0,255,180,0.15)" strokeWidth={0.5} />);
+                    }
+                    for (let y = 0; y <= processedImg.h; y += cellPx) {
+                      lines.push(<line key={`gh${y}`} x1={x0} y1={y0 + y} x2={x0 + processedImg.w} y2={y0 + y} stroke="rgba(0,255,180,0.15)" strokeWidth={0.5} />);
+                    }
+                    return <g pointerEvents="none">{lines}</g>;
+                  })()}
                   {/* 경로 라인 표시 (DB + pending) */}
                   {mapMeta && (() => {
                     const allRoutes = [
@@ -1638,7 +1730,12 @@ export default function MapManagementPage() {
           </div>
 
           {/* 격자 버튼 (좌측 상단 모서리) */}
-          <button className={styles.gridBtn}>
+          <button
+            className={styles.gridBtn}
+            onClick={() => setShowGrid((v) => !v)}
+            style={showGrid ? { background: "var(--surface-5)", color: "var(--color-info)" } : undefined}
+            title={showGrid ? "격자 숨기기" : "격자 표시"}
+          >
             <span>&#9638;</span>
           </button>
 
@@ -1658,11 +1755,11 @@ export default function MapManagementPage() {
               onClick={() => {
                 clearAllModes();
                 if (!processedImg || !mapMeta) {
-                  alert("맵을 먼저 선택해주세요.");
+                  modalAlert("맵을 먼저 선택해주세요.");
                   return;
                 }
                 if (!robotPos) {
-                  alert("로봇 위치 정보를 가져올 수 없습니다.");
+                  modalAlert("로봇 위치 정보를 가져올 수 없습니다.");
                   return;
                 }
                 // 도킹 포인트 → 충전소 간 거리 (0.866m)
@@ -1709,11 +1806,11 @@ export default function MapManagementPage() {
               onClick={() => {
                 clearAllModes();
                 if (!processedImg || !mapMeta) {
-                  alert("맵을 먼저 선택해주세요.");
+                  modalAlert("맵을 먼저 선택해주세요.");
                   return;
                 }
                 if (!robotPos) {
-                  alert("로봇 위치 정보를 가져올 수 없습니다.");
+                  modalAlert("로봇 위치 정보를 가져올 수 없습니다.");
                   return;
                 }
                 const px = (robotPos.x - mapMeta.originX) / mapMeta.resolution;
@@ -1739,7 +1836,7 @@ export default function MapManagementPage() {
               className={`${styles.toolBtn} ${isRouteMode ? styles.toolBtnActive : ""}`}
               onClick={() => {
                 if (!processedImg || !mapMeta) {
-                  alert("맵을 먼저 선택해주세요.");
+                  modalAlert("맵을 먼저 선택해주세요.");
                   return;
                 }
                 setIsRouteMode((v) => !v);
@@ -1756,7 +1853,7 @@ export default function MapManagementPage() {
               className={`${styles.toolBtn} ${isPlaceMode ? styles.toolBtnActive : ""}`}
               onClick={() => {
                 if (!processedImg || !mapMeta) {
-                  alert("맵을 먼저 선택해주세요.");
+                  modalAlert("맵을 먼저 선택해주세요.");
                   return;
                 }
                 setIsPlaceMode((v) => !v);
@@ -1773,7 +1870,7 @@ export default function MapManagementPage() {
               className={`${styles.toolBtn} ${isDeleteMode ? styles.toolBtnActive : ""}`}
               onClick={() => {
                 if (!processedImg || !mapMeta) {
-                  alert("맵을 먼저 선택해주세요.");
+                  modalAlert("맵을 먼저 선택해주세요.");
                   return;
                 }
                 setIsDeleteMode((v) => !v);
@@ -1802,7 +1899,7 @@ export default function MapManagementPage() {
             <button className={styles.zoomBtn} onClick={() => setRotation((r) => r - 90)}>
               <span>&#8634;</span><span className={styles.zoomLabel}>반회전</span>
             </button>
-            <button className={`${styles.zoomBtn} ${styles.zoomBtnReset}`} onClick={() => { setZoom(1); setRotation(0); setOffset({ x: 0, y: 0 }); }}>
+            <button className={`${styles.zoomBtn} ${styles.zoomBtnReset}`} onClick={() => centerMapView()}>
               <span>&#9673;</span><span className={styles.zoomLabel}>초기화</span>
             </button>
           </div>
@@ -1814,6 +1911,7 @@ export default function MapManagementPage() {
             onPathBuildStart={handlePathBuildStart}
             onMappingStart={handleMappingStart}
             onMapReset={handleMapReset}
+            robotConnected={connectedRobots.length > 0}
           />
 
           <PathBuildPanel
@@ -1948,6 +2046,7 @@ export default function MapManagementPage() {
         selectedMap={selectedMap}
         onClose={() => setShowRobotModal(false)}
         onConfirm={handleConnectConfirm}
+        checking={connectChecking}
       />
       <MapSyncModal
         isOpen={showSyncModal}
@@ -2267,6 +2366,13 @@ export default function MapManagementPage() {
 
 
     </div>
+    <MapAlertModal
+      open={modal.open}
+      message={modal.message}
+      mode={modal.mode}
+      onConfirm={modal.mode === "alert" ? closeModal : handleConfirm}
+      onClose={closeModal}
+    />
     </PermissionGuard>
   );
 }

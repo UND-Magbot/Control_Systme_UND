@@ -13,6 +13,7 @@ type Props = {
   selectedMap: number | "";
   onClose: () => void;
   onConfirm: () => void;
+  checking?: boolean;
 };
 
 export default function RobotConnectModal({
@@ -24,6 +25,7 @@ export default function RobotConnectModal({
   selectedMap,
   onClose,
   onConfirm,
+  checking = false,
 }: Props) {
   if (!isOpen) return null;
 
@@ -122,8 +124,10 @@ export default function RobotConnectModal({
           <button
             className={styles.startFooterBtn + " " + styles.startBtnStart}
             onClick={onConfirm}
+            disabled={checking}
+            style={checking ? { opacity: 0.6, cursor: "not-allowed" } : undefined}
           >
-            확인
+            {checking ? "연결 확인 중..." : "확인"}
           </button>
         </div>
       </div>
