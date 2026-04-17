@@ -1,7 +1,18 @@
 /**
  * API 기본 주소. 브라우저 hostname + 백엔드 포트(8000)로 항상 직접 호출.
  * localhost 접속이든 원격 접속이든 동일한 경로로 백엔드에 도달한다.
+ *
+ * 함수로 제공 — 모듈 최상위 상수는 SSG 빌드 시 window가 없어 빈 문자열이 되므로,
+ * 호출 시점에 런타임 hostname을 감지한다.
  */
+export function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    return `http://${window.location.hostname}:8000`;
+  }
+  return "";
+}
+
+/** 하위 호환용 상수 — 새 코드는 getApiBase() 사용 권장 */
 export const API_BASE =
   typeof window !== "undefined"
     ? `http://${window.location.hostname}:8000`

@@ -45,15 +45,9 @@ import cv2
 
 app = FastAPI(title="Control API", version="0.1.0")
 
-ALLOWED_ORIGINS = [
-    f"http://localhost:{p}" for p in range(3000, 3010)
-] + [
-    f"http://127.0.0.1:{p}" for p in range(3000, 3010)
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -187,6 +181,8 @@ def get_current_user():
 # ======================================================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+
 if os.path.isdir(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
