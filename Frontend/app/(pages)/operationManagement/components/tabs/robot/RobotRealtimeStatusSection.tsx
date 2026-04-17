@@ -48,7 +48,7 @@ export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule
   } else if (r.dockingTime > 0) {
     statusLabel = '도킹 중';
     statusClass = styles.detailBadgeCharging;
-  } else if (hasActiveSchedule || r.tasks.length > 0) {
+  } else if (hasActiveSchedule || r.tasks.length > 0 || r.isNavigating) {
     statusLabel = '작업 중';
     statusClass = styles.detailBadgeOperating;
   }

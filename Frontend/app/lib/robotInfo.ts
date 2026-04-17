@@ -40,6 +40,7 @@ export default async function getRobots(): Promise<RobotRowData[]> {
     chargeRight: isDual ? (item.IsCharging2 === 1 ? true : item.IsCharging2 === 0 ? false : undefined) : undefined,
     return: item.LimitBattery ?? 30,
     isCharging: false,  // 런타임 폴링으로만 갱신 (DB 값은 미갱신 상태이므로 무시)
+    isNavigating: false,
     chargeState: 0,
     chargeStateLabel: "대기",
     chargeErrorCode: 0,

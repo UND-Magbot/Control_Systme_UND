@@ -264,11 +264,38 @@ def _build_status(entry: dict) -> dict:
         "charge_state_label": _CHARGE_STATE_LABEL.get(charge_st, f"알 수 없음({charge_st})"),
         "charge_error_code": charge_err,
         "charge_error_msg": _CHARGE_ERROR_MSG.get(charge_err, f"알 수 없는 오류(0x{charge_err:04X})") if charge_st == 4 else None,
+        "is_navigating": _check_navigating(entry["robot_id"]),
         "current_floor_id": entry.get("current_floor_id"),
         "current_map_id": entry.get("current_map_id"),
         "timestamp": entry["last_heartbeat"],
         "position": entry["position"],
     }
+
+
+def _check_navigating(robot_id: int) -> bool:
+    """현재 네비게이션 진행 중 여부.
+    1순위: 메모리 (이 서버에서 시작한 작업)
+    2순위: DB IsWorking (다른 서버에서 시작한 작업)
+    """
+    try:
+        from app.navigation.send_move import is_nav_active
+        if is_nav_active():
+            return True
+    except Exception:
+        pass
+    try:
+        from app.database.database import SessionLocal
+        from app.database.models import RobotLastStatus
+        db = SessionLocal()
+        try:
+            row = db.query(RobotLastStatus.IsWorking).filter(
+                RobotLastStatus.RobotId == robot_id
+            ).first()
+            return bool(row and row.IsWorking)
+        finally:
+            db.close()
+    except Exception:
+        return False
 
 
 def _check_charging(battery: dict) -> bool:

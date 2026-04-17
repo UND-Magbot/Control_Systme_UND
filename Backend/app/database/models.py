@@ -393,6 +393,8 @@ class RobotLastStatus(Base):
     CurrentFloorId = Column(Integer, nullable=True)
     # Heartbeat
     LastHeartbeat = Column(DateTime, nullable=True)
+    # Working
+    IsWorking = Column(SmallInteger, default=0, nullable=False, server_default="0")
     CreatedAt = Column(DateTime, server_default=func.now(), nullable=False)
     UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

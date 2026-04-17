@@ -85,6 +85,36 @@ def get_way_names(db: Session = Depends(get_db), current_user: UserInfo = Depend
     ]
 
 
+@database.put("/path/{path_id}")
+def update_path(path_id: int, req: PathInsertReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit"))):
+    path = db.query(WayInfo).filter(WayInfo.id == path_id).first()
+    if not path:
+        raise HTTPException(status_code=404, detail="Path not found")
+
+    changes = []
+    if path.RobotName != req.RobotName:
+        changes.append(f"로봇: {path.RobotName} → {req.RobotName}")
+        path.RobotName = req.RobotName
+    if path.TaskType != req.TaskType:
+        changes.append(f"유형: {path.TaskType} → {req.TaskType}")
+        path.TaskType = req.TaskType
+    if path.WayName != req.WayName:
+        changes.append(f"경로명: {path.WayName} → {req.WayName}")
+        path.WayName = req.WayName
+    if path.WayPoints != req.WayPoints:
+        changes.append(f"경유지 변경")
+        path.WayPoints = req.WayPoints
+
+    db.commit()
+    db.refresh(path)
+
+    detail = ", ".join(changes) if changes else None
+    write_audit(db, current_user.id, "path_updated", "path", path_id, detail=detail,
+                ip_address=get_client_ip(request))
+
+    return {"status": "ok"}
+
+
 @database.delete("/path/{path_id}")
 def delete_path(path_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit"))):
     path = (

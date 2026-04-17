@@ -168,7 +168,15 @@
   z-index: 30;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  line-height: 2;
+  line-height: 1.4;
+}
+
+.helpTooltip > div {
+  margin-bottom: 10px;
+}
+
+.helpTooltip > div:last-child {
+  margin-bottom: 0;
 }
 
 .helpIcon:hover .helpTooltip {

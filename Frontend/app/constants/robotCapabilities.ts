@@ -6,10 +6,13 @@ export type RobotCapabilities = {
 };
 
 export const ROBOT_CAPABILITIES: Record<string, RobotCapabilities> = {
-  QUADRUPED: { hasStandSit: true, hasDualBattery: true, hasLights: true, hasSpeed: true },
-  COBOT:     { hasStandSit: false, hasDualBattery: false, hasLights: true, hasSpeed: true },
-  AMR:       { hasStandSit: false, hasDualBattery: false, hasLights: true, hasSpeed: true },
-  HUMANOID:  { hasStandSit: true, hasDualBattery: false, hasLights: true, hasSpeed: true },
+  QUADRUPED:  { hasStandSit: true, hasDualBattery: true, hasLights: true, hasSpeed: true },
+  "기본 4족": { hasStandSit: true, hasDualBattery: true, hasLights: true, hasSpeed: true },
+  "순찰 4족": { hasStandSit: true, hasDualBattery: true, hasLights: true, hasSpeed: true },
+  "보안 4족": { hasStandSit: true, hasDualBattery: true, hasLights: true, hasSpeed: true },
+  COBOT:      { hasStandSit: false, hasDualBattery: false, hasLights: true, hasSpeed: true },
+  AMR:        { hasStandSit: false, hasDualBattery: false, hasLights: true, hasSpeed: true },
+  HUMANOID:   { hasStandSit: true, hasDualBattery: false, hasLights: true, hasSpeed: true },
 };
 
 export function getRobotCapabilities(type: string): RobotCapabilities {

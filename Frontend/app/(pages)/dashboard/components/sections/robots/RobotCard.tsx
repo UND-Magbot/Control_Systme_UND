@@ -71,7 +71,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
     if (robot.chargeState === 3) return { label: "부두에서 나가기", className: styles.taskDocking, tooltip: "" };
     if (robot.isCharging) return { label: "충전 중", className: styles.taskCharging, tooltip: "" };
     if (robot.dockingTime > 0) return { label: "도킹 중", className: styles.taskDocking, tooltip: "" };
-    if (hasActiveSchedule || robot.tasks.length > 0) return { label: "작업 중", className: styles.taskWorking, tooltip: "" };
+    if (hasActiveSchedule || robot.tasks.length > 0 || robot.isNavigating) return { label: "작업 중", className: styles.taskWorking, tooltip: "" };
     return { label: "대기 중", className: styles.taskIdle, tooltip: "" };
   })();
 

@@ -321,6 +321,8 @@ class ScheduleUpdateReq(BaseModel):
     TaskStatus: str | None = None
     ScheduleMode: str | None = None
     StartTime: datetime | None = None
+    PathName: str | None = None
+    PathOrder: str | None = None
 
     # weekly
     ExecutionTime: str | None = None
@@ -365,6 +367,8 @@ def update_schedule(
 
     if req.TaskStatus is not None:
         sched.TaskStatus = req.TaskStatus
+    if req.PathName is not None:
+        sched.WayName = req.PathName
 
     if req.ScheduleMode is not None:
         sched.ScheduleMode = req.ScheduleMode

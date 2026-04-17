@@ -25,6 +25,7 @@ type StatusEntry = {
   power_management: 0 | 1 | null;
   motion_state: number | null;
   is_charging: boolean;
+  is_navigating: boolean;
   charge_state: number;
   charge_state_label: string;
   charge_error_code: number;
@@ -145,6 +146,7 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
               currentFloorId: match.current_floor_id ?? r.currentFloorId,
               currentMapId: match.current_map_id ?? r.currentMapId,
               position: match.position ?? r.position,
+              isNavigating: match.is_navigating ?? r.isNavigating,
               network: match.network,
               power: match.power,
               sleep: match.sleep,
@@ -165,6 +167,7 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
             currentFloorId: match.current_floor_id ?? r.currentFloorId,
             currentMapId: match.current_map_id ?? r.currentMapId,
             position: match.position ?? r.position,
+            isNavigating: match.is_navigating ?? r.isNavigating,
             network: match.network,
             power: match.power,
             sleep: match.sleep,

@@ -80,7 +80,7 @@ export default function RobotCardList({
       if (r.power === "Off") { offline++; return; }
       if (r.power === "-") { offline++; return; }
       if (r.isCharging) { charging++; return; }
-      if (activeRobotNames.has(r.no) || (r.tasks.length > 0 && r.waitingTime === 0)) { operating++; return; }
+      if (activeRobotNames.has(r.no) || (r.tasks.length > 0 && r.waitingTime === 0) || r.isNavigating) { operating++; return; }
       standby++;
     });
     return { total: liveRobots.length, operating, standby, charging, offline };

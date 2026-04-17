@@ -278,6 +278,8 @@ export default function ScheduleDetail({
             id: event.id,
             TaskStatus: form.workStatus,
             ScheduleMode: form.scheduleMode,
+            PathName: form.pathName,
+            PathOrder: form.pathOrder,
             ...(repeatScope ? { RepeatScope: repeatScope } : {}),
         };
 

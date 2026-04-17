@@ -86,7 +86,8 @@ export default function StatusBar({
           <span>
             {robot?.isCharging ? (
               <><ChargingIcon size={12} style={{ marginLeft: 0, marginRight: 3 }} />충전 중</>
-            ) : network}
+            ) : robot?.isNavigating ? '작업 중'
+            : network}
           </span>
         </span>
 

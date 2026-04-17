@@ -51,6 +51,24 @@ def _signal_nav_reset(full=False):
     _nav_reset_flag = True
     _nav_full_reset_flag = full
 
+
+def _update_is_working(robot_id: int, working: bool):
+    """robot_last_status.IsWorking을 DB에 업데이트."""
+    try:
+        db = SessionLocal()
+        try:
+            from app.database.models import RobotLastStatus
+            row = db.query(RobotLastStatus).filter(
+                RobotLastStatus.RobotId == robot_id
+            ).first()
+            if row:
+                row.IsWorking = 1 if working else 0
+                db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[ERR] IsWorking 업데이트 실패: {e}")
+
 @move.post("/stopmove")
 def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
     global is_navigating, current_wp_index, nav_loop_remaining, charge_on_arrival
@@ -60,6 +78,7 @@ def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
     nav_loop_remaining = 0
     charge_on_arrival = False
     _signal_nav_reset(full=True)
+    _update_is_working(get_robot_id(), False)
 
     # 로봇에 즉시 정지 명령 + 네비게이션 취소
     try:
@@ -118,6 +137,7 @@ def navigation_send_next():
                       robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         else:
             is_navigating = False
+            _update_is_working(get_robot_id(), False)
 
             try:
                 from app.recording.manager import stop_all_recording
@@ -196,6 +216,7 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
     is_navigating = True
     nav_loop_remaining = loop - 1
     _signal_nav_reset(full=True)
+    _update_is_working(get_robot_id(), True)
 
     route_detail = " → ".join(wp["name"] for wp in waypoints_list)
     print(f"🚗 NAV START (경로: {way_name}) — {len(waypoints_list)}개 웨이포인트, 반복: {loop}회")
@@ -225,6 +246,8 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
 
 @move.post("/placemove/{place_id}")
 def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("robot-list"))):
+    global current_wp_index, waypoints_list, is_navigating
+
     place = db.query(LocationInfo).filter(LocationInfo.id == place_id).first()
 
     if not place:
@@ -234,11 +257,18 @@ def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: Us
     y = place.LocationY
     yaw = place.Yaw or 0.0
 
+    # 단일 장소 이동도 네비게이션 흐름으로 관리 (도착 감지 + IsWorking 연동)
+    waypoints_list = [{"x": x, "y": y, "yaw": yaw, "name": place.LacationName}]
+    current_wp_index = 0
+    is_navigating = True
+    _signal_nav_reset(full=True)
+    _update_is_working(get_robot_id(), True)
+
     print(f"🚗 장소 이동: {place.LacationName} → x={x}, y={y}, yaw={yaw}")
     log_event("schedule", "place_move_start", f"장소 이동: {place.LacationName}",
               robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
-    send_nav_to_robot(1, x, y, yaw)
 
+    navigation_send_next()
     return {"status": "ok", "msg": f"{place.LacationName}(으)로 이동 명령 전송 완료"}
 
 
@@ -271,6 +301,7 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
     current_wp_index = 0
     is_navigating = True
     _signal_nav_reset(full=True)
+    _update_is_working(get_robot_id(), True)
 
     print(f"🛤 경로 이동 시작: {path.WayName} — 총 {len(waypoints)}개 포인트")
     for i, wp in enumerate(waypoints):

@@ -60,7 +60,7 @@ def get_places(
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(get_current_user),  # 맵 뷰는 어느 탭에서든 표시 가능
 ):
-    q = db.query(LocationInfo).filter(LocationInfo.Category != "remote")
+    q = db.query(LocationInfo)
     if map_id is not None:
         q = q.filter(LocationInfo.MapId == map_id)
     elif not is_admin(current_user) and current_user.BusinessId:
