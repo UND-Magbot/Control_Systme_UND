@@ -45,15 +45,9 @@ import cv2
 
 app = FastAPI(title="Control API", version="0.1.0")
 
-ALLOWED_ORIGINS = [
-    f"http://localhost:{p}" for p in range(3000, 3010)
-] + [
-    f"http://127.0.0.1:{p}" for p in range(3000, 3010)
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
