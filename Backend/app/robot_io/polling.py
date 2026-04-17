@@ -61,8 +61,8 @@ def position_thread():
 _was_online: dict[int, bool] = {}  # robot_id → 이전 온라인 상태
 
 # 시간 기반 임계값 — 마지막 성공 시각으로부터 경과한 시간으로 판정
-UNSTABLE_ALARM_AFTER_SEC = 10.0   # 10초 이상 끊김 → 불안정 알람 (1회)
-OFFLINE_AFTER_SEC = 12.0          # 12초 이상 끊김 → 오프라인 확정
+UNSTABLE_ALARM_AFTER_SEC = 15.0   # 15초 이상 끊김 → 불안정 알람 (1회)
+OFFLINE_AFTER_SEC = 20.0          # 20초 이상 끊김 → 오프라인 확정
 
 
 def _try_status_once() -> dict | None:
@@ -83,6 +83,9 @@ def _try_status_once() -> dict | None:
         sock.close()
 
 
+BOOT_GRACE_SEC = 30.0  # 백엔드 시작 후 이 시간 동안은 불안정 알람 억제
+
+
 def status_thread():
     """receiver.py 경유로 배터리 상태 폴링 + 온라인/오프라인 전환 로그.
 
@@ -92,8 +95,10 @@ def status_thread():
     """
     print(f"[LISTEN] 상태 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
-    last_success_time = time.time()   # 마지막 성공 수신 시각
+    boot_time = time.time()            # 스레드 시작(≈백엔드 시작) 시각
+    last_success_time = time.time()    # 마지막 성공 수신 시각
     unstable_alarm_fired = False       # 이 끊김 구간에서 불안정 알람 이미 발생했는가
+    ever_succeeded = False             # 한 번이라도 STATUS 수신 성공했는가
 
     while True:
         resp = _try_status_once()
@@ -116,6 +121,7 @@ def status_thread():
                 )
                 success = True
                 last_success_time = time.time()
+                ever_succeeded = True
                 unstable_alarm_fired = False  # 성공 시 알람 플래그 리셋
 
                 # 오프라인 → 온라인 전환 감지
@@ -128,9 +134,15 @@ def status_thread():
             elapsed = time.time() - last_success_time
 
             # 10초 이상 끊김 → 불안정 알람 (이 끊김 구간에서 1회만).
-            # 단, 로봇이 마지막으로 알려진 상태가 '켜짐(Sleep=0)'이 아니라면
-            # heartbeat가 끊어지는 것이 당연하므로 알람을 띄우지 않는다.
-            if elapsed >= UNSTABLE_ALARM_AFTER_SEC and not unstable_alarm_fired:
+            # 단, 아래 경우에는 알람을 띄우지 않는다:
+            #   1) 로봇이 마지막으로 알려진 상태가 '켜짐(Sleep=0)'이 아닌 경우
+            #   2) 백엔드 시작 후 grace period(30초) 이내인 경우
+            #   3) 한 번도 STATUS 수신에 성공한 적 없는 경우 (초기 연결 중)
+            in_grace = (time.time() - boot_time) < BOOT_GRACE_SEC
+            if (elapsed >= UNSTABLE_ALARM_AFTER_SEC
+                    and not unstable_alarm_fired
+                    and not in_grace
+                    and ever_succeeded):
                 unstable_alarm_fired = True
                 rid = runtime.get_robot_id_by_ip(ROBOT_IP)
                 if rid is not None:

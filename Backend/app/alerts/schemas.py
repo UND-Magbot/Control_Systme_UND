@@ -17,6 +17,18 @@ class NoticeDetail(BaseModel):
         from_attributes = True
 
 
+class LogDetail(BaseModel):
+    Category: str
+    Action: str
+    Message: str
+    Detail: Optional[str] = None
+    RobotName: Optional[str] = None
+    CreatedAt: str
+
+    class Config:
+        from_attributes = True
+
+
 class AlertResponse(BaseModel):
     id: int
     Type: str
@@ -29,6 +41,7 @@ class AlertResponse(BaseModel):
     isRead: bool
     NoticeId: Optional[int] = None
     notice: Optional[NoticeDetail] = None
+    log: Optional[LogDetail] = None
 
     class Config:
         from_attributes = True

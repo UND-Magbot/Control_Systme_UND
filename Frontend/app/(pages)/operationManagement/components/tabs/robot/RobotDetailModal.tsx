@@ -430,7 +430,7 @@ export default function RobotDetailModal({
     const handleChargeMove = () => {
       const r = robotDetail ?? selectedRobot;
       if (r?.isCharging) {
-        alert("이미 충전 중입니다.");
+        apiAlert.show("이미 충전 중입니다.");
         return;
       }
       setBatteryConfirmOpen(true);

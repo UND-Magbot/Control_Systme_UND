@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy.orm import Session, subqueryload
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
 from fastapi import HTTPException
 
 from app.database.models import Alert, AlertReadStatus, Notice, UserInfo
@@ -28,7 +28,9 @@ class AlertService:
         )
 
         if robot_names is not None:
-            query = query.filter(Alert.RobotName.in_(robot_names))
+            query = query.filter(
+                or_(Alert.RobotName.in_(robot_names), Alert.Type == "Notice")
+            )
         if alert_type:
             query = query.filter(Alert.Type == alert_type)
         if status:
@@ -43,7 +45,7 @@ class AlertService:
         total = query.count()
 
         alerts = (
-            query.options(subqueryload(Alert.notice))
+            query.options(subqueryload(Alert.notice), subqueryload(Alert.log))
             .order_by(desc(Alert.CreatedAt))
             .offset((page - 1) * size)
             .limit(size)
@@ -88,7 +90,17 @@ class AlertService:
                 "isRead": alert.id in read_set,
                 "NoticeId": alert.NoticeId,
                 "notice": None,
+                "log": None,
             }
+            if alert.log:
+                item["log"] = {
+                    "Category": alert.log.Category,
+                    "Action": alert.log.Action,
+                    "Message": alert.log.Message,
+                    "Detail": alert.log.Detail,
+                    "RobotName": alert.log.RobotName,
+                    "CreatedAt": alert.log.CreatedAt.strftime("%Y-%m-%d %H:%M:%S"),
+                }
             if alert.Type == "Notice" and alert.notice and alert.notice.DeletedAt is None:
                 user = notice_users.get(alert.notice.UserId)
                 item["notice"] = {
@@ -117,7 +129,7 @@ class AlertService:
         """단일 알림 상세 조회. 목록과 동일한 item 포맷 반환."""
         alert = (
             self.db.query(Alert)
-            .options(subqueryload(Alert.notice))
+            .options(subqueryload(Alert.notice), subqueryload(Alert.log))
             .filter(Alert.id == alert_id, Alert.DeletedAt.is_(None))
             .first()
         )
@@ -145,7 +157,17 @@ class AlertService:
             "isRead": read_row is not None,
             "NoticeId": alert.NoticeId,
             "notice": None,
+            "log": None,
         }
+        if alert.log:
+            item["log"] = {
+                "Category": alert.log.Category,
+                "Action": alert.log.Action,
+                "Message": alert.log.Message,
+                "Detail": alert.log.Detail,
+                "RobotName": alert.log.RobotName,
+                "CreatedAt": alert.log.CreatedAt.strftime("%Y-%m-%d %H:%M:%S"),
+            }
         if alert.Type == "Notice" and alert.notice and alert.notice.DeletedAt is None:
             user = (
                 self.db.query(UserInfo)

@@ -12,6 +12,15 @@ type NoticeDetail = {
   AttachmentSize: number | null;
 };
 
+type LogDetail = {
+  Category: string;
+  Action: string;
+  Message: string;
+  Detail: string | null;
+  RobotName: string | null;
+  CreatedAt: string;
+};
+
 type AlertApiItem = {
   id: number;
   Type: "Robot" | "Notice" | "Schedule";
@@ -24,6 +33,7 @@ type AlertApiItem = {
   isRead: boolean;
   NoticeId: number | null;
   notice: NoticeDetail | null;
+  log: LogDetail | null;
 };
 
 type UnreadCount = {
@@ -98,6 +108,7 @@ function toAlertMockData(item: AlertApiItem): AlertMockData {
     attachmentUrl: item.notice?.AttachmentUrl ?? undefined,
     attachmentSize: item.notice?.AttachmentSize ?? undefined,
     noticeId: item.NoticeId ?? undefined,
+    log: item.log ?? undefined,
   };
 }
 

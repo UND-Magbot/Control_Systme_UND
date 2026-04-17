@@ -9,6 +9,7 @@ interface MapRightPanelProps {
   onPathBuildStart: () => void;
   onMappingStart: () => void;
   onMapReset: () => void;
+  robotConnected?: boolean;
 }
 
 export default function MapRightPanel({
@@ -17,6 +18,7 @@ export default function MapRightPanel({
   onPathBuildStart,
   onMappingStart,
   onMapReset,
+  robotConnected = false,
 }: MapRightPanelProps) {
   return (
     <div className={`${styles.rightPanel} ${open ? styles.rightPanelOpen : styles.rightPanelClosed}`}>
@@ -29,8 +31,10 @@ export default function MapRightPanel({
         {/* 경로 */}
         <button
           className={`${styles.btnMapping} ${styles.btnMappingStart}`}
-          style={{ width: "100%", marginBottom: 10 }}
-          onClick={onPathBuildStart}
+          style={{ width: "100%", marginBottom: 10, opacity: robotConnected ? 1 : 0.4, cursor: robotConnected ? "pointer" : "not-allowed" }}
+          onClick={robotConnected ? onPathBuildStart : undefined}
+          disabled={!robotConnected}
+          title={robotConnected ? undefined : "로봇 연결 후 사용 가능"}
         >
           경로 만들기
         </button>
@@ -41,7 +45,10 @@ export default function MapRightPanel({
         <div className={styles.mappingBtns}>
           <button
             className={`${styles.btnMapping} ${styles.btnMappingStart}`}
-            onClick={onMappingStart}
+            style={{ opacity: robotConnected ? 1 : 0.4, cursor: robotConnected ? "pointer" : "not-allowed" }}
+            onClick={robotConnected ? onMappingStart : undefined}
+            disabled={!robotConnected}
+            title={robotConnected ? undefined : "로봇 연결 후 사용 가능"}
           >
             맵핑 시작
           </button>

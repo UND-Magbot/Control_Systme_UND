@@ -90,6 +90,7 @@ export default function AlertsPage() {
   const [selectedAlertId, setSelectedAlertId] = useState<number | null>(paramId ? Number(paramId) : null);
   // URL paramId로 진입한 알림이 현재 페이지 목록에 없을 때를 대비한 직접 로드 캐시
   const [directLoadedAlert, setDirectLoadedAlert] = useState<AlertMockData | null>(null);
+  const [logDetailOpen, setLogDetailOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
   const [pageSizeReady, setPageSizeReady] = useState(false);
@@ -166,6 +167,12 @@ export default function AlertsPage() {
     if (pageSizeReady) fetchAlerts();
   }, [pageSizeReady, currentPage, activeTab, appliedSearch, appliedStatus, pageSize]);
 
+  // 탭/필터/검색어 변경 시 상세 패널 닫기
+  useEffect(() => {
+    setSelectedAlertId(null);
+    setDirectLoadedAlert(null);
+  }, [activeTab, appliedSearch, appliedStatus]);
+
   // URL 파라미터 id로 상세 패널 열기
   // - 현재 페이지 목록에 있으면 그걸 선택
   // - 없으면 단일 조회 API로 직접 로드해서 상세패널에 노출
@@ -212,6 +219,7 @@ export default function AlertsPage() {
   // 핸들러
   const handleSelectAlert = (id: number) => {
     setSelectedAlertId(id);
+    setLogDetailOpen(false);
   };
 
   const handleMarkRead = async (id: number) => {
@@ -505,12 +513,12 @@ export default function AlertsPage() {
               <div className={styles.detailHeader}>
                 <div className={styles.detailHeaderLeft}></div>
                 <div className={styles.detailHeaderBtns}>
-                  {selectedAlert.status === 'error' && (
+                  {selectedAlert.log && (
                     <button
-                      className={styles.viewLogBtn}
-                      onClick={() => router.push(`/dataManagement?tab=log&search=${encodeURIComponent(selectedAlert.robotName || '')}`)}
+                      className={`${styles.viewLogBtn} ${logDetailOpen ? styles.viewLogBtnActive : ''}`}
+                      onClick={() => setLogDetailOpen(v => !v)}
                     >
-                      상세 로그
+                      상세 로그 {logDetailOpen ? '▲' : '▼'}
                     </button>
                   )}
                   {isAdmin && selectedAlert.type === 'Notice' && (
@@ -752,6 +760,36 @@ export default function AlertsPage() {
                     <pre className={styles.errorJsonPre}>
                       {JSON.stringify(selectedAlert.errorJson, null, 2)}
                     </pre>
+                  </div>
+                )}
+
+                {selectedAlert.log && logDetailOpen && (
+                  <div className={styles.errorJsonBlock}>
+                    <span className={styles.errorJsonLabel}>상세 로그</span>
+                    <div className={styles.logDetailBox}>
+                      <div className={styles.logDetailRow}>
+                        <span className={styles.logDetailLabel}>카테고리</span>
+                        <span className={styles.logDetailValue}>{selectedAlert.log.Category}</span>
+                      </div>
+                      <div className={styles.logDetailRow}>
+                        <span className={styles.logDetailLabel}>액션</span>
+                        <span className={styles.logDetailValue}>{selectedAlert.log.Action}</span>
+                      </div>
+                      <div className={styles.logDetailRow}>
+                        <span className={styles.logDetailLabel}>메시지</span>
+                        <span className={styles.logDetailValue}>{selectedAlert.log.Message}</span>
+                      </div>
+                      {selectedAlert.log.Detail && (
+                        <div className={styles.logDetailRow}>
+                          <span className={styles.logDetailLabel}>상세</span>
+                          <span className={styles.logDetailValue}>{selectedAlert.log.Detail}</span>
+                        </div>
+                      )}
+                      <div className={styles.logDetailRow}>
+                        <span className={styles.logDetailLabel}>시간</span>
+                        <span className={styles.logDetailValue}>{selectedAlert.log.CreatedAt}</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

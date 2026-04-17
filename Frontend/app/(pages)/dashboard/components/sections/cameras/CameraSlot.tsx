@@ -103,8 +103,11 @@ export default function CameraSlot({ camera, robotName, robot, onExpand }: Camer
       : `${CAMERA_BASE}${raw}`;
     const url = base + (base.includes("?") ? "&" : "?") + "t=" + Date.now();
 
-    setStreamUrl("");
-    requestAnimationFrame(() => setStreamUrl(url));
+    // 이전 img src를 해제하여 브라우저 연결을 끊고 새 URL 즉시 세팅
+    if (mjpegImgRef.current) {
+      try { mjpegImgRef.current.src = ""; } catch {}
+    }
+    setStreamUrl(url);
 
     timeoutRef.current = setTimeout(() => {
       setStreamUrl("");
@@ -190,6 +193,11 @@ export default function CameraSlot({ camera, robotName, robot, onExpand }: Camer
           onLoad={onSuccess}
           onError={onFail}
         />
+      ) : !isLoading && !hasError ? (
+        <div className={styles.loadingOverlay}>
+          <div className={styles.spinner} />
+          <span>연결 중...</span>
+        </div>
       ) : null}
 
       {/* 확장 아이콘 */}
