@@ -4,6 +4,7 @@ import React, { useRef, useMemo } from "react";
 import { CanvasMap } from "@/app/components/map";
 import type { CanvasMapHandle, POIItem, POICategory } from "@/app/components/map";
 import { useRobotPosition } from "@/app/hooks/useRobotPosition";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
 import ZoomControl from "@/app/components/button/ZoomControl";
 import { useFloorMapConfig, type FloorMapRow } from "@/app/(pages)/mapManagement/hooks/useFloorMapConfig";
 import styles from "../../PlacePathList.module.css";
@@ -36,7 +37,7 @@ export default function PlaceMapView({
 }: Props) {
   const mapRef = useRef<CanvasMapHandle>(null);
   const { position: robotPos, hasError, isReady } = useRobotPosition(true);
-  const showRobotOnMap = isReady && !hasError;
+  const { robots } = useRobotStatusContext();
 
   const effectiveSelected = useMemo(() => {
     if (selectedPlace) return selectedPlace;
@@ -47,6 +48,15 @@ export default function PlaceMapView({
   const activeFloor = effectiveSelected?.floor ?? defaultFloor;
   const activeMapId = effectiveSelected?.mapId ?? null;
   const mapConfig = useFloorMapConfig(activeMapId, mapRows);
+
+  // 로봇이 현재 표시 중인 맵(층)에 있을 때만 로봇 마커 노출
+  const robotOnThisMap = useMemo(
+    () =>
+      activeMapId != null &&
+      robots.some((r) => r.currentMapId === activeMapId && r.power === "On"),
+    [robots, activeMapId]
+  );
+  const showRobotOnMap = isReady && !hasError && robotOnThisMap;
 
   const floorPois: POIItem[] = useMemo(
     () =>

@@ -4,6 +4,7 @@ import React, { useRef, useMemo } from "react";
 import { CanvasMap } from "@/app/components/map";
 import type { CanvasMapHandle, POIItem, NavPath, NavPathSegment } from "@/app/components/map";
 import { useRobotPosition } from "@/app/hooks/useRobotPosition";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
 import ZoomControl from "@/app/components/button/ZoomControl";
 import { useFloorMapConfig, type FloorMapRow } from "@/app/(pages)/mapManagement/hooks/useFloorMapConfig";
 import styles from "../../PlacePathList.module.css";
@@ -49,7 +50,7 @@ export default function PathMapView({
 }: Props) {
   const mapRef = useRef<CanvasMapHandle>(null);
   const { position: robotPos, hasError, isReady } = useRobotPosition(true);
-  const showRobotOnMap = isReady && !hasError;
+  const { robots } = useRobotStatusContext();
 
   // 경로에 포함된 장소들 (순서대로)
   const routePlaces: PlaceRow[] = useMemo(() => {
@@ -72,6 +73,15 @@ export default function PathMapView({
   const activeFloor = routePlaces[0]?.floor ?? "1F";
   const activeMapId = routePlaces[0]?.mapId ?? null;
   const mapConfig = useFloorMapConfig(activeMapId, mapRows);
+
+  // 로봇이 현재 표시 중인 맵(층)에 있을 때만 로봇 마커 노출
+  const robotOnThisMap = useMemo(
+    () =>
+      activeMapId != null &&
+      robots.some((r) => r.currentMapId === activeMapId && r.power === "On"),
+    [robots, activeMapId]
+  );
+  const showRobotOnMap = isReady && !hasError && robotOnThisMap;
 
   // POI 변환 (경로에 포함된 장소만)
   const routePois: POIItem[] = useMemo(
