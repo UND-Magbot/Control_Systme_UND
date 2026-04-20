@@ -64,6 +64,13 @@
   margin-bottom: 15px;
 }
 
+.rightHeaderActions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .monitoringPlaceholder {
   flex: 1;
   display: flex;

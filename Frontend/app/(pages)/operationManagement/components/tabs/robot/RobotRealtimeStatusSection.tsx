@@ -45,6 +45,9 @@ export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule
   } else if (r.chargeState === 3) {
     statusLabel = '부두에서 나가기';
     statusClass = styles.detailBadgeCharging;
+  } else if (r.isCharging) {
+    statusLabel = '충전 중';
+    statusClass = styles.detailBadgeCharging;
   } else if (r.dockingTime > 0) {
     statusLabel = '도킹 중';
     statusClass = styles.detailBadgeCharging;

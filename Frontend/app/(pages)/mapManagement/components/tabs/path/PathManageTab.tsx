@@ -499,6 +499,37 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
           <div className={styles.robotPlaceBox}>
             <h2>경로 미리보기</h2>
             <span className={styles.pathHintInline}>목록에서 경로를 클릭하면 경로가 지도에 표시됩니다.</span>
+            {hideActions && (
+              <div className={styles.rightHeaderActions}>
+                {pathDeleteMode ? (
+                  <>
+                    <div
+                      className={`${styles.robotWorkCommonBtn} ${!isPathDeleteEnabled ? styles.btnDisabled : ""}`}
+                      onClick={() => { if (isPathDeleteEnabled) openPathDelete(); }}
+                      aria-disabled={!isPathDeleteEnabled}
+                    >
+                      <img src="/icon/delete_icon.png" alt="" />
+                      삭제 확인 ({pathCheckedCount})
+                    </div>
+                    <div
+                      className={styles.robotWorkCommonBtn}
+                      onClick={() => { setPathDeleteMode(false); setCheckedPathIds([]); }}
+                    >
+                      <img src="/icon/close_btn.png" alt="" />
+                      취소
+                    </div>
+                  </>
+                ) : (
+                  <div
+                    className={styles.robotWorkCommonBtn}
+                    onClick={() => { setPathDeleteMode(true); setCheckedPathIds([]); setSelectedPathId(null); }}
+                  >
+                    <img src="/icon/delete_icon.png" alt="" />
+                    경로 삭제
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {selectedPathRow == null ? (

@@ -234,6 +234,17 @@
   animation: pulse 1.5s infinite;
 }
 
+.loopCounter {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .idleDot {
   width: 8px;
   height: 8px;
@@ -389,6 +400,43 @@
 
 .wpCreateBtnSmall:disabled {
   opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 작업 유형 필터 */
+.wpFilterRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.wpFilterLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.wpFilterSelect {
+  flex: 1;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  outline: none;
+}
+
+.wpFilterSelect:focus {
+  border-color: var(--color-info);
+}
+
+.wpFilterSelect:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 

@@ -9,6 +9,11 @@ import type { CanvasMapHandle } from "@/app/components/map/CanvasMap";
 import CanvasMap from "@/app/components/map/CanvasMap";
 import { apiFetch } from "@/app/lib/api";
 import { getApiBase } from "@/app/config";
+import { useModalAlert } from "@/app/hooks/useModalAlert";
+import AlertModal from "@/app/components/modal/AlertModal";
+import dynamic from "next/dynamic";
+
+const StopAllConfirmModal = dynamic(() => import("@/app/components/modal/BatteryChargeModal"), { ssr: false });
 
 // ── 모듈 레벨 캐시 — 탭 전환해도 유지, npm run dev 재시작 시 초기화 ──
 const _cache: {
@@ -59,7 +64,10 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
 
   const hasFloors = floors.length > 0;
   const hasRobots = robots.length > 0;
-  const hasRunningTask = robots.some(r => r.tasks.length > 0);
+  const hasOnlineRobot = robots.some(r => r.network === "Online");
+
+  const { modal, modalAlert, closeModal } = useModalAlert();
+  const [stopAllConfirmOpen, setStopAllConfirmOpen] = useState(false);
 
   // 캐시된 mapId도 즉시 복원
   useEffect(() => {
@@ -69,8 +77,21 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   }, []);
 
   const handleStopAll = useCallback(() => {
-    console.log("전체 정지 클릭");
+    setStopAllConfirmOpen(true);
   }, []);
+
+  const handleStopAllConfirm = useCallback(() => {
+    setStopAllConfirmOpen(false);
+    apiFetch(`/nav/stopmove`, { method: "POST" })
+      .then((res) => {
+        if (res.ok) modalAlert("모든 로봇의 작업이 중지되었습니다.");
+        else modalAlert("전체 정지 요청이 실패했습니다.");
+      })
+      .catch((err) => {
+        console.error("전체 정지 실패", err);
+        modalAlert("전체 정지 요청이 실패했습니다.");
+      });
+  }, [modalAlert]);
 
   // 현재 선택된 층에 있는 로봇들 — 전원이 On인 경우만 표시
   const floorRobots: RobotOnMap[] = useMemo(() => {
@@ -317,9 +338,9 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
 
         <button
           type="button"
-          className={`${styles.stopAllBtn} ${!hasRunningTask ? styles.stopAllBtnDisabled : ""}`}
+          className={`${styles.stopAllBtn} ${!hasOnlineRobot ? styles.stopAllBtnDisabled : ""}`}
           onClick={handleStopAll}
-          disabled={!hasRunningTask}
+          disabled={!hasOnlineRobot}
         >
           로봇 전체 정지
         </button>
@@ -367,6 +388,23 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           />
         )}
       </div>
+
+      {stopAllConfirmOpen && (
+        <StopAllConfirmModal
+          isOpen={stopAllConfirmOpen}
+          message={"연결된 모든 로봇의 작업을 긴급 정지합니다.\n정말 진행하시겠습니까?"}
+          onConfirm={handleStopAllConfirm}
+          onCancel={() => setStopAllConfirmOpen(false)}
+        />
+      )}
+
+      <AlertModal
+        open={modal.open}
+        message={modal.message}
+        mode={modal.mode}
+        onConfirm={closeModal}
+        onClose={closeModal}
+      />
     </div>
   );
 }

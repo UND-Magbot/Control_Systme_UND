@@ -194,6 +194,7 @@ def nav_thread():
     pause_since = 0         # 255 연속 시작 시간
     last_stand_sent = 0     # 마지막 STAND 전송 시간
     retry_count = 0
+    consecutive_timeouts = 0  # NAV_STATUS UDP 타임아웃 연속 횟수 (연결 끊김 감지)
 
     print(f"[LISTEN] 네비 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
@@ -223,6 +224,14 @@ def nav_thread():
             data, addr = sock.recvfrom(4096)
             nav = json.loads(data.decode("utf-8"))
 
+            # 연결 복구 직후: 끊김 구간의 stale 상태를 도착 판정에 쓰지 않도록 카운터 리셋
+            if consecutive_timeouts > 0 and is_nav_active():
+                print(f"[NAV] 연결 복구 — 도착 판정 상태 리셋 (타임아웃 {consecutive_timeouts}회 후)")
+                ever_moved = False
+                zero_count = 0
+                last_status = None
+            consecutive_timeouts = 0
+
             status = nav.get("status")
             nav_ts = nav.get("timestamp", 0)
 
@@ -244,11 +253,20 @@ def nav_thread():
                     print(f"[SYNC] NAV 상태 변화: {last_status} → {status}")
 
                 # 이동 감지 (한 번이라도 non-zero면 기록)
+                # 단, 255(pause) → 0 전환은 "이동 완료 후 정지"가 아니라 "중도 포기 정지"일
+                # 가능성이 커서 도착 카운터(zero_count)와 ever_moved를 리셋한다.
+                # 실제 도착이면 로봇 위치가 목표 근처일 것이므로 아래 near-skip 로직이
+                # 잡아준다. 멀면 재전송 경로로 빠져 stuck을 복구한다.
                 if status != 0:
                     ever_moved = True
                     zero_count = 0
                 else:
-                    zero_count += 1
+                    if last_status == 255:
+                        print("[NAV] 255 → 0 전환 — 도착 판정 리셋 (중도 정지 가능성)")
+                        ever_moved = False
+                        zero_count = 0
+                    else:
+                        zero_count += 1
 
                 sent_time = get_nav_sent_time()
                 cooldown_ok = sent_time > 0 and (time.time() - sent_time) > ARRIVAL_COOLDOWN
@@ -349,8 +367,9 @@ def nav_thread():
                 last_status = status
 
         except socket.timeout:
+            consecutive_timeouts += 1
             if is_nav_active():
-                print("[NAV DEBUG] NAV_STATUS 응답 타임아웃")
+                print(f"[NAV DEBUG] NAV_STATUS 응답 타임아웃 ({consecutive_timeouts}회)")
         except Exception as e:
             print("[ERR NAV]", e)
             from app.navigation.send_move import current_wp_index as err_wp_idx, waypoints_list as err_wp_list

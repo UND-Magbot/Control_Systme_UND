@@ -102,11 +102,12 @@ def get_status(request: Request, db: Session = Depends(get_db)):
 @router.get("/robot/nav")
 def get_nav():
     from app.navigation.send_move import (
-        is_navigating, current_wp_index, waypoints_list, nav_loop_remaining,
+        is_navigating, current_wp_index, waypoints_list, nav_loop_remaining, nav_loop_total,
     )
     return {
         "is_navigating": is_navigating,
         "current_wp": current_wp_index,
         "total_wp": len(waypoints_list),
         "loop_remaining": nav_loop_remaining,
+        "loop_total": nav_loop_total,
     }

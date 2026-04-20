@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { apiFetch } from '@/app/lib/api';
 
 const NAV_POLL_INTERVAL = 2000;
@@ -9,6 +9,7 @@ type PathOption = {
   id: number;
   wayName: string;
   wayPoints: string;
+  taskType: string;
 };
 
 type UseWorkAutomationOptions = {
@@ -20,10 +21,13 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
   const [isWorking, setIsWorking] = useState(false);
   const [loopCount, setLoopCount] = useState<number | string>(10);
   const [isPending, setIsPending] = useState(false);
+  const [loopCurrent, setLoopCurrent] = useState(0);
+  const [loopTotal, setLoopTotal] = useState(0);
 
-  // 경로 목록
+  // 경로 목록 & 작업 유형 필터
   const [paths, setPaths] = useState<PathOption[]>([]);
   const [selectedPath, setSelectedPath] = useState<PathOption | null>(null);
+  const [taskTypeFilter, setTaskTypeFilter] = useState<string | null>(null);
 
   // 직접 경로 생성 모드
   type CreatedPoint = { x: number; y: number; yaw: number };
@@ -44,6 +48,7 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
         id: p.id,
         wayName: p.WayName,
         wayPoints: p.WayPoints || '',
+        taskType: p.TaskType || '',
       }));
       setPaths(list);
       return list;
@@ -77,12 +82,18 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
         if (data.is_navigating) {
           setIsWorking(true);
           wasWorkingRef.current = true;
+          const total = Number(data.loop_total) || 0;
+          const remaining = Number(data.loop_remaining) || 0;
+          setLoopTotal(total);
+          setLoopCurrent(total > 0 ? Math.max(1, total - remaining) : 0);
         } else {
           if (wasWorkingRef.current) {
             onAlert?.('작업이 완료되었습니다.');
             wasWorkingRef.current = false;
           }
           setIsWorking(false);
+          setLoopTotal(0);
+          setLoopCurrent(0);
         }
       } catch {
         consecutiveFailRef.current += 1;
@@ -205,6 +216,20 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
     setCreatedPoints([]);
   }, []);
 
+  // 필터된 경로 목록
+  const filteredPaths = useMemo(
+    () => (taskTypeFilter ? paths.filter((p) => p.taskType === taskTypeFilter) : paths),
+    [paths, taskTypeFilter],
+  );
+
+  // 필터가 바뀌어 선택된 경로가 더 이상 포함되지 않으면 선택 해제
+  useEffect(() => {
+    if (!selectedPath) return;
+    if (taskTypeFilter && selectedPath.taskType !== taskTypeFilter) {
+      setSelectedPath(null);
+    }
+  }, [taskTypeFilter, selectedPath]);
+
   const handleLoopCountChange = useCallback((value: string) => {
     setLoopCount(value === '' ? '' : parseInt(value) || '');
   }, []);
@@ -217,15 +242,20 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
   return {
     isWorking,
     loopCount,
+    loopCurrent,
+    loopTotal,
     isPending,
     startWork,
     stopWork,
     handleLoopCountChange,
     handleLoopCountBlur,
     // 경로 선택
-    paths,
+    paths: filteredPaths,
     selectedPath,
     setSelectedPath,
+    // 작업 유형 필터
+    taskTypeFilter,
+    setTaskTypeFilter,
     // 직접 경로 생성
     isCreating,
     createdPoints,

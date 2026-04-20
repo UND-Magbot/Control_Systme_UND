@@ -73,7 +73,7 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
         placeName: p.LacationName ?? "",
         x: p.LocationX ?? 0,
         y: p.LocationY ?? 0,
-        direction: p.LocationDir ?? 0,
+        direction: typeof p.Yaw === "number" ? (p.Yaw * 180) / Math.PI : 0,
         updatedAt: p.UpdatedAt
           ? new Date(p.UpdatedAt).toLocaleString("ko-KR")
           : "",
@@ -430,6 +430,31 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
         <div className={styles.robotPlaceBox}>
           <h2>장소 위치</h2>
           <span className={styles.placeHintInline}>해당 장소의 좌표(X, Y, D) 입력은 "장소 등록" 화면에서 작성하실 수 있습니다.</span>
+          {hideActions && (
+            <div className={styles.rightHeaderActions}>
+              {placeDeleteMode ? (
+                <>
+                  <div
+                    className={styles.robotWorkCommonBtn}
+                    onClick={() => { if (checkedPlaceIds.length > 0) setPlaceDeleteConfirmOpen(true); }}
+                    aria-disabled={checkedPlaceIds.length === 0}
+                  >
+                    <img src="/icon/delete_icon.png" alt="" />
+                    삭제 확인 ({checkedPlaceIds.length})
+                  </div>
+                  <div className={styles.robotWorkCommonBtn} onClick={exitDeleteMode}>
+                    <img src="/icon/close_btn.png" alt="" />
+                    취소
+                  </div>
+                </>
+              ) : (
+                <div className={styles.robotWorkCommonBtn} onClick={enterDeleteMode}>
+                  <img src="/icon/delete_icon.png" alt="" />
+                  장소 삭제
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {selectedPlaceId == null ? (

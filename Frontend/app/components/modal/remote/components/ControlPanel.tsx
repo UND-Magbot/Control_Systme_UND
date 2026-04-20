@@ -24,6 +24,8 @@ type ControlPanelProps = {
   isWorking: boolean;
   isWorkPending: boolean;
   loopCount: number | string;
+  loopCurrent: number;
+  loopTotal: number;
   isDisconnected: boolean;
   onStartWork: (loop: number) => void;
   onStopWork: () => void;
@@ -33,6 +35,9 @@ type ControlPanelProps = {
   paths: PathOption[];
   selectedPath: PathOption | null;
   onSelectPath: (path: PathOption | null) => void;
+  // 작업 유형 필터
+  taskTypeFilter: string | null;
+  onTaskTypeFilterChange: (value: string | null) => void;
   // 직접 경로 생성
   isCreating: boolean;
   createdPoints: { x: number; y: number; yaw: number }[];
@@ -49,6 +54,8 @@ export default function ControlPanel({
   isWorking,
   isWorkPending,
   loopCount,
+  loopCurrent,
+  loopTotal,
   isDisconnected,
   onStartWork,
   onStopWork,
@@ -57,6 +64,8 @@ export default function ControlPanel({
   paths,
   selectedPath,
   onSelectPath,
+  taskTypeFilter,
+  onTaskTypeFilterChange,
   isCreating,
   createdPoints,
   onStartCreating,
@@ -82,6 +91,8 @@ export default function ControlPanel({
             isWorking={isWorking}
             isPending={isWorkPending}
             loopCount={loopCount}
+            loopCurrent={loopCurrent}
+            loopTotal={loopTotal}
             disabled={isDisconnected}
             onStartWork={onStartWork}
             onStopWork={onStopWork}
@@ -90,6 +101,8 @@ export default function ControlPanel({
             paths={paths}
             selectedPath={selectedPath}
             onSelectPath={onSelectPath}
+            taskTypeFilter={taskTypeFilter}
+            onTaskTypeFilterChange={onTaskTypeFilterChange}
             isCreating={isCreating}
             createdPoints={createdPoints}
             onStartCreating={onStartCreating}

@@ -16,6 +16,8 @@ type WorkProgressPanelProps = {
   isWorking: boolean;
   isPending: boolean;
   loopCount: number | string;
+  loopCurrent: number;
+  loopTotal: number;
   disabled?: boolean;
   onStartWork: (loop: number) => void;
   onStopWork: () => void;
@@ -25,6 +27,9 @@ type WorkProgressPanelProps = {
   paths: PathOption[];
   selectedPath: PathOption | null;
   onSelectPath: (path: PathOption | null) => void;
+  // 작업 유형 필터
+  taskTypeFilter: string | null;
+  onTaskTypeFilterChange: (value: string | null) => void;
   // 직접 경로 생성
   isCreating: boolean;
   createdPoints: { x: number; y: number; yaw: number }[];
@@ -39,6 +44,8 @@ export default function WorkProgressPanel({
   isWorking,
   isPending,
   loopCount,
+  loopCurrent,
+  loopTotal,
   disabled = false,
   onStartWork,
   onStopWork,
@@ -47,6 +54,8 @@ export default function WorkProgressPanel({
   paths,
   selectedPath,
   onSelectPath,
+  taskTypeFilter,
+  onTaskTypeFilterChange,
   isCreating,
   createdPoints,
   onStartCreating,
@@ -97,6 +106,11 @@ export default function WorkProgressPanel({
         <div className={styles.workStatusBanner}>
           <span className={styles.workingDot} />
           <span>작업 진행 중</span>
+          {loopTotal > 1 && loopCurrent > 0 && (
+            <span className={styles.loopCounter}>
+              {loopCurrent} / {loopTotal} 회
+            </span>
+          )}
         </div>
         {selectedPath && (
           <div className={styles.wpPathPreview}>
@@ -215,7 +229,7 @@ export default function WorkProgressPanel({
         </button>
         {initPoseCoord && (
           <div className={styles.wpInitPoseCoord}>
-            (충전소 좌표: x={initPoseCoord.x}, y={initPoseCoord.y}, yaw={initPoseCoord.yaw})
+            충전소 좌표 기준
           </div>
         )}
       </div>
@@ -233,6 +247,23 @@ export default function WorkProgressPanel({
             + 직접 생성
           </button>
         </div>
+
+        {/* 작업 유형 필터 */}
+        <div className={styles.wpFilterRow}>
+          <span className={styles.wpFilterLabel}>작업 유형</span>
+          <select
+            className={styles.wpFilterSelect}
+            value={taskTypeFilter ?? ''}
+            onChange={(e) => onTaskTypeFilterChange(e.target.value || null)}
+            disabled={isDisabled}
+          >
+            <option value="">전체</option>
+            <option value="task1">task1</option>
+            <option value="task2">task2</option>
+            <option value="task3">task3</option>
+          </select>
+        </div>
+
         <div className={styles.wpDropdown} ref={dropdownRef}>
           <button
             type="button"

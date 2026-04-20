@@ -183,9 +183,11 @@ export function useMapCanvas(
         const tsy = toPx.y + rect.y;
 
         if (isBidi) {
-          // 양방향 <->: 1/4 지점에 ← , 3/4 지점에 →
-          drawArrowhead(ctx, tsx, tsy, fsx, fsy, 7, 0.75, arrowColor);
-          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 7, 0.75, arrowColor);
+          // 양방향 <->: 짧은 선에서도 가운데 선이 보이도록 위치만 조정
+          const segLen = Math.hypot(tsx - fsx, tsy - fsy);
+          const t = segLen < 50 ? 0.88 : 0.75;
+          drawArrowhead(ctx, tsx, tsy, fsx, fsy, 6, t, arrowColor);
+          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 6, t, arrowColor);
         } else {
           drawArrowhead(ctx, fsx, fsy, tsx, tsy, 7, 0.5, arrowColor);
         }

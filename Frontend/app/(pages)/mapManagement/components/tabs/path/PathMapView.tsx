@@ -87,18 +87,33 @@ export default function PathMapView({
     [routePlaces]
   );
 
-  // NavPath 생성 (장소를 순서대로 연결)
+  // NavPath 생성 (장소를 순서대로 연결, 중복 쌍은 양방향선으로 합침)
   const navPath: NavPath | null = useMemo(() => {
     if (routePlaces.length < 2) return null;
 
+    const pairKey = (a: PlaceRow, b: PlaceRow) =>
+      a.id < b.id ? `${a.id}_${b.id}` : `${b.id}_${a.id}`;
+
+    const pairCount = new Map<string, number>();
+    for (let i = 0; i < routePlaces.length - 1; i++) {
+      const k = pairKey(routePlaces[i], routePlaces[i + 1]);
+      pairCount.set(k, (pairCount.get(k) ?? 0) + 1);
+    }
+
+    const emitted = new Set<string>();
     const segments: NavPathSegment[] = [];
     for (let i = 0; i < routePlaces.length - 1; i++) {
       const from = routePlaces[i];
       const to = routePlaces[i + 1];
+      const k = pairKey(from, to);
+      if (emitted.has(k)) continue;
+      emitted.add(k);
+
+      const isDup = (pairCount.get(k) ?? 0) > 1;
       segments.push({
         from: { x: from.x, y: from.y, name: from.placeName },
         to: { x: to.x, y: to.y, name: to.placeName },
-        direction: "one-way",
+        direction: isDup ? "two-way" : "one-way",
       });
     }
 
@@ -113,7 +128,9 @@ export default function PathMapView({
           ref={mapRef}
           config={mapConfig}
           pois={routePois}
+          navPath={navPath}
           showPois
+          showPath
           showLabels
           showRobot={showRobotOnMap}
           robotPos={showRobotOnMap ? robotPos : undefined}

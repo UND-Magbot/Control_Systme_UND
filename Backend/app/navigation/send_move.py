@@ -16,6 +16,7 @@ waypoints_list = []
 is_navigating = False
 nav_sent_time = 0
 nav_loop_remaining = 0
+nav_loop_total = 0
 charge_on_arrival = False  # 도착 후 자동 충전 플래그
 
 # nav_thread 상태 리셋 신호 (새 주행/정지 시 nav_thread가 감지)
@@ -71,11 +72,12 @@ def _update_is_working(robot_id: int, working: bool):
 
 @move.post("/stopmove")
 def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
-    global is_navigating, current_wp_index, nav_loop_remaining, charge_on_arrival
+    global is_navigating, current_wp_index, nav_loop_remaining, nav_loop_total, charge_on_arrival
     was_active = is_navigating
     is_navigating = False
     current_wp_index = 0
     nav_loop_remaining = 0
+    nav_loop_total = 0
     charge_on_arrival = False
     _signal_nav_reset(full=True)
     _update_is_working(get_robot_id(), False)
@@ -122,7 +124,7 @@ def navigation_resend_current():
     nav_sent_time = time.time()
 
 def navigation_send_next():
-    global current_wp_index, waypoints_list, is_navigating, nav_sent_time, nav_loop_remaining
+    global current_wp_index, waypoints_list, is_navigating, nav_sent_time, nav_loop_remaining, nav_loop_total
 
     if not is_navigating:
         return
@@ -137,6 +139,7 @@ def navigation_send_next():
                       robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         else:
             is_navigating = False
+            nav_loop_total = 0
             _update_is_working(get_robot_id(), False)
 
             try:
@@ -177,6 +180,12 @@ def navigation_send_next():
 
     print(f"➡ NAV 이동 시작: {idx} / {len(waypoints_list)}")
     time.sleep(1)  # 로봇 네비게이션 준비 대기
+
+    # sleep 중 사용자가 정지했을 수 있으므로 송신 직전 재확인
+    if not is_navigating:
+        print(f"⏸ NAV 이동 취소됨 (WP {idx}) — sleep 중 정지 감지")
+        return
+
     from app.robot_io.sender import send_nav_to_robot
     send_nav_to_robot(idx, x, y, yaw)
 
@@ -186,7 +195,7 @@ def navigation_send_next():
 @move.post("/startpath")
 def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo = Depends(require_permission("robot-list"))):
     """DB 경로(WayInfo)를 읽어 네비게이션 시작."""
-    global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining
+    global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining, nav_loop_total
 
     db = SessionLocal()
     try:
@@ -215,6 +224,7 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
     current_wp_index = 0
     is_navigating = True
     nav_loop_remaining = loop - 1
+    nav_loop_total = loop
     _signal_nav_reset(full=True)
     _update_is_working(get_robot_id(), True)
 

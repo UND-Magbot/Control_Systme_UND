@@ -71,6 +71,7 @@ function getRobotStatus(r: RobotRowData, hasActiveSchedule = false): { label: st
   if (r.chargeState === 1) return { label: "부두로 이동", className: styles.statusDocking, tooltip: "" };
   if (r.chargeState === 2) return { label: "충전 중", className: styles.statusCharging, tooltip: "" };
   if (r.chargeState === 3) return { label: "부두에서 나가기", className: styles.statusDocking, tooltip: "" };
+  if (r.isCharging) return { label: "충전 중", className: styles.statusCharging, tooltip: "" };
   if (r.dockingTime > 0) return { label: "도킹 중", className: styles.statusDocking, tooltip: "" };
   if (hasActiveSchedule || r.tasks.length > 0 || r.isNavigating) return { label: "작업 중", className: styles.statusOperating, tooltip: "" };
   return { label: "대기 중", className: styles.statusStandby, tooltip: "" };

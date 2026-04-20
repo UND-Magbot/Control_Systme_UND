@@ -188,6 +188,8 @@ export default function RemoteModal({
               isWorking={work.isWorking}
               isWorkPending={work.isPending}
               loopCount={work.loopCount}
+              loopCurrent={work.loopCurrent}
+              loopTotal={work.loopTotal}
               isDisconnected={isDisconnected || readOnly}
               onStartWork={work.startWork}
               onStopWork={work.stopWork}
@@ -196,6 +198,8 @@ export default function RemoteModal({
               paths={work.paths}
               selectedPath={work.selectedPath}
               onSelectPath={work.setSelectedPath}
+              taskTypeFilter={work.taskTypeFilter}
+              onTaskTypeFilterChange={work.setTaskTypeFilter}
               isCreating={work.isCreating}
               createdPoints={work.createdPoints}
               onStartCreating={work.startCreating}
