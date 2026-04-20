@@ -1,0 +1,8 @@
+.tabPosition {
+    position: relative;
+    min-width: var(--content-min-width);
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}

@@ -9,10 +9,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     background: var(--surface-5);
     border: 1px solid var(--border-subtle);
     border-radius: 6px;
     font-size: var(--font-size-md);
+    font-weight: 500;
     color: var(--text-primary);
     cursor: pointer;
 }
@@ -27,19 +29,19 @@
     background: var(--surface-4);
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
-    z-index: 9999;
+    z-index: 150;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .seletbox .floorLabel,
 .seletbox .robotsLabel {
-    width: 100%;
     line-height: 32px;
     border-radius: 6px;
     font-size: var(--font-size-md);
     padding: 0 12px;
     color: var(--text-secondary);
     transition: background 0.15s ease;
+    white-space: nowrap;
 }
 
 .seletbox .floorLabel:hover,

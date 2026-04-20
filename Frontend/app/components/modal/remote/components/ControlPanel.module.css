@@ -1,0 +1,696 @@
+/* ======================== ControlPanel (사이드바) ======================== */
+.controlSidebar {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.tabContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 2px 8px 0;
+}
+
+/* ======================== 공통 섹션 ======================== */
+.section {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: opacity 0.15s ease;
+}
+
+.section.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.controlLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.controlGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-bottom: 8px;
+}
+
+.controlGroup:first-child {
+  margin-top: 0;
+}
+
+.controlGroup:last-child {
+  padding-bottom: 0;
+}
+
+/* ======================== 세그먼트 버튼 (모드/속도) ======================== */
+.segmentGroup {
+  display: flex;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.segmentBtn {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.segmentBtn:not(:last-child) {
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+
+.segmentBtn.active {
+  background: var(--color-info);
+  color: #fff;
+  font-weight: 600;
+}
+
+.segmentBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ======================== 조명 (타이틀 + 토글 한 줄) ======================== */
+.lightingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lightingInline {
+  display: flex;
+  gap: 14px;
+}
+
+.lightingItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lightTag {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.lightLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.toggleSwitch {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  border-radius: 13px;
+  border: none;
+  background: var(--surface-4);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  padding: 0;
+}
+
+.toggleSwitch.toggleOn {
+  background: var(--color-success);
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.toggleOn .toggleThumb {
+  transform: translateX(22px);
+}
+
+.toggleSwitch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ======================== 위치관리 버튼 ======================== */
+.positionBtnGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.actionBtn {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+
+.actionBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dangerBtn {
+  border: none;
+  background: var(--color-error-border);
+  color: #fff;
+}
+
+.confirmingBtn {
+  background: var(--color-error);
+  border-color: var(--color-error);
+  color: #fff;
+  animation: confirmPulse 0.3s ease;
+}
+
+@keyframes confirmPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+/* ======================== 작업 자동화 패널 ======================== */
+.workPanel {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workStatusBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.workingDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-info);
+  animation: pulse 1.5s infinite;
+}
+
+.loopCounter {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.idleDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.workRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workRowLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.workDivider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.loopInputRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.loopInput {
+  width: 70px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.loopInput::-webkit-outer-spin-button,
+.loopInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.loopInput:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+.loopInput:disabled {
+  opacity: 0.5;
+}
+
+.loopUnit {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-right: 6px;
+}
+
+.workStartBtn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-info);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+
+.workStartBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.stopWorkBtn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-error);
+  color: #fff;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+
+.stopWorkBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── WorkProgressPanel ── */
+.wpPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wpSection {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 충전소 좌표 텍스트 */
+.wpInitPoseCoord {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* 섹션 헤더 (제목 + 우측 버튼) */
+.wpSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wpCreateBtnSmall {
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.wpCreateBtnSmall:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.wpCreateBtnSmall:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 작업 유형 필터 */
+.wpFilterRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.wpFilterLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.wpFilterSelect {
+  flex: 1;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  outline: none;
+}
+
+.wpFilterSelect:focus {
+  border-color: var(--color-info);
+}
+
+.wpFilterSelect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 드롭다운 */
+.wpDropdown {
+  position: relative;
+  margin-top: 6px;
+}
+
+.wpDropdownBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.wpDropdownBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wpDropdownText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  text-align: left;
+}
+
+.wpDropdownArrow {
+  font-size: 10px;
+  margin-left: 6px;
+  color: var(--text-muted);
+}
+
+.wpDropdownList {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--surface-4);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.wpDropdownEmpty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.wpDropdownItem {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.wpDropdownItem:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.wpDropdownItemActive {
+  background: rgba(var(--accent-blue-rgb, 59, 130, 246), 0.15);
+}
+
+.wpDropdownItemName {
+  font-weight: 600;
+}
+
+.wpDropdownItemPath {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wpDropdownItem:hover .wpDropdownItemPath {
+  white-space: normal;
+  word-break: break-all;
+}
+
+/* 경로 미리보기 */
+.wpPathPreview {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--surface-3);
+  border-radius: 6px;
+}
+
+.wpPathLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-right: 6px;
+}
+
+.wpPathDetail {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+/* 직접 경로 생성 버튼 */
+.wpCreateBtn {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wpCreateBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.wpCreateBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 직접 경로 생성 모드 */
+.wpCreateHeader {
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--text-primary);
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wpCreatePreviewLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.wpCreatePreviewPath {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  line-height: 1.5;
+  word-break: break-all;
+  min-height: 20px;
+}
+
+.wpCreatePreviewCount {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-top: 4px;
+  text-align: right;
+}
+
+.wpCreateActions {
+  display: flex;
+  gap: 6px;
+}
+
+/* 경로 이름 입력 */
+.wpCreateNameSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wpAutoNameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.wpAutoNameLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.wpNameInput {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.wpNameInput:focus {
+  border-color: var(--color-info);
+}
+
+.wpNameInput::placeholder {
+  color: var(--text-muted);
+}
+
+.wpCreateFooter {
+  display: flex;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.wpCancelBtn {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wpConfirmBtn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-info);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.wpConfirmBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

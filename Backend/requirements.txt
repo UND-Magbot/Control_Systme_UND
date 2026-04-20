@@ -6,3 +6,8 @@ opencv-python
 sqlalchemy
 pymysql
 paramiko
+passlib[bcrypt]
+bcrypt==4.0.1
+python-jose[cryptography]
+slowapi
+python-dotenv

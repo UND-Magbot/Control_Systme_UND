@@ -1,0 +1,54 @@
+.legendBox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+
+.legendGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.legendDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.divider {
+  color: var(--text-muted);
+  user-select: none;
+  opacity: 0.2;
+  font-size: var(--font-size-2xs);
+  margin: 0 1px;
+  flex-shrink: 0;
+}
+
+.totalNumber,
+.itemNumber {
+  margin-left: 1px;
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+}
+
+.totalNumber {
+  color: var(--color-accent-pink);
+}
+
+.itemNumber {
+  color: var(--color-accent-light);
+}

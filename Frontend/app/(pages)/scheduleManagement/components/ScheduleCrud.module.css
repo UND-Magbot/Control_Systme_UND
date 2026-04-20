@@ -1,0 +1,1958 @@
+.scheduleModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+
+.scheduleModalContainer {
+  width: 560px;
+  height: auto;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 14px;
+  background: var(--surface-3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  animation: slideUpDetail 0.25s ease;
+}
+
+@keyframes slideUpDetail {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.scheduleModalContainer::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scheduleModalContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scheduleModalContainer::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+/* 헤더 */
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.detailHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detailHeaderIcon {
+  width: 20px;
+  height: 20px;
+  opacity: 0.8;
+}
+
+.detailHeaderLeft h2 {
+  margin: 0;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.CloseBtn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 18px;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.Title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.Title img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.Title h2 {
+  font-weight: 600;
+  font-size: 20px;
+  color: #ffffff;
+  margin: 0;
+  letter-spacing: -0.2px;
+}
+
+.itemContainer {
+    width: 100%;
+    height: auto;
+    padding: 16px 22px 8px;
+}
+
+/* ── 상세 모달 본문 ── */
+.detailBody {
+  padding: 8px 22px 8px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.detailBody::-webkit-scrollbar {
+  width: 6px;
+}
+
+.detailBody::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.detailBody::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.detailSection {
+  margin-bottom: 10px;
+  padding: 14px 16px 10px;
+  background: var(--surface-2);
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  overflow: visible;
+  position: relative;
+}
+
+.detailSectionTitle {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-accent, rgba(100, 180, 255, 0.85));
+  margin: 0 0 12px 0;
+}
+
+.detailSectionLine {
+  display: none;
+}
+
+.detailFieldRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+  min-height: 32px;
+  font-size: var(--font-size-md);
+}
+
+.detailFieldRowLine {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 0;
+  padding-bottom: 10px;
+  min-height: 32px;
+  font-size: var(--font-size-md);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.detailFieldRowLine:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.detailFieldRowLine + .detailFieldRowLine {
+  padding-top: 10px;
+}
+
+.detailFieldLabel {
+  min-width: 64px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: var(--font-size-md);
+  white-space: nowrap;
+}
+
+.detailFieldValue {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+}
+
+/* 수정 모드에서 input/select가 동일 너비 */
+.detailFieldValue > div:first-child {
+  width: 100%;
+}
+
+.detailFieldValue input {
+  width: 100%;
+  height: 34px;
+  background: var(--surface-5);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  padding: 0 12px;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.detailFieldValue input:focus {
+  border-color: var(--color-primary, #4a90ff);
+}
+
+.detailFieldValue input::placeholder {
+  color: var(--text-muted);
+}
+
+.detailViewText {
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+}
+
+.detailTitleText {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.detailRobotBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: rgba(160, 100, 255, 0.9);
+  background: rgba(160, 100, 255, 0.1);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.detailRobotIcon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+}
+
+.detailStatusBadge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.detailStatusBlue {
+  color: #00B0EE;
+  background: rgba(74, 144, 255, 0.15);
+}
+
+.detailStatusYellow {
+  color: #FFC635;
+  background: rgba(255, 193, 7, 0.15);
+}
+
+.detailStatusGreen {
+  color: #92D050;
+  background: rgba(76, 175, 80, 0.15);
+}
+
+.detailStatusRed {
+  color: #FF0000;
+  background: rgba(244, 67, 54, 0.15);
+}
+
+.detailStatusOrange {
+  color: #FF9800;
+  background: rgba(255, 152, 0, 0.15);
+}
+
+.detailPathOrderWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+/* ── 작업일시 수정 모드 ── */
+.detailDateRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+  min-height: 34px;
+}
+
+.detailDateControls {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.detailDatePicker {
+  width: 110px;
+  height: 34px;
+  line-height: 34px;
+  background: var(--surface-5);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.detailDatePicker img {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.detailPathOrder {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-5);
+  padding: 8px 10px;
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+.pathOrderText {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-5);
+  padding: 6px 10px;
+  border-radius: 6px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.detailPathOrderCollapsed {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detailPathOrderExpanded {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.detailPathToggle {
+  background: none;
+  border: none;
+  color: rgba(100, 180, 255, 0.8);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  align-self: flex-end;
+}
+
+.detailPathToggle:hover {
+  color: rgba(100, 180, 255, 1);
+  text-decoration: underline;
+}
+
+.detailLinkBtn {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.detailLinkBtn:hover {
+  color: var(--text-primary);
+  border-color: rgba(160, 100, 255, 0.5);
+}
+
+.itemBox {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+
+    margin-bottom: 14px;
+
+    width: 100%;
+    min-height: 34px;
+
+    font-size: 13px;
+    color: #FFFFFF;
+}
+
+.itemBox > div:first-child {
+    min-width: 64px;
+    flex-shrink: 0;
+    line-height: 32px;
+}
+
+.itemLeftMg {
+    margin-left: 0;
+}
+
+.itemRadioBox {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+
+    margin-bottom: 12px;
+
+    width: 100%;
+    height: 32px;
+
+    font-size: 13px;
+    color: #FFFFFF;
+    overflow: visible;
+}
+
+.itemRadioBox > div:first-child {
+    min-width: 64px;
+    flex-shrink: 0;
+}
+
+.repeatDateFlex {
+  display: grid;
+  grid-template-columns: repeat(7, 34px) 40px;
+  justify-items: center;
+  align-items: center;
+  gap: 8px;
+
+  width: 373px;
+  height: 100%;
+
+  font-size: 12px;
+}
+
+.repeatDateFlex .dateItem {
+  width: 100%;
+  line-height: 25px;
+
+  border-radius: 5px;
+  border: 1px solid #8AACC7;
+
+  text-align: center;
+
+  background: #454B67;
+
+  cursor: pointer;
+}
+
+.itemEndDateBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  width: 120px;
+  height: 30px;
+  
+  border-radius: 5px;
+  border: 1px solid #8AACC7;
+  
+  padding: 0 10px;
+  margin-left: 15px;
+  
+  font-size: 13px;
+}
+
+.repeatDateFlex .repeatDateItem img {
+  width: 11px;
+  height: 11px;
+
+  margin-right: 5px;
+
+  cursor: pointer;
+}
+
+
+.itemBox input {
+    flex: 1;
+    min-width: 0;
+    height: 32px;
+
+    background: var(--surface-5);
+
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
+
+    padding: 0 12px;
+
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-primary);
+    transition: border-color 0.15s ease;
+}
+
+.itemBox input::placeholder {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: var(--font-size-sm);
+}
+
+.seletWrapper {
+  position: relative;
+ 
+  width: 373px;
+  height: 100%;
+}
+
+.editSeletWrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.itemSelectBox {
+    width: 100%;
+    height: 100%;
+
+    background: var(--surface-5, #454B67);
+
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle, #8AACC7);
+
+    padding: 0 12px;
+
+    font-weight: 400;
+    font-size: 13px;
+    color: var(--text-primary, #ffffff);
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    cursor: pointer;
+}
+
+.itemSelectBox img {
+  width: 12px;
+  height: 8px;
+}
+
+.seletbox {
+  width: 100%;
+  max-height: 200px;
+  font-size: 13px;
+
+  padding: 6px;
+
+  background: var(--surface-3, #202334);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #3b425c);
+
+  position: absolute;
+  top: calc(100% + 4px);
+
+  cursor: pointer;
+  z-index: 100;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* custom select (robot list style) */
+.selecteWrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+}
+
+.selecte {
+  width: 100%;
+  height: 32px;
+  background: var(--surface-5, #454B67);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #8AACC7);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary, #ffffff);
+}
+
+.selecte img {
+  height: 40%;
+}
+
+.timeSelecte img {
+  height: 25%;
+}
+
+.selectebox {
+  width: 100%;
+  height: auto;
+  padding: 6px;
+  background: var(--surface-3, #202334);
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #3b425c);
+  position: absolute;
+  top: calc(100% + 4px);
+  cursor: pointer;
+  z-index: 20;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.selecteInner {
+  max-height: 175px;
+  overflow-y: scroll;
+  scrollbar-width: none;
+}
+
+.selecteInner::-webkit-scrollbar {
+  display: none;
+}
+
+.selecteOption {
+  width: 100%;
+  height: 32px;
+  line-height: 32px;
+  padding: 0 10px;
+  color: var(--text-primary, #fff);
+  font-size: 13px;
+  border-radius: 4px;
+  transition: background 0.12s ease;
+}
+
+.selecteOption:hover {
+  background: var(--surface-4, #3b425c);
+}
+
+.selecteOptionActive {
+  background: var(--surface-4, #3b425c);
+  color: var(--accent, #00B0EE);
+}
+
+.selecteScrollTrack {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  right: 4px;
+  width: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.selecteScrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  border-radius: 999px;
+  background: #eaeaed;
+}
+
+.selecteCompact {
+  width: 63px;
+  flex: none;
+}
+
+.selecte.selecteCompact {
+  padding: 0 8px;
+  font-size: 12px;
+  height: 32px;
+}
+
+.selecteboxCompact {
+  width: 63px;
+}
+
+.selecteboxCompact .selecteOption {
+  height: 30px;
+  line-height: 30px;
+  font-size: 12px;
+}
+
+.inner {
+  max-height: 175px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.innerScroll {
+  max-height: 160px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.inner::-webkit-scrollbar {
+  display: none;
+}
+
+.innerScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollTrack {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  right: 4px;
+  width: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.scrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  border-radius: 999px;
+  background: #eaeaed;
+}
+
+.radioBtnFlex {
+    display: flex;
+    gap: 32px;
+}
+
+.radioBtnBox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.radioBtnBox img {
+  width: 12px;
+  height: 12px;
+
+  margin-right: 5px;
+
+  cursor: pointer;
+}
+
+.itemDateBox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+
+    font-weight: 400;
+    font-size: 12px;
+}
+
+.itemDateBox .itemDate {
+    width: 110px;
+    line-height: 34px;
+
+    background: var(--surface-5);
+
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
+
+    padding: 0 8px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    cursor: pointer;
+    position: relative;
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+}
+
+.calendarPopover {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  z-index: 30;
+}
+
+
+.itemDateBox .createitemAmPm,
+.itemDateBox .createitemHour,
+.itemDateBox .createitemMinute {
+    width: 63px;
+    height: 35px;
+
+    border-radius: 4px;
+    border: 1px solid #8AACC7;
+
+    padding: 0 7px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    cursor: pointer;
+}
+
+.itemDateBox .itemAmPm,
+.itemDateBox .itemHour,
+.itemDateBox .itemMinute {
+    width: 63px;
+    height: 35px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    cursor: pointer;
+}
+
+.itemDateBox .itemAmPm img,
+.itemDateBox .itemHour img,
+.itemDateBox .itemMinute img,
+.itemDateBox .createitemAmPm img,
+.itemDateBox .createitemHour img,
+.itemDateBox .createitemMinute img {
+    width: 13px;
+    height: 8px;
+}
+
+.itemDateBox .itemDate img {
+    width: 14px;
+    height: 14px;
+}
+
+.pathBoxFlex {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+
+    margin-bottom: 12px;
+
+    width: 100%;
+    height: 35px;
+
+    font-size: 14px;
+    color: #FFFFFF;
+}
+
+.pathBoxFlex > div:first-child {
+    min-width: 64px;
+    flex-shrink: 0;
+}
+
+.itemBoxBtn {
+    width: auto;
+    height: 34px;
+
+    border-radius: 5px;
+
+    background: #606A9E;
+    border: none;
+
+    color: #FFFFFF;
+    font-size: 13px;
+    white-space: nowrap;
+
+    padding: 0 20px;
+    cursor: pointer;
+}
+
+.itemPathBoxEdit .itemBoxBtn {
+  margin-left: 0;
+}
+
+
+.errorMessage {
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: 12px;
+  border-radius: 6px;
+  background: rgba(255, 77, 77, 0.15);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+  font-size: var(--font-size-xs);
+  text-align: center;
+}
+
+.insertBtnTotal {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.insertConfrimBtn {
+  width: 130px;
+  height: 36px;
+
+  border-radius: 8px;
+
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 500;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.insertConfrimBtn img {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.insertConfrimBtn span {
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.btnBgRed {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-button);
+}
+
+.btnBgBlue {
+  border: 1px solid #0E85B7;
+  background: #196189;
+}
+
+
+/* Schedule Detail Modal Styles */
+
+.TitleCircle {
+    width: 18px;
+    height: 18px;
+
+    background: #00B0EE;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.btnTotal {
+  width: 100%;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.btnLeftBox {
+  width: 100%;
+
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btnItemCommon {
+  width: 130px;
+  height: 36px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+
+.btnItemCommon img {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.btnItemCommon span {
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.btnBgGray {
+  background: #626a81;
+}
+
+.mr10 {
+  margin-right: 10px;
+}
+
+.itemDetail {
+    flex: 1;
+    min-width: 0;
+    line-height: 34px;
+    color: var(--text-primary);
+}
+
+.itemtitle {
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 13px;
+    min-width: 64px;
+}
+
+.itemPathBox {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+
+    margin-bottom: 16px;
+
+    width: 100%;
+
+    font-size: 14px;
+    color: #FFFFFF;
+}
+
+.itemPathBox > div:first-child {
+    min-width: 64px;
+    flex-shrink: 0;
+    padding-top: 8px;
+}
+
+.itemPathBoxEdit {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding-left: 80px;
+}
+
+.itemPathAction {
+  margin-top: 4px;
+}
+
+.itemPath {
+    flex: 1;
+    min-width: 0;
+    height: 60px;
+
+    border: 1px solid var(--border-subtle, #4a506a);
+    border-radius: 6px;
+
+    background: var(--surface-2, #2B2E3E);
+
+    padding: 8px;
+    overflow-y: auto;
+}
+
+.itemScroll {
+    padding: 8px 10px;
+    line-height: 160%;
+    font-size: 13px;
+    color: var(--text-secondary, #cfd6e6);
+}
+
+/* ====== (추가) 수정모드: 작업일시 레이아웃 보정 ====== */
+.itemDateBoxRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* itemDateBox 내부 첫 라벨(시작/종료) 폭 고정 */
+.itemDateLabel {
+  width: 32px;
+  text-align: left;
+  font-size: 12px;
+  color: #ffffff;
+}
+
+/* ====== (추가) 수정모드: 반복요일 버튼 ====== */
+.repeatDayBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #8AACC7);
+  background: var(--surface-5, #454B67);
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.repeatDayBtnActive {
+  background: #196189;
+  border-color: #0E85B7;
+}
+
+/* ====== (추가) 수정모드: '매일' 체크 UI를 이미지 톤으로 ====== */
+.everydayBox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  font-size: 12px;
+  color: #ffffff;;
+}
+
+/* 기본 체크박스는 숨기고 아이콘으로 표현하려면(선택) */
+.everydayBox input {
+  width: 14px;
+  height: 14px;
+
+  background: transparent;
+  border: none;
+
+  cursor: pointer;
+}
+
+/* ====== (추가) 수정모드: 반복종료 '종료 날짜' 박스 ====== */
+.repeatEndDateBox {
+  width: 110px;
+  height: 32px;
+
+  background: var(--surface-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+
+  padding: 0 8px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  font-size: 12px;
+  color: #ffffff;
+
+  position: relative;
+  z-index: 2;
+}
+
+.repeatEndDateBoxDisabled {
+  opacity: 0.6;
+}
+
+.repeatEndDateText {
+  white-space: nowrap;
+}
+
+.repeatEndDateBox img {
+  width: 14px;
+  height: 14px;
+}
+
+/* 수정모드 input 텍스트 색상 */
+.editInput {
+  color: #ffffff;
+}
+
+/* placeholder는 가독성을 위해 살짝 톤 다운 권장 */
+.editInput::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+
+/* itemSelectBox도 높이를 wrapper에 맞추고, 폰트/패딩은 유지 */
+.itemSelectBox {
+  width: 373px;
+  height: 100%;
+
+
+  padding: 0 11px;
+  font-weight: 400;
+  font-size: 12px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  cursor: pointer;
+}
+
+/* 드롭다운도 wrapper 폭을 그대로 쓰게 */
+.seletbox {
+  width: 100%;
+  max-height: 200px;
+  font-size: 13px;
+
+  padding: 9px;
+  background: #202334;
+  border-radius: 5px;
+
+  position: absolute;
+  top: calc(100% + 10px);
+
+  cursor: pointer;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.noMb {
+  margin-bottom: unset;
+}
+
+/* ====== 스케줄 모드 라디오 그룹 ====== */
+.modeRadioGroup {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex: 1;
+}
+
+.modeRadioLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.modeRadioLabel:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.modeRadioLabel input[type="radio"] {
+  accent-color: #0E85B7;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* ====== 반복 요일 래퍼 ====== */
+.repeatDayWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.repeatDayBtns {
+  display: flex;
+  gap: 4px;
+}
+
+.repeatEveryday {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  font-size: 12px;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.repeatEverydayChk {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ====== 유효 기간 ====== */
+.seriesDateWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  color: #ffffff;
+  font-size: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.seriesDateRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.seriesDateLabel {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.seriesDateInput {
+  width: 150px;
+  height: 32px;
+  background: var(--surface-5, #454B67);
+  border: 1px solid var(--border-subtle, #8AACC7);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.seriesDateInput::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
+.seriesDateInput.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.seriesEndOptions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.seriesEndOptions label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+
+
+.seriesEndOptions input[type="radio"] {
+  accent-color: #0E85B7;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.seriesEndRadio {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.seriesEndRadio input[type="radio"] {
+  accent-color: #0E85B7;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+
+/* ====== 주기 반복 간격 입력 ====== */
+.intervalInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.intervalUnit {
+  font-size: 13px;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.intervalPresets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.intervalPresetBtn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 20px;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.intervalPresetActive {
+  background: rgba(14, 133, 183, 0.2);
+  border: 1px solid #0E85B7;
+  color: #64d2ff;
+}
+
+/* ====== 다중 실행 시각 ====== */
+.execTimeSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.execTimeList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.execTimeList::-webkit-scrollbar {
+  width: 4px;
+}
+
+.execTimeList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.execTimeRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.execTimeRemoveBtn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.execTimeRemoveBtn:hover {
+  background: #941621;
+  color: #ffffff;
+}
+
+.execTimeAddBtn {
+  align-self: flex-start;
+  border: 1px dashed var(--border-subtle, #8AACC7);
+  background: transparent;
+  color: var(--border-subtle, #8AACC7);
+  padding: 4px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  margin-bottom: 10px;
+}
+
+.execTimeAddBtn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+/* ====== 필드별 에러 메시지 ====== */
+.fieldError {
+  color: var(--color-error-soft);
+  font-size: var(--font-size-sm);
+  margin-top: 4px;
+  display: block;
+  padding-left: 80px;
+}
+
+.inputError {
+  border-color: var(--color-error) !important;
+}
+
+/* ====== 섹션 구분선 ====== */
+.sectionDivider {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 2px;
+  padding-top: 12px;
+}
+
+/* ====== 바이트 카운터 ====== */
+.byteCounter {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: right;
+}
+
+.byteCounterWarn {
+  color: var(--color-error-soft);
+}
+
+/* input 내부 우측에 바이트 카운터 배치 */
+.inputWithByte {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.inputWithByte input {
+  width: 100%;
+  padding-right: 56px;
+}
+
+.byteInline {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  transform: translateY(-50%);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.inputWithByte .fieldError {
+  position: relative;
+  margin-top: 4px;
+  padding-left: 0;
+}
+
+/* ====== 로딩 텍스트 ====== */
+.loadingText {
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ====== 재시도 버튼 ====== */
+.retryBtn {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-button);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.retryBtn:hover {
+  background: var(--surface-elevated);
+}
+
+/* ====== itemBox 래퍼 (필드 에러 지원) ====== */
+.itemBoxWrap {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.itemBoxWrap .itemBox {
+  margin-bottom: 0;
+}
+
+/* ====== 미저장 확인 모달 ====== */
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 200;
+}
+
+.confirmBox {
+  background: #292D43;
+  border-radius: 12px;
+  padding: 28px 32px;
+  text-align: center;
+  color: #ffffff;
+  min-width: 340px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.confirmBox p {
+  font-size: 15px;
+  margin-bottom: 24px;
+}
+
+.confirmBtnGroup {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.confirmBtnGroup button {
+  width: 120px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: #ffffff;
+}
+
+.confirmBtnStay {
+  background: #626a81;
+}
+
+.confirmBtnLeave {
+  background: #941621;
+  border: 1px solid #BF0E14;
+}
+
+/* ====== 상태 색상 dot ====== */
+.statusDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.statusDotWaiting { background: var(--color-info, #00B0EE); }
+.statusDotWorking { background: var(--color-warning, #F5A623); }
+.statusDotCompleted { background: var(--color-success, #34C759); }
+.statusDotError { background: var(--color-error, #FF4D4D); }
+.statusDotCancelled { background: #888; }
+
+/* ====== 로딩 오버레이 ====== */
+.detailLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  gap: 12px;
+  color: var(--text-secondary, #9DADCB);
+  font-size: 14px;
+}
+
+.detailSpinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent, #00B0EE);
+  border-radius: 50%;
+  animation: detailSpin 0.7s linear infinite;
+}
+
+@keyframes detailSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ====== 모드 뱃지 (보기 모드) ====== */
+.modeBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.modeBadgeOnce {
+  color: #92D050;
+  background: rgba(146, 208, 80, 0.15);
+  border: 1px solid rgba(146, 208, 80, 0.3);
+}
+
+.modeBadgeWeekly {
+  color: #7EC8F0;
+  background: rgba(100, 180, 240, 0.15);
+  border: 1px solid rgba(100, 180, 240, 0.3);
+}
+
+.modeBadgeInterval {
+  color: #F0A030;
+  background: rgba(255, 160, 50, 0.15);
+  border: 1px solid rgba(255, 160, 50, 0.3);
+}
+
+.modeBadgeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: modePulse 2s ease-in-out infinite;
+}
+
+@keyframes modePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ====== 시각 카드 (보기 모드) ====== */
+.timeCardWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.timeCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--surface-5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.timeCardIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 176, 238, 0.12);
+  color: #7ecbf5;
+}
+
+.timeCardIconWeekly {
+  background: rgba(126, 200, 240, 0.12);
+  color: #7EC8F0;
+}
+
+.timeCardIconInterval {
+  background: rgba(240, 160, 48, 0.12);
+  color: #F0A030;
+}
+
+.timeCardBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.timeCardLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.timeCardValue {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeCardSub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ====== 다중 실행 시각 태그 ====== */
+.execTimeTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.execTimeTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #7EC8F0;
+  background: rgba(126, 200, 240, 0.1);
+  border: 1px solid rgba(126, 200, 240, 0.2);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.execTimeTag:hover {
+  background: rgba(126, 200, 240, 0.18);
+  border-color: rgba(126, 200, 240, 0.35);
+}
+
+.execTimeTagIndex {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(126, 200, 240, 0.6);
+  margin-right: 2px;
+}
+
+/* ====== 요일 칩 (보기 모드) ====== */
+.dowChips {
+  display: flex;
+  gap: 4px;
+}
+
+.dowChip {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-5);
+  color: var(--text-muted);
+}
+
+.dowChipActive {
+  background: rgba(126, 200, 240, 0.15);
+  border-color: rgba(126, 200, 240, 0.35);
+  color: #7EC8F0;
+}
+
+.dowChipActiveInterval {
+  background: rgba(240, 160, 48, 0.15);
+  border-color: rgba(240, 160, 48, 0.35);
+  color: #F0A030;
+}
+
+/* ====== 유효기간 카드 (보기 모드) ====== */
+.seriesCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--surface-5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.seriesCardIcon {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.seriesCardArrow {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.seriesCardInfinity {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ====== 경로 스텝 ====== */
+.pathSteps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  padding: 6px 0;
+}
+
+.pathStep {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 20px;
+  background: var(--surface-5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  transition: border-color 0.2s;
+  flex-shrink: 0;
+}
+
+.pathStepDot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 176, 238, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #00B0EE;
+  flex-shrink: 0;
+}
+
+.pathStepName {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.pathStepArrow {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+/* ====== 삭제 버튼 (상세 모달용) ====== */
+.btnItemCommon.btnBgRed {
+  background: #626a81;
+  border: 1px solid transparent;
+}
+
+/* ====== 삭제 버튼 (등록 모달용 - insertConfrimBtn에서 사용) ====== */
+.insertConfrimBtn.btnBgRed {
+  background: var(--surface-button, #626a81);
+  border: 1px solid var(--border-subtle);
+}
+
+/* ====== 저장 버튼 ====== */
+.btnBgBlue {
+  background: #196189;
+  border: 1px solid #0E85B7;
+}
+
+/* ====== 버튼 비활성화 ====== */
+.btnDisabled {
+  opacity: 0.6;
+  pointer-events: none;
+}

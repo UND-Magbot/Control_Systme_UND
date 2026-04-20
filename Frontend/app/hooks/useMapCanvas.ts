@@ -4,41 +4,7 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import type { MapConfig, NavPath } from "@/app/components/map/types";
 import { worldToPixel, pixelToWorld as pixelToWorldUtil } from "@/app/utils/mapCoordinates";
 import { createZoomHandler, type ZoomAction } from "@/app/utils/zoom";
-
-/* ── 이미지 가공 캐시 ── */
-const processedCache = new Map<string, HTMLCanvasElement>();
-
-function processMapImage(img: HTMLImageElement, src: string): HTMLCanvasElement {
-  const cached = processedCache.get(src);
-  if (cached) return cached;
-
-  const offscreen = document.createElement("canvas");
-  offscreen.width = img.naturalWidth;
-  offscreen.height = img.naturalHeight;
-  const ctx = offscreen.getContext("2d")!;
-  ctx.drawImage(img, 0, 0);
-
-  processedCache.set(src, offscreen);
-  return offscreen;
-}
-
-/* ── 이미지 로더 캐시 ── */
-const imageCache = new Map<string, HTMLImageElement>();
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  const cached = imageCache.get(src);
-  if (cached && cached.complete) return Promise.resolve(cached);
-
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      imageCache.set(src, img);
-      resolve(img);
-    };
-    img.onerror = reject;
-    img.src = src;
-  });
-}
+import { processMapImage, loadImage } from "@/app/utils/mapImageProcessor";
 
 /* ── contain-fit 계산 ── */
 function computeContainRect(
@@ -58,21 +24,23 @@ function drawArrowhead(
   ctx: CanvasRenderingContext2D,
   fromX: number, fromY: number,
   toX: number, toY: number,
-  size: number
+  size: number,
+  t: number = 0.5,
+  color: string = "rgba(100, 180, 255, 0.9)"
 ) {
-  const midX = (fromX + toX) / 2;
-  const midY = (fromY + toY) / 2;
+  const px = fromX + (toX - fromX) * t;
+  const py = fromY + (toY - fromY) * t;
   const angle = Math.atan2(toY - fromY, toX - fromX);
 
   ctx.save();
-  ctx.translate(midX, midY);
+  ctx.translate(px, py);
   ctx.rotate(angle);
   ctx.beginPath();
   ctx.moveTo(size, 0);
   ctx.lineTo(-size, -size * 0.6);
   ctx.lineTo(-size, size * 0.6);
   ctx.closePath();
-  ctx.fillStyle = "rgba(100, 180, 255, 0.9)";
+  ctx.fillStyle = color;
   ctx.fill();
   ctx.restore();
 }
@@ -161,8 +129,9 @@ export function useMapCanvas(
     const ctx = canvas.getContext("2d")!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // 1. 배경 채우기 (맵 영역 외부와 동일 색상)
-    ctx.clearRect(0, 0, mapSize.w, mapSize.h);
+    // 1. 배경을 미탐색 색상과 동일하게 채워서 이음새 제거
+    ctx.fillStyle = "#1a1d2e";
+    ctx.fillRect(0, 0, mapSize.w, mapSize.h);
 
     // 2. contain-fit 이미지 그리기
     const rect = computeContainRect(
@@ -177,6 +146,10 @@ export function useMapCanvas(
       const renderSize = { w: rect.w, h: rect.h };
 
       for (const seg of navPath.segments) {
+        const isBidi = seg.direction === "two-way";
+        const lineColor = isBidi ? "rgba(0, 230, 180, 0.75)" : "rgba(255, 180, 50, 0.8)";
+        const arrowColor = isBidi ? "rgba(0, 230, 180, 0.95)" : "rgba(255, 180, 50, 0.95)";
+
         // 전체 포인트 수집: from → waypoints → to
         const allPoints = [
           seg.from,
@@ -184,11 +157,11 @@ export function useMapCanvas(
           seg.to,
         ];
 
-        // 점선 경로 그리기
+        // 경로 선 그리기
         ctx.save();
-        ctx.strokeStyle = "rgba(100, 180, 255, 0.7)";
-        ctx.lineWidth = 2.5;
-        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = isBidi ? 2.5 : 2;
+        ctx.setLineDash(isBidi ? [] : [6, 4]);
         ctx.beginPath();
 
         for (let i = 0; i < allPoints.length; i++) {
@@ -201,7 +174,7 @@ export function useMapCanvas(
         ctx.stroke();
         ctx.restore();
 
-        // 4. 방향 화살표
+        // 방향 화살표
         const fromPx = worldToPixel(seg.from.x, seg.from.y, config, renderSize);
         const toPx = worldToPixel(seg.to.x, seg.to.y, config, renderSize);
         const fsx = fromPx.x + rect.x;
@@ -209,12 +182,14 @@ export function useMapCanvas(
         const tsx = toPx.x + rect.x;
         const tsy = toPx.y + rect.y;
 
-        if (seg.direction === "one-way") {
-          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 8);
+        if (isBidi) {
+          // 양방향 <->: 짧은 선에서도 가운데 선이 보이도록 위치만 조정
+          const segLen = Math.hypot(tsx - fsx, tsy - fsy);
+          const t = segLen < 50 ? 0.88 : 0.75;
+          drawArrowhead(ctx, tsx, tsy, fsx, fsy, 6, t, arrowColor);
+          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 6, t, arrowColor);
         } else {
-          // 양방향: 양쪽에 화살표
-          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 8);
-          drawArrowhead(ctx, tsx, tsy, fsx, fsy, 8);
+          drawArrowhead(ctx, fsx, fsy, tsx, tsy, 7, 0.5, arrowColor);
         }
       }
     }
@@ -292,6 +267,21 @@ export function useMapCanvas(
     setIsPanning(false);
     panStartRef.current = null;
   }, []);
+
+  // wheel zoom — DOM에 직접 등록 (passive: false로 preventDefault 허용)
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper || !interactive) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      handleZoom(e.deltaY < 0 ? "in" : "out");
+    };
+    wrapper.addEventListener("wheel", handler, { passive: false });
+    return () => wrapper.removeEventListener("wheel", handler);
+  }, [interactive, handleZoom]);
+
+  // onWheel은 더 이상 사용하지 않지만 인터페이스 유지
+  const onWheel = useCallback(() => {}, []);
 
   // 스케일 변경 시 translate 보정
   useEffect(() => {

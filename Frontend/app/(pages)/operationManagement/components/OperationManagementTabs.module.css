@@ -1,0 +1,1596 @@
+/* ─── 탭 메뉴 ─── */
+
+.robotListTab {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 0;
+    align-items: flex-end;
+}
+
+.robotListTab div {
+    background: var(--surface-tab-inactive);
+    border-radius: 8px 8px 0 0;
+
+    width: 120px;
+    height: var(--tab-height);
+
+    font-size: var(--font-size-md);
+    font-weight: 600;
+
+    color: var(--text-muted);
+    cursor: pointer;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.robotListTab div:hover {
+    color: var(--text-tertiary);
+}
+
+.robotListTab div.active {
+    background: var(--surface-3);
+    color: var(--text-primary);
+}
+
+/* ─── 범례 (countBox) ─── */
+
+.countBox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--font-size-xs);
+    color: var(--text-tertiary);
+    background: var(--surface-2);
+    padding: 5px 12px;
+    border-radius: 6px;
+}
+
+.divider {
+    color: var(--text-muted);
+    user-select: none;
+    opacity: 0.2;
+    font-size: var(--font-size-2xs);
+}
+
+.robotCount {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.batteryCount {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 4px;
+    padding-left: 10px;
+    border-left: 1px solid var(--border-subtle);
+}
+
+.countItem {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.countItem div {
+    display: inline-block;
+}
+
+.totalNumber, .itemNumber {
+    margin-left: 2px;
+    font-weight: 600;
+    font-size: var(--font-size-xs);
+}
+
+.robotCount .totalNumber, .robotCount .itemNumber {
+    color: var(--color-accent-pink);
+}
+
+.batteryCount .itemNumber {
+    color: var(--color-accent-light);
+}
+
+.RobotStatusTopPosition {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+/* 1행: 범례 (우측 정렬) */
+
+.legendRow {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 필터 + 액션 버튼 (1행) */
+
+.toolbarRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 36px;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.RobotSearch {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.searchWrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.searchIcon {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.searchInput {
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+  width: 220px;
+}
+
+.searchInput::placeholder {
+  color: var(--text-tertiary);
+}
+
+.searchClear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-5);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.searchClear:hover {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+.statusListBox {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* No column */
+
+/* 상태 column */
+
+/* 현재 작업 column 넓게 */
+
+/* 배터리(복귀) column */
+
+/* 전원 column */
+
+/* 정보 column */
+
+/* 배터리 색상 */
+
+.batSuccess { color: #22c55e; }
+
+.batWarning { color: #f59e0b; }
+
+.batDanger  { color: #ef4444; }
+
+.batDisabled { color: var(--text-muted); }
+
+/* 행 hover */
+
+/* ✅ 로봇 인덱스별 색상 지정 */
+
+.robot-color-1 {
+  color: var(--color-error);
+}
+
+.robot-color-2 {
+  color: var(--color-info);
+}
+
+.robot-color-3 {
+  color: var(--color-success);
+}
+
+.robot_status_icon_div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.robot_status_icon_div img {
+  width: auto;
+  height: var(--icon-md);
+}
+
+/* 테이블 인라인 액션 버튼 공통 */
+
+.info-box,
+.viewMap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+/* 현재 위치 / 현재 작업 셀 */
+
+.locationCell {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskCell {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  max-width: 200px;
+}
+
+.taskCellActive {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.taskCellRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.taskCellName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.taskCellBadge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.taskCellBadgeOnce {
+  color: #92D050;
+  background: rgba(146, 208, 80, 0.15);
+}
+
+.taskCellBadgeWeekly {
+  color: #7EC8F0;
+  background: rgba(126, 200, 240, 0.15);
+}
+
+.taskCellBadgeInterval {
+  color: #F0A030;
+  background: rgba(240, 160, 48, 0.15);
+}
+
+.taskCellBadgeType {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.taskCellSub {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 정보 컬럼: 버튼 그룹 */
+
+.infoBtnGroup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* 상세보기 버튼 */
+
+.info-box {
+  background: var(--color-info-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--color-info-border);
+}
+
+.info-box:hover {
+  background: var(--color-info-selected);
+}
+
+.info-box:active {
+  transform: scale(0.96);
+}
+
+/* 원격 제어 버튼 */
+
+.viewMap {
+  background: var(--surface-button);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+}
+
+.viewMap:not(.btnDisabled):hover {
+  background: var(--surface-elevated);
+  border-color: var(--text-tertiary);
+}
+
+.viewMap:not(.btnDisabled):active {
+  transform: scale(0.96);
+}
+
+.pagePosition {
+  display: flex;
+  justify-content: center;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.commonBox {
+  width: 100%;
+  position: relative;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  font-size: var(--font-size-md);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.mapWrapper {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  position: relative;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* CanvasMap을 mapWrapper 전체에 absolute로 채움 */
+
+.mapCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* camera&map 공통 오버레이 요소 */
+
+/* 기존 좌상단 라벨 (하위 호환용) */
+
+/* 오버레이 아이콘 버튼 공통 */
+
+.overlayBtn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.overlayBtn:hover {
+  background: rgba(100, 108, 140, 0.6);
+}
+
+.overlayBtn img {
+  height: var(--icon-sm);
+}
+
+/* pill 형태 오버레이 버튼 (아이콘 + 텍스트) */
+
+.overlayPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: rgba(14, 133, 183, 0.75);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--color-info-border);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+
+.overlayPill:hover {
+  background: rgba(14, 133, 183, 0.95);
+}
+
+.overlayPill:active {
+  transform: scale(0.96);
+}
+
+.overlayPill img {
+  height: 13px;
+  width: auto;
+}
+
+/* 코너 배치 (카메라/맵 공통) */
+
+.cornerTopLeft {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+}
+
+.cornerTopRight {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+}
+
+.cornerBottomRight {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 10;
+}
+
+.cornerLabel {
+  display: inline-block;
+  padding: 2px 10px;
+  line-height: 22px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.zoomFlex,
+.cameraFlex {
+  display: flex;
+  gap: 6px;
+}
+
+.zoomBox,
+.camBox {
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.zoomBox:hover,
+.camBox:hover,
+.camBox.active {
+  background: rgba(100, 108, 140, 0.6);
+}
+
+.zoomBox {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+}
+
+.zoomBox img {
+  height: var(--icon-sm);
+}
+
+.camBox {
+  width: 80px;
+  line-height: 32px;
+  border-radius: 5px;
+}
+
+.RobotListTab {
+  background: var(--surface-3);
+  border-radius: 10px 0 10px 10px;
+  padding: 20px;
+
+  width: 100%;
+  flex: 1;
+  min-height: var(--page-body-min-height);
+
+  display: flex;
+  flex-direction: column;
+}
+
+.RobotStatusList {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cameraMapView {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.modalOpenBox {
+  display: flex;
+  gap: 8px;
+}
+
+.customRemoteDiv,
+.customPathDiv {
+  height: 36px;
+  flex: 1;
+}
+
+.cameraWrapper {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: black;
+  border-radius: 10px;
+  position: relative;
+}
+
+.cameraImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;   /* 📌 contain: 찢어지지 않음 (cover는 잘릴 수 있음) */
+  display: block;
+}
+
+.camSelectWrapper {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 10;
+}
+
+.camSelectButton {
+  width: 110px;
+  height: 30px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.camSelectButton img {
+  width: 12px;
+  height: auto;
+}
+
+.camSelectMenu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  width: 110px;
+  max-height: 120px;
+  border-radius: 8px;
+  background: var(--surface-4);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  padding: 6px;
+  overflow: hidden;
+}
+
+.camSelectInner {
+  max-height: 120px;
+  overflow-y: scroll;
+  scrollbar-width: none;
+}
+
+.camSelectInner::-webkit-scrollbar {
+  display: none;
+}
+
+.camOption {
+  width: 100%;
+  line-height: 28px;
+  border-radius: 6px;
+  font-size: var(--font-size-sm);
+  margin: 2px 0;
+  padding-left: 6px;
+  cursor: pointer;
+}
+
+.camOption:hover,
+.camOptionActive {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+}
+
+.camScrollTrack {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 4px;
+  width: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.camScrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  border-radius: 999px;
+  background: #eaeaed;
+}
+
+/* 모니터링 미선택 안내 */
+
+/* 카메라 로딩/에러 오버레이 */
+
+.cameraOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-md);
+  z-index: 5;
+}
+
+.cameraOverlay button {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-button);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.cameraOverlay button:hover {
+  background: var(--surface-elevated);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--color-info);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* selectBox */
+
+.selecteWrapper {
+    position: relative;
+}
+
+.selecte {
+    width: 140px;
+    background: var(--surface-select);
+    border: 1px solid var(--border-default);
+    padding: 5px 14px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-size: var(--font-size-md);
+    height: 35px;
+    transition: border-color 0.2s ease;
+}
+
+.selecte:hover {
+    border-color: var(--color-accent);
+}
+
+.selecte img {
+    height: 40%;
+}
+
+.selectebox {
+    width: 140px;
+    height: auto;
+    padding: 10px;
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    position: absolute;
+    top: 42px;
+    cursor: pointer;
+    z-index: 20;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.selecteInner {
+    max-height: 175px;
+    overflow-y: scroll;
+    scrollbar-width: none;
+}
+
+.selecteInner::-webkit-scrollbar {
+    display: none;
+}
+
+.selecteInner div {
+    width: 100%;
+    height: 35px;
+    line-height: 35px;
+    padding: 0 10px;
+    color: var(--text-primary);
+    font-size: var(--font-size-base);
+}
+
+.selecteInner div:hover {
+    background: #d2d3d7;
+    border-radius: 4px;
+    width: 100%;
+    height: 35px;
+    padding: 0 10px;
+    line-height: 35px;
+    color: var(--text-inverse);
+}
+
+.selecteScrollTrack {
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    right: 4px;
+    width: 6px;
+    border-radius: 999px;
+    background: transparent;
+}
+
+.selecteScrollThumb {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 50%;
+    border-radius: 999px;
+    background: #eaeaed;
+}
+
+.place,
+.path {
+  background: var(--surface-3);
+  border-radius: 10px;
+  width: 100%;
+  flex: 1;
+  min-height: var(--page-body-min-height);
+  padding: 20px;
+  z-index: 1;
+  position: absolute;
+  top: 77px;
+  bottom: 0;
+}
+
+.container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.container img {
+    width: 80px;
+}
+
+.container .topTitle {
+    margin-top: 15px;
+    font-size: var(--font-size-hero);
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.container .contentText {
+    margin-top: 15px;
+    font-size: var(--font-size-lg);
+    font-weight: 400;
+    color: var(--text-tertiary);
+}
+
+/* 장소관리 css */
+
+/* place 탭 레이아웃: 좌(리스트) + 우(맵) */
+
+/* 타이틀 라인: h2 + 필터 2개 */
+
+/* 장소 테이블: 평소 4열 (로봇명 | 층별 | 장소명 | 좌표) */
+
+/* 로봇명 */
+
+/* 층별 */
+
+/* 장소명 */
+
+/* 좌표 */
+
+/* 삭제 모드 5열 (체크 | 로봇명 | 층별 | 장소명 | 좌표) */
+
+/* 맵 카드: 기존 commonBox 톤을 기반으로 스크린샷 형태에 맞춤 */
+
+.placeRobotMarkerLabel {
+  background: #FF0000;
+  border-radius: 10px;
+  padding: 2px 8px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 16px;
+}
+
+/* 하단 안내 문구 */
+
+.placeHint {
+  margin-top: 20px;
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  opacity: 0.9;
+  text-align: right;
+}
+
+/* 아이콘을 이미지로 쓰지 않고 체크 문자로 처리할 때 */
+
+/* ===== 장소 관리 탭 ===== */
+
+.placeHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 40px;
+}
+
+.placeActions {
+  display: flex;
+  gap: 10px;
+}
+
+.placeAddBtn {
+  width: 110px;
+  height: 38px;
+  border-radius: 6px;
+  padding: 8px 12px;
+
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+.placeAddBtn img {
+  height: var(--icon-xs);
+}
+
+.placeGrayBtn {
+  width: 110px;
+  height: 29px;
+  border-radius: 6px;
+  padding: 8px 12px;
+
+  background: var(--surface-button);
+  border: 1px solid var(--border-subtle);
+
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+.placeGrayBtn img {
+  height: var(--icon-xs);
+}
+
+.selectedPlaceRow td {
+  background: var(--color-info-selected);
+}
+
+.coordText {
+  display: inline-block;
+  margin: 0 6px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+/* =========================
+   ✅ 경로 관리(Path) 탭
+========================= */
+
+/* 좌측 "경로 등록" 버튼 (이미지 톤) */
+
+/* 경로 테이블 컬럼 폭 (이미지 기준) */
+
+/* 로봇명 */
+
+/* 작업유형 */
+
+/* 경로명 */
+
+/* 경로순서 */
+
+/* 삭제 모드: 체크박스 컬럼 추가 */
+
+/* 체크 */
+
+/* 로봇명 */
+
+/* 작업유형 */
+
+/* 경로명 */
+
+/* 경로순서 */
+
+/* 경로순서 셀: 한 줄로 길게 + 넘치면 ... */
+
+/* ─── 상단 우측 그룹 (범례 + 등록 버튼) ─── */
+
+.topRightGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 등록/수정 통합 버튼 (Primary) */
+
+.primaryActionBtn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  box-sizing: border-box;
+  transition: background 0.2s ease;
+}
+
+.primaryActionBtn:hover {
+  background: var(--color-info-selected);
+}
+
+.primaryActionBtn img {
+  height: 11px;
+  width: auto;
+}
+
+/* ─── 필터 행 (검색 + 토글) ─── */
+
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── 범례 색상 점 ─── */
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ─── 상태 배지 ─── */
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.statusOperating {
+  color: var(--color-info);
+}
+
+.statusStandby {
+  color: var(--text-primary);
+}
+
+.statusCharging {
+  color: var(--color-success);
+}
+
+.statusDocking {
+  color: var(--color-success);
+}
+
+.statusOffline {
+  color: #6b7280;
+}
+
+.statusError {
+  color: var(--color-error-soft);
+}
+
+/* 전원 Off / 미확인 행 비활성화 */
+
+/* ─── 사업자 목록 레이아웃 ─── */
+
+/* ─── 영역 관리 모달 ─── */
+
+.areaModalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9000;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.areaModalContent {
+  width: 480px;
+  max-height: 520px;
+  background: var(--surface-3);
+  border-radius: 12px;
+  box-shadow: 10px 12px 20px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.areaModalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.areaModalHeader h2 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.detailSubInfo {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  margin-top: 6px;
+  padding-bottom: 4px;
+}
+
+.areaModalHeader button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.areaModalHeader button img {
+  width: 16px;
+  height: 16px;
+}
+
+.areaModalBody {
+  padding: 20px 24px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.areaModalToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.areaModalCount {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+/* 상세 모달 탭 */
+
+.detailTabBar {
+  display: flex;
+  gap: 0;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.detailTab {
+  padding: 10px 18px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.detailTab:hover {
+  color: var(--text-secondary);
+}
+
+.detailTabActive {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-info);
+}
+
+/* 사업장 테이블 — 일반 모드: No 사업장명 주소 영역수 로봇수 정보 */
+
+.businessTable th:nth-child(1) { width: 6%; }
+
+.businessTable th:nth-child(2) { width: 20%; }
+
+.businessTable th:nth-child(3) { width: 32%; }
+
+.businessTable th:nth-child(4) { width: 10%; }
+
+.businessTable th:nth-child(5) { width: 10%; }
+
+.businessTable th:nth-child(6) { width: 14%; }
+
+/* 사업장 테이블 — 삭제 모드: 체크 + No 사업장명 주소 영역수 로봇수 정보 */
+
+.businessTableDelete th:nth-child(1) { width: 4%; }
+
+.businessTableDelete th:nth-child(2) { width: 5%; }
+
+.businessTableDelete th:nth-child(3) { width: 19%; }
+
+.businessTableDelete th:nth-child(4) { width: 30%; }
+
+.businessTableDelete th:nth-child(5) { width: 10%; }
+
+.businessTableDelete th:nth-child(6) { width: 10%; }
+
+.businessTableDelete th:nth-child(7) { width: 14%; }
+
+/* 영역 패널 */
+
+.areaPanel {
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.areaPanelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.areaPanelTitle {
+  font-weight: 600;
+  font-size: var(--font-size-lg);
+  color: var(--text-primary);
+}
+
+.areaInputRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.areaList {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.areaItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  margin-bottom: 6px;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+}
+
+.areaItem span:first-child {
+  flex: 1;
+  font-weight: 500;
+}
+
+.areaDate {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.areaDeleteBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.areaDeleteBtn:hover {
+  background: var(--surface-elevated);
+  color: var(--color-error);
+}
+
+/* 비활성 버튼 상태 */
+
+/* 테이블 빈 상태 */
+
+/* ─── 경로 통계 요약 바 ─── */
+
+.pathStatsBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  background: var(--surface-2);
+  padding: 5px 12px;
+  border-radius: 6px;
+}
+
+.pathStatsBar .statDivider {
+  color: var(--text-muted);
+  user-select: none;
+  opacity: 0.2;
+  font-size: var(--font-size-2xs);
+}
+
+.pathStatsBar .statValue {
+  margin-left: 2px;
+  font-weight: 600;
+  color: var(--color-accent-light);
+}
+
+/* ─── 경로 로딩 오버레이 ─── */
+
+@keyframes pathSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── 경로 에러 배너 ─── */
+
+.pathErrorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--color-error);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.pathErrorBanner button {
+  background: var(--color-info-selected);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.pathErrorBanner button:hover {
+  background: var(--color-info-bg);
+}
+
+/* ─── 경로 빈 상태 (아이콘 + 안내문) ─── */
+
+/* ─── 경로 우측 패널 (지도 미리보기) ─── */
+
+/* ─── 경로 테이블 래퍼 (로딩 오버레이 기준) ─── */
+
+/* ── Shared primitives (kept duplicated in both routes for CSS-module isolation) ── */
+.status {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+  }
+
+.status th {
+  padding: 8px 4px;
+  height: 44px;
+}
+
+.status td {
+  padding: 8px 4px;
+  height: 48px;
+}
+
+.status thead tr {
+    background: var(--surface-1);
+    border-bottom: 2px solid var(--border-subtle);
+}
+
+.status thead th {
+    position: relative;
+    color: var(--text-secondary);
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.status th:nth-child(1),
+.status td:nth-child(1) {
+    width: 5%;
+}
+
+.status th:nth-child(3),
+.status td:nth-child(3) {
+    width: 8%;
+}
+
+.status th:nth-child(5),
+.status td:nth-child(5) {
+    width: 20%;
+}
+
+.status th:nth-child(6),
+.status td:nth-child(6) {
+    width: 15%;
+}
+
+.status th:nth-child(7),
+.status td:nth-child(7) {
+    width: 8%;
+}
+
+.status th:nth-child(8),
+.status td:nth-child(8) {
+    width: 15%;
+}
+
+.status thead th img {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+
+.status tbody td {
+    position: relative;
+    color: var(--text-secondary);
+    font-size: var(--font-size-md);
+}
+
+.status thead th:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    width: 1px;
+    height: 20px;
+    background: var(--border-subtle);
+}
+
+.status tbody tr:nth-child(2n) {
+  background-color: rgba(48, 53, 72, 0.6);
+}
+
+.status tr.selectedRow td {
+  background: var(--color-info-selected);
+}
+
+.status tr.selectedRow td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-info);
+}
+
+.status tbody tr {
+  cursor: pointer;
+}
+
+.status td img {
+  width: auto;
+  height: var(--icon-sm);
+}
+
+.robotWorkCommonBtn {
+  height: 32px;
+
+  border-radius: 6px;
+  padding: 0 14px;
+
+  background: var(--surface-button);
+  border: 1px solid var(--border-subtle);
+
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+
+  transition: background 0.2s ease, transform 0.1s ease;
+  box-sizing: border-box;
+}
+
+.robotWorkCommonBtn:hover {
+  background: var(--surface-elevated);
+}
+
+.robotWorkCommonBtn:active {
+  transform: scale(0.97);
+}
+
+.robotWorkCommonBtn img {
+  height: 11px;
+  width: auto;
+}
+
+.placePrimaryBtn {
+  width: 120px;
+  height: 35px;
+  border-radius: 8px;
+  padding: 8px 14px;
+
+  background: var(--color-info-selected);
+  color: var(--text-primary);
+
+  font-size: var(--font-size-base);
+  font-weight: 600;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.placePrimaryBtn:hover {
+  background: var(--color-info-bg);
+}
+
+.placePrimaryBtn:active {
+  transform: scale(0.97);
+}
+
+.placePrimaryBtn:disabled {
+  opacity: 0.4;
+  background: #3a3f55; /* 기존 톤 유지 */
+}
+
+.placePrimaryBtn img {
+  width: 11px;
+  height: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status tbody tr.rowInactive td {
+  opacity: 0.4;
+  cursor: default;
+}
+
+
+.btnDisabled {
+  opacity: 0.4;
+  cursor: default !important;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-lg);
+  letter-spacing: 0.02em;
+}

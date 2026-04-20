@@ -1,0 +1,80 @@
+/* 모달 delete 추가 알림 css */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 120;
+}
+
+.box {
+  width: 360px;
+  border-radius: 12px;
+  background: #282d43ff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  position: relative;
+  padding: 32px 24px 24px;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.closeBtn:hover {
+  opacity: 0.7;
+}
+
+.message {
+  margin: 16px 0 24px 0;
+  text-align: center;
+  white-space: pre-line;
+  font-size: 14px;
+  color: var(--text-primary, #fff);
+  line-height: 1.5;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.btnItemCommon {
+  flex: 1;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: none;
+  cursor: pointer;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.btnItemCommon img {
+  width: 11px;
+  height: 11px;
+  margin-right: 8px;
+}
+
+.btnBgRed {
+  border: 1px solid #BF0E14;
+  background: #941621;
+}
+
+.btnBgBlue {
+  border: 1px solid #0E85B7;
+  background: #196189;
+}

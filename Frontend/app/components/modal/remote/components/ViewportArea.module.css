@@ -1,0 +1,312 @@
+/* ======================== ViewportArea ======================== */
+.viewport {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+}
+
+.mainView {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ======================== 카메라 탭 (전방/후방/열화상) ======================== */
+.camTabs {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  gap: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+}
+
+.camTab {
+  padding: 6px 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.camTab:not(:last-child) {
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.camTab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.camTabActive {
+  background: var(--color-info);
+  color: #fff;
+  font-weight: 600;
+}
+
+.camTabActive:hover {
+  background: var(--color-info);
+  color: #fff;
+}
+
+/* ======================== 로딩/에러 오버레이 ======================== */
+.loadingOverlay,
+.errorOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 5;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.loadingSpinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--color-info);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.errorTitle {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.errorDesc {
+  color: var(--text-muted);
+}
+
+.retryBtn {
+  margin-top: 4px;
+  padding: 6px 20px;
+  border: 1px solid var(--color-info);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-info);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.retryBtn:hover {
+  background: var(--color-info);
+  color: #fff;
+}
+
+/* ======================== 줌 리셋 ======================== */
+.zoomResetBtn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(6px);
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.zoomResetBtn:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+/* ======================== 맵 PIP (축소 상태) ======================== */
+.pip {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  width: 240px;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  background: #0a0d1a;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  z-index: 8;
+  cursor: pointer;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: pipSlideIn 0.3s ease 0.4s both;
+}
+
+@keyframes pipSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pip:hover {
+  border-color: var(--color-info);
+  box-shadow: 0 2px 16px rgba(0, 176, 238, 0.18);
+}
+
+/* -- PIP 상단 우측 버튼 (최소화 + 확대) -- */
+.pipActions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+}
+
+.pipActionBtn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pipActionBtn:hover {
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--text-primary);
+}
+
+/* -- 맵 아이콘 (최소화 상태) -- */
+.mapIconBtn {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 8;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mapIconBtn:hover {
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--color-info);
+  border-color: var(--color-info);
+}
+
+
+/* -- 맵 확대 상태 -- */
+.pipExpanded {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0a0d1a;
+  z-index: 12;
+  animation: mapExpandIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes mapExpandIn {
+  from { opacity: 0; transform: scale(0.3); transform-origin: bottom left; }
+  to { opacity: 1; transform: scale(1); transform-origin: bottom left; }
+}
+
+/* 맵 확대 상태 버튼 공통 */
+.mapCollapseBtn {
+  position: absolute;
+  top: 10px;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mapCollapseBtn { right: 10px; }
+
+.mapCollapseBtn:hover {
+  background: rgba(0, 0, 0, 0.8);
+  color: var(--text-primary);
+}
+
+/* -- PIP 맵 영역 (전체 채움) -- */
+.pipMapArea {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+
+
+/* ======================== 연결 끊김 오버레이 ======================== */
+.disconnectOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 20;
+}
+
+.disconnectContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.disconnectTitle {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-error-soft);
+}
+
+.disconnectDesc {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}

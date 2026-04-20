@@ -1,24 +1,12 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-import os
-import json
-import time
+from pydantic import BaseModel
 
-# 🔥 main.py의 전역변수 직접 가져오기
-import app.main
-from app.Database.database import SessionLocal
-from app.Database.models import LocationInfo
+from app.database.database import get_db
+from app.database.models import LocationInfo, UserInfo
+from app.auth.dependencies import require_any_permission
 
 point = APIRouter(prefix="/nav")
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-WAYPOINT_FILE = "./data/waypoints.json"
 
 
 def _next_cur_name(db: Session) -> str:
@@ -43,79 +31,100 @@ def _next_cur_name(db: Session) -> str:
 
 
 @point.post("/savepoint")
-def save_current_waypoint(db: Session = Depends(get_db)):
+def save_current_waypoint(current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit"))):
+    """현재 로봇 좌표만 반환 (DB 저장 안 함). 프론트에서 경로 생성 완료 시 한번에 저장."""
+    import app.robot_io.runtime as runtime
 
-    # receiver.py에서 수집 중인 위치 사용
-    current_pos = app.main.robot_position
+    rid = runtime.get_first_robot_id()
+    current_pos = runtime.get_position(rid) if rid else {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
 
     if current_pos["timestamp"] == 0:
         return {"status": "error", "msg": "로봇 위치 응답 없음"}
 
-    wp_x = round(current_pos["x"], 3)
-    wp_y = round(current_pos["y"], 3)
-    wp_yaw = round(current_pos["yaw"], 3)
-
-    waypoint = {
-        "x": wp_x,
-        "y": wp_y,
-        "yaw": wp_yaw,
-        "timestamp": time.time(),
-    }
-
-    # 기존 JSON 불러오기
-    try:
-        with open(WAYPOINT_FILE, "r") as f:
-            waypoints = json.load(f)
-    except:
-        waypoints = []
-
-    waypoints.append(waypoint)
-
-    # JSON 저장
-    with open(WAYPOINT_FILE, "w") as f:
-        json.dump(waypoints, f, indent=4)
-
-    # DB 장소 저장 (CUR-XXX)
-    cur_name = _next_cur_name(db)
-    place = LocationInfo(
-        UserId=1,
-        RobotName="TestRobot-01",
-        LacationName=cur_name,
-        Floor="1F",
-        LocationX=wp_x,
-        LocationY=wp_y,
-        Yaw=wp_yaw,
-    )
-    db.add(place)
-    db.commit()
-    print(f"📍 DB 장소 저장: {cur_name} → x={wp_x}, y={wp_y}, yaw={wp_yaw}")
-
     return {
         "status": "ok",
-        "saved": waypoint,
-        "total": len(waypoints),
-        "place_name": cur_name,
+        "x": round(current_pos["x"], 3),
+        "y": round(current_pos["y"], 3),
+        "yaw": round(current_pos["yaw"], 3),
     }
 
-@point.post("/clearpoints")
-def clear_waypoints():
-    with open(WAYPOINT_FILE, "w") as f:
-        json.dump([], f, indent=4)
-    return {"status": "ok", "msg": "웨이포인트 초기화 완료"}
+
+class CreatePathReq(BaseModel):
+    waypoints: list[dict]  # [{"x": 1.0, "y": 2.0, "yaw": 0.5}, ...]
+    way_name: str | None = None  # 지정하지 않으면 자동 생성
 
 
-# JSON 파일 존재하지 않을 경우 생성
-os.makedirs("./data", exist_ok=True)
-if not os.path.exists(WAYPOINT_FILE):
-    with open(WAYPOINT_FILE, "w") as f:
-        json.dump([], f, indent=4)
+@point.post("/createpath")
+def create_remote_path(req: CreatePathReq, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit"))):
+    """직접 경로 생성 완료: 좌표 → LocationInfo 저장 + WayInfo 생성."""
+    from app.database.models import RobotInfo, RobotMapInfo, WayInfo
 
+    if len(req.waypoints) < 2:
+        return {"status": "error", "msg": "최소 2개 이상의 위치가 필요합니다."}
 
-def load_waypoints():
-    with open(WAYPOINT_FILE, "r") as f:
-        return json.load(f)
+    import app.robot_io.runtime as runtime
+    rid = runtime.get_first_robot_id()
+    robot = db.query(RobotInfo).filter(RobotInfo.id == rid).first() if rid else None
+    floor_id = robot.CurrentFloorId if robot else None
+    robot_name = robot.RobotName if robot else ""
 
+    map_id = None
+    if floor_id:
+        active_map = db.query(RobotMapInfo).filter(RobotMapInfo.FloorId == floor_id).order_by(RobotMapInfo.id.desc()).first()
+        map_id = active_map.id if active_map else None
 
-def save_waypoints(data):
-    with open(WAYPOINT_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+    # 경로 이름: 지정된 이름 또는 자동 생성
+    if req.way_name and req.way_name.strip():
+        way_name = req.way_name.strip()
+        # 중복 확인
+        if db.query(WayInfo).filter(WayInfo.WayName == way_name).first():
+            return {"status": "error", "msg": f"경로 이름 '{way_name}'이(가) 이미 존재합니다."}
+    else:
+        import re
+        existing_names = db.query(WayInfo.WayName).filter(WayInfo.WayName.like("경로-%")).all()
+        nums = set()
+        for (name,) in existing_names:
+            m = re.match(r"^경로-(\d+)$", name)
+            if m:
+                nums.add(int(m.group(1)))
+        next_num = max(nums) + 1 if nums else 1
+        way_name = f"경로-{next_num:03d}"
+
+    # LocationInfo에 CUR-XXX로 저장
+    place_names = []
+    for wp in req.waypoints:
+        cur_name = _next_cur_name(db)
+        place = LocationInfo(
+            UserId=current_user.id,
+            RobotName=robot_name,
+            LacationName=cur_name,
+            FloorId=floor_id,
+            MapId=map_id,
+            LocationX=wp["x"],
+            LocationY=wp["y"],
+            Yaw=wp.get("yaw", 0.0),
+            Category="remote",
+        )
+        db.add(place)
+        db.flush()  # id 확보 + 다음 _next_cur_name에서 감지
+        place_names.append(cur_name)
+
+    # WayInfo 생성
+    way_points_str = " - ".join(place_names)
+    way = WayInfo(
+        UserId=current_user.id,
+        RobotName=robot_name,
+        TaskType="task1",
+        WayName=way_name,
+        WayPoints=way_points_str,
+    )
+    db.add(way)
+    db.commit()
+
+    print(f"📍 경로 생성: {way_name} → {way_points_str}")
+    return {
+        "status": "ok",
+        "way_name": way_name,
+        "way_points": way_points_str,
+        "place_names": place_names,
+    }

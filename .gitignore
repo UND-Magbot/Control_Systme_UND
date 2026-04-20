@@ -7,6 +7,10 @@ dist/
 build/
 *.egg
 
+# Environment variables
+.env
+Backend/.env
+
 # Virtual environment
 noah/
 venv/
@@ -21,8 +25,13 @@ env/
 .DS_Store
 Thumbs.db
 
+# Node
+node_modules/
+
 # Build output
 Backend/out/
+Frontend/out/
+Frontend/.next/
 
 # Junk files (accidentally created)
 Backend/1
@@ -32,3 +41,13 @@ Backend/r.id
 Backend/rect.top
 Backend/void
 Backend/{
+
+
+# Auto-downloaded binaries
+Backend/ffmpeg_bin/
+Backend/recordings/
+
+# Test scripts
+Backend/test_recording.py
+
+.claude/

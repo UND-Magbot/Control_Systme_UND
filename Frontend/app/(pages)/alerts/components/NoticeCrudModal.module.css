@@ -1,0 +1,399 @@
+/* 패널 내 인라인 폼 */
+.formWrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  animation: fadeSlideIn 0.2s ease;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 성공 오버레이 */
+.successOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(26, 29, 46, 0.92);
+  z-index: 10;
+  animation: fadeIn 0.15s ease;
+  color: var(--text-primary);
+  font-size: var(--font-size-lg, 16px);
+}
+
+.successIcon {
+  font-size: 32px;
+  color: #4ade80;
+}
+
+.successText {
+  font-weight: 500;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 헤더 */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: var(--font-size-lg, 16px);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+
+/* 본문 (스크롤) */
+.body {
+  flex: 1;
+  min-height: 0;
+  padding-top: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 필드 그룹 */
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldGroupExpand {
+  flex: 1;
+  min-height: 0;
+}
+
+.fieldLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fieldLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.fieldRequired {
+  color: #f87171;
+  margin-left: 2px;
+}
+
+.fieldInput {
+  height: 34px;
+  padding: 0 12px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.fieldInput::placeholder {
+  color: var(--text-muted);
+}
+
+.fieldInput:focus {
+  border-color: var(--color-info);
+}
+
+.fieldInputError {
+  border-color: #f87171 !important;
+}
+
+.fieldError {
+  font-size: 11px;
+  color: #f87171;
+}
+
+.charCount {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.charCountWarn {
+  color: var(--color-error-soft);
+}
+
+/* 중요도 라디오 (라벨 옆 인라인) */
+.importanceRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0 2px 2px;
+}
+
+.importanceRow .fieldLabel {
+  color: var(--text-secondary);
+  margin-right: 4px;
+}
+
+.importanceDivider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+}
+
+.importanceGroup {
+  display: flex;
+  gap: 14px;
+}
+
+.radioInput {
+  display: none;
+}
+
+.radioLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.radioLabel:hover {
+  color: var(--text-secondary);
+}
+
+.radioCircle {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.radioDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: block;
+}
+
+/* 선택 시 공통 (블루) */
+.radioActive {
+  color: #38bdf8;
+}
+
+.radioActive .radioCircle {
+  border-color: #38bdf8;
+}
+
+.radioDot {
+  background: #38bdf8;
+}
+
+
+/* 내용 textarea */
+.contentTextarea {
+  min-height: 120px;
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  line-height: 1.6;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  transition: border-color 0.15s ease;
+}
+
+.contentTextarea::placeholder {
+  color: var(--text-muted);
+}
+
+.contentTextarea:focus {
+  border-color: var(--color-info);
+}
+
+.contentTextarea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.contentTextarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.contentTextarea::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.contentTextarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 파일 첨부 */
+.attachRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.attachDisplay {
+  flex: 1;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: var(--font-size-md);
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.attachFileName {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.attachRemoveBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.attachRemoveBtn:hover {
+  color: #f87171;
+}
+
+.attachBtn {
+  height: 34px;
+  padding: 0 14px;
+  background: var(--surface-5);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.attachBtn:hover {
+  background: var(--color-info-bg);
+  border-color: var(--color-info-border);
+}
+
+.attachHint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* 푸터 */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 16px;
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+.cancelBtn {
+  height: 34px;
+  padding: 0 18px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cancelBtn:hover {
+  background: var(--surface-5);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.submitBtn {
+  height: 34px;
+  padding: 0 18px;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.submitBtn:hover {
+  background: var(--color-info-hover);
+}
+
+.submitBtnDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}

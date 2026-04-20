@@ -1,7 +1,12 @@
 import '@/app/globals.css'
 import type { Viewport } from "next";
+import { AuthProvider } from "@/app/context/AuthContext";
 import { DebugMapProvider } from "@/app/components/map/DebugMapContext";
-import DebugMapPanel from "@/app/components/map/DebugMapPanel";
+import DebugMapPanelLoader from "@/app/components/map/DebugMapPanelLoader";
+
+export const metadata = {
+  icons: { icon: "data:," },
+};
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -20,10 +25,12 @@ export default function RootLayout({
   return (    
     <html lang="ko">
       <body suppressHydrationWarning>
-        <DebugMapProvider>
-          {children}
-          <DebugMapPanel />
-        </DebugMapProvider>
+        <AuthProvider>
+          <DebugMapProvider>
+            {children}
+            <DebugMapPanelLoader />
+          </DebugMapProvider>
+        </AuthProvider>
       </body>
     </html>
   )

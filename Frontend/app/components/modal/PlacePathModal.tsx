@@ -3,10 +3,10 @@
 
 import styles from './Modal.module.css';
 import React, { useEffect, useRef, useState } from 'react';
-import type { RobotRowData } from '@/app/type';
+import type { RobotRowData } from '@/app/types';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
-import { getApiBase } from '@/app/config';
+import { apiFetch } from "@/app/lib/api";
 
 
 type WorkModalProps = {
@@ -38,9 +38,6 @@ type DBPlace = {
 export default function RobotDetailModal({
     isOpen,
     onClose,
-    // selectedRobotId,
-    // selectedRobot,
-    // robots
 }:WorkModalProps ){
 
 
@@ -68,7 +65,7 @@ export default function RobotDetailModal({
         if (!selectedPlace) return;
 
         try {
-            const res = await fetch(`${getApiBase()}/nav/placemove/${selectedPlaceId}`, {
+            const res = await apiFetch(`/nav/placemove/${selectedPlaceId}`, {
                 method: "POST",
             });
             const data = await res.json();
@@ -92,7 +89,7 @@ export default function RobotDetailModal({
         if (scrollRef.current) scrollRef.current.scrollTop = 0;
 
         setLoading(true);
-        fetch(`${getApiBase()}/DB/places`)
+        apiFetch(`/DB/places`)
           .then((res) => res.json())
           .then((data: DBPlace[]) => {
             setPlaces(

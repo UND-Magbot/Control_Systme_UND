@@ -1,46 +1,29 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { usePageLoading } from "@/app/context/PageLoadingContext";
 import styles from "./GlobalLoading.module.css";
 
-const LOADING_DURATION = 5000;
-const FADE_DURATION = 500;
+const FADE_DURATION = 150;
 
 export default function GlobalLoading() {
-  const pathname = usePathname();
-  const [isLoading, setIsLoading] = useState(true);
+  const { isPageLoading } = usePageLoading();
+  const [visible, setVisible] = useState(isPageLoading);
   const [isFading, setIsFading] = useState(false);
-  const [visible, setVisible] = useState(true);
-  const prevPathRef = useRef(pathname);
 
   useEffect(() => {
-    if (prevPathRef.current !== pathname) {
-      prevPathRef.current = pathname;
-      setIsLoading(true);
-      setIsFading(false);
+    if (isPageLoading) {
       setVisible(true);
-    }
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!isLoading) return;
-
-    const fadeTimer = setTimeout(() => {
-      setIsFading(true);
-    }, LOADING_DURATION);
-
-    const removeTimer = setTimeout(() => {
-      setIsLoading(false);
       setIsFading(false);
-      setVisible(false);
-    }, LOADING_DURATION + FADE_DURATION);
-
-    return () => {
-      clearTimeout(fadeTimer);
-      clearTimeout(removeTimer);
-    };
-  }, [isLoading]);
+    } else if (visible) {
+      setIsFading(true);
+      const timer = setTimeout(() => {
+        setVisible(false);
+        setIsFading(false);
+      }, FADE_DURATION);
+      return () => clearTimeout(timer);
+    }
+  }, [isPageLoading]);
 
   if (!visible) return null;
 

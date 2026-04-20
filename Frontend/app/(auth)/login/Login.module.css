@@ -92,6 +92,53 @@
     font-weight: 400;
 }
 
+/* 자동 로그인 */
+.autoLogin {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    margin-top: 4px;
+}
+
+.autoLogin input[type="checkbox"] {
+    display: none;
+}
+
+.checkbox {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1.5px solid var(--border-subtle);
+    background: var(--surface-1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.checkbox svg {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.autoLogin input[type="checkbox"]:checked + .checkbox {
+    background: #1a8fc4;
+    border-color: #1a8fc4;
+}
+
+.autoLogin input[type="checkbox"]:checked + .checkbox svg {
+    opacity: 1;
+}
+
+.autoLogin span {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
 /* 로그인 버튼 */
 .loginButton {
     width: 100%;
@@ -128,4 +175,19 @@
     color: var(--color-error-soft);
     margin-top: 6px;
     font-weight: 400;
+}
+
+/* 세션 만료 배너 */
+.sessionExpiredBanner {
+    width: 100%;
+    padding: 10px 14px;
+    margin-bottom: 18px;
+    background: rgba(255, 170, 0, 0.1);
+    border: 1px solid rgba(255, 170, 0, 0.3);
+    border-radius: 8px;
+    color: #ffaa00;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    text-align: center;
+    box-sizing: border-box;
 }

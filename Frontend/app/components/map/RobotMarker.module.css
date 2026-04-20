@@ -1,0 +1,17 @@
+.marker {
+  position: absolute;
+  pointer-events: none;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.name {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64b4ff;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}

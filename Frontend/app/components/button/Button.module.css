@@ -1,42 +1,3 @@
-.robot-chk-btn button.active,
-.floor-btn button.active {
-  background-color: rgba(255, 255, 255);
-  color: #202334;
-}
-
-.robot-chk-btn button,
-.floor-btn button {
-  padding: 5px 15px;
-  border: 1px solid #fff;
-  background-color: #292D43;
-  color: #BFBFBF;
-  font-size: 13px;
-  margin-right: 5px;
-  cursor: pointer;
-}
-
-.robot-chk-btn button:hover,
-.robot-chk-btn button:active,
-.floor-btn button:hover,
-.floor-btn button:active {
-  background-color: #fff;
-  color: #202334;
-}
-
-.view-div {
-    width: 100%;
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-}
-
-.view-box {
-  width: 100%;
-  height: 100%;
-  background-color: #d6d6d6;
-  color: #222;
-}
-
 .viewBtn,
 .mapButton {
   position: absolute;
@@ -82,26 +43,35 @@
   width: 34px;
   height: 34px;
 
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(130, 190, 255, 0.2);
   border-radius: 8px;
 
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
+  background: rgba(32, 37, 58, 0.92);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
 
   display: flex;
   align-items: center;
   justify-content: center;
 
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s ease, transform 0.1s ease, border-color 0.15s ease;
 }
 
 .zoomIcon:hover {
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(130, 190, 255, 0.12);
+  border-color: rgba(130, 190, 255, 0.35);
 }
 
 .zoomIcon:active {
   transform: scale(0.93);
+}
+
+.viewToggleLabel {
+  color: #82beff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .remote-icon,
@@ -169,19 +139,21 @@
 
 .selete {
   width: 100%;
-  height: 29px;
-  background: #33384c; 
-  
-  padding: 0 19px;
-  border-radius: 4px;
-  border: 1px solid #8a96ac;
+  height: 32px;
+  background: var(--surface-2);
+
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  box-sizing: border-box;
 
   display: flex;
   align-items: center;
   justify-content: space-between;
-  
+
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
 }
 
 .selete img {
@@ -298,7 +270,7 @@
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  z-index: 9999;
+  z-index: 150;
   overflow: hidden;
   cursor: pointer;
 }
@@ -636,8 +608,7 @@
 /* 로봇관리 - 로봇 CRUD 버튼 */
 
 .robotCrudBox {
-  width: 120px;
-  height: 39px;
+  height: 32px;
   margin: 0;
 
   display: flex;
@@ -645,16 +616,18 @@
   align-items: center;
   gap: 6px;
 
-  padding: 8px 12px;
+  padding: 0 14px;
   background: var(--color-info-bg);
   border: 1px solid var(--color-info-border);
-  border-radius: 8px;
+  border-radius: 6px;
 
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   color: var(--text-primary);
   font-weight: 500;
+  white-space: nowrap;
 
   cursor: pointer;
+  box-sizing: border-box;
   transition: background 0.2s ease, transform 0.1s ease;
 }
 

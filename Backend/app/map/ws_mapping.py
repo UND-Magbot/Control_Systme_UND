@@ -53,7 +53,7 @@ def request_mapping_data(action: str) -> str | None:
 
 def polling_loop():
     """로봇에 주기적으로 매핑 데이터 요청"""
-    print(f"📡 매핑 폴링 시작 → {ROBOT_IP}:{ROBOT_UDP_PORT}")
+    print(f"[LISTEN] 매핑 폴링 시작 → {ROBOT_IP}:{ROBOT_UDP_PORT}")
 
     last_cloud_time = 0
 
@@ -82,7 +82,7 @@ def polling_loop():
 
         time.sleep(0.5)
 
-    print("📡 매핑 폴링 종료")
+    print("[LISTEN] 매핑 폴링 종료")
 
 
 def broadcast(raw: str):

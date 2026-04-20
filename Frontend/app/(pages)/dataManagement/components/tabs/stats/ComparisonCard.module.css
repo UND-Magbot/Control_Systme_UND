@@ -1,0 +1,128 @@
+.card {
+  background: var(--surface-3);
+  border: 1px solid rgba(146, 212, 244, 0.08);
+  border-radius: 10px;
+  padding: clamp(10px, 0.8vw, 16px) clamp(12px, 1vw, 18px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 0.5vw, 10px);
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: rgba(146, 212, 244, 0.12);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-bottom: clamp(4px, 0.3vw, 6px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: clamp(12px, 0.9vw, 15px);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tooltip {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: help;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.tooltip:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: var(--text-secondary);
+}
+
+.headDelta {
+  font-size: clamp(11px, 0.85vw, 14px);
+  font-weight: 700;
+  font-family: 'Gmarket Sans';
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.headDeltaLabel {
+  font-size: clamp(9px, 0.7vw, 11px);
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 1px;
+}
+
+/* 헤더 + 행 공통 그리드 — 고정 열 너비 */
+.colHeaders,
+.row {
+  display: grid;
+  grid-template-columns: 1fr clamp(52px, 5vw, 76px) clamp(52px, 5vw, 76px);
+  gap: clamp(4px, 0.3vw, 6px);
+  align-items: center;
+}
+
+/* 비교 데이터 없을 때 2열 */
+.colSingle {
+  grid-template-columns: 1fr clamp(52px, 5vw, 76px);
+}
+
+.labelCol {
+  font-size: clamp(11px, 0.85vw, 14px);
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.valCol {
+  text-align: center;
+  font-size: clamp(10px, 0.8vw, 13px);
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(4px, 0.3vw, 6px);
+}
+
+.row .valCol {
+  font-size: clamp(13px, 1vw, 16px);
+  font-weight: 700;
+  font-family: 'Gmarket Sans';
+  color: #ffffff;
+}
+
+.prevVal {
+  color: var(--text-tertiary) !important;
+  opacity: 0.6;
+}
+
+.noPrev {
+  font-size: clamp(10px, 0.75vw, 12px);
+  color: var(--text-muted);
+  text-align: center;
+  padding: clamp(4px, 0.3vw, 8px) 0;
+}

@@ -1,0 +1,148 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.legend {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-bottom: clamp(4px, 0.3vw, 6px);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: clamp(9px, 0.7vw, 11px);
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.legendBox {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.chartArea {
+  display: flex;
+  gap: clamp(2px, 0.3vw, 6px);
+  align-items: flex-end;
+  flex: 1;
+  min-height: 0;
+  padding: 0 clamp(4px, 0.5vw, 12px);
+}
+
+.col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(6px, 0.5vw, 10px);
+  min-width: 0;
+}
+
+.barArea {
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+  width: 100%;
+  justify-content: center;
+  flex: 1;
+  min-height: clamp(60px, 6vw, 120px);
+  position: relative;
+}
+
+/* 0값일 때 바닥 라인 */
+.baseline {
+  position: absolute;
+  bottom: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.barWrap {
+  width: clamp(14px, 1.5vw, 26px);
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+}
+
+.bar {
+  width: 100%;
+  border-radius: 3px 3px 1px 1px;
+  transition: height 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  min-height: 0;
+}
+
+.bar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 100%);
+  border-radius: 3px 3px 0 0;
+}
+
+.barPrev::after {
+  display: none;
+}
+
+.value {
+  font-size: clamp(12px, 0.95vw, 16px);
+  font-weight: 700;
+  font-family: 'Gmarket Sans';
+  line-height: 1;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.unit {
+  font-size: clamp(9px, 0.65vw, 11px);
+  font-weight: 400;
+  margin-left: 1px;
+}
+
+.delta {
+  font-size: clamp(8px, 0.6vw, 10px);
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.deltaUp {
+  color: #77a251;
+}
+
+.deltaDown {
+  color: #e06b73;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: clamp(10px, 0.75vw, 13px);
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}

@@ -1,0 +1,84 @@
+.legendContainer{
+    display: flex;
+    font-size: var(--font-size-xs);
+}
+
+.statusLegend {
+  display: flex;
+  gap: 11px;
+
+  height: 25px;
+
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+
+  background: var(--surface-2);
+
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+}
+
+.statusItem {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.statusCircle {
+    width: 7px;
+    height: 7px;
+    border-radius: 50px;
+    display: flex;
+}
+
+.waitingC {
+    background-color: var(--color-warning);
+}
+
+.workingC {
+    background-color: var(--color-info);
+}
+
+.errorC {
+    background-color: var(--color-error);
+}
+
+.cancelledC {
+    background-color: #FF9800;
+}
+
+.completedC {
+    background-color: #66bb6a;
+}
+
+/* ─── 탭 메뉴 ─── */
+.scheduleTab {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 0;
+}
+
+.scheduleTab div {
+    background: var(--surface-tab-inactive);
+    border-radius: 8px 8px 0 0;
+    width: 120px;
+    height: var(--tab-height);
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.scheduleTab div:hover {
+    color: var(--text-tertiary);
+}
+
+.scheduleTab div.active {
+    background: var(--surface-3);
+    color: var(--text-primary);
+}

@@ -5,5 +5,5 @@
   overflow: hidden;
   user-select: none;
   touch-action: none;
-  background: rgb(128, 128, 128);
+  background: var(--surface-0, #1a1d2e);
 }

@@ -1,0 +1,21 @@
+.poiItem {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 15;
+}
+
+.label {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #fff;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  opacity: 1;
+}
+
+.labelAlwaysVisible {
+  opacity: 1;
+}

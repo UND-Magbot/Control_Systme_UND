@@ -1,0 +1,169 @@
+.middle-div {
+    width: 100%;
+}
+
+.view-div {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    position: relative;
+    overflow: hidden;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid rgba(130, 190, 255, 0.15);
+}
+
+/* ── 층 선택 세로 버튼 리스트 ── */
+.floorList {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    background: rgba(32, 37, 58, 0.92);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(130, 190, 255, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.floorBtn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 52px;
+    padding: 8px 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.floorBtn:hover {
+    background: rgba(130, 190, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.floorBtnActive {
+    color: #ffffff;
+    background: rgba(130, 190, 255, 0.2);
+    font-weight: 700;
+}
+
+.floorIndicator {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #82beff;
+    box-shadow: 0 0 6px rgba(130, 190, 255, 0.5);
+}
+
+/* ── 빈 데이터 오버레이 ── */
+.emptyOverlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-md);
+}
+
+.emptySubText {
+    font-size: var(--font-size-sm);
+    color: var(--text-tertiary);
+    opacity: 0.7;
+}
+
+/* ── 맵 로딩 오버레이 ── */
+.loadingOverlay {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: var(--surface-1);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    color: var(--text-tertiary);
+    font-size: var(--font-size-md);
+}
+
+.loadingSpinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--surface-4);
+    border-top-color: var(--color-info);
+    border-radius: 50%;
+    animation: mapSpin 0.8s linear infinite;
+}
+
+@keyframes mapSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── 로봇 전체 정지 버튼 ── */
+.stopAllBtn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10;
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    background-color: var(--color-error, #e53e3e);
+    color: #fff;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: opacity 0.15s ease;
+}
+
+.stopAllBtn:hover {
+    opacity: 0.85;
+}
+
+.stopAllBtnDisabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.stopAllBtnDisabled:hover {
+    opacity: 0.35;
+}
+
+/* ── 로봇 위치 수신 불가 뱃지 ── */
+.posErrorBadge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    padding: 4px 12px;
+    background: rgba(220, 53, 69, 0.8);
+    backdrop-filter: blur(6px);
+    border-radius: 6px;
+    font-size: var(--font-size-sm);
+    color: #fff;
+}

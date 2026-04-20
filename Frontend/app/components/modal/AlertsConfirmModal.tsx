@@ -4,35 +4,36 @@ import styles from './Modal.module.css';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
-import { alertMockData, type AlertMockData, type AlertType } from '@/app/mock/alerts_data';
+import { type AlertMockData, type AlertType } from '@/app/types';
 import { useCustomScrollbar } from '@/app/hooks/useCustomScrollbar';
-import { useModalBehavior } from '@/app/hooks/useModalBehavior';
+import { useAlertContext } from '@/app/context/AlertContext';
 
 type AlertsConfirmModalProps = {
     isOpen: boolean;
     onClose: () => void;
 };
 
-type ModalTabKey = 'total' | 'schedule' | 'robot';
+type ModalTabKey = 'total' | 'schedule' | 'robot' | 'notice';
 
 const tabTypeMap: Record<ModalTabKey, AlertType | null> = {
     total: null,
     schedule: 'Schedule',
     robot: 'Robot',
+    notice: 'Notice',
 };
 
 const emptyMessages: Record<ModalTabKey, string> = {
-    total: '오늘 새로운 알림이 없습니다',
-    schedule: '오늘 스케줄 알림이 없습니다',
-    robot: '오늘 로봇 알림이 없습니다',
+    total: '새로운 알림이 없습니다',
+    schedule: '스케줄 알림이 없습니다',
+    robot: '로봇 알림이 없습니다',
+    notice: '공지사항 알림이 없습니다',
 };
 
 export default function AlertsConfirmModal({
     isOpen,
     onClose,
 }: AlertsConfirmModalProps) {
-    // 로컬 상태 관리 (향후 Context/Store 전환 대비)
-    const [alerts] = useState<AlertMockData[]>(() => [...alertMockData]);
+    const { unreadAlerts, unreadCounts: ctxCounts, refresh, handleMarkRead, handleMarkAllRead } = useAlertContext();
     const [activeTab, setActiveTab] = useState<ModalTabKey>('total');
 
     const router = useRouter();
@@ -46,68 +47,66 @@ export default function AlertsConfirmModal({
     const trackRef = useRef<HTMLDivElement>(null);
     const thumbRef = useRef<HTMLDivElement>(null);
 
-    // 당일 날짜 (컴포넌트 마운트 시 계산 — 자정 경계 대응)
-    const today = useMemo(() => {
-        const d = new Date();
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
-    }, []);
-
-    // 모달 열릴 때 탭 초기화
+    // 모달 열릴 때 탭 초기화 + 최신 데이터 보장
     useEffect(() => {
         if (isOpen) {
             setActiveTab('total');
+            refresh();
         }
-    }, [isOpen]);
+    }, [isOpen, refresh]);
 
-    // ESC 키로 모달 닫기 (CancelConfirmModal 스택 충돌 방지)
-    useModalBehavior({ isOpen, onClose, disabled: showConfirm });
+    // ESC 키로 패널 닫기 (CancelConfirmModal 열려 있으면 무시)
+    useEffect(() => {
+        if (!isOpen || showConfirm) return;
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        document.addEventListener('keydown', handleEsc);
+        return () => document.removeEventListener('keydown', handleEsc);
+    }, [isOpen, onClose, showConfirm]);
 
-    // 탭별 미읽음 카운트 (당일 + 미읽음 + Notice 제외)
-    const unreadCounts = useMemo(() => {
-        const counts: Record<ModalTabKey, number> = { total: 0, schedule: 0, robot: 0 };
-        for (const a of alerts) {
-            if (!a.isRead && a.date.startsWith(today) && a.type !== 'Notice') {
-                counts.total++;
-                if (a.type === 'Schedule') counts.schedule++;
-                else if (a.type === 'Robot') counts.robot++;
-            }
-        }
-        return counts;
-    }, [alerts, today]);
+    // 탭별 미읽음 카운트 (Context의 카운트를 모달 탭 키로 매핑)
+    const tabCounts = useMemo<Record<ModalTabKey, number>>(() => ({
+        total: ctxCounts.total,
+        schedule: ctxCounts.schedule,
+        robot: ctxCounts.robot,
+        notice: ctxCounts.notice,
+    }), [ctxCounts]);
 
     // 탭 라벨
     const tabs = useMemo<{ id: ModalTabKey; label: string }[]>(() => [
-        { id: 'total', label: unreadCounts.total > 0 ? `전체 (${unreadCounts.total})` : '전체' },
-        { id: 'schedule', label: unreadCounts.schedule > 0 ? `스케줄 (${unreadCounts.schedule})` : '스케줄' },
-        { id: 'robot', label: unreadCounts.robot > 0 ? `로봇 (${unreadCounts.robot})` : '로봇' },
-    ], [unreadCounts]);
+        { id: 'total', label: tabCounts.total > 0 ? `전체 (${tabCounts.total})` : '전체' },
+        { id: 'schedule', label: tabCounts.schedule > 0 ? `스케줄 (${tabCounts.schedule})` : '스케줄' },
+        { id: 'robot', label: tabCounts.robot > 0 ? `로봇 (${tabCounts.robot})` : '로봇' },
+        { id: 'notice', label: tabCounts.notice > 0 ? `공지사항 (${tabCounts.notice})` : '공지사항' },
+    ], [tabCounts]);
 
-    // 3단계 필터: 당일 → 미읽음 → 탭 타입 (Notice 제외)
+    // 필터: 탭 타입별
     const filteredAlerts = useMemo(() => {
-        let list = alerts.filter(
-            (a) => a.date.startsWith(today) && !a.isRead && a.type !== 'Notice'
-        );
+        let list = [...unreadAlerts];
 
-        // 탭별 타입 필터
         const filterType = tabTypeMap[activeTab];
         if (filterType) {
             list = list.filter((a) => a.type === filterType);
         }
 
-        // 날짜 최신순 정렬
         list.sort((a, b) => b.date.localeCompare(a.date));
 
         return list;
-    }, [alerts, today, activeTab]);
+    }, [unreadAlerts, activeTab]);
 
     // 타입별 배지 슬러그
     const toTypeSlug = (t?: string) => {
         const v = (t ?? '').toLowerCase();
         if (v.startsWith('emerg')) return 'emerg';
         return v;
+    };
+
+    // 타입 배지 한글 라벨
+    const typeLabel: Record<string, string> = {
+        Robot: '로봇',
+        Schedule: '스케줄',
+        Notice: '공지',
     };
 
     // 표시 상태 결정 (알림 페이지와 동일한 Robot 상태값)
@@ -117,6 +116,12 @@ export default function AlertsConfirmModal({
         if (item.status === 'info') return 'info';
         if (item.status === 'event') return 'event';
         return null;
+    };
+
+    const statusLabel: Record<string, string> = {
+        error: '오류',
+        info: '정보',
+        event: '이벤트',
     };
 
     // 커스텀 스크롤바 (필터된 리스트 길이에 따라 재계산)
@@ -154,42 +159,54 @@ export default function AlertsConfirmModal({
         setSelectedAlert(null);
     };
 
-    // 알림 페이지로 이동
-    const handleMoveToAlerts = () => {
+    // 알림 클릭 → 해당 항목 상세로 이동
+    const handleAlertClick = (item: AlertMockData) => {
+        const tabMap: Record<string, string> = { Robot: 'robot', Schedule: 'schedule', Notice: 'notice' };
+        const tab = tabMap[item.type] ?? 'total';
         onClose();
-        router.push('/alerts');
+        router.push(`/alerts?tab=${tab}&id=${item.id}`);
     };
 
     return (
         <>
-            <div className={styles.modalOverlay} onClick={onClose}>
                 <div className={styles.alertsModalContent} onClick={(e) => e.stopPropagation()}>
-                    {/* 헤더 */}
+                    {/* 헤더: 알림 / 전체 보기 + 전체 읽음 */}
                     <div className={styles.alertsModalTop}>
-                        <div className={styles.alertsModalTitle}>
-                            <img src="/icon/alerts_w.png" alt="" />
-                            <h2>알림</h2>
+                        <h2 className={styles.alertsModalTitle}>알림</h2>
+                        <div className={styles.alertsTopActions}>
+                            <button
+                                className={styles.alertsMarkAllReadBtn}
+                                onClick={handleMarkAllRead}
+                                disabled={unreadAlerts.length === 0}
+                            >
+                                모두 읽음
+                            </button>
+                            <button
+                                className={styles.alertsViewAllBtn}
+                                onClick={() => { onClose(); router.push('/alerts'); }}
+                            >
+                                전체 보기
+                            </button>
                         </div>
-                        <button onClick={onClose} aria-label="닫기">
-                            <img src="/icon/close_btn.png" alt="" />
-                        </button>
                     </div>
 
                     {/* 탭 바 */}
-                    <div className={styles.alertsTabBar} role="tablist" aria-label="알림 카테고리">
-                        {tabs.map((tab) => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                role="tab"
-                                aria-selected={activeTab === tab.id}
-                                aria-controls="alerts-tabpanel"
-                                className={`${styles.alertsTab} ${activeTab === tab.id ? styles.alertsTabActive : ''}`}
-                                onClick={() => handleTabChange(tab.id)}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
+                    <div className={styles.alertsTabRow}>
+                        <div className={styles.alertsTabBar} role="tablist" aria-label="알림 카테고리">
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={activeTab === tab.id}
+                                    aria-controls="alerts-tabpanel"
+                                    className={`${styles.alertsTab} ${activeTab === tab.id ? styles.alertsTabActive : ''}`}
+                                    onClick={() => handleTabChange(tab.id)}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* 알림 리스트 */}
@@ -211,43 +228,50 @@ export default function AlertsConfirmModal({
                                         const displayStatus = getDisplayStatus(item);
                                         const isError = item.type === 'Robot' && item.status === 'error';
 
+                                        const itemTypeClass = isError ? styles.alertsItemError : '';
+
                                         return (
                                             <div
                                                 key={item.id}
-                                                className={`${styles.alertsItem} ${isError ? styles.alertsItemError : ''}`}
+                                                className={`${styles.alertsItem} ${itemTypeClass}`}
+                                                onClick={() => handleAlertClick(item)}
+                                                style={{ cursor: 'pointer' }}
                                             >
                                                 <div className={styles.topContents}>
-                                                    <div className={`${styles.aletsType} ${styles[`badge--${toTypeSlug(item.type)}`]}`}>
-                                                        {item.type}
-                                                    </div>
-
-                                                    {displayStatus ? (
-                                                        <div
-                                                            className={`${styles.aletsStatus} ${
-                                                                displayStatus === 'error' ? styles.statusError
-                                                                : displayStatus === 'info' ? styles.statusInfo
-                                                                : styles.statusEvent
-                                                            }`}
-                                                        >
-                                                            {displayStatus}
+                                                    <div className={styles.topLeft}>
+                                                        <div className={`${styles.aletsType} ${styles[`badge--${toTypeSlug(item.type)}`]}`}>
+                                                            {typeLabel[item.type] ?? item.type}
                                                         </div>
-                                                    ) : (
-                                                        <div className={styles.aletsStatusEmpty} />
-                                                    )}
 
-                                                    <div className={styles.aletsContent}>{item.content}</div>
-                                                </div>
-                                                <div className={styles.bottomContents}>
-                                                    <div className={styles.aletsDate}>{item.date}</div>
+                                                        {displayStatus && (
+                                                            <div
+                                                                className={`${styles.aletsStatus} ${
+                                                                    displayStatus === 'error' ? styles.statusError
+                                                                    : displayStatus === 'info' ? styles.statusInfo
+                                                                    : styles.statusEvent
+                                                                }`}
+                                                            >
+                                                                {statusLabel[displayStatus]}
+                                                            </div>
+                                                        )}
 
-                                                    {/* 로그 전송: Robot + error 항목에만 표시 */}
-                                                    {isError && (
-                                                        <button onClick={() => handleSendLog(item)}>
-                                                            <img src="/icon/alerts_send_w.png" alt="" />
-                                                            <span>로그 전송</span>
+                                                        {item.robotName && (
+                                                            <span className={styles.aletsRobotName}>{item.robotName}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className={styles.aletsActions} onClick={(e) => e.stopPropagation()}>
+                                                        <button className={styles.aletsReadBtn} onClick={() => handleMarkRead(item.id)}>
+                                                            읽음
                                                         </button>
-                                                    )}
+                                                    </div>
                                                 </div>
+                                                <div className={styles.aletsContent}>{item.content}</div>
+                                                {item.detail && (
+                                                    <div className={styles.aletsDetail}>
+                                                        {item.detail.split('\n').filter(Boolean).slice(-2).join(' → ')}
+                                                    </div>
+                                                )}
+                                                <div className={styles.aletsDate}>{item.date}</div>
                                             </div>
                                         );
                                     })
@@ -260,15 +284,7 @@ export default function AlertsConfirmModal({
                         </div>
                     </div>
 
-                    {/* 하단 이동 버튼 */}
-                    <div className={styles.pgBtnDiv}>
-                        <button className={styles.alertsPgBtn} onClick={handleMoveToAlerts}>
-                            <span>알림 화면으로 이동 </span>
-                            <span>→</span>
-                        </button>
-                    </div>
                 </div>
-            </div>
 
             {/* 로그 전송 확인 모달 */}
             {showConfirm && (

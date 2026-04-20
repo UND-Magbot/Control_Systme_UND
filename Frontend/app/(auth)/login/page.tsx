@@ -3,6 +3,7 @@
 import styles from './Login.module.css';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/app/context/AuthContext';
 
 type LoginForm = {
   userId: string;
@@ -12,46 +13,52 @@ type LoginForm = {
 type LoginErrors = {
   userId?: string;
   password?: string;
+  form?: string;
 };
 
-type LoginResult = {
-  success: boolean;
-  error?: "USER_NOT_FOUND" | "WRONG_PASSWORD";
-};
-
-// 임시 계정 (추후 JWT API 연동 시 삭제)
-const TEMP_ACCOUNT = { userId: "admin", password: "admin1234!" };
-
-// 인증 함수 — 추후 API 호출로 이 함수만 교체
-async function loginWithCredentials(userId: string, password: string): Promise<LoginResult> {
-    const account = TEMP_ACCOUNT.userId === userId ? TEMP_ACCOUNT : undefined;
-    if (!account) return { success: false, error: "USER_NOT_FOUND" };
-    if (account.password !== password) return { success: false, error: "WRONG_PASSWORD" };
-    return { success: true };
-}
-
-const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,12}$/;
+const PASSWORD_REGEX = /^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,16}$/;
 
 export default function Login() {
     const router = useRouter();
+    const { isAuthenticated, isLoading, login } = useAuth();
     const [loginForm, setLoginForm] = useState<LoginForm>({ userId: "", password: "" });
+    const [autoLogin, setAutoLogin] = useState(false);
     const [errors, setErrors] = useState<LoginErrors>({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSessionExpired, setIsSessionExpired] = useState(false);
+    const [isPasswordChanged, setIsPasswordChanged] = useState(false);
+
+    // 쿼리 파라미터 감지 후 URL에서 제거
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const reason = params.get("reason");
+        if (reason === "session_expired") {
+            setIsSessionExpired(true);
+        } else if (reason === "password_changed") {
+            setIsPasswordChanged(true);
+        }
+        if (reason) {
+            window.history.replaceState({}, "", "/login");
+        }
+    }, []);
 
     // 이미 로그인 상태면 대시보드로 리다이렉트
     useEffect(() => {
-        const hasAuth = document.cookie.split(";").some((c) => c.trim().startsWith("auth="));
-        if (hasAuth) router.replace("/dashboard");
-    }, [router]);
+        if (!isLoading && isAuthenticated) router.replace("/dashboard");
+    }, [isLoading, isAuthenticated, router]);
 
     const handleChange =
         (key: keyof LoginForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setLoginForm((prev) => ({ ...prev, [key]: value }));
-        setErrors((prev) => ({ ...prev, [key]: undefined }));
+        setErrors((prev) => ({ ...prev, [key]: undefined, form: undefined }));
+        if (isSessionExpired) setIsSessionExpired(false);
+        if (isPasswordChanged) setIsPasswordChanged(false);
         };
 
     const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (isSubmitting) return;
 
         const { userId, password } = loginForm;
         const newErrors: LoginErrors = {};
@@ -60,30 +67,31 @@ export default function Login() {
         if (!userId.trim()) newErrors.userId = "아이디를 입력하세요";
         if (!password) newErrors.password = "비밀번호를 입력하세요";
 
-        // 비밀번호 정규식 검증 (빈 값이 아닐 때만)
-        if (password && !PASSWORD_REGEX.test(password)) {
-            newErrors.password = "영문, 숫자, 특수문자 조합 6~12자리로 입력하세요";
-        }
-
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
             return;
         }
 
-        // 인증
-        const result = await loginWithCredentials(userId.trim(), password);
+        // API 로그인
+        setIsSubmitting(true);
+        const result = await login(userId.trim(), password, autoLogin);
+        setIsSubmitting(false);
 
         if (!result.success) {
-            if (result.error === "USER_NOT_FOUND") {
+            const errMsg = result.error ?? "로그인에 실패했습니다";
+            if (errMsg.includes("비활성화")) {
+                setErrors({ form: errMsg });
+            } else if (errMsg.includes("아이디")) {
                 setErrors({ userId: "존재하지 않는 아이디입니다" });
-            } else if (result.error === "WRONG_PASSWORD") {
+            } else if (!PASSWORD_REGEX.test(password)) {
+                setErrors({ password: "영문, 숫자, 특수문자 조합 6~16자리로 입력하세요" });
+            } else {
                 setErrors({ password: "비밀번호가 일치하지 않습니다" });
             }
             return;
         }
 
-        document.cookie = `auth=1; path=/; max-age=${60 * 60 * 24}; samesite=lax`;
-        router.push("/dashboard");
+        window.location.href = "/dashboard";
     };
 
     return(
@@ -97,6 +105,20 @@ export default function Login() {
                     <img src="/images/und_logo.png" alt="UND 로고" />
                     <h1 id="login-title">로그인</h1>
                 </header>
+
+                {/* 세션 만료 안내 */}
+                {isSessionExpired && (
+                    <div className={styles.sessionExpiredBanner}>
+                        세션이 만료되었습니다. 다시 로그인해주세요.
+                    </div>
+                )}
+
+                {/* 비밀번호 변경 완료 안내 */}
+                {isPasswordChanged && (
+                    <div className={styles.sessionExpiredBanner}>
+                        비밀번호가 변경되었습니다. 다시 로그인해주세요.
+                    </div>
+                )}
 
                 {/* 로그인 폼 */}
                 <form onSubmit={onSubmit}>
@@ -113,7 +135,7 @@ export default function Login() {
                             onChange={handleChange("userId")}
                             autoComplete="off"
                         />
-                        {errors.userId && <span className={styles.errorMsg}>{errors.userId}</span>}
+                        {errors.userId && !errors.form && <span className={styles.errorMsg}>{errors.userId}</span>}
                     </div>
 
                     {/* 비밀번호 */}
@@ -128,11 +150,30 @@ export default function Login() {
                             onChange={handleChange("password")}
                             autoComplete="off"
                         />
-                        {errors.password && <span className={styles.errorMsg}>{errors.password}</span>}
+                        {errors.password && !errors.form && <span className={styles.errorMsg}>{errors.password}</span>}
                     </div>
 
+                    {/* 자동 로그인 */}
+                    <label className={styles.autoLogin}>
+                        <input
+                            type="checkbox"
+                            checked={autoLogin}
+                            onChange={(e) => setAutoLogin(e.target.checked)}
+                        />
+                        <span className={styles.checkbox}>
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                                <path d="M2.5 6L5 8.5L9.5 3.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </span>
+                        <span>자동 로그인</span>
+                    </label>
+
+                    {errors.form && (
+                        <div className={styles.errorMsg}>{errors.form}</div>
+                    )}
+
                     {/* 로그인 버튼 */}
-                    <button type="submit" className={styles.loginButton}>
+                    <button type="submit" className={styles.loginButton} disabled={isSubmitting}>
                         로그인
                     </button>
                 </form>
