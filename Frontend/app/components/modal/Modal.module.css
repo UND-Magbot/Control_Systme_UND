@@ -2926,7 +2926,7 @@ button.workPopoverItem:hover {
   bottom: 10px;
   right: 9px;
 
-  width: 7px;
+  width: 4px;
   border-radius: 50px;
   background:transparent;
 }
@@ -2985,18 +2985,10 @@ button.workPopoverItem:hover {
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.workBtnBgRed:hover {
-  background: var(--color-error-bg);
-}
-
 .workBtnBgBlue {
   background: var(--color-info);
   border: 1px solid var(--color-info-border);
   font-weight: 600;
-}
-
-.workBtnBgBlue:hover {
-  background: #0097d4;
 }
 
 .workBtnDisabled {

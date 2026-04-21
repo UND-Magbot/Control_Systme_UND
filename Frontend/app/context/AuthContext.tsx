@@ -1,8 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { API_BASE } from "@/app/config";
 import { resetSessionExpired, markSessionExpired } from "@/app/lib/api";
+import type { MenuNode } from "@/app/types";
 
 export type AuthUser = {
   id: number;
@@ -23,6 +24,11 @@ type AuthContextType = {
   login: (loginId: string, password: string, autoLogin?: boolean) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  // 메뉴 메타데이터 (이름/순서/가시성/트리 구조) — DB가 유일 출처
+  menus: MenuNode[];
+  menuIndex: Map<string, MenuNode>;
+  refreshMenus: () => Promise<void>;
+  isMenuVisible: (menuId: string) => boolean;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -42,11 +48,25 @@ function authFetch(input: RequestInfo, init: RequestInit = {}): Promise<Response
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [menus, setMenus] = useState<MenuNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const isManualLogout = useRef(false);
 
   const isAuthenticated = user !== null;
   const isAdmin = user?.role === 1;
+
+  // 트리를 평탄화해 MenuKey → MenuNode 인덱스 생성 (그룹/리프 모두 포함)
+  const menuIndex = useMemo(() => {
+    const idx = new Map<string, MenuNode>();
+    const walk = (nodes: MenuNode[]) => {
+      for (const n of nodes) {
+        idx.set(n.id, n);
+        if (n.children && n.children.length > 0) walk(n.children);
+      }
+    };
+    walk(menus);
+    return idx;
+  }, [menus]);
 
   const hasPermission = useCallback(
     (menuId: string): boolean => {
@@ -56,6 +76,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [user]
   );
+
+  // DB에 존재하고 IsVisible=true일 때만 노출
+  const isMenuVisible = useCallback(
+    (menuId: string): boolean => {
+      const node = menuIndex.get(menuId);
+      if (!node) return false;
+      return node.is_visible !== false;
+    },
+    [menuIndex]
+  );
+
+  // 메뉴 트리 로드 (로그인 상태에서만 호출)
+  const refreshMenus = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_BASE}/api/users/menus`, {
+        credentials: "include",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMenus(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // 네트워크 오류는 조용히 무시 (기존 메뉴 유지)
+    }
+  }, []);
 
   // 현재 사용자 정보 가져오기 (401 시 refresh 시도, 리다이렉트 없음)
   const refreshUser = useCallback(async () => {
@@ -81,15 +127,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
+        // 사용자 로드 후 메뉴 메타도 함께 갱신
+        await refreshMenus();
       } else {
         setUser(null);
+        setMenus([]);
       }
     } catch (err) {
       // 네트워크/타임아웃 에러 — 세션 상태를 알 수 없으므로 null 처리
       console.debug("[Auth] refreshUser error:", err);
       setUser(null);
     }
-  }, []);
+  }, [refreshMenus]);
 
   // 로그인
   const login = useCallback(
@@ -109,6 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const data = await res.json();
           resetSessionExpired();
           setUser(data.user);
+          await refreshMenus();
           return { success: true };
         }
 
@@ -135,6 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // 무시
     }
     setUser(null);
+    setMenus([]);
   }, []);
 
   // 앱 시작 시 인증 확인 (1회만 실행)
@@ -148,7 +199,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated, isAdmin, isLoading, isManualLogout, hasPermission, login, logout, refreshUser }}
+      value={{
+        user, isAuthenticated, isAdmin, isLoading, isManualLogout,
+        hasPermission, login, logout, refreshUser,
+        menus, menuIndex, refreshMenus, isMenuVisible,
+      }}
     >
       {children}
     </AuthContext.Provider>

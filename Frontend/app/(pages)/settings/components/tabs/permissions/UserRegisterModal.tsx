@@ -10,24 +10,8 @@ type RolePreset = "admin" | "user";
 
 type Business = { id: number; BusinessName: string };
 
-// 역할별 메뉴 권한 프리셋
-const ROLE_MENU_MAP: Record<RolePreset, string[]> = {
-  admin: [
-    "dashboard", "schedule-list",
-    "robot-list", "business-list",
-    "map-edit", "place-list", "path-list",
-    "video", "statistics", "log",
-    "alert-total", "alert-schedule", "alert-robot", "alert-notice",
-    "menu-permissions",
-    // db-backup 제외
-  ],
-  user: [
-    "dashboard", "schedule-list",
-    "video", "statistics",
-    // log 제외
-    "alert-total", "alert-schedule", "alert-robot", "alert-notice",
-  ],
-};
+// 역할별 기본 메뉴 권한은 백엔드 seed.py의 MANAGER_MENUS/USER_DEFAULT_MENUS를 유일 출처로 사용.
+// POST /api/users에서 menu_ids를 생략하면 서버가 permission 값에 따라 자동 적용한다.
 
 type Props = {
   isOpen: boolean;
@@ -95,7 +79,6 @@ export default function UserRegisterModal({ isOpen, onClose, onSuccess }: Props)
 
     try {
       const permission = role === "admin" ? 2 : 3;
-      const menuIds = ROLE_MENU_MAP[role];
 
       const res = await apiFetch("/api/users", {
         method: "POST",
@@ -106,7 +89,7 @@ export default function UserRegisterModal({ isOpen, onClose, onSuccess }: Props)
           user_name: userName.trim(),
           permission,
           business_id: businessId || null,
-          menu_ids: menuIds,
+          // menu_ids 생략 → 백엔드 seed.py 기본 프리셋 자동 적용
         }),
       });
 

@@ -34,10 +34,13 @@ function computeNodeState(
   return "indeterminate";
 }
 
-/** 노드와 모든 하위 리프 ID를 수집 */
+/** 노드와 모든 하위 리프 ID를 수집 (그룹 노드는 리프로 취급하지 않음) */
 function collectLeafIds(node: MenuNode): string[] {
-  if (!node.children || node.children.length === 0) return [node.id];
-  return node.children.flatMap(collectLeafIds);
+  const hasChildren = !!(node.children && node.children.length > 0);
+  if (!hasChildren) {
+    return node.is_group ? [] : [node.id];
+  }
+  return node.children!.flatMap(collectLeafIds);
 }
 
 /** 메뉴 트리에서 검색어에 매칭되는 노드가 있는지 확인 */
@@ -53,9 +56,11 @@ function nodeMatchesSearch(node: MenuNode, query: string): boolean {
 function TriCheckbox({
   state,
   onChange,
+  disabled,
 }: {
   state: CheckState;
   onChange: () => void;
+  disabled?: boolean;
 }) {
   const ref = useRef<HTMLInputElement>(null);
 
@@ -72,6 +77,7 @@ function TriCheckbox({
       className={styles.checkbox}
       checked={state === "checked"}
       onChange={onChange}
+      disabled={disabled}
     />
   );
 }
@@ -85,6 +91,7 @@ function MenuTreeNode({
   expandedNodes,
   searchQuery,
   depth,
+  lockedIds,
 }: {
   node: MenuNode;
   leafStates: Record<string, boolean>;
@@ -93,6 +100,7 @@ function MenuTreeNode({
   expandedNodes: Set<string>;
   searchQuery: string;
   depth: number;
+  lockedIds: Set<string>;
 }) {
   // 검색 필터: 매칭 안 되면 숨김
   if (searchQuery && !nodeMatchesSearch(node, searchQuery)) {
@@ -102,6 +110,8 @@ function MenuTreeNode({
   const state = computeNodeState(node, leafStates);
   const hasChildren = node.children && node.children.length > 0;
   const isExpanded = expandedNodes.has(node.id);
+  // 리프가 잠금 대상이면 해당 노드(리프)는 완전 잠금. 그룹 노드는 자유롭게 토글 가능
+  const isLocked = !hasChildren && lockedIds.has(node.id);
 
   return (
     <div className={styles.treeNode}>
@@ -119,10 +129,15 @@ function MenuTreeNode({
         ) : (
           <span className={styles.treeArrowSpacer} />
         )}
-        <TriCheckbox state={state} onChange={() => onToggle(node)} />
+        <TriCheckbox
+          state={state}
+          onChange={() => { if (!isLocked) onToggle(node); }}
+          disabled={isLocked}
+        />
         <span
           className={`${styles.treeLabel} ${hasChildren ? styles.treeLabelParent : ""}`}
           onClick={() => hasChildren && onToggleExpand(node.id)}
+          title={isLocked ? "본인의 메뉴 권한 접근은 해제할 수 없습니다" : undefined}
         >
           {node.label}
         </span>
@@ -138,6 +153,7 @@ function MenuTreeNode({
             expandedNodes={expandedNodes}
             searchQuery={searchQuery}
             depth={depth + 1}
+            lockedIds={lockedIds}
           />
         ))}
     </div>
@@ -145,8 +161,8 @@ function MenuTreeNode({
 }
 
 export default function PermissionsTab() {
-  const { isAdmin, user } = useAuth();
-  const isManager = isAdmin || user?.role === 2;
+  const { isAdmin, user: currentUser, refreshUser } = useAuth();
+  const isManager = isAdmin || currentUser?.role === 2;
 
   // API에서 로드한 메뉴 트리
   const [menuTree, setMenuTree] = useState<MenuNode[]>([]);
@@ -263,6 +279,15 @@ export default function PermissionsTab() {
     });
   }, []);
 
+  // 본인의 자신 권한을 수정 중일 때 제거할 수 없는 리프 ID 집합
+  const lockedIds = useMemo(() => {
+    const set = new Set<string>();
+    if (currentUser && selectedUserId === currentUser.id) {
+      set.add("menu-permissions");
+    }
+    return set;
+  }, [currentUser, selectedUserId]);
+
   // 체크박스 토글
   const handleToggleNode = useCallback(
     (node: MenuNode) => {
@@ -273,12 +298,17 @@ export default function PermissionsTab() {
       setLeafStates((prev) => {
         const next = { ...prev };
         for (const id of ids) {
-          next[id] = newChecked;
+          // 잠금 대상 리프는 false로 바꿀 수 없도록 강제 true 유지
+          if (lockedIds.has(id)) {
+            next[id] = true;
+          } else {
+            next[id] = newChecked;
+          }
         }
         return next;
       });
     },
-    [leafStates]
+    [leafStates, lockedIds]
   );
 
   // 변경 여부 감지
@@ -305,6 +335,10 @@ export default function PermissionsTab() {
       if (res.ok) {
         setOriginalStates({ ...leafStates });
         setConfirmMessage("저장되었습니다");
+        // 본인 권한 수정 시 AuthContext 즉시 갱신 (세션은 유지, permissions·menus만 새로고침)
+        if (currentUser && selectedUserId === currentUser.id) {
+          await refreshUser();
+        }
       } else {
         const data = await res.json().catch(() => ({ detail: "저장에 실패했습니다" }));
         setConfirmMessage(data.detail);
@@ -430,6 +464,7 @@ export default function PermissionsTab() {
                     expandedNodes={expandedNodes}
                     searchQuery={menuSearchLower}
                     depth={0}
+                    lockedIds={lockedIds}
                   />
                 );
               })}

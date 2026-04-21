@@ -255,7 +255,20 @@ export type PlaceRow = {
 // 설정 - 메뉴 권한
 // ────────────────────────────────────────────────────────
 export type MenuNode = {
-  id: string;
-  label: string;
+  id: string;             // MenuKey
+  label: string;          // DB MenuName
+  is_group?: boolean;     // 그룹 노드 (권한 대상 아님)
+  is_visible?: boolean;   // UI 노출 여부
+  sort_order?: number;    // 정렬 순서
   children?: MenuNode[];
+};
+
+export type MenuAdminRow = {
+  id: number;
+  menu_key: string;
+  menu_name: string;
+  parent_id: number | null;
+  sort_order: number;
+  is_group: boolean;
+  is_visible: boolean;
 };

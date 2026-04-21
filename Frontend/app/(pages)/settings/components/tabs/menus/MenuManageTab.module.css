@@ -1,0 +1,478 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ─── 헤더 ─── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.headerLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.desc {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.headerDivider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-default, rgba(255, 255, 255, 0.08));
+  margin: 0 4px;
+}
+
+.linkBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary, #8892a0);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.linkBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ─── 메시지 영역 ─── */
+.messageBar {
+  min-height: 20px;
+}
+
+.message {
+  font-size: var(--font-size-sm);
+  color: var(--color-success, #4ade80);
+}
+
+.errorMsg {
+  font-size: var(--font-size-sm);
+  color: var(--color-error-soft, #f87171);
+}
+
+/* ─── 리스트 컨테이너 (커스텀 스크롤) ─── */
+.listWrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-elevated) transparent;
+}
+
+.listWrapper::-webkit-scrollbar {
+  width: 10px;
+}
+
+.listWrapper::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px 0;
+}
+
+.listWrapper::-webkit-scrollbar-thumb {
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.08));
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 10px;
+  min-height: 40px;
+}
+
+.listWrapper::-webkit-scrollbar-thumb:hover {
+  background: var(--color-info-border, rgba(146, 212, 244, 0.28));
+  background-clip: content-box;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ─── 섹션 카드 ─── */
+.section {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-3, rgba(255, 255, 255, 0.015));
+  transition: border-color 0.15s ease;
+  overflow: hidden;
+}
+
+.section:hover {
+  border-color: var(--border-default, rgba(255, 255, 255, 0.1));
+}
+
+/* 그룹 섹션: 왼쪽 컬러 강조 바 */
+.groupSection {
+  position: relative;
+}
+
+.groupSection::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--color-info, #4a9eff);
+  opacity: 0.7;
+}
+
+.groupSection.open::before {
+  opacity: 0.9;
+}
+
+.groupSection.closed::before {
+  opacity: 0.35;
+}
+
+/* ─── 자식 블록 (그룹 하위) ─── */
+.childrenBlock {
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+}
+
+.childrenBlock > div + div {
+  border-top: 1px dashed rgba(255, 255, 255, 0.04);
+}
+
+/* ─── 공통 행 (grid) ─── */
+.row {
+  display: grid;
+  grid-template-columns: 44px 1fr 100px 140px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  transition: background 0.15s ease;
+}
+
+.groupHeaderRow {
+  padding: 14px 16px;
+  background: rgba(146, 212, 244, 0.02);
+}
+
+.groupHeaderRow:hover {
+  background: rgba(146, 212, 244, 0.04);
+}
+
+.rootLeafRow {
+  padding: 14px 16px;
+}
+
+.rootLeafRow:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.childRow {
+  padding: 10px 16px 10px 20px;
+}
+
+.childRow:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rowDirty {
+  background: var(--color-info-bg, rgba(80, 140, 255, 0.08)) !important;
+}
+
+/* ─── 1) Chevron / 트리 커넥터 ─── */
+.colChevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+}
+
+.colChevronSpacer {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+}
+
+.chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chevron:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.treeConnector {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  opacity: 0.45;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Consolas, Menlo, monospace);
+  user-select: none;
+  letter-spacing: -0.05em;
+}
+
+/* ─── 2) 메뉴명 + 경로 스택 ─── */
+.colName {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.nameInput {
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--surface-input, rgba(255, 255, 255, 0.03));
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.nameInput:hover {
+  border-color: var(--border-default);
+}
+
+.nameInput:focus {
+  border-color: var(--color-info);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nameInputGroup {
+  height: 36px;
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.nameMetaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  flex-wrap: wrap;
+}
+
+.menuKey {
+  color: var(--text-muted);
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Consolas, Menlo, monospace);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.01em;
+  user-select: all;
+  opacity: 0.8;
+}
+
+.childCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-accent, var(--color-info, #4a9eff));
+  background: var(--color-info-selected, rgba(80, 140, 255, 0.14));
+  letter-spacing: 0.02em;
+}
+
+/* ─── 3) 표시 체크박스 ─── */
+.colVis {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.visLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.visLabel:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.visText {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.15s ease;
+  background: transparent;
+}
+
+.checkbox:hover {
+  border-color: var(--color-info);
+}
+
+.checkbox:checked {
+  background: var(--color-info);
+  border-color: var(--color-info);
+}
+
+.checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: 5px;
+  height: 10px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+/* ─── 4) 순서 ─── */
+.colSort {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sortLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary, #8892a0);
+}
+
+.sortInput {
+  width: 72px;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--surface-input, rgba(255, 255, 255, 0.03));
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color 0.15s ease;
+  -moz-appearance: textfield;
+}
+
+.sortInput::-webkit-outer-spin-button,
+.sortInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.sortInput:hover {
+  border-color: var(--border-default);
+}
+
+.sortInput:focus {
+  border-color: var(--color-info);
+}
+
+/* ─── 버튼 ─── */
+.saveBtn {
+  height: 34px;
+  padding: 0 20px;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background: var(--color-info-selected);
+}
+
+.saveBtn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cancelBtn {
+  height: 34px;
+  padding: 0 20px;
+  background: transparent;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.cancelBtn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.cancelBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

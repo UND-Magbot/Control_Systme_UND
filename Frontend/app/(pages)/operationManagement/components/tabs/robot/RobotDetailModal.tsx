@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { RobotRowData } from '@/app/types';
 import type { RobotDraft } from "./RobotManageTab";
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
+import ConfirmOnlyModal from '@/app/components/modal/ConfirmOnlyModal';
 import { apiFetch } from "@/app/lib/api";
 import { useBatterySlider } from '@/app/hooks/useBatterySlider';
 import { useAlertModal } from '@/app/hooks/useAlertModal';
@@ -384,15 +385,28 @@ export default function RobotDetailModal({
       setWorkScheduleError(null);
 
       try {
-        const res = await apiFetch(`/DB/schedule`);
-        if (!res.ok) throw new Error('스케줄 조회 실패');
-        const schedules = await res.json();
+        const [scheduleRes, pathRes] = await Promise.all([
+          apiFetch(`/DB/schedule`),
+          apiFetch(`/DB/getpath`),
+        ]);
+        if (!scheduleRes.ok) throw new Error('스케줄 조회 실패');
+        if (!pathRes.ok) throw new Error('경로 조회 실패');
+
+        const schedules = await scheduleRes.json();
+        const paths = await pathRes.json();
+
+        const wayPointsByName = new Map<string, string>(
+          (Array.isArray(paths) ? paths : []).map((p: any) => [p.WayName, p.WayPoints ?? ''])
+        );
+        const resolvePath = (wayName?: string) =>
+          (wayName && wayPointsByName.get(wayName)) || '';
+
         const robotSchedules = schedules.filter((s: any) => s.RobotName === robotName);
 
         const ongoing = robotSchedules.find((s: any) => s.TaskStatus === '진행');
         if (ongoing) {
           setWorkScheduleCase('ongoing');
-          setCompletedPathText(ongoing.WayName ?? '');
+          setCompletedPathText(resolvePath(ongoing.WayName));
           return;
         }
 
@@ -401,7 +415,7 @@ export default function RobotDetailModal({
           .sort((a: any, b: any) => new Date(b.EndDate).getTime() - new Date(a.EndDate).getTime());
         if (completed.length > 0) {
           setWorkScheduleCase('recent');
-          setCompletedPathText(completed[0].WayName ?? '');
+          setCompletedPathText(resolvePath(completed[0].WayName));
           return;
         }
 
@@ -593,10 +607,10 @@ export default function RobotDetailModal({
             />
         )}
         {saveSuccessOpen && (
-            <CancelConfirmModal
+            <ConfirmOnlyModal
                 message="저장되었습니다."
                 onConfirm={() => setSaveSuccessOpen(false)}
-                onCancel={() => setSaveSuccessOpen(false)}
+                hideCloseButton
             />
         )}
         {apiAlert.isOpen && (

@@ -94,7 +94,10 @@ class UserService:
         db.commit()
         db.refresh(user)
 
-        # 메뉴 권한 설정
+        # 메뉴 권한 설정 — 클라이언트가 menu_ids를 생략하면 permission에 따른 seed 기본값 적용
+        if menu_ids is None:
+            from app.database.seed import get_default_menu_keys
+            menu_ids = get_default_menu_keys(permission)
         if menu_ids:
             UserService.set_permissions(db, user.id, menu_ids, admin_id, ip_address=ip_address)
 
@@ -200,11 +203,25 @@ class UserService:
         if not user:
             raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
 
-        # MenuKey → menu_info.id 변환
-        all_key_to_id = {
-            r.MenuKey: r.id for r in db.query(MenuInfo.id, MenuInfo.MenuKey).all()
-        }
-        new_menu_ids = {all_key_to_id[k] for k in menu_keys if k in all_key_to_id}
+        # MenuKey → menu_info.id 변환 (그룹 노드 제외)
+        all_rows = db.query(MenuInfo.id, MenuInfo.MenuKey, MenuInfo.IsGroup).all()
+        key_to_id = {r.MenuKey: r.id for r in all_rows if not r.IsGroup}
+        new_menu_ids = {key_to_id[k] for k in menu_keys if k in key_to_id}
+
+        # 보안: superadmin은 menu-permissions 강제 포함 (본인 락아웃 방지 + 일관성)
+        if user.Permission == 1:
+            mp_id = next((r.id for r in all_rows if r.MenuKey == "menu-permissions"), None)
+            if mp_id is not None:
+                new_menu_ids.add(mp_id)
+
+        # 보안: 본인이면 menu-permissions 제거 금지 (자기 락아웃 방지)
+        if admin_id == user_id:
+            mp_id = next((r.id for r in all_rows if r.MenuKey == "menu-permissions"), None)
+            if mp_id is not None and mp_id not in new_menu_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail="본인의 메뉴 권한 페이지 접근 권한은 제거할 수 없습니다",
+                )
 
         # 기존 권한 조회
         existing_rows = (
@@ -231,16 +248,75 @@ class UserService:
                 db.add(UserPermission(UserId=user_id, MenuId=menu_id))
 
         if to_add or to_remove:
-            # 대상 사용자의 토큰 무효화 → 다음 API 호출 시 자동 리프레시로 새 권한 반영
-            user.TokenVersion = (user.TokenVersion or 0) + 1
+            # 본인 자기 권한 수정은 세션 유지 (TokenVersion 증가 스킵)
+            # 타 사용자 권한 수정은 기존대로 토큰 무효화 → 다음 API 호출 시 refresh로 새 권한 반영
+            if admin_id != user_id:
+                user.TokenVersion = (user.TokenVersion or 0) + 1
             db.commit()
 
             # audit 로그 (MenuKey 기반)
-            id_to_key = {v: k for k, v in all_key_to_id.items()}
+            id_to_key = {r.id: r.MenuKey for r in all_rows}
             old_keys = sorted([id_to_key.get(mid, str(mid)) for mid in existing_menu_ids])
-            new_keys = sorted(menu_keys)
+            new_keys = sorted([id_to_key.get(mid, "") for mid in new_menu_ids if id_to_key.get(mid)])
             write_audit(db, admin_id, "permission_changed", "user", user_id, ip_address=ip_address,
                                       detail=json.dumps({"from": old_keys, "to": new_keys}, ensure_ascii=False))
+
+    # ── 메뉴 관리 (관리자 전용: 이름·순서·가시성) ──
+
+    @staticmethod
+    def list_menus_admin(db: Session) -> list[dict]:
+        """menu_info 전체를 평탄 리스트로 반환."""
+        rows = db.query(MenuInfo).order_by(MenuInfo.SortOrder.asc(), MenuInfo.id.asc()).all()
+        return [
+            {
+                "id": m.id,
+                "menu_key": m.MenuKey,
+                "menu_name": m.MenuName,
+                "parent_id": m.ParentId,
+                "sort_order": m.SortOrder or 0,
+                "is_group": bool(m.IsGroup),
+                "is_visible": bool(m.IsVisible),
+            }
+            for m in rows
+        ]
+
+    @staticmethod
+    def update_menu(db: Session, menu_id: int, menu_name: str | None, sort_order: int | None,
+                    is_visible: bool | None, admin_id: int, ip_address: str | None = None) -> dict:
+        """MenuName/SortOrder/IsVisible만 수정 가능. MenuKey/ParentId/IsGroup는 무시."""
+        menu = db.query(MenuInfo).filter(MenuInfo.id == menu_id).first()
+        if not menu:
+            raise HTTPException(status_code=404, detail="메뉴를 찾을 수 없습니다")
+
+        changes: dict = {}
+        if menu_name is not None and menu_name != menu.MenuName:
+            changes["menu_name"] = {"from": menu.MenuName, "to": menu_name}
+            menu.MenuName = menu_name
+        if sort_order is not None and sort_order != (menu.SortOrder or 0):
+            changes["sort_order"] = {"from": menu.SortOrder or 0, "to": sort_order}
+            menu.SortOrder = sort_order
+        if is_visible is not None:
+            new_val = 1 if is_visible else 0
+            if new_val != (menu.IsVisible or 0):
+                changes["is_visible"] = {"from": bool(menu.IsVisible), "to": bool(is_visible)}
+                menu.IsVisible = new_val
+
+        if changes:
+            db.commit()
+            write_audit(
+                db, admin_id, "menu_updated", "menu", menu_id, ip_address=ip_address,
+                detail=json.dumps({"menu_key": menu.MenuKey, **changes}, ensure_ascii=False),
+            )
+
+        return {
+            "id": menu.id,
+            "menu_key": menu.MenuKey,
+            "menu_name": menu.MenuName,
+            "parent_id": menu.ParentId,
+            "sort_order": menu.SortOrder or 0,
+            "is_group": bool(menu.IsGroup),
+            "is_visible": bool(menu.IsVisible),
+        }
 
     # ── 내부 유틸 ──
 
