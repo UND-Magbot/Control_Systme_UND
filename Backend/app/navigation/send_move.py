@@ -105,7 +105,11 @@ def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
         print(f"[WARN] 녹화 정지 실패: {e}")
 
     print(f"🛑 NAV STOP (was_active={was_active})")
-    return {"status": "ok", "msg": "작업이 중지되었습니다."}
+    return {
+        "status": "ok",
+        "was_active": was_active,
+        "msg": "작업이 중지되었습니다." if was_active else "진행 중인 작업이 없습니다.",
+    }
 
 def navigation_resend_current():
     """현재 웨이포인트를 재전송 (로봇이 명령을 무시했을 때)"""

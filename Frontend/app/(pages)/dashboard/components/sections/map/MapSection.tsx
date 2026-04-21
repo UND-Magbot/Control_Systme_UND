@@ -65,6 +65,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   const hasFloors = floors.length > 0;
   const hasRobots = robots.length > 0;
   const hasOnlineRobot = robots.some(r => r.network === "Online");
+  const hasWorkingRobot = robots.some(r => r.network === "Online" && r.isNavigating);
 
   const { modal, modalAlert, closeModal } = useModalAlert();
   const [stopAllConfirmOpen, setStopAllConfirmOpen] = useState(false);
@@ -83,9 +84,10 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   const handleStopAllConfirm = useCallback(() => {
     setStopAllConfirmOpen(false);
     apiFetch(`/nav/stopmove`, { method: "POST" })
-      .then((res) => {
-        if (res.ok) modalAlert("모든 로봇의 작업이 중지되었습니다.");
-        else modalAlert("전체 정지 요청이 실패했습니다.");
+      .then(async (res) => {
+        if (!res.ok) { modalAlert("전체 정지 요청이 실패했습니다."); return; }
+        const data = await res.json().catch(() => null);
+        modalAlert(data?.was_active ? "모든 로봇의 작업이 중지되었습니다." : "진행 중인 작업이 없습니다.");
       })
       .catch((err) => {
         console.error("전체 정지 실패", err);
@@ -338,9 +340,9 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
 
         <button
           type="button"
-          className={`${styles.stopAllBtn} ${!hasOnlineRobot ? styles.stopAllBtnDisabled : ""}`}
+          className={`${styles.stopAllBtn} ${!hasWorkingRobot ? styles.stopAllBtnDisabled : ""}`}
           onClick={handleStopAll}
-          disabled={!hasOnlineRobot}
+          disabled={!hasWorkingRobot}
         >
           로봇 전체 정지
         </button>

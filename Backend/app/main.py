@@ -27,7 +27,8 @@ from app.navigation.send_move import (
     current_wp_index, waypoints_list, nav_loop_remaining
 )
 from app.scheduler.loop import (
-    scheduler_thread, on_navigation_complete, on_navigation_error, get_active_schedule_id
+    scheduler_thread, on_navigation_complete, on_navigation_error, get_active_schedule_id,
+    recover_stale_schedules,
 )
 
 import os
@@ -178,6 +179,7 @@ def shutdown_event():
 # 백그라운드 스레드 시작
 # ======================================================
 start_polling_threads()
+recover_stale_schedules()
 threading.Thread(target=scheduler_thread, daemon=True).start()
 
 

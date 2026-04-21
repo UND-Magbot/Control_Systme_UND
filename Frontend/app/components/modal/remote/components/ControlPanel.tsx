@@ -22,6 +22,9 @@ type PathOption = {
 type ControlPanelProps = {
   robotType: string;
   motionState?: number | null;
+  isCharging?: boolean;
+  onEmergencyStop?: () => void;
+  emergencyDisabled?: boolean;
   isWorking: boolean;
   isWorkPending: boolean;
   loopCount: number | string;
@@ -52,6 +55,9 @@ type ControlPanelProps = {
 export default function ControlPanel({
   robotType,
   motionState,
+  isCharging = false,
+  onEmergencyStop,
+  emergencyDisabled,
   isWorking,
   isWorkPending,
   loopCount,
@@ -84,7 +90,14 @@ export default function ControlPanel({
 
       <div className={styles.tabContent}>
         {activeTab === 'control' && (
-          <ModeSpeedControl robotType={robotType} motionState={motionState} disabled={controlDisabled} />
+          <ModeSpeedControl
+            robotType={robotType}
+            motionState={motionState}
+            isCharging={isCharging}
+            disabled={controlDisabled}
+            emergencyDisabled={emergencyDisabled ?? isDisconnected}
+            onEmergencyStop={onEmergencyStop}
+          />
         )}
 
         {activeTab === 'work' && (

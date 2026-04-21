@@ -164,6 +164,7 @@ export default function RobotDetailModal({
     const [placePathModalOpen, setPlacePathModalOpen] = useState(false);
     const [pathMoveModalOpen, setPathMoveModalOpen] = useState(false);
     const [batteryConfirmOpen, setBatteryConfirmOpen] = useState(false);
+    const [stopChargeConfirmOpen, setStopChargeConfirmOpen] = useState(false);
 
     // Work schedule states
     const [workScheduleCase, setWorkScheduleCase] = useState<WorkScheduleCase>('none');
@@ -457,6 +458,17 @@ export default function RobotDetailModal({
       setBatteryConfirmOpen(false);
     };
 
+    // 충전 해제: 확인 모달 표시
+    const handleStopCharge = () => {
+      setStopChargeConfirmOpen(true);
+    };
+
+    const handleStopChargeConfirm = () => {
+      apiFetch(`/robot/stop-charge`, { method: "POST" })
+        .catch((err) => console.error("충전 해제 실패", err));
+      setStopChargeConfirmOpen(false);
+    };
+
     return (
         <>
         <div className={styles.modalOverlay} onClick={isSubmitting ? undefined : onClose}>
@@ -541,6 +553,7 @@ export default function RobotDetailModal({
                       onPlacePathOpen={() => setPlacePathModalOpen(true)}
                       onPathMoveOpen={openPathMoveModal}
                       onChargeMoveOpen={handleChargeMove}
+                      onStopCharge={handleStopCharge}
                     />
                   );
                 })()}
@@ -638,12 +651,26 @@ export default function RobotDetailModal({
             }}
           />
         )}
-        {batteryConfirmOpen && (
+        {batteryConfirmOpen && (() => {
+          const r = robotDetail ?? selectedRobot;
+          const isWorking = !!(r?.isNavigating || activeSchedule);
+          return (
+            <BatteryPathModal
+              isOpen={batteryConfirmOpen}
+              message={isWorking
+                ? "현재 진행 중인 작업을 중단하고, 충전소로 이동하시겠습니까?"
+                : "충전소로 이동하시겠습니까?"}
+              onConfirm={handleChargeMoveConfirm}
+              onCancel={() => setBatteryConfirmOpen(false)}
+            />
+          );
+        })()}
+        {stopChargeConfirmOpen && (
           <BatteryPathModal
-            isOpen={batteryConfirmOpen}
-            message="현재 진행 중인 작업을 중단하고, 충전소로 이동하시겠습니까?"
-            onConfirm={handleChargeMoveConfirm}
-            onCancel={() => setBatteryConfirmOpen(false)}
+            isOpen={stopChargeConfirmOpen}
+            message={"현재 로봇이 충전 중입니다.\n충전을 해제하시겠습니까?"}
+            onConfirm={handleStopChargeConfirm}
+            onCancel={() => setStopChargeConfirmOpen(false)}
           />
         )}
         </>
