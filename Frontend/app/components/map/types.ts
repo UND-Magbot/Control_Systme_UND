@@ -64,6 +64,9 @@ export type CanvasMapProps = {
   showLabels?: boolean;
   onPoiClick?: (poi: POIItem) => void;
   onPoiNavigate?: (poi: POIItem) => void;
+  /** 3D 전용 — 추적 POI 지정 시 스크린 좌표를 onTrackedPoiScreen으로 지속 전달 */
+  trackedPoi?: { x: number; y: number } | null;
+  onTrackedPoiScreen?: (screen: { x: number; y: number; behind: boolean } | null) => void;
   onMapClick?: (worldCoords: { x: number; y: number }) => void;
   onMapMouseMove?: (worldCoords: { x: number; y: number }) => void;
   interactive?: boolean;

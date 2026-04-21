@@ -12,6 +12,15 @@ from app.database.models import ScheduleInfo
 DAY_MAP = {0: "월", 1: "화", 2: "수", 3: "목", 4: "금", 5: "토", 6: "일"}
 
 
+def _is_exception_date(schedule: ScheduleInfo, now: datetime) -> bool:
+    """SeriesExceptions에 등록된 날짜면 True (this 범위 수정으로 이날은 스킵)."""
+    exceptions = getattr(schedule, 'SeriesExceptions', None)
+    if not exceptions:
+        return False
+    today_str = now.strftime("%Y-%m-%d")
+    return today_str in {d.strip() for d in exceptions.split(",") if d.strip()}
+
+
 def should_run_now(schedule: ScheduleInfo, now: datetime) -> bool:
     """스케줄이 지금 실행되어야 하는지 판단 (모드 디스패처)."""
     mode = getattr(schedule, 'ScheduleMode', None) or (
@@ -67,6 +76,10 @@ def _should_run_weekly(schedule: ScheduleInfo, now: datetime) -> bool:
         except ValueError:
             pass
     if series_end and now.date() > series_end:
+        return False
+
+    # 예외 날짜 체크 (this 범위 수정으로 스킵된 날짜)
+    if _is_exception_date(schedule, now):
         return False
 
     # MaxRunCount 체크
@@ -132,6 +145,10 @@ def _should_run_interval(schedule: ScheduleInfo, now: datetime) -> bool:
         except ValueError:
             pass
     if series_end and now.date() > series_end:
+        return False
+
+    # 예외 날짜 체크
+    if _is_exception_date(schedule, now):
         return False
 
     # MaxRunCount 체크

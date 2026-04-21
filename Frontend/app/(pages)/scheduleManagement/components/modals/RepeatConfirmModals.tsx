@@ -25,22 +25,22 @@ export default function RepeatConfirmModal({
 }: RepeatConfirmModalProps) {
   const title = useMemo(() => {
     return mode === "delete"
-      ? "반복 설정된 정규 작업일정을 삭제하시겠습니까?"
-      : "반복 설정된 정규 작업일정을 수정하시겠습니까?";
+      ? "반복 설정된 작업 일정을 삭제하시겠습니까?"
+      : "반복 설정된 작업 일정을 수정하시겠습니까?";
   }, [mode]);
 
   const options = useMemo(() => {
     if (mode === "delete") {
       return [
-        { value: "this" as const, label: "이 정규 작업일정만 삭제" },
-        { value: "thisAndFuture" as const, label: "이 정규 작업일정 및 이후 정규 작업일정 전체 삭제" },
-        { value: "all" as const, label: "반복 정규 작업일정 전체 삭제" },
+        { value: "this" as const, label: "현재 작업 일정만 삭제" },
+        { value: "thisAndFuture" as const, label: "현재 작업 및 이후 작업일정 삭제" },
+        { value: "all" as const, label: "전체 작업일정 삭제" },
       ];
     }
     return [
-      { value: "this" as const, label: "이 정규 작업일정만 수정" },
-      { value: "thisAndFuture" as const, label: "이 정규 작업일정 및 이후 정규 작업일정 전체 수정" },
-      { value: "all" as const, label: "반복 정규 작업일정 전체 수정" },
+      { value: "this" as const, label: "현재 작업 일정만 수정" },
+      { value: "thisAndFuture" as const, label: "현재 작업 및 이후 작업일정 수정" },
+      { value: "all" as const, label: "전체 작업일정 수정" },
     ];
   }, [mode]);
 

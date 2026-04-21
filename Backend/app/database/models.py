@@ -324,6 +324,8 @@ class ScheduleInfo(Base):
     ActiveEndTime = Column(String(5), nullable=True)         # interval: 활동 종료 "HH:MM"
     SeriesStartDate = Column(Date, nullable=True)            # 반복 시작일
     SeriesEndDate = Column(Date, nullable=True)              # 반복 종료일 (null=무기한)
+    SeriesExceptions = Column(String(500), nullable=True)    # 스킵 날짜들 (YYYY-MM-DD, 콤마구분)
+    SeriesGroupId = Column(String(36), nullable=True, index=True)  # 반복 시리즈 그룹 UUID (split row들이 공유)
 
     # 스케줄러 추적
     LastRunDate = Column(DateTime, nullable=True)

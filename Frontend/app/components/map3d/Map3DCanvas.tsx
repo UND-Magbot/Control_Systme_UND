@@ -39,11 +39,17 @@ type SceneCtx = {
   animId: number;
 };
 
-const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps>(function Map3DCanvas(
+type Map3DCanvasExtraProps = {
+  /** 추적할 POI — 지정 시 이 POI의 스크린 좌표를 onTrackedPoiScreen으로 계속 알림 */
+  trackedPoi?: { x: number; y: number } | null;
+  onTrackedPoiScreen?: (screen: { x: number; y: number; behind: boolean } | null) => void;
+};
+
+const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps & Map3DCanvasExtraProps>(function Map3DCanvas(
   {
     config, robotPos, robotName, pois, navPath, selectedPoiId,
     showRobot = false, showPois = false, showPath = false, showLabels = true,
-    onPoiClick, className, style,
+    onPoiClick, trackedPoi, onTrackedPoiScreen, className, style,
   },
   ref
 ) {
@@ -76,7 +82,44 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps>(function Map3DCa
       ctx.needsRender = true;
     }
   }, [config]);
-  useImperativeHandle(ref, () => ({ handleZoom, worldToPixelScreen, pixelToWorldScreen }));
+  const projectToScreen = useCallback((wx: number, wy: number) => {
+    const ctx = sceneRef.current;
+    const container = containerRef.current;
+    if (!ctx || !container) return { x: 0, y: 0, behind: true };
+    const p = worldTo3D(wx, wy, config);
+    const v = new Vector3(p.x, 0.85, p.z).project(ctx.camera);
+    return {
+      x: (v.x * 0.5 + 0.5) * container.clientWidth,
+      y: (-v.y * 0.5 + 0.5) * container.clientHeight,
+      behind: v.z > 1,
+    };
+  }, [config]);
+
+  useImperativeHandle(ref, () => ({ handleZoom, worldToPixelScreen, pixelToWorldScreen, projectToScreen }));
+
+  /* ═══ 추적 POI 스크린 좌표 업데이트 (클릭 카드 위치용) ═══ */
+  useEffect(() => {
+    if (!trackedPoi || !onTrackedPoiScreen) return;
+    const ctx = sceneRef.current;
+    const container = containerRef.current;
+    if (!ctx || !container) return;
+
+    const emit = () => {
+      const p = worldTo3D(trackedPoi.x, trackedPoi.y, config);
+      const v = new Vector3(p.x, 0.85, p.z).project(ctx.camera);
+      onTrackedPoiScreen({
+        x: (v.x * 0.5 + 0.5) * container.clientWidth,
+        y: (-v.y * 0.5 + 0.5) * container.clientHeight,
+        behind: v.z > 1,
+      });
+    };
+
+    emit();
+    ctx.controls.addEventListener("change", emit);
+    return () => {
+      ctx.controls.removeEventListener("change", emit);
+    };
+  }, [trackedPoi, onTrackedPoiScreen, config]);
 
   /* ═══ Scene 초기화 ═══ */
   useEffect(() => {

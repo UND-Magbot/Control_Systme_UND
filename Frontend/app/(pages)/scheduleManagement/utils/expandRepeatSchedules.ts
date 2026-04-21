@@ -28,6 +28,7 @@ export type DBSchedule = {
   ActiveEndTime?: string | null;
   SeriesStartDate?: string | null;
   SeriesEndDate?: string | null;
+  SeriesExceptions?: string | null;  // "YYYY-MM-DD,YYYY-MM-DD" — 'this' 범위 수정으로 스킵된 날짜
 };
 
 export type ExpandedSchedule = DBSchedule & {
@@ -182,6 +183,14 @@ function expandWeekly(
   const allExecMins = execTimes.map((et) => et.hours * 60 + et.minutes);
   const todayStr = new Date().toISOString().slice(0, 10);
 
+  // this 범위 편집으로 스킵된 날짜 집합
+  const exceptionSet = new Set<string>(
+    (schedule.SeriesExceptions || "")
+      .split(",")
+      .map((d) => d.trim())
+      .filter(Boolean)
+  );
+
   // 순회 범위
   const iterStart = new Date(Math.max(seriesStart.getTime(), rangeStart.getTime()));
   iterStart.setHours(0, 0, 0, 0);
@@ -195,6 +204,7 @@ function expandWeekly(
   while (cursor <= iterEnd) {
     if (repeatDayNums.has(cursor.getDay())) {
       const cursorStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
+      if (exceptionSet.has(cursorStr)) { cursor.setDate(cursor.getDate() + 1); continue; }
       const isToday = cursorStr === todayStr;
 
       for (const et of execTimes) {
@@ -244,6 +254,13 @@ function expandInterval(
   const { hours: startH, minutes: startM } = parseTime(schedule.ActiveStartTime || "00:00");
   const { hours: endH, minutes: endM } = parseTime(schedule.ActiveEndTime || "23:59");
 
+  const exceptionSet = new Set<string>(
+    (schedule.SeriesExceptions || "")
+      .split(",")
+      .map((d) => d.trim())
+      .filter(Boolean)
+  );
+
   // 순회 범위
   const iterStart = new Date(Math.max(seriesStart.getTime(), rangeStart.getTime()));
   iterStart.setHours(0, 0, 0, 0);
@@ -256,7 +273,8 @@ function expandInterval(
   const cursor = new Date(iterStart);
   while (cursor <= iterEnd) {
     const dayMatch = repeatDayNums.size === 0 || repeatDayNums.has(cursor.getDay());
-    if (dayMatch) {
+    const cursorStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
+    if (dayMatch && !exceptionSet.has(cursorStr)) {
       const virtualStart = new Date(cursor);
       virtualStart.setHours(startH, startM, 0, 0);
       const virtualEnd = new Date(cursor);

@@ -28,6 +28,7 @@ type DBSchedule = {
   LastRunDate?: string | null;
   SeriesStartDate?: string | null;
   SeriesEndDate?: string | null;
+  SeriesExceptions?: string | null;
 };
 
 function getMode(s: DBSchedule): string {
@@ -102,6 +103,8 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
         // 요일반복: 시리즈 종료일 + 오늘 요일에 포함되어야 함
         if (mode === "weekly" && s.Repeat_Day) {
           if (s.SeriesEndDate && s.SeriesEndDate < todayStr) return false;
+          // this 범위 수정으로 오늘이 스킵된 경우
+          if (s.SeriesExceptions && s.SeriesExceptions.split(",").map(x => x.trim()).includes(todayStr)) return false;
           const days = s.Repeat_Day.split(",").map((d) => KOREAN_DAY_TO_JS[d.trim()]);
           if (!days.includes(todayDow)) return false;
           // 오늘 남은 실행 시각이 있거나 현재 진행 중이어야 함
@@ -120,6 +123,7 @@ export default function ScheduleTimeline({ robotName }: ScheduleTimelineProps) {
         if (mode === "interval") {
           // 시리즈 종료일이 지났으면 표시하지 않음 (SeriesEndDate 기준)
           if (s.SeriesEndDate && s.SeriesEndDate < todayStr) return false;
+          if (s.SeriesExceptions && s.SeriesExceptions.split(",").map(x => x.trim()).includes(todayStr)) return false;
           if (s.Repeat_Day) {
             const days = s.Repeat_Day.split(",").map((d) => KOREAN_DAY_TO_JS[d.trim()]);
             if (!days.includes(todayDow)) return false;

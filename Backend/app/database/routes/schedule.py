@@ -1,7 +1,7 @@
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, date, time, timedelta
 
 from app.database.models import ScheduleInfo, UserInfo
 from app.auth.dependencies import require_permission, is_admin, get_business_robot_names
@@ -64,11 +64,27 @@ def _check_schedule_conflict(
 
     q = db.query(ScheduleInfo).filter(
         ScheduleInfo.RobotName == robot_name,
-        ScheduleInfo.TaskStatus != "완료",
+        ScheduleInfo.TaskStatus.in_(["대기", "진행중", "진행"]),
     )
     if exclude_id is not None:
         q = q.filter(ScheduleInfo.id != exclude_id)
-    existing = q.all()
+    existing_all = q.all()
+
+    # 이미 실행 불가(과거)인 스케줄은 충돌 대상에서 제외
+    now = datetime.now()
+    today = now.date()
+    existing: list = []
+    for ex in existing_all:
+        ex_mode_tmp = ex.ScheduleMode or ("weekly" if ex.Repeat == "Y" else "once")
+        if ex_mode_tmp == "once":
+            # once는 StartDate가 과거면 실행 안 됨 (스케줄러 _should_run_once와 동일 규칙)
+            if ex.StartDate and ex.StartDate < now - timedelta(minutes=1):
+                continue
+        else:
+            # weekly/interval: SeriesEndDate가 있고 오늘보다 과거면 만료
+            if ex.SeriesEndDate and ex.SeriesEndDate < today:
+                continue
+        existing.append(ex)
 
     if not existing:
         return
@@ -175,6 +191,7 @@ def insert_schedule(
     current_user: UserInfo = Depends(require_permission("schedule-list")),
 ):
     from datetime import date as date_type
+    import uuid as _uuid
 
     _check_schedule_conflict(db, req.RobotName, req.ScheduleMode, req)
 
@@ -186,6 +203,7 @@ def insert_schedule(
         WayName=req.WayName,
         TaskStatus=req.WorkStatus,
         ScheduleMode=req.ScheduleMode,
+        SeriesGroupId=str(_uuid.uuid4()),
     )
 
     if req.ScheduleMode == "once":
@@ -260,6 +278,7 @@ def get_schedules(db: Session = Depends(get_db), current_user: UserInfo = Depend
             "ActiveEndTime": s.ActiveEndTime,
             "SeriesStartDate": s.SeriesStartDate.isoformat() if s.SeriesStartDate else None,
             "SeriesEndDate": s.SeriesEndDate.isoformat() if s.SeriesEndDate else None,
+            "SeriesExceptions": s.SeriesExceptions,
             "RunCount": s.RunCount or 0,
             "MaxRunCount": s.MaxRunCount,
             "LastRunDate": s.LastRunDate.isoformat() if s.LastRunDate else None,
@@ -310,6 +329,7 @@ def get_schedule_detail(schedule_id: int, db: Session = Depends(get_db), current
         "ActiveEndTime": schedule.ActiveEndTime,
         "SeriesStartDate": schedule.SeriesStartDate.isoformat() if schedule.SeriesStartDate else None,
         "SeriesEndDate": schedule.SeriesEndDate.isoformat() if schedule.SeriesEndDate else None,
+        "SeriesExceptions": schedule.SeriesExceptions,
 
         "LastRunDate": schedule.LastRunDate.isoformat() if schedule.LastRunDate else None,
         "RunCount": schedule.RunCount or 0,
@@ -337,33 +357,20 @@ class ScheduleUpdateReq(BaseModel):
     SeriesStartDate: str | None = None
     SeriesEndDate: str | None = None
 
+    # 반복 시리즈 편집 범위
+    # "all" (기본) | "thisAndFuture" | "this"
+    RepeatScope: str | None = None
+    # "this"/"thisAndFuture" 기준 날짜 (YYYY-MM-DD, 생략 시 오늘)
+    TargetDate: str | None = None
 
-@database.put("/schedule/{schedule_id}")
-def update_schedule(
-    schedule_id: int,
-    req: ScheduleUpdateReq,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(require_permission("schedule-list")),
-):
-    sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule_id).first()
-    if not sched:
-        raise HTTPException(status_code=404, detail="Schedule not found")
 
-    if any(getattr(req, f, None) is not None for f in (
-        'ScheduleMode', 'StartTime', 'ExecutionTime', 'ActiveStartTime',
-        'ActiveEndTime', 'RepeatDays',
-    )):
-        check_mode = req.ScheduleMode or sched.ScheduleMode or ("weekly" if sched.Repeat == "Y" else "once")
-        class _MergedReq:
-            pass
-        merged = _MergedReq()
-        merged.StartTime = req.StartTime or sched.StartDate
-        merged.ExecutionTime = req.ExecutionTime if req.ExecutionTime is not None else sched.ExecutionTime
-        merged.RepeatDays = req.RepeatDays if req.RepeatDays is not None else sched.Repeat_Day
-        merged.ActiveStartTime = req.ActiveStartTime if req.ActiveStartTime is not None else sched.ActiveStartTime
-        merged.ActiveEndTime = req.ActiveEndTime if req.ActiveEndTime is not None else sched.ActiveEndTime
-        _check_schedule_conflict(db, sched.RobotName, check_mode, merged, exclude_id=schedule_id)
+def _apply_edit_fields(sched: ScheduleInfo, req: ScheduleUpdateReq) -> None:
+    """req의 값들을 sched에 반영. 공통 로직.
+
+    SeriesStartDate/SeriesEndDate는 `null 명시`를 "무기한/초기화"로 해석해야 하므로
+    model_fields_set으로 "필드 미전송"과 "null로 명시 설정"을 구분한다.
+    """
+    fields_set = req.model_fields_set
 
     if req.TaskStatus is not None:
         sched.TaskStatus = req.TaskStatus
@@ -404,26 +411,236 @@ def update_schedule(
         sched.ActiveEndTime = req.ActiveEndTime
     if req.IntervalMinutes is not None:
         sched.IntervalMinutes = req.IntervalMinutes
-    if req.SeriesStartDate is not None:
-        sched.SeriesStartDate = datetime.strptime(req.SeriesStartDate, "%Y-%m-%d").date()
-        if sched.ScheduleMode in ("weekly", "interval"):
-            exec_time = sched.ExecutionTime or sched.ActiveStartTime or "00:00"
-            first_time = exec_time.split(",")[0].strip()
+
+    # SeriesStartDate — null은 "초기화"
+    if "SeriesStartDate" in fields_set:
+        if req.SeriesStartDate is None:
+            sched.SeriesStartDate = None
+        else:
+            sched.SeriesStartDate = datetime.strptime(req.SeriesStartDate, "%Y-%m-%d").date()
+            if sched.ScheduleMode in ("weekly", "interval"):
+                exec_time = sched.ExecutionTime or sched.ActiveStartTime or "00:00"
+                first_time = exec_time.split(",")[0].strip()
+                h, m = first_time.split(":")
+                sched.StartDate = datetime.combine(sched.SeriesStartDate, datetime.min.time().replace(hour=int(h), minute=int(m)))
+                sched.EndDate = sched.StartDate
+
+    # SeriesEndDate — null은 "무기한"
+    if "SeriesEndDate" in fields_set:
+        if req.SeriesEndDate is None:
+            sched.SeriesEndDate = None
+            sched.Repeat_End = None
+        else:
+            sched.SeriesEndDate = datetime.strptime(req.SeriesEndDate, "%Y-%m-%d").date()
+            sched.Repeat_End = req.SeriesEndDate
+
+
+def _clone_schedule_for_split(source: ScheduleInfo) -> ScheduleInfo:
+    """시리즈 분할 시 새 ScheduleInfo를 source 기준으로 복제한다.
+    대기 상태로 초기화하고 RunCount/LastRunDate/SeriesExceptions는 리셋.
+    SeriesGroupId는 부모와 동일 (split 된 row들은 하나의 시리즈 그룹)."""
+    return ScheduleInfo(
+        UserId=source.UserId,
+        RobotName=source.RobotName,
+        WorkName=source.WorkName,
+        TaskType=source.TaskType,
+        WayName=source.WayName,
+        TaskStatus="대기",
+        StartDate=source.StartDate,
+        EndDate=source.EndDate,
+        Repeat=source.Repeat,
+        Repeat_Day=source.Repeat_Day,
+        Repeat_End=source.Repeat_End,
+        ScheduleMode=source.ScheduleMode,
+        ExecutionTime=source.ExecutionTime,
+        IntervalMinutes=source.IntervalMinutes,
+        ActiveStartTime=source.ActiveStartTime,
+        ActiveEndTime=source.ActiveEndTime,
+        SeriesStartDate=source.SeriesStartDate,
+        SeriesEndDate=source.SeriesEndDate,
+        SeriesExceptions=None,
+        SeriesGroupId=source.SeriesGroupId,
+        RunCount=0,
+        MaxRunCount=source.MaxRunCount,
+    )
+
+
+@database.put("/schedule/{schedule_id}")
+def update_schedule(
+    schedule_id: int,
+    req: ScheduleUpdateReq,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_permission("schedule-list")),
+):
+    sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule_id).first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    # ─── 반복 시리즈 편집 범위 결정 ───
+    scope = (req.RepeatScope or "all").strip()
+    is_series = (sched.ScheduleMode in ("weekly", "interval")) or (sched.Repeat == "Y")
+    # 시리즈가 아닌 once 스케줄엔 범위 의미 없음 → all로 강제
+    if not is_series:
+        scope = "all"
+
+    try:
+        target_date = (
+            datetime.strptime(req.TargetDate, "%Y-%m-%d").date()
+            if req.TargetDate else date.today()
+        )
+    except ValueError:
+        target_date = date.today()
+
+    # 충돌 체크 — all 범위에서만 기존 로직 적용(분할 시엔 신규 row로 별도 체크)
+    if scope == "all" and any(getattr(req, f, None) is not None for f in (
+        'ScheduleMode', 'StartTime', 'ExecutionTime', 'ActiveStartTime',
+        'ActiveEndTime', 'RepeatDays',
+    )):
+        check_mode = req.ScheduleMode or sched.ScheduleMode or ("weekly" if sched.Repeat == "Y" else "once")
+        class _MergedReq:
+            pass
+        merged = _MergedReq()
+        merged.StartTime = req.StartTime or sched.StartDate
+        merged.ExecutionTime = req.ExecutionTime if req.ExecutionTime is not None else sched.ExecutionTime
+        merged.RepeatDays = req.RepeatDays if req.RepeatDays is not None else sched.Repeat_Day
+        merged.ActiveStartTime = req.ActiveStartTime if req.ActiveStartTime is not None else sched.ActiveStartTime
+        merged.ActiveEndTime = req.ActiveEndTime if req.ActiveEndTime is not None else sched.ActiveEndTime
+        _check_schedule_conflict(db, sched.RobotName, check_mode, merged, exclude_id=schedule_id)
+
+    created_id = None
+
+    if scope == "all":
+        # 같은 시리즈 그룹의 다른 row(이전 split 산물)는 전체 수정 의미상 제거
+        purged_ids: list[int] = []
+        group_min_start = sched.SeriesStartDate
+        group_any_null_end = sched.SeriesEndDate is None
+        group_max_end = sched.SeriesEndDate
+        if sched.SeriesGroupId:
+            siblings = (
+                db.query(ScheduleInfo)
+                .filter(
+                    ScheduleInfo.SeriesGroupId == sched.SeriesGroupId,
+                    ScheduleInfo.id != sched.id,
+                )
+                .all()
+            )
+            for s in siblings:
+                # 그룹 전체 범위 집계 (과거까지 포괄하려면 최소 Start / 최대 End)
+                if s.SeriesStartDate and (group_min_start is None or s.SeriesStartDate < group_min_start):
+                    group_min_start = s.SeriesStartDate
+                if s.SeriesEndDate is None:
+                    group_any_null_end = True
+                elif group_max_end is None or s.SeriesEndDate > group_max_end:
+                    if not group_any_null_end:
+                        group_max_end = s.SeriesEndDate
+                purged_ids.append(s.id)
+                db.delete(s)
+        _apply_edit_fields(sched, req)
+        # 그룹이 통합되었으므로 기존 예외 날짜 초기화
+        sched.SeriesExceptions = None
+        # 전체 범위 의미: 과거·미래 포괄하도록 그룹의 최광역 범위로 보정
+        if group_min_start is not None and (sched.SeriesStartDate is None or sched.SeriesStartDate > group_min_start):
+            sched.SeriesStartDate = group_min_start
+            if sched.ScheduleMode in ("weekly", "interval"):
+                exec_time = sched.ExecutionTime or sched.ActiveStartTime or "00:00"
+                first_time = exec_time.split(",")[0].strip()
+                try:
+                    h, m = first_time.split(":")
+                    sched.StartDate = datetime.combine(group_min_start, time(int(h), int(m)))
+                    sched.EndDate = sched.StartDate
+                except ValueError:
+                    pass
+        if group_any_null_end:
+            sched.SeriesEndDate = None
+            sched.Repeat_End = None
+        elif group_max_end is not None and sched.SeriesEndDate is not None and sched.SeriesEndDate < group_max_end:
+            sched.SeriesEndDate = group_max_end
+            sched.Repeat_End = group_max_end.strftime("%Y-%m-%d")
+        audit_detail = (
+            f"스케줄 수정(전체): {sched.WorkName}"
+            + (f" / 병합 삭제 id={purged_ids}" if purged_ids else "")
+        )
+
+    elif scope == "thisAndFuture":
+        # 새 시리즈의 유효기간 종료일이 target_date보다 과거면 빈 범위가 되어 무의미
+        if "SeriesEndDate" in req.model_fields_set and req.SeriesEndDate is not None:
+            try:
+                new_end = datetime.strptime(req.SeriesEndDate, "%Y-%m-%d").date()
+                if new_end < target_date:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"유효기간 종료일({req.SeriesEndDate})이 수정 기준일({target_date}) 이전입니다. 종료일을 기준일 이후로 지정하거나 무기한으로 설정해 주세요.",
+                    )
+            except ValueError:
+                pass
+
+        # 원본 시리즈는 target_date 전일까지만 유지, 새 시리즈로 분할
+        new_sched = _clone_schedule_for_split(sched)
+        _apply_edit_fields(new_sched, req)
+        new_sched.SeriesStartDate = target_date
+        # 새 시리즈 StartDate를 target_date 기반으로 재계산
+        exec_time = new_sched.ExecutionTime or new_sched.ActiveStartTime or "00:00"
+        first_time = exec_time.split(",")[0].strip()
+        try:
             h, m = first_time.split(":")
-            sched.StartDate = datetime.combine(sched.SeriesStartDate, datetime.min.time().replace(hour=int(h), minute=int(m)))
-            sched.EndDate = sched.StartDate
-    if req.SeriesEndDate is not None:
-        sched.SeriesEndDate = datetime.strptime(req.SeriesEndDate, "%Y-%m-%d").date()
-        sched.Repeat_End = req.SeriesEndDate
+            new_sched.StartDate = datetime.combine(target_date, time(int(h), int(m)))
+            new_sched.EndDate = new_sched.StartDate
+        except ValueError:
+            pass
+        db.add(new_sched)
+
+        # 원본 종료일 = target_date - 1
+        sched.SeriesEndDate = target_date - timedelta(days=1)
+        sched.Repeat_End = sched.SeriesEndDate.strftime("%Y-%m-%d") if sched.SeriesEndDate else sched.Repeat_End
+
+        db.flush()
+        created_id = new_sched.id
+        audit_detail = f"스케줄 수정(현재+이후): {sched.WorkName} → 새 시리즈 #{created_id}"
+
+    elif scope == "this":
+        # 원본 시리즈의 target_date를 예외로 등록 (그 날은 스킵)
+        existing = set()
+        if sched.SeriesExceptions:
+            existing = {d.strip() for d in sched.SeriesExceptions.split(",") if d.strip()}
+        existing.add(target_date.strftime("%Y-%m-%d"))
+        sched.SeriesExceptions = ",".join(sorted(existing))
+
+        # 새 weekly row 1건 생성 — SeriesStartDate=SeriesEndDate=target_date (하루짜리 weekly)
+        # 기존 데이터 모델(ExecutionTime 콤마 구분, weekly 단일 row) 유지
+        new_sched = _clone_schedule_for_split(sched)
+        _apply_edit_fields(new_sched, req)
+        # target_date 하루로 제한
+        new_sched.SeriesStartDate = target_date
+        new_sched.SeriesEndDate = target_date
+        new_sched.Repeat_End = target_date.strftime("%Y-%m-%d")
+        new_sched.SeriesExceptions = None
+        # StartDate는 target_date + 첫 실행시각으로 재설정
+        exec_time = new_sched.ExecutionTime or new_sched.ActiveStartTime or "00:00"
+        first_time = exec_time.split(",")[0].strip()
+        try:
+            h, m = first_time.split(":")
+            new_sched.StartDate = datetime.combine(target_date, time(int(h), int(m)))
+            new_sched.EndDate = new_sched.StartDate
+        except ValueError:
+            pass
+        db.add(new_sched)
+
+        db.flush()
+        created_id = new_sched.id
+        audit_detail = f"스케줄 수정(현재만): {sched.WorkName} → weekly #{created_id} ({target_date})"
+
+    else:
+        raise HTTPException(status_code=400, detail=f"알 수 없는 RepeatScope: {scope}")
 
     db.commit()
     db.refresh(sched)
 
     write_audit(db, current_user.id, "schedule_updated", "schedule", sched.id,
-                detail=f"스케줄 수정: {sched.WorkName}",
+                detail=audit_detail,
                 ip_address=get_client_ip(request))
 
-    return {"status": "ok", "id": sched.id}
+    return {"status": "ok", "id": sched.id, "scope": scope, "created_id": created_id}
 
 
 @database.delete("/schedule/{schedule_id}")
