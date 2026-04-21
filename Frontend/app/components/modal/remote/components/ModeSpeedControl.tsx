@@ -9,7 +9,13 @@ type ModeSpeedControlProps = {
   robotType: string;
   /** 로봇 자세 (1=Stand, 4=Sit). null이면 미확인 — 버튼 모두 비활성. */
   motionState?: number | null;
+  /** 로봇 충전 중 여부 — true면 자세 섹션 숨기고 '충전 해제' 버튼 활성. */
+  isCharging?: boolean;
   disabled?: boolean;
+  /** 긴급 정지는 작업 중이어도 눌러야 하므로 disabled와 분리 */
+  emergencyDisabled?: boolean;
+  /** 긴급 정지 클릭 — 확인 모달은 상위에서 처리 */
+  onEmergencyStop?: () => void;
 };
 
 type Mode = 'stand' | 'sit';
@@ -17,13 +23,14 @@ type Speed = 'slow' | 'normal' | 'fast';
 type Terrain = 'flat' | 'stair';
 type RobotMode = 'regular' | 'navigation' | 'assist';
 
-export default function ModeSpeedControl({ robotType, motionState, disabled = false }: ModeSpeedControlProps) {
+export default function ModeSpeedControl({ robotType, motionState, isCharging = false, disabled = false, emergencyDisabled = false, onEmergencyStop }: ModeSpeedControlProps) {
   const caps = getRobotCapabilities(robotType);
   const { execute: execMode, state: modeState } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execSpeed, state: speedState } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execLight } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execTerrain } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execRobotMode } = useRemoteCommand({ debounceMs: 300 });
+  const { execute: execCharge, state: chargeCmdState } = useRemoteCommand({ debounceMs: 300 });
 
   // motionState → activeMode 동기화 (1=Stand, 17=RL Control(Stand), 4=Sit)
   const derivedMode: Mode | null =
@@ -92,13 +99,23 @@ export default function ModeSpeedControl({ robotType, motionState, disabled = fa
     if (ok) setRearOn(next);
   }, [disabled, rearOn, execLight]);
 
+  const handleCharge = useCallback(async () => {
+    if (disabled || chargeCmdState === 'pending') return;
+    if (isCharging) {
+      await execCharge('/robot/stop-charge', '충전 해제');
+    } else {
+      await execCharge('/robot/charge', '충전 시작');
+    }
+  }, [disabled, chargeCmdState, isCharging, execCharge]);
+
   return (
     <div className={`${styles.section} ${disabled ? styles.disabled : ''}`}>
       {/* 자세: Stand/Sit
           - motionState가 알려지지 않으면(null) 둘 다 disabled
           - 현재 자세와 같은 쪽 버튼은 disabled (연속 동일 명령 방지)
-          - 반대 쪽 버튼만 활성화 */}
-      {caps.hasStandSit && (
+          - 반대 쪽 버튼만 활성화
+          - 충전 중에는 숨김 (도킹 상태에서 자세 전환 불필요) */}
+      {caps.hasStandSit && !isCharging && (
         <div className={styles.controlGroup}>
           <div className={styles.controlLabel}>자세</div>
           <div className={styles.segmentGroup}>
@@ -157,6 +174,20 @@ export default function ModeSpeedControl({ robotType, motionState, disabled = fa
         </div>
       )}
 
+      {/* 충전 — 토글 버튼 하나
+          충전 중: '충전 해제' (Charge=0) / 비충전: '충전 시작' (Charge=1) */}
+      <div className={styles.controlGroup}>
+        <div className={styles.controlLabel}>충전</div>
+        <button
+          type="button"
+          className={`${styles.chargeBtn} ${isCharging ? styles.chargeBtnActive : ''}`}
+          onClick={handleCharge}
+          disabled={disabled || chargeCmdState === 'pending'}
+        >
+          {isCharging ? '충전 해제' : '충전 시작'}
+        </button>
+      </div>
+
       {/* 조명 (타이틀 + 토글 한 줄) */}
       <div className={styles.controlGroup}>
         <div className={styles.lightingRow}>
@@ -177,6 +208,21 @@ export default function ModeSpeedControl({ robotType, motionState, disabled = fa
           </div>
         </div>
       </div>
+
+      {/* 기타 — 긴급 정지 (대시보드 로봇 카드와 동일, 확인 모달은 상위에서) */}
+      {onEmergencyStop && (
+        <div className={`${styles.controlGroup} ${styles.controlGroupSpaced}`}>
+          <div className={styles.controlLabel}>기타</div>
+          <button
+            type="button"
+            className={styles.emergencyBtn}
+            onClick={onEmergencyStop}
+            disabled={emergencyDisabled}
+          >
+            긴급 정지
+          </button>
+        </div>
+      )}
     </div>
   );
 }

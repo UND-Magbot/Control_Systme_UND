@@ -147,6 +147,41 @@ def on_navigation_error(error_msg: str = ""):
         db.close()
 
 
+# ─── 시작 시 복구 ───
+
+def recover_stale_schedules():
+    """서버 비정상 종료 등으로 고아 상태가 된 '진행중' 스케줄을 복구한다.
+
+    - once(단일): '취소' (실제로 완료되지 않았으므로)
+    - weekly/interval(반복): '대기' (다음 회차 실행 가능)
+
+    비정상 종료 시 _active_schedule_id가 프로세스 메모리에서만 유지되어 DB의
+    TaskStatus='진행중'이 그대로 남는 문제를 시작 시점에 일괄 정리한다.
+    """
+    db = SessionLocal()
+    try:
+        stale = (
+            db.query(ScheduleInfo)
+            .filter(ScheduleInfo.TaskStatus == "진행중")
+            .all()
+        )
+        if not stale:
+            return
+
+        for sched in stale:
+            mode = getattr(sched, 'ScheduleMode', None) or (
+                "weekly" if sched.Repeat == "Y" else "once"
+            )
+            sched.TaskStatus = "취소" if mode == "once" else "대기"
+            print(f"[SCHEDULER] 고아 '진행중' 복구: #{sched.id} {sched.WorkName} → {sched.TaskStatus} (mode={mode})")
+        db.commit()
+    except Exception as e:
+        print(f"[SCHEDULER ERR] 고아 스케줄 복구 실패: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 # ─── 메인 루프 ───
 
 def scheduler_thread():

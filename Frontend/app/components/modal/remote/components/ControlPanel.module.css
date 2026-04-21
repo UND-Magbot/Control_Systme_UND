@@ -56,6 +56,11 @@
   padding-bottom: 0;
 }
 
+/* 섹션 간 추가 간격 (예: 기타 섹션) */
+.controlGroupSpaced {
+  margin-top: 24px;
+}
+
 /* ======================== 세그먼트 버튼 (모드/속도) ======================== */
 .segmentGroup {
   display: flex;
@@ -156,6 +161,62 @@
 }
 
 .toggleSwitch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ======================== 충전 (긴 버튼) ======================== */
+.chargeBtn {
+  width: 100%;
+  padding: 10px 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chargeBtn:hover:not(:disabled) {
+  background: var(--surface-4);
+}
+
+.chargeBtn.chargeBtnActive {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: #fff;
+}
+
+.chargeBtn.chargeBtnActive:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.chargeBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ======================== 긴급 (긴 정지 버튼) ======================== */
+.emergencyBtn {
+  width: 100%;
+  padding: 10px 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-error);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.emergencyBtn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.emergencyBtn:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }

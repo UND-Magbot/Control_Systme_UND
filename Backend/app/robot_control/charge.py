@@ -40,6 +40,33 @@ def start_charge():
         sock.close()
 
 
+@router.post("/robot/stop-charge")
+def stop_charge():
+    """충전 해제 (Charge=0). 도킹 상태에서 충전을 해제한다."""
+    from app.robot_io import ROBOT_IP, ROBOT_PORT, build_packet
+
+    asdu = {
+        "PatrolDevice": {
+            "Type": 2,
+            "Command": 24,
+            "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "Items": {
+                "Charge": 0
+            }
+        }
+    }
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        log_event("robot", "robot_charging_stop", "충전 해제 명령 전송",
+                  robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
+        return {"status": "ok", "msg": "충전 해제 명령 전송 완료"}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
+    finally:
+        sock.close()
+
+
 @router.post("/robot/return-to-charge")
 def return_to_charge():
     """작업 복귀: 진행 중인 작업 정지 → 도킹 포인트로 이동 → 도착 후 충전 명령 자동 실행."""

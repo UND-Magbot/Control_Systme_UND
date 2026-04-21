@@ -12,6 +12,7 @@ type Props = {
   onPlacePathOpen: () => void;
   onPathMoveOpen: () => void;
   onChargeMoveOpen: () => void;
+  onStopCharge: () => void;
 };
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -30,6 +31,7 @@ export default function RobotInfoViewSection({
   onPlacePathOpen,
   onPathMoveOpen,
   onChargeMoveOpen,
+  onStopCharge,
 }: Props) {
   const isRobotOffline = r.power !== 'On';
 
@@ -95,11 +97,11 @@ export default function RobotInfoViewSection({
         <button
           type="button"
           className={`${styles.btnItemCommon} ${styles.btnBgGray} ${isRobotOffline ? styles.btnDisabled : ''}`}
-          onClick={isRobotOffline ? undefined : onChargeMoveOpen}
+          onClick={isRobotOffline ? undefined : (r.isCharging ? onStopCharge : onChargeMoveOpen)}
           disabled={isRobotOffline}
         >
           <img src="/icon/robot_battery_place_w.png" alt="" style={{ height: 13 }} />
-          <span>충전소 이동</span>
+          <span>{r.isCharging ? '충전 해제' : '충전소 이동'}</span>
         </button>
       </div>
     </div>
