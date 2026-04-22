@@ -338,6 +338,8 @@ def get_schedule_detail(schedule_id: int, db: Session = Depends(get_db), current
 
 
 class ScheduleUpdateReq(BaseModel):
+    WorkName: str | None = None
+    TaskType: str | None = None
     TaskStatus: str | None = None
     ScheduleMode: str | None = None
     StartTime: datetime | None = None
@@ -372,6 +374,10 @@ def _apply_edit_fields(sched: ScheduleInfo, req: ScheduleUpdateReq) -> None:
     """
     fields_set = req.model_fields_set
 
+    if req.WorkName is not None:
+        sched.WorkName = req.WorkName
+    if req.TaskType is not None:
+        sched.TaskType = req.TaskType
     if req.TaskStatus is not None:
         sched.TaskStatus = req.TaskStatus
     if req.PathName is not None:

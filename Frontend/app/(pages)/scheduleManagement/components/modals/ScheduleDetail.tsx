@@ -74,7 +74,7 @@ type ScheduleDetailProps = {
   onScheduleChanged?: () => void;
 };
 
-type SelectOption = { id: number; label: string; order?: string; };
+type SelectOption = { id: number; label: string; order?: string; taskType?: string; };
 
 
 
@@ -280,6 +280,8 @@ export default function ScheduleDetail({
 
         const payload: Record<string, any> = {
             id: event.id,
+            WorkName: form.title,
+            TaskType: form.workType,
             TaskStatus: form.workStatus,
             ScheduleMode: form.scheduleMode,
             PathName: form.pathName,
@@ -388,6 +390,7 @@ export default function ScheduleDetail({
             id: p.id,
             label: p.WayName,
             order: p.WayPoints ?? "",
+            taskType: p.TaskType ?? "",
           }))
         );
       })
@@ -517,6 +520,12 @@ export default function ScheduleDetail({
       setForm((p) => ({ ...p, pathOrder: matched.order ?? "" }));
     }
   }, [pathOptions, isOpen, form.pathName, form.pathOrder]);
+
+  // 작업유형에 맞는 경로만 필터링 (유형 미선택 시 전체 노출)
+  const filteredPathOptions = useMemo(() => {
+    if (!form.workType) return pathOptions;
+    return pathOptions.filter((p) => (p.taskType ?? "") === form.workType);
+  }, [pathOptions, form.workType]);
 
     const handleDeleteCancel = () => setShowDeleteConfirm(false);
 
@@ -752,7 +761,17 @@ export default function ScheduleDetail({
                     placeholder="작업유형을 선택하세요"
                     value={WORK_TYPES.find(t => t.label === form.workType) ?? null}
                     options={WORK_TYPES}
-                    onChange={(opt) => setForm((p) => ({ ...p, workType: opt.label }))}
+                    onChange={(opt) => setForm((p) => {
+                      const currentPath = pathOptions.find((po) => po.label === p.pathName);
+                      const keepPath = currentPath && (currentPath.taskType ?? "") === opt.label;
+                      return {
+                        ...p,
+                        workType: opt.label,
+                        pathId: keepPath ? p.pathId : null,
+                        pathName: keepPath ? p.pathName : "",
+                        pathOrder: keepPath ? p.pathOrder : "",
+                      };
+                    })}
                     error={!!fieldErrors.workType}
                   />
               ) : (
@@ -1245,10 +1264,10 @@ export default function ScheduleDetail({
                 {isEditMode ? (
                     <SharedCustomSelect
                       placeholder="작업경로를 선택하세요"
-                      value={pathOptions.find(p => p.label === form.pathName) ?? null}
-                      options={pathOptions}
+                      value={filteredPathOptions.find(p => p.label === form.pathName) ?? null}
+                      options={filteredPathOptions}
                       onChange={(opt) => {
-                        const matched = pathOptions.find(p => p.id === opt.id);
+                        const matched = filteredPathOptions.find(p => p.id === opt.id);
                         setForm((prev) => ({
                           ...prev,
                           pathId: opt.id as number,
@@ -1256,7 +1275,7 @@ export default function ScheduleDetail({
                           pathOrder: (matched as any)?.order ?? "",
                         }));
                       }}
-                      emptyMessage="등록된 경로가 없습니다"
+                      emptyMessage={form.workType ? "해당 작업유형의 경로가 없습니다" : "등록된 경로가 없습니다"}
                       error={!!fieldErrors.pathName}
                       overlay
                     />

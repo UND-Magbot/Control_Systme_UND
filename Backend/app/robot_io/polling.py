@@ -392,8 +392,20 @@ def nav_thread():
             try:
                 navigation_send_next()
                 # 네비게이션이 완료되었으면 스케줄러 콜백 호출
-                if not is_nav_active() and get_active_schedule_id() is not None:
-                    on_navigation_complete()
+                if not is_nav_active():
+                    if get_active_schedule_id() is not None:
+                        on_navigation_complete()
+                    # 작업 완료 후 충전소 자동 복귀 (스케줄러 / 원격 startpath)
+                    import app.navigation.send_move as nav_mod
+                    if getattr(nav_mod, "auto_return_to_charge", False):
+                        nav_mod.auto_return_to_charge = False
+                        try:
+                            from app.robot_control.charge import _return_to_charge_internal
+                            result = _return_to_charge_internal(cancel_running=False)
+                            if not result.get("ok"):
+                                print(f"[AUTO-CHARGE] 복귀 스킵: {result.get('msg')}")
+                        except Exception as e:
+                            print(f"[AUTO-CHARGE ERR] 자동 충전소 복귀 실패: {e}")
             except Exception as e:
                 print(f"[ERR] navigation_send_next 실패: {e}")
                 from app.navigation.send_move import current_wp_index, waypoints_list

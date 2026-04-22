@@ -82,6 +82,7 @@ def execute_schedule(schedule: ScheduleInfo) -> bool:
         nav_mod.waypoints_list = waypoints
         nav_mod.current_wp_index = 0
         nav_mod.is_navigating = True
+        nav_mod.auto_return_to_charge = True  # 스케줄 작업 완료 후 충전소 자동 복귀
         _signal_nav_reset(full=True)
 
         route_names = " → ".join(place_names)

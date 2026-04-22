@@ -67,9 +67,17 @@ def stop_charge():
         sock.close()
 
 
-@router.post("/robot/return-to-charge")
-def return_to_charge():
-    """작업 복귀: 진행 중인 작업 정지 → 도킹 포인트로 이동 → 도착 후 충전 명령 자동 실행."""
+def _return_to_charge_internal(cancel_running: bool = True) -> dict:
+    """충전소 복귀 코어 로직.
+
+    - cancel_running=True (수동 호출, /robot/return-to-charge):
+      진행 중인 스케줄/네비게이션을 먼저 취소하고 STOP 명령을 보낸다.
+    - cancel_running=False (작업 완료 후 자동 호출):
+      네비게이션은 이미 종료된 상태이므로 바로 도킹 포인트 이동만 수행.
+
+    Returns:
+        {"ok": bool, "msg": str, "dock_point": str|None, "charge_station": str|None}
+    """
     from app.navigation.send_move import navigation_send_next, _signal_nav_reset
     import app.navigation.send_move as nav
     from app.robot_io.sender import send_to_robot
@@ -84,7 +92,8 @@ def return_to_charge():
             .first()
         )
         if not charge_station:
-            return {"status": "error", "msg": "등록된 충전소가 없습니다."}
+            return {"ok": False, "msg": "등록된 충전소가 없습니다.",
+                    "dock_point": None, "charge_station": None}
 
         dock_name = f"{charge_station.LacationName}-1"
         dock_point = (
@@ -93,52 +102,71 @@ def return_to_charge():
             .first()
         )
         if not dock_point:
-            return {"status": "error", "msg": f"도킹 포인트 '{dock_name}'을(를) 찾을 수 없습니다."}
+            return {"ok": False, "msg": f"도킹 포인트 '{dock_name}'을(를) 찾을 수 없습니다.",
+                    "dock_point": None, "charge_station": charge_station.LacationName}
 
-        # 1) 진행 중인 스케줄 취소 (대기로 되돌림)
-        if get_active_schedule_id() is not None:
-            cancel_active_schedule("충전소 이동")
+        if cancel_running:
+            # 1) 진행 중인 스케줄 취소 (대기로 되돌림)
+            if get_active_schedule_id() is not None:
+                cancel_active_schedule("충전소 이동")
 
-        # 2) 진행 중인 네비게이션 정지
-        if nav.is_navigating:
-            nav.is_navigating = False
-            nav.current_wp_index = 0
-            nav.nav_loop_remaining = 0
-            nav.charge_on_arrival = False
-            _signal_nav_reset(full=True)
-            print("🛑 작업 복귀: 기존 네비게이션 정지")
+            # 2) 진행 중인 네비게이션 정지
+            if nav.is_navigating:
+                nav.is_navigating = False
+                nav.current_wp_index = 0
+                nav.nav_loop_remaining = 0
+                nav.charge_on_arrival = False
+                _signal_nav_reset(full=True)
+                print("🛑 작업 복귀: 기존 네비게이션 정지")
 
-        # 2) 로봇 정지 명령
-        try:
-            send_to_robot("STOP")
-        except Exception as e:
-            print(f"[WARN] STOP 전송 실패: {e}")
+            # 3) 로봇 정지 명령
+            try:
+                send_to_robot("STOP")
+            except Exception as e:
+                print(f"[WARN] STOP 전송 실패: {e}")
 
-        time.sleep(1)  # 로봇 정지 대기
+            time.sleep(1)  # 로봇 정지 대기
 
-        # 3) 도킹 포인트로 네비게이션 + 도착 후 자동 충전 플래그
+        # 도킹 포인트로 네비게이션 + 도착 후 자동 충전 플래그
         nav.waypoints_list = [{
             "x": dock_point.LocationX,
             "y": dock_point.LocationY,
             "yaw": dock_point.Yaw or 0.0,
+            "name": dock_name,
         }]
         nav.current_wp_index = 0
         nav.is_navigating = True
         nav.nav_loop_remaining = 0
+        nav.nav_loop_total = 0
         nav.charge_on_arrival = True
+        nav.auto_return_to_charge = False  # 이미 복귀 중 — 중복 트리거 방지
         _signal_nav_reset(full=True)
 
-        print(f"🔋 작업 복귀: {dock_name} → x={dock_point.LocationX}, y={dock_point.LocationY}")
+        print(f"🔋 충전소 복귀 시작: {dock_name} → x={dock_point.LocationX}, y={dock_point.LocationY}")
         log_event("schedule", "return_to_charge",
-                  f"작업 복귀 시작: {dock_name}(으)로 이동",
+                  f"충전소 복귀 시작: {dock_name}(으)로 이동",
                   robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
         navigation_send_next()
         return {
-            "status": "ok",
+            "ok": True,
             "msg": f"{dock_name}(으)로 이동 시작 (도착 후 자동 충전)",
             "dock_point": dock_name,
             "charge_station": charge_station.LacationName,
         }
     finally:
         db.close()
+
+
+@router.post("/robot/return-to-charge")
+def return_to_charge():
+    """작업 복귀: 진행 중인 작업 정지 → 도킹 포인트로 이동 → 도착 후 충전 명령 자동 실행."""
+    result = _return_to_charge_internal(cancel_running=True)
+    if result["ok"]:
+        return {
+            "status": "ok",
+            "msg": result["msg"],
+            "dock_point": result["dock_point"],
+            "charge_station": result["charge_station"],
+        }
+    return {"status": "error", "msg": result["msg"]}
