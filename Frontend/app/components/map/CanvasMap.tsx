@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, forwardRef, useImperativeHandle } from "react";
+import { useCallback, useMemo, useState, forwardRef, useImperativeHandle } from "react";
 import dynamic from "next/dynamic";
 import type { CanvasMapProps, POIItem } from "./types";
 import { useMapCanvas } from "@/app/hooks/useMapCanvas";
@@ -26,6 +26,8 @@ export type CanvasMapHandle = {
   handleZoom: (action: ZoomAction) => void;
   worldToPixelScreen: (wx: number, wy: number) => { x: number; y: number };
   pixelToWorldScreen: (px: number, py: number) => { x: number; y: number };
+  /** 3D에서만 제공 — 현재 카메라 투영 스크린 좌표 */
+  projectToScreen?: (wx: number, wy: number) => { x: number; y: number; behind: boolean };
 };
 
 /* ============================================================
@@ -270,6 +272,7 @@ const Inner3D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner3D(
   ref
 ) {
   const [detailPoi3D, setDetailPoi3D] = useState<POIItem | null>(null);
+  const [cardScreen, setCardScreen] = useState<{ x: number; y: number; behind: boolean } | null>(null);
 
   const firstMultiRobot = multiRobots && multiRobots.length > 0 ? multiRobots[0] : null;
   const effectiveRobotPos = robotPos ?? firstMultiRobot?.position ?? null;
@@ -280,6 +283,15 @@ const Inner3D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner3D(
     setDetailPoi3D((prev) => (prev?.id === poi.id ? null : poi));
     onPoiClick?.(poi);
   };
+
+  const handleTrackedScreen = useCallback((s: { x: number; y: number; behind: boolean } | null) => {
+    setCardScreen(s);
+  }, []);
+
+  const trackedPoi = useMemo(
+    () => (detailPoi3D ? { x: detailPoi3D.x, y: detailPoi3D.y } : null),
+    [detailPoi3D]
+  );
 
   return (
     <div className={`${styles.wrapper} ${className || ""}`} style={style}>
@@ -296,16 +308,17 @@ const Inner3D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner3D(
         showPath={showPath}
         showLabels={showLabels}
         onPoiClick={handle3DPoiClick}
+        trackedPoi={trackedPoi}
+        onTrackedPoiScreen={handleTrackedScreen}
       />
-      {detailPoi3D && (
-        <div style={{ position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 20 }}>
-          <POIDetailCard
-            poi={detailPoi3D}
-            anchored
-            onClose={() => setDetailPoi3D(null)}
-            onNavigate={onPoiNavigate}
-          />
-        </div>
+      {detailPoi3D && cardScreen && !cardScreen.behind && (
+        <POIDetailCard
+          poi={detailPoi3D}
+          screenX={cardScreen.x}
+          screenY={cardScreen.y}
+          onClose={() => setDetailPoi3D(null)}
+          onNavigate={onPoiNavigate}
+        />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_db, get_current_user, require_admin, require_manager, is_admin
@@ -12,6 +12,9 @@ from app.users.schemas import (
     UserListResponse,
     UserDetailResponse,
     PermissionResponse,
+    MenuUpdateRequest,
+    MenuAdminItem,
+    MenuPresetResponse,
 )
 from app.auth.audit import get_client_ip
 from app.users.service import UserService
@@ -32,6 +35,9 @@ def get_menu_tree(current_user: UserInfo = Depends(get_current_user), db: Sessio
         menu_map[m.id] = {
             "id": m.MenuKey,
             "label": m.MenuName,
+            "is_group": bool(m.IsGroup),
+            "is_visible": bool(m.IsVisible),
+            "sort_order": m.SortOrder or 0,
             "children": [],
         }
 
@@ -54,6 +60,42 @@ def get_menu_tree(current_user: UserInfo = Depends(get_current_user), db: Sessio
     clean(roots)
 
     return roots
+
+
+# ── 메뉴 관리 (superadmin 전용): 평탄 리스트 조회 ──
+
+@router.get("/menus/admin", response_model=list[MenuAdminItem], tags=["메뉴"])
+def list_menus_admin(current_user: UserInfo = Depends(require_admin), db: Session = Depends(get_db)):
+    return UserService.list_menus_admin(db)
+
+
+# ── 메뉴 관리: 이름·순서·가시성 수정 ──
+
+@router.put("/menus/{menu_id}", response_model=MenuAdminItem, tags=["메뉴"])
+def update_menu(
+    menu_id: int,
+    body: MenuUpdateRequest,
+    request: Request,
+    current_user: UserInfo = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    ip = get_client_ip(request)
+    return UserService.update_menu(
+        db, menu_id, body.menu_name, body.sort_order, body.is_visible,
+        current_user.id, ip_address=ip,
+    )
+
+
+# ── 역할별 기본 메뉴 프리셋 (UserRegisterModal 미리보기용) ──
+
+@router.get("/menu-presets", response_model=MenuPresetResponse, tags=["메뉴"])
+def get_menu_presets(
+    permission: int = Query(..., ge=1, le=3),
+    current_user: UserInfo = Depends(require_manager),
+    db: Session = Depends(get_db),
+):
+    from app.database.seed import get_default_menu_keys
+    return MenuPresetResponse(permission=permission, menu_keys=get_default_menu_keys(permission))
 
 
 # ── 사용자 목록 ──

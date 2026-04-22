@@ -39,7 +39,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> UserInf
         rows = (
             db.query(MenuInfo.MenuKey)
             .join(UserPermission, UserPermission.MenuId == MenuInfo.id)
-            .filter(UserPermission.UserId == user.id)
+            .filter(UserPermission.UserId == user.id, MenuInfo.IsGroup == 0)
             .all()
         )
         request.state.user_permissions = frozenset(r.MenuKey for r in rows)

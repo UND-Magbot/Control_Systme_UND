@@ -170,6 +170,8 @@ class MenuInfo(Base):
     MenuKey = Column(String(50), unique=True, nullable=False)       # 고유 식별자 (dashboard, robot-list 등)
     MenuName = Column(String(100), nullable=False)                  # 표시명
     SortOrder = Column(Integer, default=0)                          # 정렬 순서
+    IsGroup = Column(SmallInteger, nullable=False, default=0, server_default="0")    # 1=그룹 노드(권한 대상 아님)
+    IsVisible = Column(SmallInteger, nullable=False, default=1, server_default="1")  # 0=UI 숨김
 
     parent = relationship("MenuInfo", remote_side="MenuInfo.id", uselist=False)
     children = relationship("MenuInfo", back_populates="parent", cascade="all, delete-orphan")
@@ -324,6 +326,8 @@ class ScheduleInfo(Base):
     ActiveEndTime = Column(String(5), nullable=True)         # interval: 활동 종료 "HH:MM"
     SeriesStartDate = Column(Date, nullable=True)            # 반복 시작일
     SeriesEndDate = Column(Date, nullable=True)              # 반복 종료일 (null=무기한)
+    SeriesExceptions = Column(String(500), nullable=True)    # 스킵 날짜들 (YYYY-MM-DD, 콤마구분)
+    SeriesGroupId = Column(String(36), nullable=True, index=True)  # 반복 시리즈 그룹 UUID (split row들이 공유)
 
     # 스케줄러 추적
     LastRunDate = Column(DateTime, nullable=True)

@@ -13,6 +13,7 @@ import Pagination from '@/app/components/common/Pagination';
 import FilterSelectBox, { type FilterOption } from '@/app/components/button/FilterSelectBox';
 import NoticeForm, { type NoticeFormData } from './components/NoticeCrudModal';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
+import { useAuth } from "@/app/context/AuthContext";
 
 type TabKey = 'total' | 'schedule' | 'robot' | 'notice';
 type StatusFilter = '' | 'all' | 'read' | 'unread';
@@ -205,12 +206,30 @@ export default function AlertsPage() {
     });
   }, [paramId, alerts]);
 
-  const tabs = useMemo<{ id: TabKey; label: string }[]>(() => [
-    { id: 'total',     label: unreadCounts.total > 0 ? `전체 (${unreadCounts.total})` : '전체' },
-    { id: 'schedule',  label: unreadCounts.schedule > 0 ? `스케줄 (${unreadCounts.schedule})` : '스케줄' },
-    { id: 'robot',     label: unreadCounts.robot > 0 ? `로봇 (${unreadCounts.robot})` : '로봇' },
-    { id: 'notice',    label: unreadCounts.notice > 0 ? `공지사항 (${unreadCounts.notice})` : '공지사항' },
-  ], [unreadCounts]);
+  // TabKey ↔ MenuKey 매핑 (권한·가시성·라벨 모두 DB 기준)
+  const { hasPermission, isMenuVisible, menuIndex } = useAuth();
+  const tabs = useMemo<{ id: TabKey; label: string }[]>(() => {
+    const all: { id: TabKey; menuKey: string; unread: number }[] = [
+      { id: 'total',    menuKey: 'alert-total',    unread: unreadCounts.total },
+      { id: 'schedule', menuKey: 'alert-schedule', unread: unreadCounts.schedule },
+      { id: 'robot',    menuKey: 'alert-robot',    unread: unreadCounts.robot },
+      { id: 'notice',   menuKey: 'alert-notice',   unread: unreadCounts.notice },
+    ];
+    return all
+      .filter((t) => hasPermission(t.menuKey) && isMenuVisible(t.menuKey))
+      .map((t) => {
+        const baseLabel = menuIndex.get(t.menuKey)?.label ?? t.id;
+        const label = t.unread > 0 ? `${baseLabel} (${t.unread})` : baseLabel;
+        return { id: t.id, label };
+      });
+  }, [unreadCounts, hasPermission, isMenuVisible, menuIndex]);
+
+  // 권한 필터링으로 현재 탭이 사라지면 첫 탭으로 복귀
+  useEffect(() => {
+    if (tabs.length > 0 && !tabs.some((t) => t.id === activeTab)) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [tabs, activeTab]);
 
   // 요약 카운트
   const summaryStats = useMemo(() => {

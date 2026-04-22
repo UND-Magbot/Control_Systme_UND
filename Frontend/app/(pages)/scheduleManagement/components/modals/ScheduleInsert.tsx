@@ -10,6 +10,8 @@ import CustomSelect, { type SelectOption } from '@/app/components/select/CustomS
 import NumberSpinner from '../widgets/NumberSpinner';
 import TimePicker from '../widgets/TimePicker';
 import RepeatSettings from '../widgets/RepeatSettings';
+import DateField from '../widgets/DateField';
+import CustomCheckbox from '../widgets/CustomCheckbox';
 import { WORK_TYPES, DOWS, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, type Dow, type ScheduleMode } from '../../constants';
 import { useToast } from '@/app/components/common/Toast';
 import { useFormDirty } from '@/app/hooks/useFormDirty';
@@ -495,14 +497,13 @@ export default function InsertModal({
                                                         </button>
                                                     ))}
                                                 </div>
-                                                <label className={styles.repeatEveryday}>
-                                                    <input
-                                                        type="checkbox"
+                                                <div className={styles.repeatEveryday}>
+                                                    <CustomCheckbox
                                                         checked={repeatEveryday}
-                                                        onChange={(e) => handleEveryday(e.target.checked, setRepeatDays, setRepeatEveryday)}
+                                                        onChange={(v) => handleEveryday(v, setRepeatDays, setRepeatEveryday)}
+                                                        label="매일"
                                                     />
-                                                    매일
-                                                </label>
+                                                </div>
                                             </div>
                                         </div>
                                         {fieldErrors.repeatDays && <span className={styles.fieldError}>{fieldErrors.repeatDays}</span>}
@@ -514,12 +515,10 @@ export default function InsertModal({
                                             <div className={styles.seriesDateWrap}>
                                                 <div className={styles.seriesDateRow}>
                                                     <span className={styles.seriesDateLabel}>시작일</span>
-                                                    <input
-                                                        type="date"
+                                                    <DateField
                                                         value={seriesStartDate}
-                                                        onChange={(e) => setSeriesStartDate(e.target.value)}
-                                                        min={formatDate(today)}
-                                                        className={styles.seriesDateInput}
+                                                        onChange={setSeriesStartDate}
+                                                        minDate={formatDate(today)}
                                                     />
                                                 </div>
                                                 <div className={styles.seriesDateRow}>
@@ -536,12 +535,10 @@ export default function InsertModal({
                                                 {seriesEndType === 'date' && (
                                                     <div className={styles.seriesDateRow}>
                                                         <span className={styles.seriesDateLabel}>종료일</span>
-                                                        <input
-                                                            type="date"
+                                                        <DateField
                                                             value={seriesEndDate}
-                                                            onChange={(e) => setSeriesEndDate(e.target.value)}
-                                                            min={seriesStartDate || formatDate(today)}
-                                                            className={styles.seriesDateInput}
+                                                            onChange={setSeriesEndDate}
+                                                            minDate={seriesStartDate || formatDate(today)}
                                                         />
                                                     </div>
                                                 )}
@@ -596,16 +593,18 @@ export default function InsertModal({
                                         <div className={styles.itemBox}>
                                             <div>반복 간격</div>
                                             <div className={styles.intervalInputWrap}>
-                                                <NumberSpinner
-                                                    value={intervalMinutes}
-                                                    onChange={setIntervalMinutes}
-                                                    min={1}
-                                                    max={1440}
-                                                    placeholder="10"
-                                                    error={!!fieldErrors.intervalMinutes}
-                                                    pad={1}
-                                                />
-                                                <span className={styles.intervalUnit}>분마다</span>
+                                                <div className={styles.intervalInputRow}>
+                                                    <NumberSpinner
+                                                        value={intervalMinutes}
+                                                        onChange={setIntervalMinutes}
+                                                        min={1}
+                                                        max={1440}
+                                                        placeholder="10"
+                                                        error={!!fieldErrors.intervalMinutes}
+                                                        pad={1}
+                                                    />
+                                                    <span className={styles.intervalUnit}>분마다</span>
+                                                </div>
                                                 <div className={styles.intervalPresets}>
                                                     {INTERVAL_PRESETS.map((p) => (
                                                         <button
@@ -639,14 +638,13 @@ export default function InsertModal({
                                                         </button>
                                                     ))}
                                                 </div>
-                                                <label className={styles.repeatEveryday}>
-                                                    <input
-                                                        type="checkbox"
+                                                <div className={styles.repeatEveryday}>
+                                                    <CustomCheckbox
                                                         checked={intervalEveryday}
-                                                        onChange={(e) => handleEveryday(e.target.checked, setIntervalRepeatDays, setIntervalEveryday)}
+                                                        onChange={(v) => handleEveryday(v, setIntervalRepeatDays, setIntervalEveryday)}
+                                                        label="매일"
                                                     />
-                                                    매일
-                                                </label>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -657,12 +655,10 @@ export default function InsertModal({
                                             <div className={styles.seriesDateWrap}>
                                                 <div className={styles.seriesDateRow}>
                                                     <span className={styles.seriesDateLabel}>시작일</span>
-                                                    <input
-                                                        type="date"
+                                                    <DateField
                                                         value={seriesStartDate}
-                                                        onChange={(e) => setSeriesStartDate(e.target.value)}
-                                                        min={formatDate(today)}
-                                                        className={styles.seriesDateInput}
+                                                        onChange={setSeriesStartDate}
+                                                        minDate={formatDate(today)}
                                                     />
                                                 </div>
                                                 <div className={styles.seriesDateRow}>
@@ -679,12 +675,10 @@ export default function InsertModal({
                                                 {seriesEndType === 'date' && (
                                                     <div className={styles.seriesDateRow}>
                                                         <span className={styles.seriesDateLabel}>종료일</span>
-                                                        <input
-                                                            type="date"
+                                                        <DateField
                                                             value={seriesEndDate}
-                                                            onChange={(e) => setSeriesEndDate(e.target.value)}
-                                                            min={seriesStartDate || formatDate(today)}
-                                                            className={styles.seriesDateInput}
+                                                            onChange={setSeriesEndDate}
+                                                            minDate={seriesStartDate || formatDate(today)}
                                                         />
                                                     </div>
                                                 )}

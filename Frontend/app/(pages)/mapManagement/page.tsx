@@ -13,6 +13,7 @@ import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
 import { usePageReady } from "@/app/context/PageLoadingContext";
 import { useModalAlert } from "@/app/hooks/useModalAlert";
+import { useAuth } from "@/app/context/AuthContext";
 import MapAlertModal from "@/app/components/modal/AlertModal";
 import type {
   MapTab,
@@ -56,6 +57,29 @@ export default function MapManagementPage() {
   const [activeTab, setActiveTab] = useState<MapTab>(
     ["map", "place", "path"].includes(initialTab) ? initialTab : "map"
   );
+
+  // ── 탭 권한 필터 (DB menu_info 기반) ──
+  const { hasPermission, isMenuVisible, menuIndex } = useAuth();
+  const mapTabs = useMemo(() => {
+    const all: { id: MapTab; menuKey: string; fallback: string }[] = [
+      { id: "map",   menuKey: "map-edit",   fallback: "맵 편집" },
+      { id: "place", menuKey: "place-list", fallback: "장소 목록" },
+      { id: "path",  menuKey: "path-list",  fallback: "경로 목록" },
+    ];
+    return all
+      .filter((t) => hasPermission(t.menuKey) && isMenuVisible(t.menuKey))
+      .map((t) => ({
+        id: t.id,
+        label: menuIndex.get(t.menuKey)?.label ?? t.fallback,
+      }));
+  }, [hasPermission, isMenuVisible, menuIndex]);
+
+  // 권한 필터링으로 현재 탭이 사라지면 첫 탭으로 복귀
+  useEffect(() => {
+    if (mapTabs.length > 0 && !mapTabs.some((t) => t.id === activeTab)) {
+      setActiveTab(mapTabs[0].id);
+    }
+  }, [mapTabs, activeTab]);
 
   // ── PlaceList / PathList 용 데이터 ──
   const [tabRobots, setTabRobots] = useState<RobotRowData[]>([]);
@@ -588,62 +612,68 @@ export default function MapManagementPage() {
     }
   }, []);
 
-  // ── 초기 진입 시 첫 번째 맵 자동 탐색 ──
-  useEffect(() => {
-    let cancelled = false;
-    const loadFirstMap = async () => {
-      try {
-        // 1. 사업장 로드
-        const bizRes = await apiFetch(`/map/businesses`);
-        const bizRaw = await bizRes.json();
-        const bizList: Business[] = Array.isArray(bizRaw) ? bizRaw : [];
-        setBusinesses(bizList);
-        if (bizList.length === 0 || cancelled) return;
+  // ── 첫 번째 맵 자동 탐색 (초기 진입 / 탭 재진입 시 호출) ──
+  const loadFirstMap = useCallback(async () => {
+    try {
+      const bizRes = await apiFetch(`/map/businesses`);
+      const bizRaw = await bizRes.json();
+      const bizList: Business[] = Array.isArray(bizRaw) ? bizRaw : [];
+      setBusinesses(bizList);
+      if (bizList.length === 0) return;
 
-        for (const biz of bizList) {
-          if (cancelled) return;
-          // 2. 해당 사업장의 층 로드
-          const floorRes = await apiFetch(`/map/floors?business_id=${biz.id}`);
-          const floorRaw = await floorRes.json();
-          const floorList: FloorItem[] = Array.isArray(floorRaw) ? floorRaw : [];
+      for (const biz of bizList) {
+        const floorRes = await apiFetch(`/map/floors?business_id=${biz.id}`);
+        const floorRaw = await floorRes.json();
+        const floorList: FloorItem[] = Array.isArray(floorRaw) ? floorRaw : [];
 
-          for (const fl of floorList) {
-            if (cancelled) return;
-            // 3. 해당 층의 맵 로드
-            const mapRes = await apiFetch(`/map/maps?floor_id=${fl.id}`);
-            const mapRaw = await mapRes.json();
-            const mapList: RobotMap[] = Array.isArray(mapRaw) ? mapRaw : [];
+        for (const fl of floorList) {
+          const mapRes = await apiFetch(`/map/maps?floor_id=${fl.id}`);
+          const mapRaw = await mapRes.json();
+          const mapList: RobotMap[] = Array.isArray(mapRaw) ? mapRaw : [];
 
-            if (mapList.length > 0) {
-              // 첫 번째 맵 발견 → 전부 세팅
-              setSelectedBiz(biz.id);
-              setFloors(floorList);
-              setSelectedFloor(fl.id);
-              setMaps(mapList);
-              setSelectedMap(mapList[0].id);
-              return;
-            }
-          }
-
-          // 맵은 없지만 첫 사업장/층은 세팅
-          if (floorList.length > 0) {
+          if (mapList.length > 0) {
             setSelectedBiz(biz.id);
             setFloors(floorList);
-            setSelectedFloor(floorList[0].id);
+            setSelectedFloor(fl.id);
+            setMaps(mapList);
+            setSelectedMap(mapList[0].id);
+            return;
           }
         }
-      } catch (e) {
-        if (!cancelled) console.error("초기 맵 로드 실패:", e);
-      } finally {
-        if (!cancelled) {
-          readyFlags.current.maps = true;
-          checkReady();
+
+        if (floorList.length > 0) {
+          setSelectedBiz(biz.id);
+          setFloors(floorList);
+          setSelectedFloor(floorList[0].id);
         }
       }
-    };
-    loadFirstMap();
-    return () => { cancelled = true; };
+    } catch (e) {
+      console.error("초기 맵 로드 실패:", e);
+    } finally {
+      readyFlags.current.maps = true;
+      checkReady();
+    }
   }, []);
+
+  // ── 초기 진입 시 호출 ──
+  useEffect(() => {
+    loadFirstMap();
+  }, [loadFirstMap]);
+
+  // ── 맵 편집 탭 재진입 시 필터 초기화 후 재로드 ──
+  const prevTabRef = useRef<MapTab>(activeTab);
+  useEffect(() => {
+    const wasNotMap = prevTabRef.current !== "map";
+    prevTabRef.current = activeTab;
+    if (wasNotMap && activeTab === "map") {
+      setSelectedBiz("");
+      setSelectedFloor("");
+      setSelectedMap("");
+      setFloors([]);
+      setMaps([]);
+      loadFirstMap();
+    }
+  }, [activeTab, loadFirstMap]);
 
   useEffect(() => {
     if (saveBizId !== "") {
@@ -1292,11 +1322,7 @@ export default function MapManagementPage() {
       <div className="page-header-tab">
         <h1>맵 관리</h1>
         <div className={styles.mapTab}>
-          {([
-            { id: "map" as MapTab, label: "맵 편집" },
-            { id: "place" as MapTab, label: "장소 목록" },
-            { id: "path" as MapTab, label: "경로 목록" },
-          ]).map((tab) => (
+          {mapTabs.map((tab) => (
             <div
               key={tab.id}
               className={activeTab === tab.id ? styles.mapTabActive : ""}
@@ -1314,10 +1340,10 @@ export default function MapManagementPage() {
         </div>
       </div>
 
-      {activeTab === "place" && <PlaceList robots={tabRobots} floors={tabFloors} hideActions />}
-      {activeTab === "path" && <PathList robots={tabRobots} floors={tabFloors} hideActions />}
+      {activeTab === "place" && mapTabs.some((t) => t.id === "place") && <PlaceList robots={tabRobots} floors={tabFloors} hideActions />}
+      {activeTab === "path" && mapTabs.some((t) => t.id === "path") && <PathList robots={tabRobots} floors={tabFloors} hideActions />}
 
-      {activeTab === "map" && <div className={styles.container}>
+      {activeTab === "map" && mapTabs.some((t) => t.id === "map") && <div className={styles.container}>
         {/* ── 상단 툴바 ── */}
         <MapToolbar
           businesses={businesses}
@@ -1627,6 +1653,10 @@ export default function MapManagementPage() {
                   })()}
                 </g>
               </svg>
+            ) : selectedMap === "" ? (
+              <div className={styles.mapPlaceholderEmpty}>
+                <span>등록된 지도가 없습니다</span>
+              </div>
             ) : (
               <div className={styles.mapPlaceholderLoading}>
                 <div className={styles.mapPlaceholderSpinner} />

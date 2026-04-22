@@ -1211,14 +1211,22 @@ useEffect(() => {
                     );
                 })()}
 
-                {isDetailModalOpen && selectedWeekEvent && (
-                    <ScheduleDetail
-                        isOpen={isDetailModalOpen}
-                        onClose={handleCloseDetail}
-                        event={selectedWeekEvent}
-                        onScheduleChanged={fetchSchedules}
-                    />
-                )}
+                {isDetailModalOpen && selectedWeekEvent && (() => {
+                    const eventDate = new Date(weekStart);
+                    eventDate.setDate(weekStart.getDate() + selectedWeekEvent.dayIndex);
+                    const yyyy = eventDate.getFullYear();
+                    const mm = String(eventDate.getMonth() + 1).padStart(2, "0");
+                    const dd = String(eventDate.getDate()).padStart(2, "0");
+                    return (
+                        <ScheduleDetail
+                            isOpen={isDetailModalOpen}
+                            onClose={handleCloseDetail}
+                            event={selectedWeekEvent}
+                            targetDate={`${yyyy}-${mm}-${dd}`}
+                            onScheduleChanged={fetchSchedules}
+                        />
+                    );
+                })()}
 
                 {!loading && !error && schedules.length > 0 && viewType === "month" && (
                 <section className={styles.monthContainer}>

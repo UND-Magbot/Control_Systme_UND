@@ -180,11 +180,11 @@ class AuthService:
 
     @staticmethod
     def _get_permissions(db: Session, user: UserInfo) -> list[str]:
-        """사용자 메뉴 권한의 MenuKey 목록 반환."""
+        """사용자 메뉴 권한의 MenuKey 목록 반환 (그룹 노드 제외)."""
         rows = (
             db.query(MenuInfo.MenuKey)
             .join(UserPermission, UserPermission.MenuId == MenuInfo.id)
-            .filter(UserPermission.UserId == user.id)
+            .filter(UserPermission.UserId == user.id, MenuInfo.IsGroup == 0)
             .all()
         )
         return [r.MenuKey for r in rows]

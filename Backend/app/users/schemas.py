@@ -66,3 +66,26 @@ class UserDetailResponse(BaseModel):
 
 class PermissionResponse(BaseModel):
     menu_ids: list[str]
+
+
+# ── 메뉴 관리 (superadmin 전용) ──
+
+class MenuUpdateRequest(BaseModel):
+    menu_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_visible: Optional[bool] = None
+
+
+class MenuAdminItem(BaseModel):
+    id: int
+    menu_key: str
+    menu_name: str
+    parent_id: Optional[int] = None
+    sort_order: int
+    is_group: bool
+    is_visible: bool
+
+
+class MenuPresetResponse(BaseModel):
+    permission: int
+    menu_keys: list[str]

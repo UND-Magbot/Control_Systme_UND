@@ -1090,7 +1090,7 @@
 }
 
 .statusOffline {
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
 .statusError {
@@ -1577,8 +1577,7 @@
 }
 
 .status tbody tr.rowInactive td {
-  opacity: 0.4;
-  cursor: default;
+  cursor: pointer;
 }
 
 

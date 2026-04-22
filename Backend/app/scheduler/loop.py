@@ -25,9 +25,11 @@ def get_active_schedule_id() -> int | None:
 
 
 def cancel_active_schedule(reason: str = "사용자 취소"):
-    """진행 중인 스케줄을 취소/대기 상태로 변경한다.
-    - once(단일): 취소
-    - weekly/interval(반복): 대기 (다음 회차 실행 가능)
+    """진행 중인 스케줄을 취소 상태로 처리한다.
+    - once(단일): 원본 row의 TaskStatus를 '취소'로 변경
+    - weekly/interval(반복): 원본은 '대기' 유지하고 today를 SeriesExceptions에 추가.
+      같은 SeriesGroupId로 "오늘 하루짜리 취소 row"를 별도 생성해 해당 날짜만
+      '취소'로 표시되도록 함 (다른 회차는 대기 그대로).
     """
     global _active_schedule_id
 
@@ -47,7 +49,47 @@ def cancel_active_schedule(reason: str = "사용자 취소"):
             if mode == "once":
                 sched.TaskStatus = "취소"
             else:
+                today = datetime.now().date()
+                today_str = today.strftime("%Y-%m-%d")
+                # 원본에 오늘 예외 추가
+                existing = set()
+                if sched.SeriesExceptions:
+                    existing = {d.strip() for d in sched.SeriesExceptions.split(",") if d.strip()}
+                existing.add(today_str)
+                sched.SeriesExceptions = ",".join(sorted(existing))
                 sched.TaskStatus = "대기"
+
+                # 오늘 하루짜리 취소 row 생성 (같은 그룹 공유)
+                start_dt = sched.StartDate
+                # StartDate의 시각 부분을 오늘 날짜와 조합
+                hour = start_dt.hour if start_dt else 0
+                minute = start_dt.minute if start_dt else 0
+                today_dt = datetime.combine(today, datetime.min.time().replace(hour=hour, minute=minute))
+                single_day = ScheduleInfo(
+                    UserId=sched.UserId,
+                    RobotName=sched.RobotName,
+                    WorkName=sched.WorkName,
+                    TaskType=sched.TaskType,
+                    WayName=sched.WayName,
+                    TaskStatus="취소",
+                    ScheduleMode=mode,
+                    StartDate=today_dt,
+                    EndDate=today_dt,
+                    Repeat=sched.Repeat,
+                    Repeat_Day=sched.Repeat_Day,
+                    Repeat_End=today_str,
+                    ExecutionTime=sched.ExecutionTime,
+                    IntervalMinutes=sched.IntervalMinutes,
+                    ActiveStartTime=sched.ActiveStartTime,
+                    ActiveEndTime=sched.ActiveEndTime,
+                    SeriesStartDate=today,
+                    SeriesEndDate=today,
+                    SeriesExceptions=None,
+                    SeriesGroupId=sched.SeriesGroupId,
+                    RunCount=1,
+                    MaxRunCount=None,
+                )
+                db.add(single_day)
             db.commit()
             print(f"[SCHEDULER] 스케줄 #{schedule_id} → {sched.TaskStatus} ({reason})")
     except Exception as e:

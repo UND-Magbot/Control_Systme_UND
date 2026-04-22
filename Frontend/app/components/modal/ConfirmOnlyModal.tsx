@@ -5,20 +5,24 @@ import styles from './Modal.module.css';
 type Props = {
   message: string;
   onConfirm: () => void;
+  hideCloseButton?: boolean;
 }
 
 export default function ConfirmOnlyModal({
   message,
-  onConfirm
+  onConfirm,
+  hideCloseButton = false,
  }: Props) {
 
   return (
     <>
         <div className={styles.confirmOverlay}>
             <div className={styles.confirmBox}>
-                <button  className={styles.closeBox} onClick={onConfirm}>
-                  <img src="/icon/close_btn.png" alt="" />
-                </button>
+                {!hideCloseButton && (
+                  <button className={styles.closeBox} onClick={onConfirm}>
+                    <img src="/icon/close_btn.png" alt="" />
+                  </button>
+                )}
                 <div className={styles.confirmContents}>{message}</div>
 
                 <div className={styles.confirmButtons}>

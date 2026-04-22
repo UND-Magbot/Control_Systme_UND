@@ -4,29 +4,38 @@ import styles from './common.module.css';
 import React, { useMemo } from "react";
 import { useSidebar } from "@/app/context/SidebarContext";
 import { useAuth } from "@/app/context/AuthContext";
-
-// 메뉴별 필요 권한 매핑
-// childIds: 부모 메뉴는 하위 리프 ID 중 하나라도 있으면 표시
-const MENU_ITEMS = [
-  { path: "/dashboard", icon: "main", label: "대시보드", childIds: ["dashboard"] },
-  { path: "/scheduleManagement", icon: "schedule", label: "작업관리", childIds: ["schedule-list"] },
-  { path: "/operationManagement", icon: "robot", label: "운영관리", childIds: ["robot-list", "business-list"] },
-  { path: "/mapManagement", icon: "map", label: "맵 관리", childIds: ["map-edit", "place-list", "path-list"] },
-  { path: "/dataManagement", icon: "data", label: "데이터관리", childIds: ["video", "statistics", "log"] },
-  { path: "/alerts", icon: "alerts", label: "알림", childIds: ["alert-total", "alert-schedule", "alert-robot", "alert-notice"] },
-  { path: "/settings", icon: "setting", label: "설정", childIds: ["menu-permissions", "db-backup"] },
-];
+import { MENU_ROUTE_MAP } from "@/app/constants/menuRouteMap";
+import type { MenuNode } from "@/app/types";
 
 export default function Sidebar() {
     const { isOpen, close } = useSidebar();
-    const { hasPermission, isAdmin } = useAuth();
+    const { hasPermission, menus } = useAuth();
 
-    const menuItems = useMemo(() => {
-      return MENU_ITEMS.filter((item) => {
-        // 하위 리프 중 하나라도 권한이 있으면 부모 메뉴 표시
-        return item.childIds.some((id) => hasPermission(id));
-      });
-    }, [hasPermission]);
+    // DB 트리를 직접 순회 → MENU_ROUTE_MAP에 매핑된 노드만 렌더
+    const sidebarItems = useMemo(() => {
+      return menus
+        .filter((node) => {
+          const route = MENU_ROUTE_MAP[node.id];
+          if (!route) return false;                        // path/icon 매핑 없으면 제외
+          if (node.is_visible === false) return false;     // DB에서 숨김 처리
+
+          // 그룹이면 하위 중 하나라도 권한+가시성이 있어야 표시
+          if (node.children && node.children.length > 0) {
+            return node.children.some(
+              (c) => c.is_visible !== false && hasPermission(c.id)
+            );
+          }
+          // 단독 리프 (예: dashboard)
+          return hasPermission(node.id);
+        })
+        .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+        .map((node: MenuNode) => ({
+          menuKey: node.id,
+          label: node.label,
+          path: MENU_ROUTE_MAP[node.id].path,
+          icon: MENU_ROUTE_MAP[node.id].icon,
+        }));
+    }, [menus, hasPermission]);
 
     return(
         <>
@@ -38,11 +47,11 @@ export default function Sidebar() {
 
             <aside className={`${styles.sidebar} ${isOpen ? styles.sidebarOpen : ''}`}>
                 <div>
-                    {menuItems.map((item, idx) => (
+                    {sidebarItems.map((item) => (
                         // Next.js client-side navigation 대신 하드 네비게이션을 강제한다.
                         // 페이지 이동 시마다 전체 리로드가 발생하여 MJPEG 좀비 연결 등
                         // 브라우저 내부 상태가 완전히 리셋된다.
-                        <a key={idx} className={styles.menuItems}
+                        <a key={item.menuKey} className={styles.menuItems}
                                 href={item.path}
                                 onClick={(e) => {
                                     e.preventDefault();

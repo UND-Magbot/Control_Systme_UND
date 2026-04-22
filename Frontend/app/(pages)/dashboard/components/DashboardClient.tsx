@@ -17,6 +17,7 @@ import { getCamerasForRobot } from "@/app/lib/cameraView";
 import { getStatistics, type PerRobotStats } from "@/app/lib/statisticsApi";
 import { usePageReady } from "@/app/context/PageLoadingContext";
 import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
+import { useAuth } from "@/app/context/AuthContext";
 
 type DashboardClientProps = {
   floors: Floor[];
@@ -28,6 +29,8 @@ export default function DashboardClient({
   videoStatus,
 }: DashboardClientProps) {
   const { robots: liveRobots, loaded: statusLoaded } = useRobotStatusContext();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 1 || user?.role === 2;
   const [robots, setRobots] = useState<RobotRowData[]>([]);
   const [selectedRobotId, setSelectedRobotId] = useState<number | null>(null);
   const [robotCameras, setRobotCameras] = useState<Camera[]>([]);
@@ -122,6 +125,7 @@ export default function DashboardClient({
             cameras={robotCameras}
             videoStatus={videoStatus}
             robotLocation={robotLocation}
+            canLinkRobots={isAdmin}
           />
         </div>
 

@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.database.models import RobotInfo, UserInfo, RobotModule, ModuleCameraInfo
-from app.auth.dependencies import require_permission
+from app.auth.dependencies import require_permission, require_any_permission
 from app.auth.audit import write_audit, get_client_ip
 
 from app.database.routes import database, get_db
@@ -66,7 +66,7 @@ def _build_module_tree(modules: list[RobotModule], robot: RobotInfo) -> list[dic
 def get_robot_modules(
     robot_id: int,
     db: Session = Depends(get_db),
-    current_user: UserInfo = Depends(require_permission("robot-list")),
+    current_user: UserInfo = Depends(require_any_permission("dashboard", "robot-list")),
 ):
     robot = db.query(RobotInfo).filter(RobotInfo.id == robot_id).first()
     if not robot:

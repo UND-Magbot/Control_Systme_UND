@@ -422,6 +422,8 @@ export default function RobotManageTab({
               const isRobotOnline = r.network === "Online" && r.power !== "Off" && r.power !== "-";
 
               const isInactive = r.power === "Off" || r.power === "-";
+              const inactiveTextStyle = isInactive ? { color: "var(--text-muted)" } : undefined;
+              const labelColor = isInactive ? "var(--text-muted)" : "#e0e0e0";
 
               return (
                 <tr
@@ -429,7 +431,6 @@ export default function RobotManageTab({
                   className={`${checkedRobotIds.includes(r.id) ? styles.selectedRow : ""} ${isInactive ? styles.rowInactive : ""}`}
                   style={{ "--robot-color": robotColor } as React.CSSProperties}
                   onClick={() => {
-                    if (isInactive) return;
                     if (deleteMode) return;
                     // 일반 모드: 행 클릭으로 단일 선택 토글
                     if (checkedRobotIds.includes(r.id)) {
@@ -448,17 +449,17 @@ export default function RobotManageTab({
                       <img
                         src={checkedRobotIds.includes(r.id) ? "/icon/robot_chk.png" : "/icon/robot_none_chk.png"}
                         alt={`${r.no} 선택`} role="button" tabIndex={0}
-                        style={{ cursor: isInactive ? "default" : "pointer", opacity: isInactive ? 0.3 : 1 }}
-                        onClick={() => { if (!isInactive) toggleRobotChecked(r.id, !checkedRobotIds.includes(r.id)); }}
-                        onKeyDown={(e) => { if (!isInactive && (e.key === "Enter" || e.key === " ")) toggleRobotChecked(r.id, !checkedRobotIds.includes(r.id)); }}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => toggleRobotChecked(r.id, !checkedRobotIds.includes(r.id))}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") toggleRobotChecked(r.id, !checkedRobotIds.includes(r.id)); }}
                       />
                     </td>
                   )}
-                  <td>{(robotsPage - 1) * ROBOT_PAGE_SIZE + idx + 1}</td>
-                  <td><div>{r.no}</div></td>
+                  <td style={inactiveTextStyle}>{(robotsPage - 1) * ROBOT_PAGE_SIZE + idx + 1}</td>
+                  <td style={inactiveTextStyle}><div>{r.no}</div></td>
                   <td><span className={`${styles.statusBadge} ${status.className}`} title={status.tooltip}>{status.label}</span></td>
-                  <td className={styles.locationCell}>{getRobotLocation(r)}</td>
-                  <td className={styles.taskCell}>
+                  <td className={styles.locationCell} style={inactiveTextStyle}>{getRobotLocation(r)}</td>
+                  <td className={styles.taskCell} style={inactiveTextStyle}>
                     {(() => {
                       const active = getActiveScheduleForRobot(r.no);
                       if (!active) return getRobotCurrentTask(r);
@@ -504,7 +505,7 @@ export default function RobotManageTab({
                       const singleMode = isDualBatteryType(r.type) && r.powerManagement === 1;
                       return (
                         <>
-                          <span style={{ color: "#e0e0e0" }}>L </span>
+                          <span style={{ color: labelColor }}>L </span>
                           {r.batteryLeft != null
                             ? <span className={batColorClass(r.batteryLeft, isRobotOnline)}>{r.batteryLeft}%</span>
                             : singleMode
@@ -512,7 +513,7 @@ export default function RobotManageTab({
                               : <span className={batColorClass(0, isRobotOnline)}>0%</span>
                           }
                           <span style={{ color: "var(--text-muted)" }}> / </span>
-                          <span style={{ color: "#e0e0e0" }}>R </span>
+                          <span style={{ color: labelColor }}>R </span>
                           {r.batteryRight != null
                             ? <span className={batColorClass(r.batteryRight, isRobotOnline)}>{r.batteryRight}%</span>
                             : singleMode
@@ -529,7 +530,7 @@ export default function RobotManageTab({
                       </>
                     )}
                   </td>
-                  <td>{r.power === "-" ? "Off" : r.power}</td>
+                  <td style={inactiveTextStyle}>{r.power === "-" ? "Off" : r.power}</td>
                   <td>
                     <div className={styles.infoBtnGroup}>
                       <div className={styles["info-box"]} onClick={(e) => { e.stopPropagation(); ViewInfoClick(idx, r); }}>상세보기</div>

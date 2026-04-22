@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import DeleteConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import RepeatConfirmModal, { type RepeatConfirmMode, type RepeatConfirmScope } from '@/app/(pages)/scheduleManagement/components/modals/RepeatConfirmModals';
 import MiniCalendar from '../widgets/MiniCalendar';
+import DateField from '../widgets/DateField';
 import { apiFetch } from "@/app/lib/api";
 import { WORK_TYPES, WORK_STATUS, DOWS as DOWS_CONST, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, AMPM_OPTIONS, HOUR_OPTIONS, MINUTE_OPTIONS, type ScheduleMode, type Dow } from '../../constants';
 import { getByteLength } from '../../utils/validation';
@@ -51,6 +52,8 @@ type ScheduleDetailProps = {
     endMin: number;
     color?: 'green' | 'yellow' | 'blue' | 'red' | 'orange';
   };
+  /** 'this'/'thisAndFuture' 범위 편집 기준일 (YYYY-MM-DD). 미지정 시 오늘로 처리. */
+  targetDate?: string;
   /** Mock 모드에서 API 대신 사용할 데이터 */
   mockData?: MockScheduleData | null;
   /**
@@ -94,6 +97,7 @@ export default function ScheduleDetail({
   isOpen,
   onClose,
   event,
+  targetDate,
   mockData,
   onUpdate,
   onDelete,
@@ -280,7 +284,7 @@ export default function ScheduleDetail({
             ScheduleMode: form.scheduleMode,
             PathName: form.pathName,
             PathOrder: form.pathOrder,
-            ...(repeatScope ? { RepeatScope: repeatScope } : {}),
+            ...(repeatScope ? { RepeatScope: repeatScope, TargetDate: targetDate } : {}),
         };
 
         if (form.scheduleMode === 'once') {
@@ -549,6 +553,20 @@ export default function ScheduleDetail({
       setRepeatScope(scope);
 
       if (repeatConfirmMode === "edit") {
+        // thisAndFuture 시: 유효기간 시작일을 클릭한 날짜로 자동 세팅 (혼동 방지)
+        if (scope === "thisAndFuture" && targetDate) {
+          setForm((p) => ({ ...p, seriesStartDate: targetDate }));
+        }
+        // this 시: 유효기간 당일~당일로 자동 세팅 (혼동 방지)
+        if (scope === "this" && targetDate) {
+          setForm((p) => ({
+            ...p,
+            seriesStartDate: targetDate,
+            seriesEndDate: targetDate,
+            repeatEndType: 'date',
+            repeatEndDate: targetDate,
+          }));
+        }
         setMode("edit");
         return;
       }
@@ -883,9 +901,9 @@ export default function ScheduleDetail({
                       {fieldErrors.repeatDays && <span className={styles.fieldError}>{fieldErrors.repeatDays}</span>}
                       <FieldRow label="유효 기간">
                         <div className={styles.seriesDateWrap}>
-                          <input type="date" value={form.seriesStartDate}
-                            onChange={(e) => setForm((p) => ({ ...p, seriesStartDate: e.target.value }))}
-                            className={styles.seriesDateInput}
+                          <DateField
+                            value={form.seriesStartDate}
+                            onChange={(v) => setForm((p) => ({ ...p, seriesStartDate: v }))}
                           />
                           <span>~</span>
                           <div className={styles.seriesEndOptions}>
@@ -894,14 +912,14 @@ export default function ScheduleDetail({
                                 onChange={() => setForm((p) => ({ ...p, repeatEndType: 'none' }))} />
                               무기한
                             </label>
-                            <label>
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <input type="radio" checked={form.repeatEndType === 'date'}
                                 onChange={() => setForm((p) => ({ ...p, repeatEndType: 'date', repeatEndDate: p.repeatEndDate || formatDate(new Date()) }))} />
-                              <input type="date" value={form.repeatEndDate}
-                                onChange={(e) => setForm((p) => ({ ...p, repeatEndDate: e.target.value }))}
-                                min={form.seriesStartDate}
+                              <DateField
+                                value={form.repeatEndDate}
+                                onChange={(v) => setForm((p) => ({ ...p, repeatEndDate: v }))}
+                                minDate={form.seriesStartDate}
                                 disabled={form.repeatEndType !== 'date'}
-                                className={`${styles.seriesDateInput} ${form.repeatEndType !== 'date' ? styles.disabled : ''}`}
                               />
                             </label>
                           </div>
@@ -1028,9 +1046,9 @@ export default function ScheduleDetail({
                       </FieldRow>
                       <FieldRow label="유효 기간">
                         <div className={styles.seriesDateWrap}>
-                          <input type="date" value={form.seriesStartDate}
-                            onChange={(e) => setForm((p) => ({ ...p, seriesStartDate: e.target.value }))}
-                            className={styles.seriesDateInput}
+                          <DateField
+                            value={form.seriesStartDate}
+                            onChange={(v) => setForm((p) => ({ ...p, seriesStartDate: v }))}
                           />
                           <span>~</span>
                           <div className={styles.seriesEndOptions}>
@@ -1039,14 +1057,14 @@ export default function ScheduleDetail({
                                 onChange={() => setForm((p) => ({ ...p, repeatEndType: 'none' }))} />
                               무기한
                             </label>
-                            <label>
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <input type="radio" checked={form.repeatEndType === 'date'}
                                 onChange={() => setForm((p) => ({ ...p, repeatEndType: 'date', repeatEndDate: p.repeatEndDate || formatDate(new Date()) }))} />
-                              <input type="date" value={form.repeatEndDate}
-                                onChange={(e) => setForm((p) => ({ ...p, repeatEndDate: e.target.value }))}
-                                min={form.seriesStartDate}
+                              <DateField
+                                value={form.repeatEndDate}
+                                onChange={(v) => setForm((p) => ({ ...p, repeatEndDate: v }))}
+                                minDate={form.seriesStartDate}
                                 disabled={form.repeatEndType !== 'date'}
-                                className={`${styles.seriesDateInput} ${form.repeatEndType !== 'date' ? styles.disabled : ''}`}
                               />
                             </label>
                           </div>
