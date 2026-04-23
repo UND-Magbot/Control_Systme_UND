@@ -62,12 +62,19 @@ export function makeDateTime(
   return `${yyyy}-${mm}-${dd} ${HH}:${MM}:00`;
 }
 
-/** 오전/오후 + 시 + 분 → "HH:MM" (24시간) */
+/** 오전/오후 + 시 + 분 → "HH:MM" (24시간). 입력이 유효하지 않으면 예외 발생. */
 export function makeTimeString(ampm: string, hour: string, minute: string): string {
-  let h = Number(hour);
-  if (ampm === "오후" && h !== 12) h += 12;
-  if (ampm === "오전" && h === 12) h = 0;
-  return `${String(h).padStart(2, "0")}:${minute}`;
+  const h = Number(hour);
+  const m = Number(minute);
+  if (!ampm || !Number.isFinite(h) || !Number.isFinite(m)) {
+    throw new Error(
+      `makeTimeString 유효하지 않은 입력: ampm=${ampm}, hour=${hour}, minute=${minute}`
+    );
+  }
+  let hh = h;
+  if (ampm === "오후" && hh !== 12) hh += 12;
+  if (ampm === "오전" && hh === 12) hh = 0;
+  return `${String(hh).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 /** "HH:MM" (24시간) → { ampm, hour, minute } */

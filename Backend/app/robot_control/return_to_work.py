@@ -146,6 +146,7 @@ def return_to_work(mode: str = "direct"):
     import app.navigation.send_move as nav
     from app.robot_io.sender import send_to_robot
     from app.scheduler.loop import cancel_active_schedule, get_active_schedule_id
+    from app.robot_control.charge import prepare_undock_waypoints
 
     # 현재 진행 중인 경로가 있으면 그것을 사용, 없으면 가장 최근 실행된 스케줄의 경로
     waypoints_snapshot = list(nav.waypoints_list) if nav.waypoints_list else []
@@ -216,14 +217,20 @@ def return_to_work(mode: str = "direct"):
                 ny = retrace_wps[i + 1]["y"]
                 retrace_wps[i]["yaw"] = round(math.atan2(ny - retrace_wps[i]["y"], nx - retrace_wps[i]["x"]), 3)
 
-        nav.waypoints_list = retrace_wps
+        work_wps = retrace_wps
         route_desc = " → ".join(wp.get("name", f"({wp['x']:.1f},{wp['y']:.1f})") for wp in retrace_wps)
         print(f"🔙 작업 복귀 (역주행): {len(retrace_wps)}개 포인트 — {route_desc}")
     else:
         # 자율 주행: 출발 지점으로 직접 이동
-        nav.waypoints_list = [origin]
+        work_wps = [origin]
         print(f"🔙 작업 복귀 (자율주행): {origin.get('name', '')} → x={origin['x']}, y={origin['y']}")
 
+    # 충전 중이면 해제 후 도킹 포인트 경유 + 180° 회전 preamble 삽입
+    undock_preamble = prepare_undock_waypoints()
+    if undock_preamble:
+        work_wps = undock_preamble + work_wps
+
+    nav.waypoints_list = work_wps
     nav.current_wp_index = 0
     nav.is_navigating = True
     nav.nav_loop_remaining = 0

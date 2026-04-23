@@ -282,7 +282,7 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
         </div>
 
         <div className={styles.placeListBox}>
-          <table className={styles.status}>
+          <table className={`${styles.status} ${placeDeleteMode ? styles.placeTableDelete : styles.placeTable}`}>
             <thead>
               <tr>
                 {placeDeleteMode && (
