@@ -169,7 +169,7 @@ function expandWeekly(
       : null;
   if (seriesEnd) seriesEnd.setHours(23, 59, 59, 999);
 
-  // 다중 시각 파싱 ("09:00,13:00,18:00" → [{hours,minutes}, ...])
+  // 다중 시각 파싱 ("09:00,13:00,18:00" → [{hours,minutes}, ...]) + 정렬
   const execTimes: { hours: number; minutes: number }[] = [];
   if (schedule.ExecutionTime) {
     for (const t of schedule.ExecutionTime.split(",")) {
@@ -179,8 +179,16 @@ function expandWeekly(
     const origStart = new Date(schedule.StartDate);
     execTimes.push({ hours: origStart.getHours(), minutes: origStart.getMinutes() });
   }
+  execTimes.sort((a, b) => (a.hours * 60 + a.minutes) - (b.hours * 60 + b.minutes));
 
   const allExecMins = execTimes.map((et) => et.hours * 60 + et.minutes);
+  // 각 인스턴스의 표시 지속시간(분): 다음 시각과의 간격, 최대 30분, 최소 1분
+  const DEFAULT_DURATION_MIN = 30;
+  const durations = allExecMins.map((m, i) => {
+    if (i === allExecMins.length - 1) return DEFAULT_DURATION_MIN;
+    const gap = allExecMins[i + 1] - m;
+    return Math.max(1, Math.min(DEFAULT_DURATION_MIN, gap - 1));
+  });
   const todayStr = new Date().toISOString().slice(0, 10);
 
   // this 범위 편집으로 스킵된 날짜 집합
@@ -207,10 +215,11 @@ function expandWeekly(
       if (exceptionSet.has(cursorStr)) { cursor.setDate(cursor.getDate() + 1); continue; }
       const isToday = cursorStr === todayStr;
 
-      for (const et of execTimes) {
+      for (let i = 0; i < execTimes.length; i++) {
+        const et = execTimes[i];
         const virtualStart = new Date(cursor);
         virtualStart.setHours(et.hours, et.minutes, 0, 0);
-        const virtualEnd = new Date(virtualStart.getTime() + 30 * 60 * 1000);
+        const virtualEnd = new Date(virtualStart.getTime() + durations[i] * 60 * 1000);
         const virtualMin = et.hours * 60 + et.minutes;
 
         const status = inferVirtualStatus(schedule.TaskStatus, virtualMin, allExecMins, isToday);

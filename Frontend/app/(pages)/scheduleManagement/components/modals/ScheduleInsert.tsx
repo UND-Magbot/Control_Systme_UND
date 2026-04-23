@@ -12,7 +12,7 @@ import TimePicker from '../widgets/TimePicker';
 import RepeatSettings from '../widgets/RepeatSettings';
 import DateField from '../widgets/DateField';
 import CustomCheckbox from '../widgets/CustomCheckbox';
-import { WORK_TYPES, DOWS, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, type Dow, type ScheduleMode } from '../../constants';
+import { WORK_TYPES, WORK_TYPE_ALL, DOWS, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, type Dow, type ScheduleMode } from '../../constants';
 import { useToast } from '@/app/components/common/Toast';
 import { useFormDirty } from '@/app/hooks/useFormDirty';
 import {
@@ -28,7 +28,7 @@ type InsertModalProps = {
     isOpen: boolean;
     onClose: () => void;
     robots: RobotRowData[];
-    onScheduleChanged?: () => void;
+    onScheduleChanged?: () => Promise<void> | void;
 };
 
 type WorkPathOption = {
@@ -36,12 +36,18 @@ type WorkPathOption = {
     wayName: string;
     robotName: string;
     wayPoints: string;
+    taskType: string;
+    floorId: number | null;
 };
 
 const WORK_TYPE_OPTIONS: SelectOption[] = WORK_TYPES.map((t) => ({
     id: t.id,
     label: t.label,
 }));
+
+// 드롭다운 맨 위에 노출되는 "전체(리셋)" 옵션. 선택 시 내부 상태는 null로 변환.
+const WORK_TYPE_ALL_OPTION: SelectOption = { id: WORK_TYPE_ALL.id, label: WORK_TYPE_ALL.label };
+const WORK_TYPE_OPTIONS_WITH_ALL: SelectOption[] = [WORK_TYPE_ALL_OPTION, ...WORK_TYPE_OPTIONS];
 
 export default function InsertModal({
     isOpen,
@@ -124,13 +130,27 @@ export default function InsertModal({
         [robots]
     );
 
-    // 로봇별 경로 필터링
+    // 로봇의 현재 위치한 층 찾기 (경로 필터링에 사용)
+    const selectedRobotFloorId: number | null = useMemo(() => {
+        if (!selectedRobot) return null;
+        const r = robots.find((rb) => rb.id === Number(selectedRobot.id));
+        return r?.currentFloorId ?? null;
+    }, [robots, selectedRobot]);
+
+    // 로봇 + 작업유형 + 현재 층별 경로 필터링
     const filteredPathOptions: SelectOption[] = useMemo(() => {
-        if (!selectedRobot) return allWorkPaths.map((p) => ({ id: p.id, label: p.wayName }));
         return allWorkPaths
-            .filter((p) => p.robotName === selectedRobot.label)
+            .filter((p) => {
+                if (selectedRobot && p.robotName !== selectedRobot.label) return false;
+                if (selectedWorkType && (p.taskType ?? "") !== selectedWorkType.label) return false;
+                // 로봇이 선택됐고 현재 층을 알 수 있으면, 해당 층의 경로만 표시
+                if (selectedRobot && selectedRobotFloorId !== null) {
+                    if (p.floorId !== selectedRobotFloorId) return false;
+                }
+                return true;
+            })
             .map((p) => ({ id: p.id, label: p.wayName }));
-    }, [allWorkPaths, selectedRobot]);
+    }, [allWorkPaths, selectedRobot, selectedWorkType, selectedRobotFloorId]);
 
     // 바이트 카운터
     const taskNameBytes = useMemo(() => getByteLength(taskName), [taskName]);
@@ -193,6 +213,8 @@ export default function InsertModal({
                     wayName: row.WayName,
                     robotName: row.RobotName,
                     wayPoints: row.WayPoints ?? '',
+                    taskType: row.TaskType ?? '',
+                    floorId: row.FloorId ?? null,
                 }));
                 setAllWorkPaths(paths);
             })
@@ -203,15 +225,35 @@ export default function InsertModal({
             .finally(() => setLoadingPaths(false));
     }, [isOpen]);
 
-    // 로봇 변경 시 경로 초기화
+    // 로봇/작업유형/층 변경 시, 현재 선택된 경로가 필터에 안 맞으면 초기화
     useEffect(() => {
-        if (selectedWorkPath && selectedRobot) {
-            const match = allWorkPaths.find(
-                (p) => p.id === Number(selectedWorkPath.id) && p.robotName === selectedRobot.label
-            );
-            if (!match) setSelectedWorkPath(null);
+        if (!selectedWorkPath) return;
+        const match = allWorkPaths.find((p) => {
+            if (p.id !== Number(selectedWorkPath.id)) return false;
+            if (selectedRobot && p.robotName !== selectedRobot.label) return false;
+            if (selectedWorkType && (p.taskType ?? "") !== selectedWorkType.label) return false;
+            if (selectedRobot && selectedRobotFloorId !== null && p.floorId !== selectedRobotFloorId) return false;
+            return true;
+        });
+        if (!match) setSelectedWorkPath(null);
+    }, [selectedRobot, selectedWorkType, selectedRobotFloorId, allWorkPaths, selectedWorkPath]);
+
+    // 경로를 먼저 선택하면 로봇/작업유형이 비어있을 때 경로 정보로 자동 세팅.
+    // 의존성에 selectedRobot/selectedWorkType을 넣지 않아야 사용자가 이후에 비워도
+    // 다시 자동 채움이 트리거되지 않음 (무한 루프/의도 무시 방지).
+    useEffect(() => {
+        if (!selectedWorkPath) return;
+        const path = allWorkPaths.find((p) => p.id === Number(selectedWorkPath.id));
+        if (!path) return;
+        if (path.robotName) {
+            const robotMatch = robotOptions.find((r) => r.label === path.robotName);
+            if (robotMatch) setSelectedRobot((prev) => prev ?? robotMatch);
         }
-    }, [selectedRobot, allWorkPaths]);
+        if (path.taskType) {
+            const typeMatch = WORK_TYPE_OPTIONS.find((t) => t.label === path.taskType);
+            if (typeMatch) setSelectedWorkType((prev) => prev ?? typeMatch);
+        }
+    }, [selectedWorkPath, allWorkPaths, robotOptions]);
 
     // 요일 토글 핸들러
     const toggleDay = (day: Dow, days: Dow[], setDays: (d: Dow[]) => void) => {
@@ -318,7 +360,7 @@ export default function InsertModal({
             }
 
             showToast('작업일정이 등록되었습니다.', 'success');
-            onScheduleChanged?.();
+            await onScheduleChanged?.();
             onClose();
         } catch (e: any) {
             if (e?.name === 'AbortError') {
@@ -387,9 +429,9 @@ export default function InsertModal({
                             <div className={styles.itemBox}>
                                 <div>작업유형</div>
                                 <CustomSelect
-                                    options={WORK_TYPE_OPTIONS}
-                                    value={selectedWorkType}
-                                    onChange={setSelectedWorkType}
+                                    options={WORK_TYPE_OPTIONS_WITH_ALL}
+                                    value={selectedWorkType ?? WORK_TYPE_ALL_OPTION}
+                                    onChange={(opt) => setSelectedWorkType(opt.id === WORK_TYPE_ALL.id ? null : opt)}
                                     placeholder="작업유형을 선택하세요"
                                     error={!!fieldErrors.workType}
                                 />

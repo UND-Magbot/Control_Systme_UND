@@ -203,6 +203,8 @@ def navigation_send_next():
 @move.post("/startpath")
 def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo = Depends(require_permission("robot-list"))):
     """DB 경로(WayInfo)를 읽어 네비게이션 시작."""
+    from app.robot_control.charge import prepare_undock_waypoints
+
     global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining, nav_loop_total, auto_return_to_charge
 
     db = SessionLocal()
@@ -227,6 +229,11 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
             return {"status": "error", "msg": f"경로 '{way_name}'에 유효한 장소가 없습니다."}
     finally:
         db.close()
+
+    # 충전 중이면 해제 후 도킹 포인트 경유 + 180° 회전 preamble 삽입
+    undock_preamble = prepare_undock_waypoints()
+    if undock_preamble:
+        waypoints = undock_preamble + waypoints
 
     waypoints_list = waypoints
     current_wp_index = 0
@@ -265,6 +272,8 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
 
 @move.post("/placemove/{place_id}")
 def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("robot-list"))):
+    from app.robot_control.charge import prepare_undock_waypoints
+
     global current_wp_index, waypoints_list, is_navigating, auto_return_to_charge
 
     place = db.query(LocationInfo).filter(LocationInfo.id == place_id).first()
@@ -276,8 +285,15 @@ def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: Us
     y = place.LocationY
     yaw = place.Yaw or 0.0
 
+    work_wps = [{"x": x, "y": y, "yaw": yaw, "name": place.LacationName}]
+
+    # 충전 중이면 해제 후 도킹 포인트 경유 + 180° 회전 preamble 삽입
+    undock_preamble = prepare_undock_waypoints()
+    if undock_preamble:
+        work_wps = undock_preamble + work_wps
+
     # 단일 장소 이동도 네비게이션 흐름으로 관리 (도착 감지 + IsWorking 연동)
-    waypoints_list = [{"x": x, "y": y, "yaw": yaw, "name": place.LacationName}]
+    waypoints_list = work_wps
     current_wp_index = 0
     is_navigating = True
     auto_return_to_charge = False  # 장소 이동은 충전소 복귀 안 함
@@ -294,6 +310,8 @@ def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: Us
 
 @move.post("/pathmove/{path_id}")
 def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("robot-list"))):
+    from app.robot_control.charge import prepare_undock_waypoints
+
     global current_wp_index, waypoints_list, is_navigating, auto_return_to_charge
 
     path = db.query(WayInfo).filter(WayInfo.id == path_id).first()
@@ -315,6 +333,11 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
     # 웨이포인트 목록 생성 (yaw = 다음 포인트 방향, 마지막은 저장된 yaw)
     from app.navigation.waypoints import build_waypoints_from_places
     waypoints = build_waypoints_from_places(places)
+
+    # 충전 중이면 해제 후 도킹 포인트 경유 + 180° 회전 preamble 삽입
+    undock_preamble = prepare_undock_waypoints()
+    if undock_preamble:
+        waypoints = undock_preamble + waypoints
 
     # 기존 웨이포인트 순차 이동 시스템 활용
     waypoints_list = waypoints

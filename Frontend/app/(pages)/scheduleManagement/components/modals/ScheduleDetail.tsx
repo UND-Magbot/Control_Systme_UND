@@ -9,7 +9,7 @@ import RepeatConfirmModal, { type RepeatConfirmMode, type RepeatConfirmScope } f
 import MiniCalendar from '../widgets/MiniCalendar';
 import DateField from '../widgets/DateField';
 import { apiFetch } from "@/app/lib/api";
-import { WORK_TYPES, WORK_STATUS, DOWS as DOWS_CONST, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, AMPM_OPTIONS, HOUR_OPTIONS, MINUTE_OPTIONS, type ScheduleMode, type Dow } from '../../constants';
+import { WORK_TYPES, WORK_TYPE_ALL, WORK_STATUS, DOWS as DOWS_CONST, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, AMPM_OPTIONS, HOUR_OPTIONS, MINUTE_OPTIONS, type ScheduleMode, type Dow } from '../../constants';
 import { getByteLength } from '../../utils/validation';
 import { extractOriginalId } from '../../utils/expandRepeatSchedules';
 import { pad2, formatDate, minToHm, hmToMin, toAmpmHour, fromAmpmHour } from '../../utils/datetime';
@@ -71,7 +71,7 @@ type ScheduleDetailProps = {
     pathOrder: string;
   }) => void;
   onDelete?: (id: string) => void;
-  onScheduleChanged?: () => void;
+  onScheduleChanged?: () => Promise<void> | void;
 };
 
 type SelectOption = { id: number; label: string; order?: string; taskType?: string; };
@@ -112,32 +112,37 @@ export default function ScheduleDetail({
     const [repeatScope, setRepeatScope] = useState<RepeatConfirmScope>("this");
     const [showDirtyConfirm, setShowDirtyConfirm] = useState(false);
     const [dirtyAction, setDirtyAction] = useState<'cancel' | 'close'>('cancel');
+    const [siblingCount, setSiblingCount] = useState(0);
+    const [showMergeWarning, setShowMergeWarning] = useState(false);
+    const [mergeWarningFor, setMergeWarningFor] = useState<RepeatConfirmMode>('edit');
+    const [mergeWarningScope, setMergeWarningScope] = useState<RepeatConfirmScope>('all');
 
     const [modifiedAtText, setModifiedAtText] = useState<string | null>(null);
 
     const [initialForm, setInitialForm] = useState<FormState>(() => buildInitialForm(event));
     const [form, setForm] = useState<FormState>(initialForm);
 
-    // event prop 변경 시 initialForm 재계산
-    useEffect(() => {
-        setInitialForm(buildInitialForm(event));
-    }, [event]);
     const [startDateText, setStartDateText] = useState(formatDate(new Date()));
     const [endDateText, setEndDateText] = useState(formatDate(new Date()));
 
-    // 모달 열릴 때 초기화
+    // 모달 열림 또는 다른 이벤트로 전환 시에만 초기화.
+    // deps를 [isOpen, event.id]로 고정해서, fallback useEffect가 initialForm을 업데이트해도
+    // 편집 모드가 강제 view로 돌아가지 않도록 함.
     useEffect(() => {
         if (!isOpen) return;
+        const initial = buildInitialForm(event);
+        setInitialForm(initial);
+        setForm(initial);
         setMode('view');
         setShowDeleteConfirm(false);
-        setForm(initialForm);
-        const normalized = formatDate(parseDateText(initialForm.dateText));
+        const normalized = formatDate(parseDateText(initial.dateText));
         setStartDateText(normalized);
         setEndDateText(normalized);
         setIsStartDateOpen(false);
         setIsEndDateOpen(false);
         setIsRepeatEndDateOpen(false);
-    }, [isOpen, initialForm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, event.id]);
 
     if (!isOpen) return null;
 
@@ -204,7 +209,7 @@ export default function ScheduleDetail({
     useModalBehavior({
         isOpen,
         onClose: handleSafeClose,
-        disabled: repeatConfirmOpen || showDeleteConfirm || showDirtyConfirm,
+        disabled: repeatConfirmOpen || showDeleteConfirm || showDirtyConfirm || showMergeWarning,
     });
 
     const handleDirtyConfirmLeave = () => {
@@ -234,7 +239,7 @@ export default function ScheduleDetail({
         const errors: Record<string, string> = {};
         if (!form.title.trim()) errors.title = "작업명을 입력하세요.";
         if (!form.workType) errors.workType = "작업유형을 선택하세요.";
-        if (!form.workStatus) errors.workStatus = "작업상태를 선택하세요.";
+        // 작업상태는 수정 모달에서 UI 숨김 처리됨 — validation 생략 (DB에서 받은 기존 값 유지)
         if (!form.pathName) errors.pathName = "작업경로를 선택하세요.";
 
         // 모드별 검증
@@ -247,9 +252,12 @@ export default function ScheduleDetail({
             }
         }
 
+        // 전체 수정(all) 에서는 유효기간 필드가 UI 에 없으므로 검증도 생략
+        const skipValidityPeriod = repeatScope === 'all';
+
         if (form.scheduleMode === 'weekly') {
             if (form.repeatDays.length === 0) errors.repeatDays = "반복요일을 최소 1일 선택하세요.";
-            if (form.repeatEndType === "date" && form.repeatEndDate && form.seriesStartDate) {
+            if (!skipValidityPeriod && form.repeatEndType === "date" && form.repeatEndDate && form.seriesStartDate) {
                 if (form.repeatEndDate < form.seriesStartDate) {
                     errors.seriesEndDate = "종료일이 시작일보다 빠릅니다.";
                 }
@@ -260,7 +268,7 @@ export default function ScheduleDetail({
             if (!form.intervalMinutes || form.intervalMinutes < 1) {
                 errors.intervalMinutes = "반복 간격을 1분 이상 입력하세요.";
             }
-            if (form.repeatEndType === "date" && form.repeatEndDate && form.seriesStartDate) {
+            if (!skipValidityPeriod && form.repeatEndType === "date" && form.repeatEndDate && form.seriesStartDate) {
                 if (form.repeatEndDate < form.seriesStartDate) {
                     errors.seriesEndDate = "종료일이 시작일보다 빠릅니다.";
                 }
@@ -278,16 +286,19 @@ export default function ScheduleDetail({
         const startDT = makeDetailDateTime(startDateText, form.startAmpm, form.startHour, form.startMin);
         const endDT = makeDetailDateTime(endDateText, form.endAmpm, form.endHour, form.endMin);
 
+        // TaskStatus는 수정 모달에서 변경 허용 안 하므로 페이로드 제외 → 서버의 기존 값 유지
         const payload: Record<string, any> = {
             id: event.id,
             WorkName: form.title,
             TaskType: form.workType,
-            TaskStatus: form.workStatus,
             ScheduleMode: form.scheduleMode,
             PathName: form.pathName,
-            PathOrder: form.pathOrder,
             ...(repeatScope ? { RepeatScope: repeatScope, TargetDate: targetDate } : {}),
         };
+
+        // 전체 수정 범위에서는 유효기간을 클라이언트가 지정하지 않음.
+        // 서버의 "all" 분기가 그룹의 최광역 범위로 자동 조정하므로 페이로드에서 제외.
+        const includeValidityPeriod = repeatScope !== 'all';
 
         if (form.scheduleMode === 'once') {
             payload.StartTime = startDT;
@@ -296,15 +307,19 @@ export default function ScheduleDetail({
               ? form.executionTimes.join(",")
               : `${pad2(fromAmpmHour(form.startAmpm, form.startHour))}:${pad2(form.startMin)}`;
             payload.RepeatDays = form.repeatDays.join(",");
-            payload.SeriesStartDate = form.seriesStartDate || startDateText;
-            payload.SeriesEndDate = form.repeatEndType === "date" ? form.repeatEndDate : null;
+            if (includeValidityPeriod) {
+                payload.SeriesStartDate = form.seriesStartDate || startDateText;
+                payload.SeriesEndDate = form.repeatEndType === "date" ? form.repeatEndDate : null;
+            }
         } else if (form.scheduleMode === 'interval') {
             payload.ActiveStartTime = form.activeStartTime;
             payload.ActiveEndTime = form.activeEndTime;
             payload.IntervalMinutes = form.intervalMinutes;
             payload.RepeatDays = form.intervalRepeatDays.length ? form.intervalRepeatDays.join(",") : null;
-            payload.SeriesStartDate = form.seriesStartDate || startDateText;
-            payload.SeriesEndDate = form.repeatEndType === "date" ? form.repeatEndDate : null;
+            if (includeValidityPeriod) {
+                payload.SeriesStartDate = form.seriesStartDate || startDateText;
+                payload.SeriesEndDate = form.repeatEndType === "date" ? form.repeatEndDate : null;
+            }
         }
 
         setSaving(true);
@@ -333,7 +348,7 @@ export default function ScheduleDetail({
                 pathName: form.pathName,
                 pathOrder: form.pathOrder,
             });
-            onScheduleChanged?.();
+            await onScheduleChanged?.();
             setMode('view');
         } catch (e: any) {
             console.error("스케줄 수정 실패", e);
@@ -357,6 +372,8 @@ export default function ScheduleDetail({
     };
 
     const [robots, setRobots] = useState<SelectOption[]>([]);
+    // RobotName → CurrentFloorId 매핑 (경로 층 필터링용)
+    const [robotFloorMap, setRobotFloorMap] = useState<Record<string, number | null>>({});
 
     useEffect(() => {
       if (!isOpen) return;
@@ -369,14 +386,23 @@ export default function ScheduleDetail({
             id: i,
             label: r.RobotName ?? r.no ?? '',
           })));
+          const floorMap: Record<string, number | null> = {};
+          for (const r of list) {
+            const name = r.RobotName ?? r.no ?? '';
+            if (name) floorMap[name] = r.CurrentFloorId ?? null;
+          }
+          setRobotFloorMap(floorMap);
         })
         .catch((e) => {
           console.error("로봇 목록 조회 실패", e);
           setRobots([]);
+          setRobotFloorMap({});
         });
     }, [isOpen]);
 
     const [pathOptions, setPathOptions] = useState<SelectOption[]>([]);
+    // applyDetailData가 stale closure 없이 최신 pathOptions를 참조할 수 있도록 ref 동기화
+    const pathOptionsRef = useRef<SelectOption[]>([]);
 
    useEffect(() => {
     if (!isOpen) return;
@@ -385,17 +411,19 @@ export default function ScheduleDetail({
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data?.paths ?? []);
-        setPathOptions(
-          list.map((p: any) => ({
-            id: p.id,
-            label: p.WayName,
-            order: p.WayPoints ?? "",
-            taskType: p.TaskType ?? "",
-          }))
-        );
+        const mapped = list.map((p: any) => ({
+          id: p.id,
+          label: p.WayName,
+          order: p.WayPoints ?? "",
+          taskType: p.TaskType ?? "",
+          floorId: p.FloorId ?? null,
+        }));
+        pathOptionsRef.current = mapped;
+        setPathOptions(mapped);
       })
       .catch((e) => {
         console.error("경로 목록 조회 실패", e);
+        pathOptionsRef.current = [];
         setPathOptions([]);
       });
   }, [isOpen]);
@@ -410,10 +438,9 @@ export default function ScheduleDetail({
     const startH24 = start.getHours();
     const endH24 = end.getHours();
 
-    const matchedPath = pathOptions.find(
-      (p) => p.label === data.WayName
-    );
-
+    // ref를 통해 최신 pathOptions 참조 (stale closure 회피).
+    // 만약 ref도 비어 있으면(패스 fetch가 더 늦게 끝나는 경우) 아래 fallback useEffect가 이어서 채움.
+    const matchedPath = pathOptionsRef.current.find((p) => p.label === data.WayName);
     const startAmpm = startH24 < 12 ? '오전' : '오후';
     const endAmpm = endH24 < 12 ? '오전' : '오후';
 
@@ -439,7 +466,7 @@ export default function ScheduleDetail({
       pathId: null,
       pathName: data.WayName,
       pathDetails: [],
-      pathOrder: matchedPath?.order ?? "",
+      pathOrder: (matchedPath as any)?.order ?? "",
 
       scheduleMode: mode,
 
@@ -490,6 +517,7 @@ export default function ScheduleDetail({
       .then(res => res.json())
       .then(data => {
         applyDetailData(data);
+        setSiblingCount(Number(data.SiblingCount ?? 0));
 
         // 수정 일시 (API에 필드가 있으면 사용)
         if (data.UpdatedAt || data.updated_at) {
@@ -512,26 +540,66 @@ export default function ScheduleDetail({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, event.id, mockData]);
 
-  // pathOptions 로드 후 경로순서 매칭
+  // pathOptions 로드 후 경로순서/작업유형 자동 매칭.
+  // 의존성에 form.pathOrder / form.workType을 제외해야 사용자가 이후에 비워도
+  // 자동 채움이 재트리거되지 않음 (무한 루프/의도 무시 방지).
+  // form과 initialForm 둘 다 업데이트해야 dirty check가 오인하지 않음
+  // (자동 매칭은 "서버 유도 값" 이지 사용자 편집 아님).
   useEffect(() => {
     if (!isOpen || pathOptions.length === 0 || !form.pathName) return;
     const matched = pathOptions.find((p) => p.label === form.pathName);
-    if (matched?.order && !form.pathOrder) {
-      setForm((p) => ({ ...p, pathOrder: matched.order ?? "" }));
-    }
-  }, [pathOptions, isOpen, form.pathName, form.pathOrder]);
+    if (!matched) return;
+    const pathOrderVal = (matched as any).order as string | undefined;
+    const pathTaskType = (matched as any).taskType as string | undefined;
 
-  // 작업유형에 맞는 경로만 필터링 (유형 미선택 시 전체 노출)
+    const applyAutoFill = (prev: FormState): FormState => {
+      const next = { ...prev };
+      let changed = false;
+      if (pathOrderVal && !prev.pathOrder) {
+        next.pathOrder = pathOrderVal;
+        changed = true;
+      }
+      if (pathTaskType && !prev.workType) {
+        next.workType = pathTaskType;
+        changed = true;
+      }
+      return changed ? next : prev;
+    };
+
+    setForm(applyAutoFill);
+    setInitialForm(applyAutoFill);
+  }, [pathOptions, isOpen, form.pathName]);
+
+  // 작업유형 + 로봇의 현재 층에 맞는 경로만 필터링 (유형 미선택 시 층만 적용).
+  // 현재 선택된 경로(form.pathName)는 층/유형과 무관하게 항상 포함 — 사용자가 기존 선택을 확인할 수 있도록.
   const filteredPathOptions = useMemo(() => {
-    if (!form.workType) return pathOptions;
-    return pathOptions.filter((p) => (p.taskType ?? "") === form.workType);
-  }, [pathOptions, form.workType]);
+    const robotFloor = form.robotNo ? robotFloorMap[form.robotNo] ?? null : null;
+    return pathOptions.filter((p) => {
+      if (form.pathName && p.label === form.pathName) return true;
+      if (form.workType && (p.taskType ?? "") !== form.workType) return false;
+      if (form.robotNo && robotFloor !== null) {
+        if ((p as any).floorId !== robotFloor) return false;
+      }
+      return true;
+    });
+  }, [pathOptions, form.workType, form.robotNo, form.pathName, robotFloorMap]);
+
+  // 편집 모드에서 작업유형이 변경되어 현재 선택된 경로가 필터에 안 맞으면 초기화
+  useEffect(() => {
+    if (!isEditMode || !form.pathName || pathOptions.length === 0) return;
+    const matches = filteredPathOptions.some((p) => p.label === form.pathName);
+    if (!matches) {
+      setForm((p) => ({ ...p, pathName: '', pathOrder: '' }));
+    }
+  }, [isEditMode, form.workType, filteredPathOptions, form.pathName, pathOptions.length]);
 
     const handleDeleteCancel = () => setShowDeleteConfirm(false);
 
     const handleDeleteConfirm = async () => {
         try {
-            const deletePayload = repeatScope ? { RepeatScope: repeatScope } : {};
+            const deletePayload = repeatScope
+                ? { RepeatScope: repeatScope, ...(targetDate ? { TargetDate: targetDate } : {}) }
+                : {};
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10000);
             const res = await apiFetch(`/DB/schedule/${dbId}`, {
@@ -543,7 +611,7 @@ export default function ScheduleDetail({
             clearTimeout(timeout);
             if (!res.ok) throw new Error("삭제 실패");
             onDelete?.(event.id);
-            onScheduleChanged?.();
+            await onScheduleChanged?.();
             setShowDeleteConfirm(false);
             onClose();
         } catch (e) {
@@ -557,10 +625,7 @@ export default function ScheduleDetail({
       setRepeatConfirmOpen(false);
     };
 
-    const handleRepeatConfirmOk = (scope: RepeatConfirmScope) => {
-      setRepeatConfirmOpen(false);
-      setRepeatScope(scope);
-
+    const proceedAfterScopeChosen = (scope: RepeatConfirmScope) => {
       if (repeatConfirmMode === "edit") {
         // thisAndFuture 시: 유효기간 시작일을 클릭한 날짜로 자동 세팅 (혼동 방지)
         if (scope === "thisAndFuture" && targetDate) {
@@ -582,6 +647,33 @@ export default function ScheduleDetail({
 
       // delete: 실제 DELETE API를 호출하도록 확인 모달로 이동
       setShowDeleteConfirm(true);
+    };
+
+    const handleRepeatConfirmOk = (scope: RepeatConfirmScope) => {
+      setRepeatConfirmOpen(false);
+      setRepeatScope(scope);
+
+      // 파괴적 범위(all / thisAndFuture) + 분할된 형제 존재 시 경고
+      // (this는 SeriesExceptions만 추가하므로 경고 불필요)
+      if ((scope === "all" || scope === "thisAndFuture") && siblingCount > 0) {
+        setMergeWarningFor(repeatConfirmMode);
+        setMergeWarningScope(scope);
+        setShowMergeWarning(true);
+        return;
+      }
+
+      proceedAfterScopeChosen(scope);
+    };
+
+    const handleMergeWarningConfirm = () => {
+      setShowMergeWarning(false);
+      proceedAfterScopeChosen(mergeWarningScope);
+    };
+
+    const handleMergeWarningCancel = () => {
+      setShowMergeWarning(false);
+      // 사용자가 다시 범위를 고를 수 있도록 RepeatConfirm 재오픈
+      setRepeatConfirmOpen(true);
     };
 
 
@@ -759,9 +851,17 @@ export default function ScheduleDetail({
               {isEditMode ? (
                   <SharedCustomSelect
                     placeholder="작업유형을 선택하세요"
-                    value={WORK_TYPES.find(t => t.label === form.workType) ?? null}
-                    options={WORK_TYPES}
+                    value={
+                      form.workType
+                        ? (WORK_TYPES.find(t => t.label === form.workType) ?? null)
+                        : WORK_TYPE_ALL
+                    }
+                    options={[WORK_TYPE_ALL, ...WORK_TYPES]}
                     onChange={(opt) => setForm((p) => {
+                      // "전체" 선택 시 작업유형 초기화 (경로 필터 리셋)
+                      if (opt.id === WORK_TYPE_ALL.id) {
+                        return { ...p, workType: "" };
+                      }
                       const currentPath = pathOptions.find((po) => po.label === p.pathName);
                       const keepPath = currentPath && (currentPath.taskType ?? "") === opt.label;
                       return {
@@ -918,32 +1018,40 @@ export default function ScheduleDetail({
                         </div>
                       </FieldRow>
                       {fieldErrors.repeatDays && <span className={styles.fieldError}>{fieldErrors.repeatDays}</span>}
-                      <FieldRow label="유효 기간">
-                        <div className={styles.seriesDateWrap}>
-                          <DateField
-                            value={form.seriesStartDate}
-                            onChange={(v) => setForm((p) => ({ ...p, seriesStartDate: v }))}
-                          />
-                          <span>~</span>
-                          <div className={styles.seriesEndOptions}>
-                            <label>
-                              <input type="radio" checked={form.repeatEndType === 'none'}
-                                onChange={() => setForm((p) => ({ ...p, repeatEndType: 'none' }))} />
-                              무기한
-                            </label>
-                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <input type="radio" checked={form.repeatEndType === 'date'}
-                                onChange={() => setForm((p) => ({ ...p, repeatEndType: 'date', repeatEndDate: p.repeatEndDate || formatDate(new Date()) }))} />
-                              <DateField
-                                value={form.repeatEndDate}
-                                onChange={(v) => setForm((p) => ({ ...p, repeatEndDate: v }))}
-                                minDate={form.seriesStartDate}
-                                disabled={form.repeatEndType !== 'date'}
-                              />
-                            </label>
+                      {repeatScope === 'all' ? (
+                        <FieldRow label="유효 기간">
+                          <span style={{ color: '#999', fontSize: '0.9em' }}>
+                            전체 수정 범위에서는 유효기간이 시리즈 전체 범위로 자동 조정됩니다.
+                          </span>
+                        </FieldRow>
+                      ) : (
+                        <FieldRow label="유효 기간">
+                          <div className={styles.seriesDateWrap}>
+                            <DateField
+                              value={form.seriesStartDate}
+                              onChange={(v) => setForm((p) => ({ ...p, seriesStartDate: v }))}
+                            />
+                            <span>~</span>
+                            <div className={styles.seriesEndOptions}>
+                              <label>
+                                <input type="radio" checked={form.repeatEndType === 'none'}
+                                  onChange={() => setForm((p) => ({ ...p, repeatEndType: 'none' }))} />
+                                무기한
+                              </label>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <input type="radio" checked={form.repeatEndType === 'date'}
+                                  onChange={() => setForm((p) => ({ ...p, repeatEndType: 'date', repeatEndDate: p.repeatEndDate || formatDate(new Date()) }))} />
+                                <DateField
+                                  value={form.repeatEndDate}
+                                  onChange={(v) => setForm((p) => ({ ...p, repeatEndDate: v }))}
+                                  minDate={form.seriesStartDate}
+                                  disabled={form.repeatEndType !== 'date'}
+                                />
+                              </label>
+                            </div>
                           </div>
-                        </div>
-                      </FieldRow>
+                        </FieldRow>
+                      )}
                       {fieldErrors.seriesEndDate && <span className={styles.fieldError}>{fieldErrors.seriesEndDate}</span>}
                     </>
                   )}
@@ -1063,32 +1171,40 @@ export default function ScheduleDetail({
                           </label>
                         </div>
                       </FieldRow>
-                      <FieldRow label="유효 기간">
-                        <div className={styles.seriesDateWrap}>
-                          <DateField
-                            value={form.seriesStartDate}
-                            onChange={(v) => setForm((p) => ({ ...p, seriesStartDate: v }))}
-                          />
-                          <span>~</span>
-                          <div className={styles.seriesEndOptions}>
-                            <label>
-                              <input type="radio" checked={form.repeatEndType === 'none'}
-                                onChange={() => setForm((p) => ({ ...p, repeatEndType: 'none' }))} />
-                              무기한
-                            </label>
-                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <input type="radio" checked={form.repeatEndType === 'date'}
-                                onChange={() => setForm((p) => ({ ...p, repeatEndType: 'date', repeatEndDate: p.repeatEndDate || formatDate(new Date()) }))} />
-                              <DateField
-                                value={form.repeatEndDate}
-                                onChange={(v) => setForm((p) => ({ ...p, repeatEndDate: v }))}
-                                minDate={form.seriesStartDate}
-                                disabled={form.repeatEndType !== 'date'}
-                              />
-                            </label>
+                      {repeatScope === 'all' ? (
+                        <FieldRow label="유효 기간">
+                          <span style={{ color: '#999', fontSize: '0.9em' }}>
+                            전체 수정 범위에서는 유효기간이 시리즈 전체 범위로 자동 조정됩니다.
+                          </span>
+                        </FieldRow>
+                      ) : (
+                        <FieldRow label="유효 기간">
+                          <div className={styles.seriesDateWrap}>
+                            <DateField
+                              value={form.seriesStartDate}
+                              onChange={(v) => setForm((p) => ({ ...p, seriesStartDate: v }))}
+                            />
+                            <span>~</span>
+                            <div className={styles.seriesEndOptions}>
+                              <label>
+                                <input type="radio" checked={form.repeatEndType === 'none'}
+                                  onChange={() => setForm((p) => ({ ...p, repeatEndType: 'none' }))} />
+                                무기한
+                              </label>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <input type="radio" checked={form.repeatEndType === 'date'}
+                                  onChange={() => setForm((p) => ({ ...p, repeatEndType: 'date', repeatEndDate: p.repeatEndDate || formatDate(new Date()) }))} />
+                                <DateField
+                                  value={form.repeatEndDate}
+                                  onChange={(v) => setForm((p) => ({ ...p, repeatEndDate: v }))}
+                                  minDate={form.seriesStartDate}
+                                  disabled={form.repeatEndType !== 'date'}
+                                />
+                              </label>
+                            </div>
                           </div>
-                        </div>
-                      </FieldRow>
+                        </FieldRow>
+                      )}
                       {fieldErrors.seriesEndDate && <span className={styles.fieldError}>{fieldErrors.seriesEndDate}</span>}
                     </>
                   )}
@@ -1222,39 +1338,25 @@ export default function ScheduleDetail({
                 )}
             </div>
 
-            {/* === 상태 섹션 === */}
-            <div className={styles.detailSection}>
-              <div className={styles.detailSectionTitle}>상태<span className={styles.detailSectionLine} /></div>
+            {/* === 상태 섹션 === 편집 모드에서는 섹션 전체 숨김 (상태 변경은 테스트용이며, 일반 사용자에겐 혼란 유발 가능) */}
+            {!isEditMode && (
+              <div className={styles.detailSection}>
+                <div className={styles.detailSectionTitle}>상태<span className={styles.detailSectionLine} /></div>
 
-            <FieldRow label="작업상태" lined>
-            {isEditMode ? (
-                <SharedCustomSelect
-                  placeholder="작업상태를 선택하세요"
-                  value={WORK_STATUS.find(s => s.label === form.workStatus) ?? null}
-                  options={WORK_STATUS}
-                  onChange={(opt) => setForm((p) => ({ ...p, workStatus: opt.label }))}
-                  error={!!fieldErrors.workStatus}
-                />
-            ) : (
-                <span className={`${styles.detailStatusBadge} ${
-                    form.workStatus === '대기' ? styles.detailStatusYellow
-                    : form.workStatus === '진행중' || form.workStatus === '진행' ? styles.detailStatusBlue
-                    : form.workStatus === '완료' ? styles.detailStatusGreen
-                    : form.workStatus === '오류' ? styles.detailStatusRed
-                    : form.workStatus === '취소' ? styles.detailStatusOrange
-                    : ''
-                  }`}>
-                  {form.workStatus}
-                </span>
+                <FieldRow label="작업상태" lined>
+                  <span className={`${styles.detailStatusBadge} ${
+                      form.workStatus === '대기' ? styles.detailStatusYellow
+                      : form.workStatus === '진행중' || form.workStatus === '진행' ? styles.detailStatusBlue
+                      : form.workStatus === '완료' ? styles.detailStatusGreen
+                      : form.workStatus === '오류' ? styles.detailStatusRed
+                      : form.workStatus === '취소' ? styles.detailStatusOrange
+                      : ''
+                    }`}>
+                    {form.workStatus}
+                  </span>
+                </FieldRow>
+              </div>
             )}
-            </FieldRow>
-            {isEditMode && fieldErrors.workStatus && (
-              <span className={styles.fieldError}>{fieldErrors.workStatus}</span>
-            )}
-
-            {/* 반복설정은 일시 섹션의 3모드 UI로 통합됨 */}
-
-            </div>
 
             {/* === 경로 섹션 === */}
             <div className={styles.detailSection}>
@@ -1268,11 +1370,14 @@ export default function ScheduleDetail({
                       options={filteredPathOptions}
                       onChange={(opt) => {
                         const matched = filteredPathOptions.find(p => p.id === opt.id);
+                        const fullMatched = pathOptions.find(p => p.id === opt.id);
                         setForm((prev) => ({
                           ...prev,
                           pathId: opt.id as number,
                           pathName: opt.label,
                           pathOrder: (matched as any)?.order ?? "",
+                          // 작업유형이 비어있으면 경로의 taskType으로 자동 채움
+                          workType: prev.workType || ((fullMatched as any)?.taskType ?? ""),
                         }));
                       }}
                       emptyMessage={form.workType ? "해당 작업유형의 경로가 없습니다" : "등록된 경로가 없습니다"}
@@ -1395,6 +1500,33 @@ export default function ScheduleDetail({
           onCancel={handleRepeatConfirmCancel}
           onConfirm={handleRepeatConfirmOk}
         />
+      )}
+
+      {/* 파괴적 범위(all / thisAndFuture) 편집·삭제 시 개별 수정 회차 덮어쓰기 경고 */}
+      {showMergeWarning && (
+        <div className={styles.confirmOverlay} onClick={handleMergeWarningCancel}>
+          <div className={styles.confirmBox} onClick={(e) => e.stopPropagation()}>
+            <p>
+              {mergeWarningScope === "all"
+                ? (mergeWarningFor === "edit"
+                    ? `이 시리즈의 개별 수정 회차 ${siblingCount}개가 모두 덮어씌워집니다.`
+                    : `이 시리즈의 개별 수정 회차 ${siblingCount}개도 함께 삭제됩니다.`)
+                : (mergeWarningFor === "edit"
+                    ? "오늘 이후에 개별 수정된 회차는 이 수정으로 덮어씌워집니다."
+                    : "오늘 이후에 개별 수정된 회차도 함께 삭제됩니다.")}
+              <br />
+              계속하시겠습니까?
+            </p>
+            <div className={styles.confirmBtnGroup}>
+              <button className={styles.confirmBtnStay} onClick={handleMergeWarningCancel}>
+                취소
+              </button>
+              <button className={styles.confirmBtnLeave} onClick={handleMergeWarningConfirm}>
+                계속
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 미저장 변경사항 확인 모달 */}

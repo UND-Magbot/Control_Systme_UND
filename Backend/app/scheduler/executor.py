@@ -20,6 +20,7 @@ def execute_schedule(schedule: ScheduleInfo) -> bool:
     """스케줄 실행: WayName으로 경로 찾아서 pathmove 트리거. 성공 시 True."""
     from app.navigation.send_move import _signal_nav_reset, navigation_send_next
     import app.navigation.send_move as nav_mod
+    from app.robot_control.charge import prepare_undock_waypoints
 
     # 이미 네비게이션 중이면 스킵
     if nav_mod.is_navigating:
@@ -77,6 +78,11 @@ def execute_schedule(schedule: ScheduleInfo) -> bool:
         # 웨이포인트 목록 생성 (send_move pathmove와 동일 로직)
         from app.navigation.waypoints import build_waypoints_from_places
         waypoints = build_waypoints_from_places(places)
+
+        # 충전 중이면 해제 후 도킹 포인트 경유 + 180° 회전 preamble 앞에 삽입
+        undock_preamble = prepare_undock_waypoints()
+        if undock_preamble:
+            waypoints = undock_preamble + waypoints
 
         # 네비게이션 시작 (send_move 모듈의 전역 변수 직접 설정)
         nav_mod.waypoints_list = waypoints

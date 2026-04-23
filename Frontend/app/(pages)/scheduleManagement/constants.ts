@@ -11,6 +11,11 @@ export const WORK_TYPES: WorkType[] = [
   { id: 3, label: "task3" },
 ];
 
+// 작업 등록/수정 모달의 작업유형 드롭다운에서 "전체(리셋)" 옵션으로 사용.
+// 선택 시 내부 상태를 null/""로 변환해 경로 필터가 초기화됨.
+// 저장 시 유효성 검사가 null을 거부하므로 최종 저장 직전엔 반드시 구체 유형이 선택되어 있어야 함.
+export const WORK_TYPE_ALL: WorkType = { id: 0, label: "전체" };
+
 export type WorkStatus = {
   id: number;
   label: string;
