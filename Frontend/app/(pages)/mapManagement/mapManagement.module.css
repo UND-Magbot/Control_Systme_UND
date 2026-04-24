@@ -1059,6 +1059,71 @@
 }
 
 /* ══════════════════════════════════════
+   맵 동기화 진행 모달
+   ══════════════════════════════════════ */
+
+.syncProgressSpinnerRow {
+    display: flex;
+    justify-content: center;
+    padding: 18px 0 22px;
+}
+
+.syncProgressList {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.syncProgressItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    background: var(--surface-input);
+}
+
+.syncProgressRobotName {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    flex-shrink: 0;
+}
+
+.syncProgressStatus {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-size-sm);
+    text-align: right;
+}
+
+.syncProgressWaiting {
+    color: var(--text-muted);
+}
+
+.syncProgressMsg {
+    color: var(--color-info);
+}
+
+.syncProgressRetry {
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+}
+
+.syncProgressSuccess {
+    color: var(--color-success);
+    font-weight: 600;
+}
+
+.syncProgressFailed {
+    color: var(--color-danger, #ff6b6b);
+    font-weight: 600;
+}
+
+/* ══════════════════════════════════════
    맵핑 시작 모달 (PlaceCrudModal 패턴)
    ══════════════════════════════════════ */
 

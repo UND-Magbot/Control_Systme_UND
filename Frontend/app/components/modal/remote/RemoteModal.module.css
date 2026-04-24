@@ -18,8 +18,14 @@
 
 /* ======================== Modal Container ======================== */
 .modal {
-  width: min(1340px, calc(100vw - 40px));
-  height: min(820px, calc(100vh - 40px));
+  /* viewport 16:9 기준으로 사이드바 내용 높이를 담을 만큼 너비 키움.
+     viewport 너비 = (modalW - 40padding - 320sidebar - 16gap) = modalW - 376
+     viewport 16:9 높이 = (modalW - 376) × 9/16
+     이 값이 사이드바 자연 높이(~600px) 이상이 되도록 modalW ≈ 1500 이상으로 설정 */
+  width: min(1500px, calc(100vw - 40px));
+  /* 높이 = StatusBar(≈52) + mainLayout(16 padding + 632 viewport + 16 padding) + StatusBar 높이만큼 하단 여백(≈52) */
+  height: min(772px, calc(100vh - 40px));
+  padding-bottom: 52px;
   display: flex;
   flex-direction: column;
   background: var(--surface-3);
@@ -37,21 +43,21 @@
 
 /* ======================== Main Layout (Viewport + Sidebar) ======================== */
 .mainLayout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 16px;
-  padding: 16px 20px 12px;
+  padding: 16px 20px;   /* 위/아래 대칭(16px) */
+  min-height: 0;
+  /* mainLayout 높이는 viewport의 16:9 자동 높이로 결정됨 */
 }
 
 /* ======================== Sidebar ======================== */
 .sidebar {
-  width: 320px;
-  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
   min-height: 0;
+  /* grid 기본 align-self: stretch 로 viewport 높이에 자동 맞춰짐 */
 }
 
 
