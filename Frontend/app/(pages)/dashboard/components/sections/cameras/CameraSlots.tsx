@@ -19,7 +19,7 @@ type CameraSlotsProps = {
   loading?: boolean;
 };
 
-const SLOTS_PER_PAGE = 3;
+const SLOTS_PER_PAGE = 4;
 
 export default function CameraSlots({
   cameras,

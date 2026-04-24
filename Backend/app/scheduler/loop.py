@@ -12,7 +12,7 @@ from app.database.database import SessionLocal
 from app.database.models import ScheduleInfo
 from app.logs.service import log_event
 from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
-from app.scheduler.run_conditions import should_run_now
+from app.scheduler.run_conditions import has_remaining_today, should_run_now
 from app.scheduler.executor import execute_schedule
 
 # 현재 스케줄러에 의해 실행 중인 스케줄 ID
@@ -137,8 +137,12 @@ def on_navigation_complete():
                     series_end = datetime.strptime(str(sched.Repeat_End).strip(), "%Y-%m-%d").date()
                 except ValueError:
                     pass
-            if series_end and now.date() >= series_end:
-                should_continue = False
+            if series_end:
+                if now.date() > series_end:
+                    should_continue = False
+                elif now.date() == series_end and not has_remaining_today(sched, now):
+                    # 종료일 당일이고 오늘 남은 실행 회차 없음 → 시리즈 종료 처리
+                    should_continue = False
 
             # MaxRunCount 체크
             if sched.MaxRunCount and sched.RunCount >= sched.MaxRunCount:
@@ -199,12 +203,13 @@ def recover_stale_schedules():
 
     비정상 종료 시 _active_schedule_id가 프로세스 메모리에서만 유지되어 DB의
     TaskStatus='진행중'이 그대로 남는 문제를 시작 시점에 일괄 정리한다.
+    레거시 '진행' 상태도 동일하게 처리(현재 코드베이스엔 writer 없으나 구 데이터 방어).
     """
     db = SessionLocal()
     try:
         stale = (
             db.query(ScheduleInfo)
-            .filter(ScheduleInfo.TaskStatus == "진행중")
+            .filter(ScheduleInfo.TaskStatus.in_(["진행중", "진행"]))
             .all()
         )
         if not stale:

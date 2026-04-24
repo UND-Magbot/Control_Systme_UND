@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { apiFetch } from "@/app/lib/api";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
 
 type Place = {
   id: number;
@@ -18,6 +19,7 @@ export type RobotLocation = {
 };
 
 const NEARBY_THRESHOLD = 1.5; // 미터 단위, 이 거리 이내면 해당 장소에 있다고 판단
+const DEFAULT_FLOOR = "1F";
 
 function distance(x1: number, y1: number, x2: number, y2: number) {
   return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
@@ -25,7 +27,32 @@ function distance(x1: number, y1: number, x2: number, y2: number) {
 
 export function useRobotLocation(): RobotLocation {
   const [places, setPlaces] = useState<Place[]>([]);
-  const [location, setLocation] = useState<Omit<RobotLocation, "places">>({ floor: "1F", placeName: null });
+  const [floorNameById, setFloorNameById] = useState<Record<number, string>>({});
+  const [placeName, setPlaceName] = useState<string | null>(null);
+  const { robots } = useRobotStatusContext();
+
+  // 현재 대표 로봇의 층 id (On 우선, 없으면 첫 로봇)
+  const currentFloorId = useMemo(() => {
+    const onRobot = robots.find((r) => r.power === "On");
+    return (onRobot ?? robots[0])?.currentFloorId ?? null;
+  }, [robots]);
+
+  const currentFloor =
+    currentFloorId != null && floorNameById[currentFloorId]
+      ? floorNameById[currentFloorId]
+      : DEFAULT_FLOOR;
+
+  // 층 목록 1회 로드 (id → 이름 매핑)
+  useEffect(() => {
+    apiFetch(`/map/floors`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: { id: number; FloorName: string }[]) => {
+        const map: Record<number, string> = {};
+        for (const f of data) map[f.id] = f.FloorName;
+        setFloorNameById(map);
+      })
+      .catch(() => {});
+  }, []);
 
   // 장소 데이터 1회 fetch
   useEffect(() => {
@@ -38,7 +65,7 @@ export function useRobotLocation(): RobotLocation {
             name: p.LacationName ?? "",
             x: p.LocationX ?? 0,
             y: p.LocationY ?? 0,
-            floor: p.Floor ?? "1F",
+            floor: p.Floor ?? DEFAULT_FLOOR,
           }))
         );
       })
@@ -53,15 +80,11 @@ export function useRobotLocation(): RobotLocation {
         if (!res.ok) return;
         const pos = await res.json();
 
-        // 현재 floor 정보가 API에 없으므로 기본 1F
-        const currentFloor = "1F";
-
-        // 같은 층 장소 중 가장 가까운 곳 찾기
-        const samFloorPlaces = places.filter((p) => p.floor === currentFloor);
+        const sameFloorPlaces = places.filter((p) => p.floor === currentFloor);
         let nearest: Place | null = null;
         let minDist = Infinity;
 
-        for (const p of samFloorPlaces) {
+        for (const p of sameFloorPlaces) {
           const d = distance(pos.x, pos.y, p.x, p.y);
           if (d < minDist) {
             minDist = d;
@@ -69,10 +92,7 @@ export function useRobotLocation(): RobotLocation {
           }
         }
 
-        setLocation({
-          floor: currentFloor,
-          placeName: nearest && minDist <= NEARBY_THRESHOLD ? nearest.name : null,
-        });
+        setPlaceName(nearest && minDist <= NEARBY_THRESHOLD ? nearest.name : null);
       } catch {
         // ignore
       }
@@ -81,7 +101,7 @@ export function useRobotLocation(): RobotLocation {
     poll();
     const id = setInterval(poll, 3000);
     return () => clearInterval(id);
-  }, [places]);
+  }, [places, currentFloor]);
 
-  return { ...location, places };
+  return { floor: currentFloor, placeName, places };
 }

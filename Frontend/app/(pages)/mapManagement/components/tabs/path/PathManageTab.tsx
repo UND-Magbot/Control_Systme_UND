@@ -364,7 +364,7 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
               </div>
             )}
             <div className={styles.pathListBox}>
-              <table className={styles.status}>
+              <table className={`${styles.status} ${pathDeleteMode ? styles.pathTableDelete : styles.pathTable}`}>
                 <thead>
                   <tr>
                     {pathDeleteMode && (
