@@ -6,7 +6,9 @@ import Pagination from "@/app/components/common/Pagination";
 import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import BusinessDetailModal from './BusinessDetailModal';
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
+import ConfirmOnlyModal from '@/app/components/modal/ConfirmOnlyModal';
 import { apiFetch } from "@/app/lib/api";
+import { useAlertModal } from "@/app/hooks/useAlertModal";
 import { usePageReady } from "@/app/context/PageLoadingContext";
 
 const BUSINESS_PAGE_SIZE = 6;
@@ -51,6 +53,7 @@ export default function BusinessManageTab() {
   const [modalMode, setModalMode] = useState<"create" | "view">("view");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
+  const selectAlert = useAlertModal();
 
   // 페이지네이션
 
@@ -161,7 +164,10 @@ export default function BusinessManageTab() {
     setModalOpen(true);
   };
   const openEdit = () => {
-    if (!selectedBusinessId) return;
+    if (!selectedBusinessId) {
+      selectAlert.show("사업장을 먼저 선택해주세요.");
+      return;
+    }
     setModalMode("view");
     setInitialEditMode(true);
     setModalOpen(true);
@@ -315,6 +321,10 @@ export default function BusinessManageTab() {
           onConfirm={confirmDelete}
           onCancel={() => setDeleteConfirmOpen(false)}
         />
+      )}
+
+      {selectAlert.isOpen && (
+        <ConfirmOnlyModal message={selectAlert.message} onConfirm={selectAlert.close} />
       )}
     </div>
   );

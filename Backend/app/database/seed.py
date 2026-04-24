@@ -45,8 +45,7 @@ MENU_SEED = [
     ("alert-notice",     "공지사항",     "alerts",          4, False),
     ("settings",         "설정",         None,              7, True),
     ("menu-permissions", "메뉴 권한",    "settings",        1, False),
-    ("password-change",  "비밀번호 변경", "settings",        2, False),
-    ("db-backup",        "DB 백업",      "settings",        3, False),
+    ("db-backup",        "DB 백업",      "settings",        2, False),
 ]
 
 MANAGER_MENUS = [

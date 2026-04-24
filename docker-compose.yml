@@ -15,4 +15,5 @@ services:
     volumes:
       - ./Backend/data:/app/data
       - ./Backend/static:/app/static
+      - ./Backend/recordings:/app/recordings
     restart: unless-stopped

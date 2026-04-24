@@ -69,6 +69,23 @@
     box-shadow: 0 0 6px rgba(130, 190, 255, 0.5);
 }
 
+.floorActiveTaskBadge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #50dcff;
+    box-shadow: 0 0 6px rgba(80, 220, 255, 0.7);
+    animation: floorActiveTaskPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes floorActiveTaskPulse {
+    0%, 100% { opacity: 0.45; }
+    50% { opacity: 1; }
+}
+
 /* ── 빈 데이터 오버레이 ── */
 .emptyOverlay {
     position: absolute;

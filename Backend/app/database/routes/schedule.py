@@ -476,6 +476,81 @@ def get_active_schedule():
     return {"active_schedule_id": active_id}
 
 
+@database.get("/schedule/active/route")
+def get_active_schedule_route(
+    robot_name: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_permission("schedule-list")),
+):
+    """선택된 로봇이 현재 수행중인 스케줄의 경로(POI 좌표 시퀀스)와 진행 인덱스 반환.
+
+    반환 조건:
+    - 활성 스케줄이 robot_name과 일치하고 TaskStatus='진행중'일 때만 경로 반환
+    - 그 외에는 {schedule: null, progress: null, route: null}
+    """
+    from app.scheduler.loop import get_active_schedule_id
+    from app.navigation import send_move as nav_mod
+
+    empty = {"schedule": None, "progress": None, "route": None}
+
+    if not is_admin(current_user) and current_user.BusinessId:
+        biz_names = get_business_robot_names(db, current_user.BusinessId)
+        if robot_name not in biz_names:
+            return empty
+
+    active_id = get_active_schedule_id()
+    if active_id is None:
+        return empty
+
+    sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == active_id).first()
+    if not sched or sched.RobotName != robot_name or sched.TaskStatus != "진행중":
+        return empty
+
+    way = db.query(WayInfo).filter(WayInfo.WayName == sched.WayName).first()
+    if not way or not way.WayPoints:
+        return empty
+
+    place_names = [n.strip() for n in way.WayPoints.split(" - ") if n.strip()]
+    if not place_names:
+        return empty
+
+    rows = db.query(LocationInfo).filter(LocationInfo.LacationName.in_(place_names)).all()
+    place_map = {r.LacationName: r for r in rows}
+
+    places: list[dict] = []
+    for name in place_names:
+        loc = place_map.get(name)
+        if not loc:
+            continue
+        places.append({
+            "name": loc.LacationName,
+            "x": loc.LocationX,
+            "y": loc.LocationY,
+            "map_id": loc.MapId,
+            "floor_id": loc.FloorId,
+        })
+
+    if len(places) < 2:
+        return empty
+
+    return {
+        "schedule": {
+            "id": sched.id,
+            "work_name": sched.WorkName,
+            "way_name": sched.WayName,
+            "robot_name": sched.RobotName,
+            "task_status": sched.TaskStatus,
+        },
+        "progress": {
+            "current_wp_index": nav_mod.current_wp_index,
+            "total_wp": len(nav_mod.waypoints_list),
+        },
+        "route": {
+            "places": places,
+        },
+    }
+
+
 @database.get("/schedule/{schedule_id}")
 def get_schedule_detail(schedule_id: int, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("schedule-list"))):
     schedule = (

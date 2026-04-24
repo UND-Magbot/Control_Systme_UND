@@ -1,17 +1,10 @@
 "use client";
 
 import React from "react";
-import { MapPin, BatteryCharging, Home, Navigation, AlertTriangle, Crosshair, Layers } from "lucide-react";
-import type { POIItem, POICategory } from "./types";
+import { Crosshair, Layers } from "lucide-react";
+import type { POIItem } from "./types";
 import styles from "./POIDetailCard.module.css";
-
-const CATEGORY_META: Record<POICategory, { label: string; color: string; icon: typeof MapPin }> = {
-  work:     { label: "작업지",   color: "#ff6b6b", icon: MapPin },
-  charge:   { label: "충전소",   color: "#4caf50", icon: BatteryCharging },
-  standby:  { label: "대기소",   color: "#9c7cfa", icon: Home },
-  waypoint: { label: "경유지",   color: "#64b4ff", icon: Navigation },
-  danger:   { label: "위험구역", color: "#ff9800", icon: AlertTriangle },
-};
+import { CATEGORY_META } from "./categoryMeta";
 
 type Props = {
   poi: POIItem;

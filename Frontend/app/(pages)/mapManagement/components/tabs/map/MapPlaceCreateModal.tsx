@@ -3,9 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useModalBehavior } from "@/app/hooks/useModalBehavior";
 import styles from "./MapPlaceCreateModal.module.css";
+import modalStyles from "@/app/components/modal/Modal.module.css";
 import DropdownSelect from "@/app/components/button/DropdownSelect";
 
-import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 
 type DBRobot = { id: number; RobotName: string };
 
@@ -14,7 +15,6 @@ const CATEGORY_OPTIONS = [
   { value: "work", label: "작업지" },
   { value: "charge", label: "충전소" },
   { value: "standby", label: "대기소" },
-  { value: "danger", label: "위험구역" },
 ];
 
 export type PlaceEditData = {
@@ -27,6 +27,7 @@ export type PlaceEditData = {
   yaw: number;
   desc: string;
   mapId: number | null;
+  category?: string;
 };
 
 type Props = {
@@ -54,6 +55,8 @@ type Props = {
   defaultCategory?: string;
   /** 층 목록 (floor_info) */
   floors?: { id: number; FloorName: string }[];
+  /** 현재 맵에 이미 존재하는 장소명 (소문자·trim 처리, 편집 중인 자기자신 제외) */
+  existingPlaceNames?: string[];
   onClose: () => void;
   onConfirm: (place: PendingPlace, oldName?: string) => void;
 };
@@ -86,6 +89,7 @@ export default function MapPlaceCreateModal({
   defaultYaw,
   defaultCategory,
   floors = [],
+  existingPlaceNames = [],
   onClose,
   onConfirm,
 }: Props) {
@@ -118,7 +122,7 @@ export default function MapPlaceCreateModal({
   // DB 로봇 목록 fetch
   const fetchRobots = useCallback(() => {
     setRobotFetchError(false);
-    fetch(`${API_BASE}/DB/robots`)
+    apiFetch(`/DB/robots`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -166,23 +170,35 @@ export default function MapPlaceCreateModal({
   // ESC / 오버레이 클릭 닫기
   useModalBehavior({ isOpen, onClose, disabled: isSubmitting });
 
-  // 필수 필드 검증
-  const canSave = !!(robotNo && floor && name.trim() && (direction || direction === "0"));
-
-  // Enter 키 저장
+  // Enter 키로 submit — 필수 검증은 submit() 내부에서 수행, 실패 시 인라인 에러로 안내
   useEffect(() => {
     if (!isOpen) return;
     const onEnter = (e: KeyboardEvent) => {
       if (e.key !== "Enter") return;
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === "textarea") return;
-      if (isSubmitting || !canSave) return;
+      if (isSubmitting) return;
       e.preventDefault();
       submit();
     };
     document.addEventListener("keydown", onEnter);
     return () => document.removeEventListener("keydown", onEnter);
-  }, [isOpen, isSubmitting, canSave, robotNo, floor, name, direction]);
+  }, [isOpen, isSubmitting, robotNo, floor, name, direction]);
+
+  // 장소명 실시간 중복 검사 (현재 맵 내 기준)
+  const nameDuplicateMsg = useMemo(() => {
+    const trimmed = name.trim().toLowerCase();
+    if (!trimmed) return "";
+    return existingPlaceNames.includes(trimmed)
+      ? "같은 맵에 동일한 장소명이 이미 존재합니다."
+      : "";
+  }, [name, existingPlaceNames]);
+
+  const handleNameBlur = () => {
+    if (!name.trim()) {
+      setFieldErrors((prev) => ({ ...prev, name: "장소명을 입력해 주세요." }));
+    }
+  };
 
   const handleDirectionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -225,6 +241,7 @@ export default function MapPlaceCreateModal({
     if (!robotNo) errors.robotNo = "로봇명을 선택해 주세요.";
     if (!floor) errors.floor = "층을 선택해 주세요.";
     if (!name.trim()) errors.name = "장소명을 입력해 주세요.";
+    else if (nameDuplicateMsg) errors.name = nameDuplicateMsg;
     if (!direction && direction !== "0") errors.direction = "방향을 입력해 주세요.";
     else {
       const dirNum = Number(direction);
@@ -292,9 +309,9 @@ export default function MapPlaceCreateModal({
                     setFieldErrors((prev) => ({ ...prev, robotNo: undefined }));
                   }}
                   emptyMessage={
-                    robotFetchError
-                      ? "불러오기 실패"
-                      : "등록된 로봇이 없습니다"
+                    robotFetchError ? (
+                      <>불러오기 실패 <span className={styles.retryLink} onClick={fetchRobots}>다시 시도</span></>
+                    ) : "등록된 로봇이 없습니다"
                   }
                   className={styles.modalSelect}
                 />
@@ -323,7 +340,7 @@ export default function MapPlaceCreateModal({
             </div>
 
             {/* 장소명 */}
-            <div className={styles.row}>
+            <div className={`${styles.row} ${styles.rowAlignTop}`}>
               <div className={`${styles.label} ${styles.required}`}>장소명</div>
               <div className={styles.inputWrap}>
                 <input
@@ -333,14 +350,21 @@ export default function MapPlaceCreateModal({
                     setName(e.target.value);
                     setFieldErrors((prev) => ({ ...prev, name: undefined }));
                   }}
+                  onBlur={handleNameBlur}
                   placeholder="50자 이내로 작성하세요"
                   maxLength={50}
                   autoFocus
                 />
-                <div className={`${styles.charCounter} ${name.length >= 40 ? styles.charCounterWarn : ""}`}>
-                  {name.length}/50
+                <div className={styles.inputMetaRow}>
+                  {fieldErrors.name ? (
+                    <div className={styles.fieldError}>{fieldErrors.name}</div>
+                  ) : (
+                    <span />
+                  )}
+                  <div className={`${styles.charCounter} ${name.length >= 40 ? styles.charCounterWarn : ""}`}>
+                    {name.length}/50
+                  </div>
                 </div>
-                {fieldErrors.name && <div className={styles.fieldError}>{fieldErrors.name}</div>}
               </div>
             </div>
 
@@ -426,17 +450,22 @@ export default function MapPlaceCreateModal({
             <div className={styles.directionRow}>
               <div className={`${styles.label} ${styles.required}`}>방향(°)</div>
               <div className={styles.directionInputWrap}>
-                <input
-                  className={`${styles.xyInput} ${lockCoords ? "" : styles.edit} ${direction ? styles.xyInputFilled : styles.xyInputEmpty}`}
-                  value={direction}
-                  onChange={lockCoords ? undefined : handleDirectionChange}
-                  onBlur={lockCoords ? undefined : handleDirectionBlur}
-                  placeholder="0~360"
-                  type="number"
-                  min={0}
-                  max={360}
-                  readOnly={lockCoords}
-                />
+                <div className={styles.directionInputColumn}>
+                  <input
+                    className={`${styles.xyInput} ${lockCoords ? "" : styles.edit} ${direction ? styles.xyInputFilled : styles.xyInputEmpty}`}
+                    value={direction}
+                    onChange={lockCoords ? undefined : handleDirectionChange}
+                    onBlur={lockCoords ? undefined : handleDirectionBlur}
+                    placeholder="0~360"
+                    type="number"
+                    min={0}
+                    max={360}
+                    readOnly={lockCoords}
+                  />
+                  {fieldErrors.direction && (
+                    <div className={styles.fieldError}>{fieldErrors.direction}</div>
+                  )}
+                </div>
                 <div
                   ref={dirWheelRef}
                   className={styles.directionIndicator}
@@ -455,11 +484,6 @@ export default function MapPlaceCreateModal({
                 </div>
               </div>
             </div>
-            {fieldErrors.direction && (
-              <div className={styles.xyErrorRow}>
-                <div className={styles.fieldError}>{fieldErrors.direction}</div>
-              </div>
-            )}
           </div>
 
           {/* 장소설명 */}
@@ -485,20 +509,22 @@ export default function MapPlaceCreateModal({
         {/* ─── 하단 버튼 ─── */}
         <div className={styles.footer}>
           <button
-            className={`${styles.footerBtn} ${styles.btnRed}`}
+            className={`${modalStyles.btnItemCommon} ${modalStyles.btnBgRed}`}
             onClick={onClose}
           >
-            <img src="/icon/close_btn.png" alt="" />
-            취소
+            <span className={modalStyles.btnIcon}>
+              <img src="/icon/close_btn.png" alt="cancel" />
+            </span>
+            <span>취소</span>
           </button>
           <button
-            className={`${styles.footerBtn} ${styles.btnBlue}`}
+            className={`${modalStyles.btnItemCommon} ${modalStyles.btnBgBlue}`}
             onClick={submit}
-            disabled={!canSave}
-            title={!canSave ? "모든 필수 항목을 입력해 주세요." : undefined}
           >
-            <img src="/icon/check.png" alt="" />
-            확인
+            <span className={modalStyles.btnIcon}>
+              <img src="/icon/check.png" alt="confirm" />
+            </span>
+            <span>확인</span>
           </button>
         </div>
       </div>

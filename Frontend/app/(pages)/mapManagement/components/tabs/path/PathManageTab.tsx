@@ -14,7 +14,7 @@ import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import { apiFetch } from "@/app/lib/api";
 import type { FloorMapRow } from "@/app/(pages)/mapManagement/hooks/useFloorMapConfig";
 
-const PATH_PAGE_SIZE = 6;
+const PATH_PAGE_SIZE = 10;
 const robotTypes = ["task1", "task2", "task3"];
 
 const PATH_API = {
@@ -386,7 +386,7 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
 
                 <tbody>
                   {currentPathItems.length === 0 && !pathLoading && (
-                    <tr>
+                    <tr className={styles.emptyRow}>
                       <td colSpan={pathDeleteMode ? 5 : 4}>
                         <div className={styles.pathEmptyWrap}>
                           <div className={styles.pathEmptyIcon}>!</div>

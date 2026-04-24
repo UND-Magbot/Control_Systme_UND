@@ -70,7 +70,6 @@ export default function AlertsPage() {
   const setPageReady = usePageReady();
   const router = useRouter();
 
-  const isAdmin = true;
   const [currentUserId, setCurrentUserId] = useState<number>(0);
   const [currentUserName, setCurrentUserName] = useState<string>('');
 
@@ -207,7 +206,8 @@ export default function AlertsPage() {
   }, [paramId, alerts]);
 
   // TabKey ↔ MenuKey 매핑 (권한·가시성·라벨 모두 DB 기준)
-  const { hasPermission, isMenuVisible, menuIndex } = useAuth();
+  const { user, hasPermission, isMenuVisible, menuIndex } = useAuth();
+  const isAdmin = user?.role === 1 || user?.role === 2;
   const tabs = useMemo<{ id: TabKey; label: string }[]>(() => {
     const all: { id: TabKey; menuKey: string; unread: number }[] = [
       { id: 'total',    menuKey: 'alert-total',    unread: unreadCounts.total },

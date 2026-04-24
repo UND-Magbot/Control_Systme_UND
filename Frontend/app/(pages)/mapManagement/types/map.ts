@@ -55,6 +55,23 @@ export type DbRoute = {
   Direction: string;
 };
 
+export type DangerZone = {
+  MapId: number;
+  ZoneName: string;
+  Description?: string | null;
+  points: { x: number; y: number }[];
+  vertex_ids?: number[];
+};
+
+export type PendingDangerZone = {
+  tempId: string;
+  ZoneName: string;
+  Description: string | null;
+  points: { x: number; y: number }[];
+  /** 확정 시점에 cascade 를 수락했는지 — BE 에 force 로 전달 */
+  force: boolean;
+};
+
 export type UndoAction =
   | { type: "addPlace"; tempId: string }
   | {
@@ -72,6 +89,9 @@ export type UndoAction =
   | { type: "addRoute"; tempId: string }
   | { type: "deletePendingRoute"; route: RouteSegment }
   | { type: "deleteDbRoute"; id: number }
+  | { type: "addDangerZone"; tempId: string }
+  | { type: "deletePendingDangerZone"; zone: PendingDangerZone }
+  | { type: "deleteDbDangerZone"; zoneName: string }
   | {
       type: "mapReset";
       prevPendingPlaces: PendingPlace[];
@@ -80,4 +100,6 @@ export type UndoAction =
       prevDeletedRouteDbIds: Set<number>;
       prevMovedPlaces: Map<string, { x: number; y: number }>;
       prevModifiedDbIds: Set<number>;
+      prevPendingDangerZones: PendingDangerZone[];
+      prevDeletedDangerZoneNames: Set<string>;
     };

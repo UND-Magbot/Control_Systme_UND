@@ -5,8 +5,9 @@ import {
   WebGLRenderer, Scene, PerspectiveCamera,
   AmbientLight, HemisphereLight, DirectionalLight,
   Mesh, InstancedMesh, Group, Object3D,
-  PlaneGeometry, BoxGeometry, CylinderGeometry, SphereGeometry, RingGeometry, ConeGeometry, TubeGeometry, ExtrudeGeometry, Shape, Path, Vector2,
-  MeshStandardMaterial,
+  PlaneGeometry, BoxGeometry, CylinderGeometry, SphereGeometry, RingGeometry, ConeGeometry, TubeGeometry, ExtrudeGeometry, ShapeGeometry, Shape, Path, Vector2,
+  BufferGeometry, Float32BufferAttribute, LineLoop, LineBasicMaterial,
+  MeshStandardMaterial, MeshBasicMaterial,
   CanvasTexture, Color, Vector3,
   FogExp2, PCFShadowMap, ACESFilmicToneMapping, SRGBColorSpace,
   LinearFilter, DoubleSide,
@@ -31,6 +32,8 @@ type SceneCtx = {
   poiLabels: HTMLDivElement[];
   floorMesh: Mesh | null;
   pathGroup: Group | null;
+  guideGroup: Group | null;
+  dangerZoneGroup: Group | null;
   needsRender: boolean;
   // 맵 이미지 로드가 끝나기 전에는 렌더를 하지 않는다 — 바닥 없는
   // POI/경로만 잠깐 비쳐 "잔상"처럼 보이는 것을 방지
@@ -47,7 +50,7 @@ type Map3DCanvasExtraProps = {
 
 const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps & Map3DCanvasExtraProps>(function Map3DCanvas(
   {
-    config, robotPos, robotName, pois, navPath, selectedPoiId,
+    config, robotPos, robotName, pois, navPath, guideLine, dangerZones, showDangerZones = false, selectedPoiId,
     showRobot = false, showPois = false, showPath = false, showLabels = true,
     onPoiClick, trackedPoi, onTrackedPoiScreen, className, style,
   },
@@ -198,7 +201,7 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps & Map3DCanvasExtr
     const ctx: SceneCtx = {
       renderer, scene, camera, controls,
       robot: null, robotLabel: null, poiLabels: [],
-      floorMesh: null, pathGroup: null,
+      floorMesh: null, pathGroup: null, guideGroup: null, dangerZoneGroup: null,
       needsRender: false,          // floorReady 되기 전까지 렌더 금지
       floorReady: false,
       animId: 0,
@@ -604,6 +607,148 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps & Map3DCanvasExtr
     ctx.pathGroup = pathGroup;
     ctx.needsRender = true;
   }, [navPath, showPath, config]);
+
+  /* ═══ Guide Line (로봇 → 다음 목적지 POI) ═══ */
+  useEffect(() => {
+    const ctx = sceneRef.current;
+    if (!ctx) return;
+
+    const disposeGroup = (group: Group | null) => {
+      if (!group) return;
+      group.traverse((obj) => {
+        const mesh = obj as Mesh;
+        if (mesh.isMesh) {
+          mesh.geometry?.dispose();
+          const mat = mesh.material;
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+          else mat?.dispose();
+        }
+      });
+    };
+
+    if (ctx.guideGroup) {
+      ctx.scene.remove(ctx.guideGroup);
+      disposeGroup(ctx.guideGroup);
+      ctx.guideGroup = null;
+      ctx.needsRender = true;
+    }
+
+    if (!guideLine) return;
+
+    const a = worldTo3D(guideLine.from.x, guideLine.from.y, config);
+    const b = worldTo3D(guideLine.to.x, guideLine.to.y, config);
+    const pA = new Vector3(a.x, 0.22, a.z);
+    const pB = new Vector3(b.x, 0.22, b.z);
+    if (pA.distanceTo(pB) < 0.05) return;
+
+    const curve = new CatmullRomCurve3([pA, pB], false, "catmullrom", 0.5);
+    const geo = new TubeGeometry(curve, 16, 0.02, 6, false);
+    const mat = new MeshStandardMaterial({
+      color: "#64c8ff",
+      emissive: new Color("#64c8ff"),
+      emissiveIntensity: 1.2,
+      metalness: 0.5,
+      roughness: 0.2,
+      transparent: true,
+      opacity: 0.6,
+    });
+    const mesh = new Mesh(geo, mat);
+    const group = new Group();
+    group.add(mesh);
+
+    ctx.scene.add(group);
+    ctx.guideGroup = group;
+    ctx.needsRender = true;
+  }, [guideLine, config]);
+
+  /* ═══ 위험구간 (Danger Zones) ═══ */
+  useEffect(() => {
+    const ctx = sceneRef.current;
+    if (!ctx) return;
+
+    const disposeGroup = (group: Group | null) => {
+      if (!group) return;
+      group.traverse((obj) => {
+        const mesh = obj as Mesh;
+        if (mesh.isMesh) {
+          mesh.geometry?.dispose();
+          const mat = mesh.material;
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+          else mat?.dispose();
+        }
+        const line = obj as LineLoop;
+        if (line.isLine) {
+          line.geometry?.dispose();
+          const mat = line.material;
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+          else mat?.dispose();
+        }
+      });
+    };
+
+    if (ctx.dangerZoneGroup) {
+      ctx.scene.remove(ctx.dangerZoneGroup);
+      disposeGroup(ctx.dangerZoneGroup);
+      ctx.dangerZoneGroup = null;
+      ctx.needsRender = true;
+    }
+
+    if (!showDangerZones || !dangerZones || dangerZones.length === 0) return;
+
+    const group = new Group();
+    const ZONE_Y = 0.16;  // 바닥(0.15) 바로 위
+
+    for (const zone of dangerZones) {
+      if (!zone.points || zone.points.length < 3) continue;
+
+      // XZ 평면의 2D Shape 구성 (y는 나중에 전체 group 위치로 처리)
+      const pts2d: Vector2[] = zone.points.map((pt) => {
+        const p = worldTo3D(pt.x, pt.y, config);
+        return new Vector2(p.x, p.z);
+      });
+
+      // 채움 (XZ 평면 모양을 XY Shape로 만들고, 메쉬를 눕혀 바닥에 깔기)
+      const shape = new Shape();
+      shape.moveTo(pts2d[0].x, pts2d[0].y);
+      for (let i = 1; i < pts2d.length; i++) {
+        shape.lineTo(pts2d[i].x, pts2d[i].y);
+      }
+      shape.lineTo(pts2d[0].x, pts2d[0].y);
+
+      const fillGeo = new ShapeGeometry(shape);
+      const fillMat = new MeshBasicMaterial({
+        color: "#ff5050",
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        side: DoubleSide,
+      });
+      const fillMesh = new Mesh(fillGeo, fillMat);
+      // Shape의 (x, y)를 월드 (x, ZONE_Y, y)로 매핑: X축 +π/2 회전
+      fillMesh.rotation.x = Math.PI / 2;
+      fillMesh.position.y = ZONE_Y;
+      group.add(fillMesh);
+
+      // 테두리 — LineLoop
+      const borderPositions: number[] = [];
+      for (const p of pts2d) {
+        borderPositions.push(p.x, ZONE_Y + 0.01, p.y);
+      }
+      const borderGeo = new BufferGeometry();
+      borderGeo.setAttribute("position", new Float32BufferAttribute(borderPositions, 3));
+      const borderMat = new LineBasicMaterial({
+        color: "#ff5050",
+        transparent: true,
+        opacity: 0.9,
+      });
+      const border = new LineLoop(borderGeo, borderMat);
+      group.add(border);
+    }
+
+    ctx.scene.add(group);
+    ctx.dangerZoneGroup = group;
+    ctx.needsRender = true;
+  }, [dangerZones, showDangerZones, config]);
 
   return (
     <div ref={containerRef} className={className}

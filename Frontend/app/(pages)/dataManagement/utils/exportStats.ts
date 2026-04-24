@@ -1,6 +1,5 @@
 import type { StatisticsResponse } from "@/app/lib/statisticsApi";
 import { convertMinutesToText } from "@/app/utils/convertMinutesToText";
-import { ROBOT_TYPE_KOR_MAP } from "../constants";
 
 /** 통계 데이터를 2시트 xlsx 파일로 내보낸다.
  *  Sheet 1: 요약 통계 (작업/로봇/에러/시간 2x2 블록)
@@ -15,7 +14,6 @@ export async function exportStatsToExcel(statsData: StatisticsResponse): Promise
   const totalErrors = statsData.errors.network + statsData.errors.navigation + statsData.errors.battery + statsData.errors.etc;
   const totalRobots = statsData.robot_types.reduce((s, t) => s + t.count, 0);
   const taskSuccessRate = totalTasks > 0 ? Math.round((statsData.tasks.completed / totalTasks) * 100) : 0;
-  const errorRate = totalTasks > 0 ? Math.round((statsData.tasks.failed / totalTasks) * 100) : 0;
   const opRate = totalTime > 0 ? Math.round((statsData.time_minutes.operating / totalTime) * 100) : 0;
 
   const pct = (value: number, total: number) =>
@@ -34,7 +32,7 @@ export async function exportStatsToExcel(statsData: StatisticsResponse): Promise
   const robotBlock = [
     ["[로봇 현황]"],
     ["항목", "값", "단위"],
-    ...statsData.robot_types.map((t) => [ROBOT_TYPE_KOR_MAP[t.type] ?? t.type, t.count, "대"]),
+    ...statsData.robot_types.map((t) => [t.type, t.count, "대"]),
     ["합계", totalRobots, "대"],
   ];
   const errorBlock = [
@@ -45,8 +43,6 @@ export async function exportStatsToExcel(statsData: StatisticsResponse): Promise
     ["배터리", statsData.errors.battery, "건", pct(statsData.errors.battery, totalErrors)],
     ["기타", statsData.errors.etc, "건", pct(statsData.errors.etc, totalErrors)],
     ["합계", totalErrors, "건", "100%"],
-    ["", "", "", ""],
-    ["에러율", `${errorRate}%`, "", ""],
   ];
   const timeBlock = [
     ["[운행 시간]"],
@@ -70,7 +66,7 @@ export async function exportStatsToExcel(statsData: StatisticsResponse): Promise
     const rSuccessRate = r.tasks_total > 0 ? Math.round((r.tasks_completed / r.tasks_total) * 100) : 0;
     return {
       "로봇 명": r.robot_name,
-      "로봇 타입": ROBOT_TYPE_KOR_MAP[r.robot_type] ?? r.robot_type,
+      "로봇 타입": r.robot_type,
       "성공률(%)": `${rSuccessRate}%`,
       "완료 작업": r.tasks_completed,
       "총 작업": r.tasks_total,

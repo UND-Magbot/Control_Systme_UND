@@ -42,6 +42,9 @@ const Inner2D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner2D(
     robots: multiRobots,
     pois,
     navPath,
+    guideLine,
+    dangerZones,
+    showDangerZones = false,
     selectedPoiId,
     showRobot = false,
     robotMarkerSize,
@@ -75,7 +78,13 @@ const Inner2D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner2D(
     handleZoom,
     worldToPixelScreen,
     pixelToWorldScreen,
-  } = useMapCanvas(config, showPath ? navPath : null, interactive);
+  } = useMapCanvas(
+    config,
+    showPath ? navPath : null,
+    interactive,
+    showPath ? guideLine ?? null : null,
+    showDangerZones ? dangerZones : undefined,
+  );
 
   useImperativeHandle(ref, () => ({
     handleZoom,
@@ -259,6 +268,9 @@ const Inner3D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner3D(
     robots: multiRobots,
     pois,
     navPath,
+    guideLine,
+    dangerZones,
+    showDangerZones = false,
     selectedPoiId,
     showRobot = false,
     showPois = false,
@@ -302,6 +314,9 @@ const Inner3D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner3D(
         robotName={effectiveRobotName}
         pois={pois}
         navPath={navPath}
+        guideLine={guideLine}
+        dangerZones={dangerZones}
+        showDangerZones={showDangerZones}
         selectedPoiId={selectedPoiId}
         showRobot={effectiveShowRobot}
         showPois={showPois}

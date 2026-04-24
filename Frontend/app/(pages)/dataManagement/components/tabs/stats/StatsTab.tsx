@@ -18,7 +18,6 @@ import KpiSummaryCard from "./KpiSummaryCard";
 import ComparisonCard from "./ComparisonCard";
 import DonutWithLegend from "./DonutWithLegend";
 import VerticalBarChart from "./VerticalBarChart";
-import { ROBOT_TYPE_KOR_MAP } from '../../../constants';
 import { useStatsFetch } from "../../../hooks/useStatsFetch";
 import { periodFormatDate } from "../../../utils/videoHelpers";
 import { computeStatsSummary } from "../../../utils/computeStatsSummary";
@@ -132,13 +131,13 @@ export default function StatsTab({ robotTypeData, robots, onLoaded }: Props) {
         <div className={styles.dtSearch}>
           <div className={styles.videoSelect}>
             <FilterSelectBox
-              items={robotTypeData.map((t) => ({ id: t.id, label: ROBOT_TYPE_KOR_MAP[t.label] ?? t.label }))}
-              selectedLabel={selectedRobotType ? (ROBOT_TYPE_KOR_MAP[selectedRobotType.label] ?? selectedRobotType.label) : null}
+              items={robotTypeData.map((t) => ({ id: t.id, label: t.label }))}
+              selectedLabel={selectedRobotType?.label ?? null}
               placeholder="로봇 종류"
               showTotal={true}
               onSelect={(item) => {
                 if (item) {
-                  const type = robotTypeData.find((t) => (ROBOT_TYPE_KOR_MAP[t.label] ?? t.label) === item.label);
+                  const type = robotTypeData.find((t) => t.label === item.label);
                   if (type) {
                     setSelectedRobotType(type);
                     if (selectedRobot && selectedRobot.type !== type.label) setSelectedRobot(null);
@@ -255,8 +254,6 @@ export default function StatsTab({ robotTypeData, robots, onLoaded }: Props) {
             color="#c2434c"
             value={totalErrors.toString()}
             unit="건"
-            subValue={totalErrors > 0 ? `에러율 ${statsSummary.errorRate}%` : undefined}
-            subColor="#e06b73"
           />
         </div>
 
@@ -305,9 +302,6 @@ export default function StatsTab({ robotTypeData, robots, onLoaded }: Props) {
             <DonutWithLegend
               items={taskBar}
               colors={["#6bcf4a", "#ff6b7a", "#a0a4b8"]}
-              centerLabel="성공률"
-              centerValue={`${statsSummary.taskSuccessRate}`}
-              centerUnit="%"
               unit="건"
               prevItems={prevTaskBar.length > 0 ? prevTaskBar : undefined}
             />
@@ -324,9 +318,6 @@ export default function StatsTab({ robotTypeData, robots, onLoaded }: Props) {
             <DonutWithLegend
               items={errorBar}
               colors={["#ff7085", "#ffb844", "#50c8f0", "#a0a4b8"]}
-              centerLabel="총 에러"
-              centerValue={totalErrors.toString()}
-              centerUnit="건"
               unit="건"
               prevItems={prevErrorBar.length > 0 ? prevErrorBar : undefined}
             />
@@ -389,7 +380,6 @@ export default function StatsTab({ robotTypeData, robots, onLoaded }: Props) {
             title="에러"
             color="#c2434c"
             prevPeriodLabel={prevLabel}
-            tooltip="에러율 = 실패 작업 / 총 작업 × 100"
             delta={
               statsSummary.errorDelta !== null && statsSummary.errorDelta !== 0
                 ? { value: `${Math.abs(statsSummary.errorDelta)}건`, isUp: statsSummary.errorDelta > 0 }

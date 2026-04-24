@@ -10,6 +10,7 @@ type PathOption = {
   id: number;
   wayName: string;
   wayPoints: string;
+  taskType: string;
 };
 
 type WorkProgressPanelProps = {

@@ -152,9 +152,9 @@ export type LogItem = {
 export type Period = 'today' | '3days' | '1week' | '1month' | '1year' | 'Total' | null;
 
 // 도넛 차트에 쓸 공통 타입
-export type RobotType = { 
+export type RobotType = {
     id: number;
-    label: "QUADRUPED" | "COBOT" | "AMR" | "HUMANOID";
+    label: "기본 4족" | "순찰 4족" | "보안 4족";
 };
 
 export type RobotStatistic = {

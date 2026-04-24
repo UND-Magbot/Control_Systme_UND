@@ -294,6 +294,28 @@
   background: transparent;
 }
 
+.treeRowLocked {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.treeRowLocked:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.lockIcon {
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.lockCaption {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary, #8892a0);
+  opacity: 0.8;
+  user-select: none;
+}
+
 .treeArrow {
   width: 14px;
   font-size: var(--font-size-xs);
@@ -312,12 +334,12 @@
   font-size: var(--font-size-md);
   color: var(--text-secondary);
   user-select: none;
+  cursor: pointer;
 }
 
 .treeLabelParent {
   font-weight: 500;
   color: var(--text-primary);
-  cursor: pointer;
 }
 
 /* ─── 체크박스 커스텀 (메뉴 트리) ─── */

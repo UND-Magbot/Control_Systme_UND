@@ -26,6 +26,8 @@ import type {
   RouteSegment,
   DbRoute,
   UndoAction,
+  DangerZone,
+  PendingDangerZone,
 } from "./types/map";
 import { useRobotPolling } from "./hooks/useRobotPolling";
 import { useMapMeta } from "./hooks/useMapMeta";
@@ -34,7 +36,10 @@ import { useMappingWebSocket } from "./hooks/useMappingWebSocket";
 import { usePlaceDelete } from "./hooks/usePlaceDelete";
 import { usePathBuilding } from "./hooks/usePathBuilding";
 import { useRouteCreation } from "./hooks/useRouteCreation";
+import { useDangerZoneDraw } from "./hooks/useDangerZoneDraw";
 import { processMapImage } from "./utils/processMapImage";
+import { segmentIntersectsPolygon, pointInPolygon } from "./utils/geometry";
+import { detectZoneConflicts, hasAnyConflict, type ZoneConflicts } from "./utils/conflicts";
 import RobotConnectModal from "./components/tabs/map/RobotConnectModal";
 import MapSyncModal from "./components/tabs/map/MapSyncModal";
 import MapSyncProgressModal from "./components/tabs/map/MapSyncProgressModal";
@@ -45,6 +50,26 @@ import MappingSuccessModal from "./components/tabs/map/MappingSuccessModal";
 import PathBuildPanel from "./components/tabs/map/PathBuildPanel";
 import MapToolbar from "./components/tabs/map/MapToolbar";
 import MapRightPanel from "./components/tabs/map/MapRightPanel";
+import DangerZoneOverlay from "./components/tabs/map/DangerZoneOverlay";
+import DangerZoneNameModal from "./components/tabs/map/DangerZoneNameModal";
+import DangerZonePoiBlockModal from "./components/tabs/map/DangerZonePoiBlockModal";
+import DangerZoneConflictModal, { type InProgressSchedule } from "./components/tabs/map/DangerZoneConflictModal";
+import PoiDisambiguationPopup from "@/app/components/map/PoiDisambiguationPopup";
+import { AlertTriangle } from "lucide-react";
+
+// POI 아이콘의 가시 영역(~12px)에 맞춘 겹침 판정 반경.
+// 아이콘 렌더 크기(20px)의 투명 패딩을 제외한 실제 점 크기 기준.
+const POI_HIT_PX = 12;
+
+type PlaceMarker = {
+  key: string;
+  dbId: number | null;
+  tempId: string | null;
+  name: string;
+  x: number;
+  y: number;
+  pending: boolean;
+};
 
 export default function MapManagementPage() {
   const setPageReady = usePageReady();
@@ -205,6 +230,7 @@ export default function MapManagementPage() {
     resetDeleteMode();
     resetRouteMode();
     resetPathBuild();
+    resetDangerZoneDraw();
   };
 
   const handleUndo = () => {
@@ -240,6 +266,19 @@ export default function MapManagementPage() {
         case "deleteDbRoute":
           setDeletedRouteDbIds((ids) => { const next = new Set(ids); next.delete(action.id); return next; });
           break;
+        case "addDangerZone":
+          setPendingDangerZones((pz) => pz.filter((z) => z.tempId !== action.tempId));
+          break;
+        case "deletePendingDangerZone":
+          setPendingDangerZones((pz) => [...pz, action.zone]);
+          break;
+        case "deleteDbDangerZone":
+          setDeletedDangerZoneNames((names) => {
+            const next = new Set(names);
+            next.delete(action.zoneName);
+            return next;
+          });
+          break;
         case "mapReset":
           setPendingPlaces(action.prevPendingPlaces);
           setPendingRoutes(action.prevPendingRoutes);
@@ -247,19 +286,18 @@ export default function MapManagementPage() {
           setDeletedRouteDbIds(action.prevDeletedRouteDbIds);
           setMovedPlaces(action.prevMovedPlaces);
           setModifiedDbIds(action.prevModifiedDbIds);
+          setPendingDangerZones(action.prevPendingDangerZones);
+          setDeletedDangerZoneNames(action.prevDeletedDangerZoneNames);
           break;
       }
       return prev.slice(0, -1);
     });
   };
 
-  // ── 상단 저장 버튼: 장소+구간 삭제/신규 일괄 DB 저장 ──
+  // ── 상단 저장 버튼: 장소+구간+위험지역 삭제/신규 일괄 DB 저장 ──
   const handleSaveAll = async () => {
     clearAllModes();
-    const hasChanges = pendingPlaces.length > 0 || deletedDbIds.size > 0
-      || pendingRoutes.length > 0 || deletedRouteDbIds.size > 0
-      || movedPlaces.size > 0;
-    if (!hasChanges) {
+    if (!hasUnsavedChanges()) {
       modalAlert("저장할 변경사항이 없습니다.");
       return;
     }
@@ -350,17 +388,70 @@ export default function MapManagementPage() {
         if (!res.ok) throw new Error(`구간 "${r.startName}→${r.endName}" 저장 실패`);
       }
 
+      // 위험지역 삭제 (DB)
+      for (const zoneName of deletedDangerZoneNames) {
+        const res = await apiFetch(
+          `/DB/danger-zones?map_id=${mapId}&name=${encodeURIComponent(zoneName)}`,
+          { method: "DELETE" },
+        );
+        if (!res.ok && res.status !== 404) {
+          throw new Error(`위험지역 "${zoneName}" 삭제 실패`);
+        }
+      }
+
+      // 위험지역 신규 저장 (pending → DB)
+      for (const dz of pendingDangerZones) {
+        const res = await apiFetch(`/DB/danger-zones`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            MapId: mapId,
+            ZoneName: dz.ZoneName,
+            Description: dz.Description,
+            points: dz.points,
+            force: dz.force,
+          }),
+        });
+        if (res.status === 409) {
+          const err = await res.json().catch(() => ({}));
+          const body = err?.detail && typeof err.detail === "object" ? err.detail : err;
+          if (body?.type === "zone_blocked_by_in_progress") {
+            throw new Error(
+              `위험지역 "${dz.ZoneName}" 저장 실패: 진행 중인 작업이 이 경로를 사용하고 있습니다`,
+            );
+          }
+          if (body?.type === "zone_conflicts") {
+            throw new Error(
+              `위험지역 "${dz.ZoneName}" 저장 실패: 다른 사용자가 POI/구간을 추가해 충돌이 발생했습니다. 새로고침 후 다시 시도해주세요`,
+            );
+          }
+          const msg = typeof body === "string" ? body : body?.detail || "위험지역 저장 실패";
+          throw new Error(typeof msg === "string" ? `위험지역 "${dz.ZoneName}" 저장 실패: ${msg}` : `위험지역 "${dz.ZoneName}" 저장 실패`);
+        }
+        if (!res.ok) {
+          throw new Error(`위험지역 "${dz.ZoneName}" 저장 실패`);
+        }
+        const saved = await res.json().catch(() => ({}));
+        // cascade 로 DB 에서 삭제된 id 들을 로컬 state 에 반영
+        const deletedPois: number[] = saved?.cascaded?.poi_ids ?? [];
+        const deletedRoutes: number[] = saved?.cascaded?.route_ids ?? [];
+        if (deletedPois.length > 0) {
+          const del = new Set<number>(deletedPois);
+          setMapPlaces((prev) => prev.filter((p) => !del.has(p.id)));
+        }
+        if (deletedRoutes.length > 0) {
+          const del = new Set<number>(deletedRoutes);
+          setDbRoutes((prev) => prev.filter((r) => !del.has(r.id)));
+        }
+      }
+
       modalAlert("저장되었습니다.");
-      setPendingPlaces([]);
-      setDeletedDbIds(new Set());
-      setPendingRoutes([]);
-      setDeletedRouteDbIds(new Set());
-      setMovedPlaces(new Map());
-      setModifiedDbIds(new Set());
-      setUndoStack([]);
+      resetEditingState();
       if (selectedMap !== "") {
         loadMapPlaces(selectedMap as number);
         loadMapRoutes(selectedMap as number);
+        loadDangerZones(selectedMap as number);
+        loadWayInfos();
       }
     } catch (e) {
       console.error(e);
@@ -379,12 +470,19 @@ export default function MapManagementPage() {
   const [isChargeCreate, setIsChargeCreate] = useState(false);
   const [chargeDockingPlace, setChargeDockingPlace] = useState<PendingPlace | null>(null);
 
-  // ── 장소 인라인 수정 ──
+  // ── 장소 수정 (모달) ──
   const [editingPlace, setEditingPlace] = useState<{
-    key: string; name: string; svgX: number; svgY: number;
-    x: number; y: number; yaw: number; desc: string;
+    key: string;
+    name: string;
+    x: number;
+    y: number;
+    yaw: number;
+    desc: string;
+    category: string;
+    mapId: number | null;
+    floorName: string;
+    robotName: string;
   } | null>(null);
-  const [editValues, setEditValues] = useState({ name: "", x: "", y: "", dir: "", desc: "" });
   const [modifiedDbIds, setModifiedDbIds] = useState<Set<number>>(new Set());
 
   // ── 장소 삭제 모드 (훅으로 분리) ──
@@ -415,6 +513,72 @@ export default function MapManagementPage() {
     deletedRouteDbIds, setDeletedRouteDbIds,
     reset: resetRouteMode,
   } = useRouteCreation();
+
+  // ── 위험지역 그리기 모드 ──
+  const {
+    isDangerZoneMode, setIsDangerZoneMode,
+    draftPoints: dzDraftPoints,
+    addVertex: dzAddVertex,
+    undoLastVertex: dzUndo,
+    reset: resetDangerZoneDraw,
+  } = useDangerZoneDraw();
+  const [dzCursor, setDzCursor] = useState<{ x: number; y: number } | null>(null);
+  const [dangerZones, setDangerZones] = useState<DangerZone[]>([]);
+  const [pendingDangerZones, setPendingDangerZones] = useState<PendingDangerZone[]>([]);
+  const [deletedDangerZoneNames, setDeletedDangerZoneNames] = useState<Set<string>>(new Set());
+  const [dzNameModalOpen, setDzNameModalOpen] = useState(false);
+
+  // POI 포함 감지 → 롤백 안내 모달
+  const [dzPoiBlockNames, setDzPoiBlockNames] = useState<string[] | null>(null);
+
+  // 확정 시 충돌 감지 결과 / 진행중 스케줄로 인한 차단
+  const [dzConflicts, setDzConflicts] = useState<ZoneConflicts | null>(null);
+  const [dzInProgressBlock, setDzInProgressBlock] = useState<InProgressSchedule[] | null>(null);
+
+  // WayInfo 로드 (충돌 감지용)
+  const [wayInfos, setWayInfos] = useState<{ id: number; WayName: string; WayPoints: string }[]>([]);
+  const loadWayInfos = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/DB/getpath`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setWayInfos(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("경로 목록 로드 실패:", e);
+      setWayInfos([]);
+    }
+  }, []);
+
+  // 현재 맵의 위험지역 로드
+  const loadDangerZones = useCallback(async (mapId: number) => {
+    try {
+      const res = await apiFetch(`/DB/danger-zones?map_id=${mapId}`);
+      const data = await res.json();
+      setDangerZones(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("위험지역 로드 실패:", e);
+      setDangerZones([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedMap === "") {
+      setDangerZones([]);
+      setWayInfos([]);
+      setPendingDangerZones([]);
+      setDeletedDangerZoneNames(new Set());
+      return;
+    }
+    loadDangerZones(selectedMap as number);
+    loadWayInfos();
+  }, [selectedMap, loadDangerZones, loadWayInfos]);
+
+  // 모드 해제 또는 드래프트 비어있을 때 커서 프리뷰 초기화
+  useEffect(() => {
+    if (!isDangerZoneMode || dzDraftPoints.length === 0) {
+      setDzCursor(null);
+    }
+  }, [isDangerZoneMode, dzDraftPoints.length]);
 
   // 경로 빌드: 현재 마지막 장소에서 갈 수 있는 장소 이름 Set
   const pathReachable = useMemo(() => {
@@ -521,9 +685,182 @@ export default function MapManagementPage() {
     return map;
   }, [mapPlaces, pendingPlaces, deletedDbIds, movedPlaces, draggingPlace, dragWorldPos]);
 
+  // ── POI 디스앰비규에이션 (겹친 POI 선택 팝업) ──
+  const [poiDisambig, setPoiDisambig] = useState<{
+    screenX: number;
+    screenY: number;
+    candidates: PlaceMarker[];
+    action: "click" | "edit";
+  } | null>(null);
+
+  // 그리기 중 실시간 충돌 감지 (시각 힌트용)
+  const dzLiveConflicts = useMemo(() => {
+    if (!isDangerZoneMode || dzDraftPoints.length < 3) {
+      return { poiNames: new Set<string>(), routeKeys: new Set<string>() };
+    }
+    const c = detectZoneConflicts({
+      polygon: dzDraftPoints,
+      dbPlaces: mapPlaces.filter((p) => !deletedDbIds.has(p.id)),
+      pendingPlaces: pendingPlaces,
+      dbRoutes: dbRoutes.filter((r) => !deletedRouteDbIds.has(r.id)),
+      pendingRoutes: pendingRoutes,
+      wayInfos: [], // 경로(WayInfo) 실시간 하이라이트는 현재 미구현
+      placeCoordMap: placeCoordMap,
+    });
+    return {
+      poiNames: new Set(c.poisInside.map((p) => p.name)),
+      routeKeys: new Set(
+        c.routesCrossing.map((r) =>
+          r.kind === "db" ? `rdb_${r.id}` : String(r.id),
+        ),
+      ),
+    };
+  }, [
+    isDangerZoneMode,
+    dzDraftPoints,
+    mapPlaces,
+    pendingPlaces,
+    dbRoutes,
+    pendingRoutes,
+    deletedDbIds,
+    deletedRouteDbIds,
+    placeCoordMap,
+  ]);
+
+  // ── POI 디스앰비규에이션: 액션 실행 헬퍼 ──
+  const performClickActionOnPlace = useCallback((place: PlaceMarker) => {
+    if (isPathBuildMode) {
+      if (pathBuildOrder.length === 0 || (pathReachable && pathReachable.has(place.name)) || !pathReachable) {
+        const last = pathBuildOrder[pathBuildOrder.length - 1];
+        if (last === place.name) return;
+        setPathBuildOrder((prev) => [...prev, place.name]);
+      }
+      return;
+    }
+    if (isDeleteMode) {
+      setDeleteConfirmTarget({
+        type: place.dbId != null ? "db" : "pending",
+        id: place.dbId ?? place.tempId!,
+        name: place.name,
+      });
+    } else if (isRouteMode) {
+      if (!routeStartName) {
+        setRouteStartName(place.name);
+      } else if (!routeEndName && place.name !== routeStartName) {
+        setRouteEndName(place.name);
+      }
+    }
+  }, [
+    isPathBuildMode, pathBuildOrder, pathReachable, setPathBuildOrder,
+    isDeleteMode, setDeleteConfirmTarget,
+    isRouteMode, routeStartName, routeEndName, setRouteStartName, setRouteEndName,
+  ]);
+
+  const performEditActionOnPlace = useCallback((place: PlaceMarker) => {
+    dragPending.current = null;
+    if (draggingPlace) {
+      setDraggingPlace(null);
+      setDragWorldPos(null);
+    }
+    const dbP = place.dbId != null ? mapPlaces.find((p) => p.id === place.dbId) : null;
+    const pendP = place.tempId ? pendingPlaces.find((p) => p.tempId === place.tempId) : null;
+    const src = dbP ?? pendP;
+    const floorId = (src as any)?.FloorId ?? null;
+    const floorName = floorId != null
+      ? (floors.find((f) => f.id === floorId)?.FloorName ?? "")
+      : "";
+    const current = placeCoordMap.get(place.name) ?? { x: place.x, y: place.y };
+    setEditingPlace({
+      key: place.key,
+      name: place.name,
+      x: current.x,
+      y: current.y,
+      yaw: src?.Yaw ?? 0,
+      desc: src?.Imformation ?? "",
+      category: (src as any)?.Category ?? "waypoint",
+      mapId: (src as any)?.MapId ?? null,
+      floorName,
+      robotName: (src as any)?.RobotName ?? "",
+    });
+  }, [draggingPlace, mapPlaces, pendingPlaces, floors, placeCoordMap]);
+
+  // ── 장소 수정 확정(모달 onConfirm에서 호출) ──
+  const handleEditConfirmFromModal = useCallback((
+    place: PendingPlace,
+    oldName: string | undefined,
+    prev: NonNullable<typeof editingPlace>,
+  ) => {
+    const trimmed = place.LacationName;
+    const nameChanged = !!oldName && oldName !== trimmed;
+    const newX = place.LocationX;
+    const newY = place.LocationY;
+    const newYaw = place.Yaw;
+    const newDesc = place.Imformation ?? "";
+    const newCategory = place.Category;
+    const coordChanged = Math.abs(newX - prev.x) > 0.0001 || Math.abs(newY - prev.y) > 0.0001;
+
+    // 이름 변경 cascade
+    if (nameChanged && oldName) {
+      setMapPlaces((list) => list.map((p) =>
+        p.LacationName === oldName ? { ...p, LacationName: trimmed } : p
+      ));
+      setPendingPlaces((list) => list.map((p) =>
+        p.LacationName === oldName ? { ...p, LacationName: trimmed } : p
+      ));
+      setMovedPlaces((m) => {
+        const moved = m.get(oldName);
+        if (!moved) return m;
+        const next = new Map(m);
+        next.delete(oldName);
+        next.set(trimmed, moved);
+        return next;
+      });
+      setPendingRoutes((list) => list.map((r) => ({
+        ...r,
+        startName: r.startName === oldName ? trimmed : r.startName,
+        endName: r.endName === oldName ? trimmed : r.endName,
+      })));
+      setDbRoutes((list) => list.map((r) => ({
+        ...r,
+        StartPlaceName: r.StartPlaceName === oldName ? trimmed : r.StartPlaceName,
+        EndPlaceName: r.EndPlaceName === oldName ? trimmed : r.EndPlaceName,
+      })));
+    }
+
+    // Yaw / 설명 / 카테고리 업데이트
+    setMapPlaces((list) => list.map((p) =>
+      p.LacationName === trimmed ? { ...p, Yaw: newYaw, Imformation: newDesc, Category: newCategory } : p
+    ));
+    setPendingPlaces((list) => list.map((p) =>
+      p.LacationName === trimmed ? { ...p, Yaw: newYaw, Imformation: newDesc, Category: newCategory } : p
+    ));
+
+    // 좌표 변경
+    if (coordChanged || nameChanged) {
+      setMovedPlaces((m) => {
+        const next = new Map(m);
+        next.set(trimmed, { x: newX, y: newY });
+        return next;
+      });
+    }
+
+    // DB 변경 추적
+    if (prev.key.startsWith("db_")) {
+      const dbId = Number(prev.key.replace("db_", ""));
+      setModifiedDbIds((s) => new Set(s).add(dbId));
+      if (!movedPlaces.has(trimmed) && !coordChanged) {
+        setMovedPlaces((m) => {
+          const next = new Map(m);
+          next.set(trimmed, { x: prev.x, y: prev.y });
+          return next;
+        });
+      }
+    }
+  }, [movedPlaces, setMapPlaces, setPendingPlaces, setMovedPlaces, setPendingRoutes, setDbRoutes, setModifiedDbIds]);
+
   // ── ESC 키로 모드 취소 ──
   useEffect(() => {
-    if (!isPlaceMode && !isDeleteMode && !isRouteMode && !isPathBuildMode) return;
+    if (!isPlaceMode && !isDeleteMode && !isRouteMode && !isPathBuildMode && !isDangerZoneMode) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setIsPlaceMode(false);
@@ -533,18 +870,57 @@ export default function MapManagementPage() {
         setRouteEndName(null);
         setIsPathBuildMode(false);
         setPathBuildOrder([]);
+        resetDangerZoneDraw();
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [isPlaceMode, isDeleteMode, isRouteMode, isPathBuildMode]);
+  }, [isPlaceMode, isDeleteMode, isRouteMode, isPathBuildMode, isDangerZoneMode]);
 
   // ── SVG 맵 뷰 상태 ──
   const [processedImg, setProcessedImg] = useState<{ url: string; w: number; h: number; mask?: Uint8Array } | null>(null);
-  const { zoom, setZoom, rotation, setRotation, offset, setOffset, svgRef } =
+  const { zoom, setZoom, rotation, setRotation, offset, setOffset, svgRef, viewport } =
     useSvgPanZoom(processedImg !== null);
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0 });
+
+  // POI 겹침 탐색 (zoom 에 의존하므로 useSvgPanZoom 이후에 선언)
+  const findOverlappingPlaces = useCallback((clicked: PlaceMarker): PlaceMarker[] => {
+    if (!mapMeta) return [clicked];
+    const threshold = (POI_HIT_PX * mapMeta.resolution) / zoom;
+    const clickedXY = placeCoordMap.get(clicked.name) ?? { x: clicked.x, y: clicked.y };
+    const all: PlaceMarker[] = [
+      ...mapPlaces
+        .filter((p) => !deletedDbIds.has(p.id))
+        .map((p) => ({
+          key: `db_${p.id}`,
+          dbId: p.id,
+          tempId: null,
+          name: p.LacationName,
+          x: p.LocationX,
+          y: p.LocationY,
+          pending: false,
+        })),
+      ...pendingPlaces.map((p) => ({
+        key: p.tempId,
+        dbId: null,
+        tempId: p.tempId,
+        name: p.LacationName,
+        x: p.LocationX,
+        y: p.LocationY,
+        pending: true,
+      })),
+    ];
+    return all.filter((p) => {
+      const xy = placeCoordMap.get(p.name) ?? { x: p.x, y: p.y };
+      return Math.hypot(xy.x - clickedXY.x, xy.y - clickedXY.y) <= threshold;
+    });
+  }, [mapMeta, zoom, placeCoordMap, mapPlaces, pendingPlaces, deletedDbIds]);
+
+  // 줌/팬/회전이 바뀌면 겹침 팝업은 공간적 의미가 깨지므로 자동으로 닫는다.
+  useEffect(() => {
+    setPoiDisambig((prev) => (prev ? null : prev));
+  }, [zoom, offset.x, offset.y, rotation]);
 
   /** 맵을 SVG 컨테이너 중앙에 맞춤 (로드 시 & 초기화 버튼) */
   const centerMapView = useCallback((img?: { w: number; h: number }) => {
@@ -724,6 +1100,12 @@ export default function MapManagementPage() {
     panStart.current = { x: e.clientX - offset.x, y: e.clientY - offset.y };
   };
   const handleMouseMove = (e: React.MouseEvent) => {
+    // 위험지역 모드: 커서 world 좌표 추적 (드래프트 프리뷰용)
+    if (isDangerZoneMode && dzDraftPoints.length > 0 && !isPanning) {
+      const coords = svgEventToWorld(e);
+      if (coords) setDzCursor({ x: coords.worldX, y: coords.worldY });
+      return;
+    }
     // 드래그 대기 중 → 5px 이상 이동하면 드래그 시작
     if (dragPending.current && !draggingPlace) {
       const dp = dragPending.current;
@@ -865,6 +1247,40 @@ export default function MapManagementPage() {
       return;
     }
 
+    // 위험지역 그리기 모드: 클릭할 때마다 꼭짓점 추가 + POI 포함 예방 롤백
+    if (isDangerZoneMode) {
+      const coords = svgEventToWorld(e);
+      if (!coords) { modalAlert("맵 범위를 벗어난 위치입니다."); return; }
+      const nextPoint = { x: coords.worldX, y: coords.worldY };
+      const nextDraft = [...dzDraftPoints, nextPoint];
+
+      // 꼭짓점 3개 이상이 되는 순간부터 POI 포함 검사
+      if (nextDraft.length >= 3) {
+        const containedNames: string[] = [];
+        for (const p of mapPlaces) {
+          if (p.Category === "danger") continue;
+          if (deletedDbIds.has(p.id)) continue;
+          if (pointInPolygon({ x: p.LocationX, y: p.LocationY }, nextDraft)) {
+            containedNames.push(p.LacationName);
+          }
+        }
+        for (const p of pendingPlaces) {
+          if (pointInPolygon({ x: p.LocationX, y: p.LocationY }, nextDraft)) {
+            containedNames.push(p.LacationName);
+          }
+        }
+        if (containedNames.length > 0) {
+          // 일단 꼭짓점은 추가하되, 모달 확인 시 즉시 롤백되도록 이름 저장
+          dzAddVertex(nextPoint);
+          setDzPoiBlockNames(containedNames);
+          return;
+        }
+      }
+
+      dzAddVertex(nextPoint);
+      return;
+    }
+
     // 장소 생성 모드 (최우선)
     if (isPlaceMode) {
       const coords = svgEventToWorld(e);
@@ -885,32 +1301,92 @@ export default function MapManagementPage() {
     }
   };
 
+  // ── 맵 편집 중 미저장 변경사항 판정 ──
+  const hasUnsavedChanges = useCallback((): boolean => {
+    return (
+      pendingPlaces.length > 0 ||
+      deletedDbIds.size > 0 ||
+      pendingRoutes.length > 0 ||
+      deletedRouteDbIds.size > 0 ||
+      movedPlaces.size > 0 ||
+      modifiedDbIds.size > 0 ||
+      pendingDangerZones.length > 0 ||
+      deletedDangerZoneNames.size > 0
+    );
+  }, [
+    pendingPlaces, deletedDbIds, pendingRoutes, deletedRouteDbIds,
+    movedPlaces, modifiedDbIds, pendingDangerZones, deletedDangerZoneNames,
+  ]);
+
+  // ── 맵 편집 상태 일괄 초기화 ──
+  const resetEditingState = useCallback(() => {
+    setPendingPlaces([]);
+    setDeletedDbIds(new Set());
+    setPendingRoutes([]);
+    setDeletedRouteDbIds(new Set());
+    setMovedPlaces(new Map());
+    setModifiedDbIds(new Set());
+    setPendingDangerZones([]);
+    setDeletedDangerZoneNames(new Set());
+    setUndoStack([]);
+    clearAllModes();
+  }, [setPendingPlaces, setDeletedDbIds, setPendingRoutes, setDeletedRouteDbIds,
+      setMovedPlaces, setModifiedDbIds, setPendingDangerZones, setDeletedDangerZoneNames,
+      setUndoStack]);
+
+  // ── 맵 전환 시 미저장 작업 경고 가드 ──
+  const guardAndSwitch = useCallback((performSwitch: () => void | Promise<void>) => {
+    if (!hasUnsavedChanges()) {
+      void performSwitch();
+      return;
+    }
+    modalConfirm(
+      "저장하지 않은 변경사항이 있습니다.\n맵을 전환하면 작업 내용이 사라집니다. 계속하시겠습니까?",
+      () => {
+        resetEditingState();
+        void performSwitch();
+      },
+    );
+  }, [hasUnsavedChanges, modalConfirm, resetEditingState]);
+
   // ── 상단 사업장 선택 ──
   const handleBizChange = (bizId: number) => {
-    setSelectedBiz(bizId);
-    setSelectedFloor("");
-    setSelectedMap("");
-    setMaps([]);
-    loadFloors(bizId);
+    if (bizId === selectedBiz) return;
+    guardAndSwitch(() => {
+      setSelectedBiz(bizId);
+      setSelectedFloor("");
+      setSelectedMap("");
+      setMaps([]);
+      loadFloors(bizId);
+    });
   };
 
   // ── 상단 층 선택 ──
   const handleFloorChange = async (floorId: number) => {
-    setSelectedFloor(floorId);
-    setSelectedMap("");
-    try {
-      const res = await apiFetch(`/map/maps?floor_id=${floorId}`);
-      const data = await res.json();
-      const list: RobotMap[] = Array.isArray(data) ? data : [];
-      setMaps(list);
-      if (list.length > 0) {
-        const latest = list.reduce((a, b) => (b.id > a.id ? b : a));
-        setSelectedMap(latest.id);
+    if (floorId === selectedFloor) return;
+    guardAndSwitch(async () => {
+      setSelectedFloor(floorId);
+      setSelectedMap("");
+      try {
+        const res = await apiFetch(`/map/maps?floor_id=${floorId}`);
+        const data = await res.json();
+        const list: RobotMap[] = Array.isArray(data) ? data : [];
+        setMaps(list);
+        if (list.length > 0) {
+          const latest = list.reduce((a, b) => (b.id > a.id ? b : a));
+          setSelectedMap(latest.id);
+        }
+      } catch (e) {
+        console.error("영역 로드 실패:", e);
       }
-    } catch (e) {
-      console.error("영역 로드 실패:", e);
-    }
+    });
   };
+
+  // ── 상단 맵 선택 (드롭다운) ──
+  const handleMapChange = useCallback((mapId: number | "") => {
+    if (mapId === selectedMap) return;
+    guardAndSwitch(() => setSelectedMap(mapId));
+  }, [selectedMap, guardAndSwitch]);
 
   // ── 맵핑 시작 모달 열기 ──
   const handleMappingStart = () => {
@@ -954,6 +1430,8 @@ export default function MapManagementPage() {
         prevDeletedRouteDbIds: new Set(deletedRouteDbIds),
         prevMovedPlaces: new Map(movedPlaces),
         prevModifiedDbIds: new Set(modifiedDbIds),
+        prevPendingDangerZones: [...pendingDangerZones],
+        prevDeletedDangerZoneNames: new Set(deletedDangerZoneNames),
       }]);
       setPendingPlaces([]);
       setPendingRoutes([]);
@@ -961,6 +1439,8 @@ export default function MapManagementPage() {
       setDeletedRouteDbIds(new Set(dbRoutes.map((r) => r.id)));
       setMovedPlaces(new Map());
       setModifiedDbIds(new Set());
+      setPendingDangerZones([]);
+      setDeletedDangerZoneNames(new Set(dangerZones.map((z) => z.ZoneName)));
     });
   };
 
@@ -1396,6 +1876,24 @@ export default function MapManagementPage() {
     });
   };
 
+  // 현재 맵 내 기존 장소명 (MapPlaceCreateModal 의 중복 검사용, 자기자신 제외)
+  const existingPlaceNames = useMemo(() => {
+    const currentMapId = selectedMap !== "" ? (selectedMap as number) : null;
+    if (currentMapId == null) return [];
+    const editingKey = editingPlace?.key;
+    const dbNames = mapPlaces
+      .filter((p) => !deletedDbIds.has(p.id))
+      .filter((p) => p.Category !== "danger")
+      .filter((p) => editingKey !== `db_${p.id}`)
+      .map((p) => p.LacationName.trim().toLowerCase());
+    const pendingNames = pendingPlaces
+      .filter((p) => p.MapId === currentMapId)
+      .filter((p) => p.Category !== "danger")
+      .filter((p) => editingKey !== p.tempId)
+      .map((p) => p.LacationName.trim().toLowerCase());
+    return [...dbNames, ...pendingNames];
+  }, [mapPlaces, pendingPlaces, deletedDbIds, selectedMap, editingPlace]);
+
   return (
     <PermissionGuard requiredPermissions={["map-edit", "place-list", "path-list"]}>
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -1436,7 +1934,7 @@ export default function MapManagementPage() {
           connectedRobots={connectedRobots}
           onBizChange={handleBizChange}
           onFloorChange={handleFloorChange}
-          onMapChange={setSelectedMap}
+          onMapChange={handleMapChange}
           onSaveAll={handleSaveAll}
           onOpenSyncModal={handleOpenSyncModal}
           onClearModes={clearAllModes}
@@ -1452,7 +1950,7 @@ export default function MapManagementPage() {
               <svg
                 ref={svgRef}
                 className={styles.mapSvg}
-                style={draggingPlace ? { cursor: "grabbing" } : isPlaceMode ? { cursor: "crosshair" } : (isDeleteMode || isRouteMode || isPathBuildMode) ? { cursor: "pointer" } : undefined}
+                style={draggingPlace ? { cursor: "grabbing" } : (isPlaceMode || isDangerZoneMode) ? { cursor: "crosshair" } : (isDeleteMode || isRouteMode || isPathBuildMode) ? { cursor: "pointer" } : undefined}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -1467,17 +1965,69 @@ export default function MapManagementPage() {
                     width={processedImg.w}
                     height={processedImg.h}
                   />
-                  {/* 격자 오버레이 (1m 간격) */}
-                  {showGrid && mapMeta && (() => {
-                    const cellPx = 1 / mapMeta.resolution; // 1미터 = N 픽셀
-                    const x0 = -processedImg.w / 2;
-                    const y0 = -processedImg.h / 2;
+                  {/* 격자 오버레이: 1m minor + 5m major, viewport 전체 커버 */}
+                  {showGrid && mapMeta && viewport.w > 0 && viewport.h > 0 && (() => {
+                    const cellPx = 1 / mapMeta.resolution; // 1m = N px
+                    const MAJOR_EVERY = 5; // 5m 마다 major
+                    // 흰색 맵 + 다크 네이비 surface 양쪽에서 모두 보이도록 deep blue 계열 사용
+                    const MINOR_STROKE = "rgba(80,160,210,0.3)";
+                    const MAJOR_STROKE = "rgba(40,120,190,0.62)";
+                    // 화면 좌표 → world 좌표 (transform = translate(offset) scale(zoom) rotate(rot))
+                    const rad = (-rotation * Math.PI) / 180;
+                    const cos = Math.cos(rad);
+                    const sin = Math.sin(rad);
+                    const s2w = (sx: number, sy: number) => {
+                      const dx = (sx - offset.x) / zoom;
+                      const dy = (sy - offset.y) / zoom;
+                      return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+                    };
+                    const corners = [
+                      s2w(0, 0),
+                      s2w(viewport.w, 0),
+                      s2w(0, viewport.h),
+                      s2w(viewport.w, viewport.h),
+                    ];
+                    const xs = corners.map((c) => c.x);
+                    const ys = corners.map((c) => c.y);
+                    const minX = Math.min(...xs);
+                    const maxX = Math.max(...xs);
+                    const minY = Math.min(...ys);
+                    const maxY = Math.max(...ys);
+                    const startI = Math.floor(minX / cellPx) - 1;
+                    const endI = Math.ceil(maxX / cellPx) + 1;
+                    const startJ = Math.floor(minY / cellPx) - 1;
+                    const endJ = Math.ceil(maxY / cellPx) + 1;
+                    // 과도한 라인 수 가드 (줌 아웃 극단값 방어)
+                    if (endI - startI > 1000 || endJ - startJ > 1000) return null;
+                    const mod = (n: number, m: number) => ((n % m) + m) % m;
                     const lines: React.ReactNode[] = [];
-                    for (let x = 0; x <= processedImg.w; x += cellPx) {
-                      lines.push(<line key={`gv${x}`} x1={x0 + x} y1={y0} x2={x0 + x} y2={y0 + processedImg.h} stroke="rgba(0,255,180,0.15)" strokeWidth={0.5} />);
+                    for (let i = startI; i <= endI; i++) {
+                      const isMajor = mod(i, MAJOR_EVERY) === 0;
+                      const x = i * cellPx;
+                      lines.push(
+                        <line
+                          key={`gv${i}`}
+                          x1={x} y1={startJ * cellPx}
+                          x2={x} y2={endJ * cellPx}
+                          stroke={isMajor ? MAJOR_STROKE : MINOR_STROKE}
+                          strokeWidth={isMajor ? 1.8 : 1.0}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      );
                     }
-                    for (let y = 0; y <= processedImg.h; y += cellPx) {
-                      lines.push(<line key={`gh${y}`} x1={x0} y1={y0 + y} x2={x0 + processedImg.w} y2={y0 + y} stroke="rgba(0,255,180,0.15)" strokeWidth={0.5} />);
+                    for (let j = startJ; j <= endJ; j++) {
+                      const isMajor = mod(j, MAJOR_EVERY) === 0;
+                      const y = j * cellPx;
+                      lines.push(
+                        <line
+                          key={`gh${j}`}
+                          x1={startI * cellPx} y1={y}
+                          x2={endI * cellPx} y2={y}
+                          stroke={isMajor ? MAJOR_STROKE : MINOR_STROKE}
+                          strokeWidth={isMajor ? 1.8 : 1.0}
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      );
                     }
                     return <g pointerEvents="none">{lines}</g>;
                   })()}
@@ -1544,6 +2094,16 @@ export default function MapManagementPage() {
                             opacity={0.9}
                             pointerEvents="none"
                           />
+                          {/* 위험지역 드래프트가 관통하는 구간 경고 오버레이 */}
+                          {dzLiveConflicts.routeKeys.has(route.key) && (
+                            <line
+                              x1={sx} y1={sy} x2={ex} y2={ey}
+                              stroke="#E53E3E" strokeWidth={3.5 / zoom}
+                              strokeDasharray={`${5 / zoom} ${3 / zoom}`}
+                              opacity={0.85}
+                              pointerEvents="none"
+                            />
+                          )}
                           {/* 정방향 / 양방향: 끝 화살촉 */}
                           {(route.dir === "forward" || route.dir === "bidirectional") && (
                             <path d={fwdArrow} fill={color} pointerEvents="none" />
@@ -1586,6 +2146,42 @@ export default function MapManagementPage() {
                     return segments;
                   })()}
 
+                  {/* 위험지역(다각형) 렌더 + 드래프트 프리뷰 */}
+                  {mapMeta && (
+                    <DangerZoneOverlay
+                      zones={dangerZones.filter((z) => !deletedDangerZoneNames.has(z.ZoneName))}
+                      pendingZones={pendingDangerZones}
+                      draftPoints={isDangerZoneMode ? dzDraftPoints : undefined}
+                      cursor={isDangerZoneMode ? dzCursor : null}
+                      mapMeta={{ originX: mapMeta.originX, originY: mapMeta.originY, resolution: mapMeta.resolution }}
+                      imgSize={{ w: processedImg.w, h: processedImg.h }}
+                      zoom={zoom}
+                      deleteMode={isDeleteMode}
+                      onZoneClick={(z) => {
+                        modalConfirm(
+                          `위험지역 '${z.ZoneName}'을(를) 삭제하시겠습니까?\n저장 버튼 클릭 시 맵에 반영됩니다.`,
+                          () => {
+                            setDeletedDangerZoneNames((prev) => {
+                              const next = new Set(prev);
+                              next.add(z.ZoneName);
+                              return next;
+                            });
+                            setUndoStack((prev) => [...prev, { type: "deleteDbDangerZone", zoneName: z.ZoneName }]);
+                          },
+                        );
+                      }}
+                      onPendingZoneClick={(z) => {
+                        modalConfirm(
+                          `미저장 위험지역 '${z.ZoneName}'을(를) 삭제하시겠습니까?`,
+                          () => {
+                            setPendingDangerZones((prev) => prev.filter((x) => x.tempId !== z.tempId));
+                            setUndoStack((prev) => [...prev, { type: "deletePendingDangerZone", zone: z }]);
+                          },
+                        );
+                      }}
+                    />
+                  )}
+
                   {/* 저장된 장소 + 미저장 장소 마커 표시 */}
                   {mapMeta && [
                     ...mapPlaces
@@ -1615,48 +2211,28 @@ export default function MapManagementPage() {
                         } : undefined}
                         onDoubleClick={(!isDeleteMode && !isRouteMode && !isPlaceMode && !isPathBuildMode) ? (e) => {
                           e.stopPropagation();
-                          // 드래그 취소
-                          dragPending.current = null;
-                          if (draggingPlace) {
-                            setDraggingPlace(null);
-                            setDragWorldPos(null);
+                          const marker: PlaceMarker = {
+                            key: place.key, dbId: place.dbId, tempId: place.tempId,
+                            name: place.name, x: place.x, y: place.y, pending: place.pending,
+                          };
+                          const overlaps = findOverlappingPlaces(marker);
+                          if (overlaps.length <= 1) {
+                            performEditActionOnPlace(marker);
+                          } else {
+                            setPoiDisambig({ screenX: e.clientX, screenY: e.clientY, candidates: overlaps, action: "edit" });
                           }
-                          const dbP = place.dbId != null ? mapPlaces.find((p) => p.id === place.dbId) : null;
-                          const pendP = place.tempId ? pendingPlaces.find((p) => p.tempId === place.tempId) : null;
-                          const yaw = dbP?.Yaw ?? pendP?.Yaw ?? 0;
-                          const desc = dbP?.Imformation ?? pendP?.Imformation ?? "";
-                          setEditingPlace({ key: place.key, name: place.name, svgX, svgY, x: wx, y: wy, yaw, desc });
-                          setEditValues({
-                            name: place.name,
-                            x: wx.toFixed(3),
-                            y: wy.toFixed(3),
-                            dir: String(Math.round(yaw * 180 / Math.PI)),
-                            desc: desc,
-                          });
                         } : undefined}
                         onClick={(isDeleteMode || isRouteMode || isPathBuildMode) ? (e) => {
                           e.stopPropagation();
-                          if (isPathBuildMode) {
-                            // 경로 빌드: 장소 추가
-                            if (pathBuildOrder.length === 0 || (pathReachable && pathReachable.has(place.name)) || !pathReachable) {
-                              const last = pathBuildOrder[pathBuildOrder.length - 1];
-                              if (last === place.name) return; // 연속 동일 장소 방지
-                              setPathBuildOrder((prev) => [...prev, place.name]);
-                            }
-                            return;
-                          }
-                          if (isDeleteMode) {
-                            setDeleteConfirmTarget({
-                              type: place.dbId != null ? "db" : "pending",
-                              id: place.dbId ?? place.tempId!,
-                              name: place.name,
-                            });
-                          } else if (isRouteMode) {
-                            if (!routeStartName) {
-                              setRouteStartName(place.name);
-                            } else if (!routeEndName && place.name !== routeStartName) {
-                              setRouteEndName(place.name);
-                            }
+                          const marker: PlaceMarker = {
+                            key: place.key, dbId: place.dbId, tempId: place.tempId,
+                            name: place.name, x: place.x, y: place.y, pending: place.pending,
+                          };
+                          const overlaps = findOverlappingPlaces(marker);
+                          if (overlaps.length <= 1) {
+                            performClickActionOnPlace(marker);
+                          } else {
+                            setPoiDisambig({ screenX: e.clientX, screenY: e.clientY, candidates: overlaps, action: "click" });
                           }
                         } : undefined}
                       >
@@ -1680,6 +2256,10 @@ export default function MapManagementPage() {
                           {/* 드래그 중 하이라이트 */}
                           {draggingPlace?.name === place.name && (
                             <circle r="16" fill="rgba(0,176,238,0.15)" stroke="#00B0EE" strokeWidth="2" />
+                          )}
+                          {/* 위험지역 드래프트에 포함된 POI 경고 halo */}
+                          {dzLiveConflicts.poiNames.has(place.name) && (
+                            <circle r="16" fill="rgba(229,62,62,0.2)" stroke="#E53E3E" strokeWidth="2.5" strokeDasharray="3 2" />
                           )}
                           {(() => {
                             const isModified = place.pending || (place.dbId != null && modifiedDbIds.has(place.dbId)) || movedPlaces.has(place.name);
@@ -1763,6 +2343,87 @@ export default function MapManagementPage() {
                 : `${pathBuildOrder[pathBuildOrder.length - 1]}에서 다음 장소를 클릭하세요`}
             </div>
           )}
+          {isDangerZoneMode && (
+            <>
+              <div className={styles.placeBanner} style={{ background: "rgba(183, 28, 28, 0.85)" }}>
+                {dzDraftPoints.length === 0
+                  ? "맵을 클릭하여 위험지역의 꼭짓점을 찍으세요 (최소 3개)"
+                  : `꼭짓점 ${dzDraftPoints.length}개${dzDraftPoints.length < 3 ? ` (앞으로 ${3 - dzDraftPoints.length}개 필요)` : ""}${
+                      dzLiveConflicts.poiNames.size + dzLiveConflicts.routeKeys.size > 0
+                        ? ` · 영향: 구간 ${dzLiveConflicts.routeKeys.size}개`
+                        : ""
+                    }`}
+              </div>
+              <div
+                style={{
+                  position: "absolute", top: 50, left: "50%", transform: "translateX(-50%)",
+                  zIndex: 21, display: "flex", gap: 4, alignItems: "center",
+                  background: "var(--surface-3)", borderRadius: 8, padding: "4px 6px",
+                  border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={(e) => { e.stopPropagation(); dzUndo(); }}
+                  disabled={dzDraftPoints.length === 0}
+                  style={{
+                    padding: "5px 12px", borderRadius: 6, border: "1px solid transparent",
+                    background: "transparent",
+                    color: "var(--text-primary)", fontSize: "var(--font-size-sm)",
+                    cursor: dzDraftPoints.length === 0 ? "default" : "pointer",
+                    opacity: dzDraftPoints.length === 0 ? 0.4 : 1,
+                  }}
+                >
+                  되돌리기
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); resetDangerZoneDraw(); }}
+                  style={{
+                    padding: "5px 12px", borderRadius: 6, border: "1px solid transparent",
+                    background: "transparent",
+                    color: "var(--text-primary)", fontSize: "var(--font-size-sm)",
+                    cursor: "pointer",
+                  }}
+                >
+                  취소
+                </button>
+                <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.15)", margin: "0 4px" }} />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (dzDraftPoints.length < 3) return;
+                    // 확정 전 충돌 감지 (FE 로컬 계산)
+                    const conflicts = detectZoneConflicts({
+                      polygon: dzDraftPoints,
+                      dbPlaces: mapPlaces.filter((p) => !deletedDbIds.has(p.id)),
+                      pendingPlaces: pendingPlaces,
+                      dbRoutes: dbRoutes.filter((r) => !deletedRouteDbIds.has(r.id)),
+                      pendingRoutes: pendingRoutes,
+                      wayInfos: wayInfos,
+                      placeCoordMap: placeCoordMap,
+                    });
+                    if (hasAnyConflict(conflicts)) {
+                      setDzConflicts(conflicts);
+                      return;
+                    }
+                    setDzNameModalOpen(true);
+                  }}
+                  disabled={dzDraftPoints.length < 3}
+                  style={{
+                    padding: "5px 16px", borderRadius: 6,
+                    border: "1px solid var(--color-info-border)",
+                    background: dzDraftPoints.length >= 3 ? "var(--color-info-bg)" : "transparent",
+                    color: "var(--text-primary)", fontSize: "var(--font-size-sm)",
+                    cursor: dzDraftPoints.length < 3 ? "default" : "pointer",
+                    fontWeight: 600,
+                    opacity: dzDraftPoints.length < 3 ? 0.4 : 1,
+                  }}
+                >
+                  확정
+                </button>
+              </div>
+            </>
+          )}
           {isRouteMode && (
             <>
               <div className={styles.placeBanner} style={{ background: "rgba(56, 142, 60, 0.85)" }}>
@@ -1809,6 +2470,17 @@ export default function MapManagementPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          // 위험지역 교차 검사
+                          const startCoord = placeCoordMap.get(routeStartName);
+                          const endCoord = placeCoordMap.get(routeEndName);
+                          if (startCoord && endCoord) {
+                            for (const zone of dangerZones) {
+                              if (segmentIntersectsPolygon(startCoord, endCoord, zone.points)) {
+                                modalAlert(`경로가 위험지역 '${zone.ZoneName}'을(를) 통과합니다. 구간을 저장할 수 없습니다.`);
+                                return;
+                              }
+                            }
+                          }
                           const routeTempId = `route_${Date.now()}`;
                           setPendingRoutes((prev) => [...prev, {
                             tempId: routeTempId,
@@ -1863,6 +2535,8 @@ export default function MapManagementPage() {
             </button>
             <button
               className={styles.topToolBtn}
+              disabled={connectedRobots.length === 0}
+              style={connectedRobots.length === 0 ? { opacity: 0.4, cursor: "default" } : undefined}
               onClick={() => {
                 clearAllModes();
                 if (!processedImg || !mapMeta) {
@@ -1914,6 +2588,8 @@ export default function MapManagementPage() {
             </button>
             <button
               className={styles.topToolBtn}
+              disabled={connectedRobots.length === 0}
+              style={connectedRobots.length === 0 ? { opacity: 0.4, cursor: "default" } : undefined}
               onClick={() => {
                 clearAllModes();
                 if (!processedImg || !mapMeta) {
@@ -1943,23 +2619,7 @@ export default function MapManagementPage() {
 
           {/* 좌측 세로 도구 (오버레이) */}
           <div className={styles.leftTools}>
-            <button
-              className={`${styles.toolBtn} ${isRouteMode ? styles.toolBtnActive : ""}`}
-              onClick={() => {
-                if (!processedImg || !mapMeta) {
-                  modalAlert("맵을 먼저 선택해주세요.");
-                  return;
-                }
-                setIsRouteMode((v) => !v);
-                setIsPlaceMode(false);
-                setIsDeleteMode(false);
-                setRouteStartName(null);
-                setRouteEndName(null);
-              }}
-            >
-              <img src="/icon/path_way.png" alt="구간" className={styles.toolBtnImg} />
-              <span>구간</span>
-            </button>
+            {/* 생성 그룹: 장소 → 구간 → 위험지역 (기본 → 복잡 순) */}
             <button
               className={`${styles.toolBtn} ${isPlaceMode ? styles.toolBtnActive : ""}`}
               onClick={() => {
@@ -1967,16 +2627,55 @@ export default function MapManagementPage() {
                   modalAlert("맵을 먼저 선택해주세요.");
                   return;
                 }
-                setIsPlaceMode((v) => !v);
-                setIsDeleteMode(false);
-                setIsRouteMode(false);
-                setRouteStartName(null);
-                setRouteEndName(null);
+                const next = !isPlaceMode;
+                clearAllModes();
+                setIsPlaceMode(next);
               }}
             >
-              <img src="/icon/place_point.png" alt="장소" className={styles.toolBtnImg} />
+              <span className={styles.toolBtnIcon}>
+                <img src="/icon/place_point.png" alt="장소" className={styles.toolBtnImg} />
+              </span>
               <span>장소</span>
             </button>
+            <button
+              className={`${styles.toolBtn} ${isRouteMode ? styles.toolBtnActive : ""}`}
+              onClick={() => {
+                if (!processedImg || !mapMeta) {
+                  modalAlert("맵을 먼저 선택해주세요.");
+                  return;
+                }
+                const next = !isRouteMode;
+                clearAllModes();
+                setIsRouteMode(next);
+              }}
+            >
+              <span className={styles.toolBtnIcon}>
+                <img src="/icon/path_way.png" alt="구간" className={styles.toolBtnImg} style={{ width: 16 }} />
+              </span>
+              <span>구간</span>
+            </button>
+            <button
+              className={`${styles.toolBtn} ${isDangerZoneMode ? styles.toolBtnActive : ""}`}
+              onClick={() => {
+                if (!processedImg || !mapMeta) {
+                  modalAlert("맵을 먼저 선택해주세요.");
+                  return;
+                }
+                const next = !isDangerZoneMode;
+                clearAllModes();
+                setIsDangerZoneMode(next);
+              }}
+              title="위험지역 그리기"
+            >
+              <span className={styles.toolBtnIcon}>
+                <AlertTriangle size={18} />
+              </span>
+              <span>위험지역</span>
+            </button>
+
+            <div className={styles.leftToolsDivider} aria-hidden="true" />
+
+            {/* 파괴적 액션 — 생성 그룹과 분리 */}
             <button
               className={`${styles.toolBtn} ${isDeleteMode ? styles.toolBtnActive : ""}`}
               onClick={() => {
@@ -1984,15 +2683,25 @@ export default function MapManagementPage() {
                   modalAlert("맵을 먼저 선택해주세요.");
                   return;
                 }
-                setIsDeleteMode((v) => !v);
-                setIsPlaceMode(false);
-                setIsRouteMode(false);
-                setRouteStartName(null);
-                setRouteEndName(null);
+                const next = !isDeleteMode;
+                clearAllModes();
+                setIsDeleteMode(next);
               }}
             >
               <span className={styles.toolBtnIcon}>&#10005;</span>
               <span>삭제</span>
+            </button>
+
+            <div className={styles.leftToolsDivider} aria-hidden="true" />
+
+            {/* 뷰 유틸리티 */}
+            <button
+              className={styles.toolBtn}
+              onClick={() => centerMapView()}
+              title="맵 뷰를 중앙에 맞춤"
+            >
+              <span className={styles.toolBtnIcon}>&#9673;</span>
+              <span>초기화</span>
             </button>
           </div>
 
@@ -2009,9 +2718,6 @@ export default function MapManagementPage() {
             </button>
             <button className={styles.zoomBtn} onClick={() => setRotation((r) => r - 90)}>
               <span>&#8634;</span><span className={styles.zoomLabel}>반회전</span>
-            </button>
-            <button className={`${styles.zoomBtn} ${styles.zoomBtnReset}`} onClick={() => centerMapView()}>
-              <span>&#9673;</span><span className={styles.zoomLabel}>초기화</span>
             </button>
           </div>
 
@@ -2172,171 +2878,6 @@ export default function MapManagementPage() {
         states={syncProgressStates}
       />
 
-      {/* ── 장소 인라인 수정 팝오버 ── */}
-      {editingPlace && (() => {
-        const fieldStyle: React.CSSProperties = {
-          width: "100%", height: 28, borderRadius: 5,
-          border: "1px solid var(--border-input)", background: "var(--surface-input)",
-          color: "var(--text-primary)", padding: "0 8px", fontSize: "var(--font-size-sm)", outline: "none",
-        };
-        const labelStyle: React.CSSProperties = {
-          fontSize: "var(--font-size-xs)", color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 2,
-        };
-
-        const handleEditConfirm = () => {
-          const trimmed = editValues.name.trim();
-          if (!trimmed) { setEditingPlace(null); return; }
-
-          const oldName = editingPlace.name;
-          const newX = Number(editValues.x);
-          const newY = Number(editValues.y);
-          const newYaw = Number((Number(editValues.dir) * Math.PI / 180).toFixed(4));
-          const newDesc = editValues.desc.trim();
-          const nameChanged = trimmed !== oldName;
-          const coordChanged = Math.abs(newX - editingPlace.x) > 0.0001 || Math.abs(newY - editingPlace.y) > 0.0001;
-
-          // 이름 변경
-          if (nameChanged) {
-            setMapPlaces((prev) => prev.map((p) =>
-              p.LacationName === oldName ? { ...p, LacationName: trimmed } : p
-            ));
-            setPendingPlaces((prev) => prev.map((p) =>
-              p.LacationName === oldName ? { ...p, LacationName: trimmed } : p
-            ));
-            setMovedPlaces((prev) => {
-              const moved = prev.get(oldName);
-              if (!moved) return prev;
-              const next = new Map(prev);
-              next.delete(oldName);
-              next.set(trimmed, moved);
-              return next;
-            });
-            setPendingRoutes((prev) => prev.map((r) => ({
-              ...r,
-              startName: r.startName === oldName ? trimmed : r.startName,
-              endName: r.endName === oldName ? trimmed : r.endName,
-            })));
-            setDbRoutes((prev) => prev.map((r) => ({
-              ...r,
-              StartPlaceName: r.StartPlaceName === oldName ? trimmed : r.StartPlaceName,
-              EndPlaceName: r.EndPlaceName === oldName ? trimmed : r.EndPlaceName,
-            })));
-          }
-
-          // Yaw, 설명 업데이트
-          const placeName = trimmed;
-          setMapPlaces((prev) => prev.map((p) =>
-            p.LacationName === placeName ? { ...p, Yaw: newYaw, Imformation: newDesc } : p
-          ));
-          setPendingPlaces((prev) => prev.map((p) =>
-            p.LacationName === placeName ? { ...p, Yaw: newYaw, Imformation: newDesc } : p
-          ));
-
-          // 좌표 변경
-          if (coordChanged || nameChanged) {
-            const finalName = trimmed;
-            setMovedPlaces((prev) => {
-              const next = new Map(prev);
-              next.set(finalName, { x: newX, y: newY });
-              return next;
-            });
-          }
-
-          // DB 변경 추적
-          if (editingPlace.key.startsWith("db_")) {
-            const dbId = Number(editingPlace.key.replace("db_", ""));
-            setModifiedDbIds((prev) => new Set(prev).add(dbId));
-            if (!movedPlaces.has(trimmed) && !coordChanged) {
-              setMovedPlaces((prev) => {
-                const next = new Map(prev);
-                next.set(trimmed, { x: editingPlace.x, y: editingPlace.y });
-                return next;
-              });
-            }
-          }
-
-          setEditingPlace(null);
-        };
-
-        // SVG 좌표 → 화면 좌표 변환
-        const svgEl = svgRef.current;
-        if (!svgEl) return null;
-        const rect = svgEl.getBoundingClientRect();
-        const rad = (rotation * Math.PI) / 180;
-        const rx = editingPlace.svgX * Math.cos(rad) - editingPlace.svgY * Math.sin(rad);
-        const ry = editingPlace.svgX * Math.sin(rad) + editingPlace.svgY * Math.cos(rad);
-        const screenX = Math.min(Math.max(rect.left + offset.x + rx * zoom, rect.left + 140), rect.right - 140);
-        const screenY = rect.top + offset.y + ry * zoom;
-
-        return (
-          <div style={{ position: "fixed", inset: 0, zIndex: 85 }} onClick={() => setEditingPlace(null)}>
-            <div
-              style={{
-                position: "absolute", left: screenX, top: screenY - 70,
-                transform: "translateX(-50%)",
-                background: "var(--surface-3)", borderRadius: 10, padding: "14px 16px",
-                boxShadow: "0 6px 24px rgba(0,0,0,0.45)", border: "1px solid rgba(255,255,255,0.1)",
-                minWidth: 260, display: "flex", flexDirection: "column", gap: 8,
-              }}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "TEXTAREA") handleEditConfirm();
-                if (e.key === "Escape") setEditingPlace(null);
-              }}
-            >
-              {/* 장소명 */}
-              <div>
-                <div style={labelStyle}>장소명</div>
-                <input autoFocus value={editValues.name} onChange={(e) => setEditValues((v) => ({ ...v, name: e.target.value }))}
-                  maxLength={50} style={fieldStyle} placeholder="장소명" />
-              </div>
-              {/* X, Y */}
-              <div style={{ display: "flex", gap: 6 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={labelStyle}>X</div>
-                  <input value={editValues.x} onChange={(e) => setEditValues((v) => ({ ...v, x: e.target.value }))}
-                    type="number" step="0.001" style={fieldStyle} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={labelStyle}>Y</div>
-                  <input value={editValues.y} onChange={(e) => setEditValues((v) => ({ ...v, y: e.target.value }))}
-                    type="number" step="0.001" style={fieldStyle} />
-                </div>
-              </div>
-              {/* 각도 */}
-              <div>
-                <div style={labelStyle}>방향 (°)</div>
-                <input value={editValues.dir} onChange={(e) => setEditValues((v) => ({ ...v, dir: e.target.value }))}
-                  type="number" min={0} max={360} style={fieldStyle} placeholder="0~360" />
-              </div>
-              {/* 설명 */}
-              <div>
-                <div style={labelStyle}>설명</div>
-                <textarea value={editValues.desc} onChange={(e) => setEditValues((v) => ({ ...v, desc: e.target.value }))}
-                  maxLength={100} rows={2}
-                  style={{ ...fieldStyle, height: "auto", padding: "6px 8px", resize: "none" }}
-                  placeholder="장소 설명" />
-              </div>
-              {/* 버튼 */}
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 2 }}>
-                <button onClick={() => setEditingPlace(null)}
-                  style={{
-                    height: 30, padding: "0 14px", borderRadius: 6,
-                    border: "1px solid var(--border-input)", background: "var(--surface-5)",
-                    color: "var(--text-primary)", fontSize: "var(--font-size-sm)", cursor: "pointer",
-                  }}>취소</button>
-                <button onClick={handleEditConfirm}
-                  style={{
-                    height: 30, padding: "0 14px", borderRadius: 6,
-                    border: "1px solid var(--color-info-border)", background: "var(--color-info-bg)",
-                    color: "var(--text-primary)", fontSize: "var(--font-size-sm)", cursor: "pointer",
-                  }}>확인</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* ── 장소 삭제 확인 팝업 ── */}
       {deleteConfirmTarget && (
         <div
@@ -2421,35 +2962,63 @@ export default function MapManagementPage() {
         </div>
       )}
 
-      {/* ── 장소 생성 모달 ── */}
-      {showPlaceModal && placeClickCoords && (
+      {/* ── 장소 등록/수정 모달 ── */}
+      {((showPlaceModal && placeClickCoords) || editingPlace) && (
         <MapPlaceCreateModal
-          isOpen={showPlaceModal}
-          mode="create"
-          worldX={placeClickCoords.worldX}
-          worldY={placeClickCoords.worldY}
-          pixelX={placeClickCoords.pixelX}
-          pixelY={placeClickCoords.pixelY}
-          mapId={selectedMap !== "" ? (selectedMap as number) : undefined}
-          defaultRobotName={connectedRobots[0]?.RobotName ?? ""}
+          isOpen={!!((showPlaceModal && placeClickCoords) || editingPlace)}
+          mode={editingPlace ? "edit" : "create"}
+          worldX={editingPlace?.x ?? placeClickCoords?.worldX ?? 0}
+          worldY={editingPlace?.y ?? placeClickCoords?.worldY ?? 0}
+          pixelX={placeClickCoords?.pixelX ?? 0}
+          pixelY={placeClickCoords?.pixelY ?? 0}
+          mapId={
+            editingPlace?.mapId ??
+            (selectedMap !== "" ? (selectedMap as number) : undefined)
+          }
+          defaultRobotName={
+            editingPlace?.robotName ||
+            connectedRobots[0]?.RobotName ||
+            ""
+          }
           defaultFloor={
-            selectedFloor !== ""
+            editingPlace?.floorName ||
+            (selectedFloor !== ""
               ? floors.find((a) => a.id === selectedFloor)?.FloorName ?? ""
-              : ""
+              : "")
           }
           floors={floors}
-          lockCoords={isFromRobotPos}
-          defaultYaw={isFromRobotPos && robotPos ? robotPos.yaw : undefined}
-          defaultCategory={isChargeCreate ? "charge" : undefined}
+          existingPlaceNames={existingPlaceNames}
+          lockCoords={!editingPlace && isFromRobotPos}
+          defaultYaw={!editingPlace && isFromRobotPos && robotPos ? robotPos.yaw : undefined}
+          defaultCategory={!editingPlace && isChargeCreate ? "charge" : undefined}
+          editData={editingPlace ? {
+            key: editingPlace.key,
+            name: editingPlace.name,
+            robotName: editingPlace.robotName,
+            floor: editingPlace.floorName,
+            x: editingPlace.x,
+            y: editingPlace.y,
+            yaw: editingPlace.yaw,
+            desc: editingPlace.desc,
+            mapId: editingPlace.mapId,
+            category: editingPlace.category,
+          } : null}
           onClose={() => {
             setShowPlaceModal(false);
             setPlaceClickCoords(null);
+            setEditingPlace(null);
             setIsFromRobotPos(false);
             setIsChargeCreate(false);
             setChargeDockingPlace(null);
           }}
-          onConfirm={(place) => {
-            // 충전소 생성 시 도킹 포인트도 함께 추가
+          onConfirm={(place, oldName) => {
+            if (editingPlace) {
+              // 수정 플로우
+              handleEditConfirmFromModal(place, oldName, editingPlace);
+              setEditingPlace(null);
+              return;
+            }
+            // 등록 플로우
             if (isChargeCreate && chargeDockingPlace) {
               const dock: PendingPlace = {
                 ...chargeDockingPlace,
@@ -2487,6 +3056,111 @@ export default function MapManagementPage() {
       mode={modal.mode}
       onConfirm={modal.mode === "alert" ? closeModal : handleConfirm}
       onClose={closeModal}
+    />
+    <DangerZoneNameModal
+      isOpen={dzNameModalOpen}
+      vertexCount={dzDraftPoints.length}
+      existingNames={[
+        ...dangerZones.filter((z) => !deletedDangerZoneNames.has(z.ZoneName)).map((z) => z.ZoneName),
+        ...pendingDangerZones.map((z) => z.ZoneName),
+      ]}
+      onCancel={() => setDzNameModalOpen(false)}
+      onConfirm={(name, description) => {
+        if (selectedMap === "") {
+          setDzNameModalOpen(false);
+          return;
+        }
+        const force = dzConflicts !== null;
+        const tempId = `dz_pending_${Date.now()}`;
+        const newZone: PendingDangerZone = {
+          tempId,
+          ZoneName: name,
+          Description: description || null,
+          points: dzDraftPoints.map((p) => ({ x: p.x, y: p.y })),
+          force,
+        };
+
+        setPendingDangerZones((prev) => [...prev, newZone]);
+        setUndoStack((prev) => [...prev, { type: "addDangerZone", tempId }]);
+
+        // pending POI/route 중 cascade 대상은 FE 상태에서 즉시 제거 (DB 는 저장 시에만)
+        if (dzConflicts) {
+          const pendingPoiTempIds = new Set(
+            dzConflicts.poisInside.filter((p) => p.kind === "pending").map((p) => String(p.id)),
+          );
+          const pendingRouteTempIds = new Set(
+            dzConflicts.routesCrossing.filter((r) => r.kind === "pending").map((r) => String(r.id)),
+          );
+          if (pendingPoiTempIds.size > 0) {
+            setPendingPlaces((prev) => prev.filter((p) => !pendingPoiTempIds.has(p.tempId)));
+          }
+          if (pendingRouteTempIds.size > 0) {
+            setPendingRoutes((prev) => prev.filter((r) => !pendingRouteTempIds.has(r.tempId)));
+          }
+        }
+
+        setDzNameModalOpen(false);
+        setDzConflicts(null);
+        resetDangerZoneDraw();
+      }}
+    />
+
+    <DangerZonePoiBlockModal
+      isOpen={dzPoiBlockNames !== null}
+      poiNames={dzPoiBlockNames ?? []}
+      onConfirm={() => {
+        dzUndo();
+        setDzPoiBlockNames(null);
+      }}
+    />
+
+    {dzConflicts && (
+      <DangerZoneConflictModal
+        mode="cascade"
+        isOpen={true}
+        conflicts={dzConflicts}
+        onCancel={() => setDzConflicts(null)}
+        onConfirm={() => {
+          // cascade 모달 닫지 않고 이름 모달을 위에 띄움
+          setDzNameModalOpen(true);
+        }}
+      />
+    )}
+
+    {dzInProgressBlock && (
+      <DangerZoneConflictModal
+        mode="block"
+        isOpen={true}
+        inProgressSchedules={dzInProgressBlock}
+        onCancel={() => setDzInProgressBlock(null)}
+      />
+    )}
+
+    <PoiDisambiguationPopup
+      open={poiDisambig !== null}
+      screenX={poiDisambig?.screenX ?? 0}
+      screenY={poiDisambig?.screenY ?? 0}
+      candidates={(poiDisambig?.candidates ?? []).map((p) => {
+        const dbP = p.dbId != null ? mapPlaces.find((m) => m.id === p.dbId) : null;
+        const pendP = p.tempId ? pendingPlaces.find((m) => m.tempId === p.tempId) : null;
+        const src = dbP ?? pendP;
+        return {
+          key: p.key,
+          name: p.name,
+          category: (src as any)?.Category ?? "waypoint",
+          pending: p.pending,
+        };
+      })}
+      onPick={(key) => {
+        if (!poiDisambig) return;
+        const picked = poiDisambig.candidates.find((p) => p.key === key);
+        const action = poiDisambig.action;
+        setPoiDisambig(null);
+        if (!picked) return;
+        if (action === "click") performClickActionOnPlace(picked);
+        else performEditActionOnPlace(picked);
+      }}
+      onCancel={() => setPoiDisambig(null)}
     />
     </PermissionGuard>
   );

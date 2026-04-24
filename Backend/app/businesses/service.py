@@ -105,15 +105,6 @@ class BusinessService:
         if address and len(address) > 200:
             raise HTTPException(status_code=400, detail="주소는 200자 이내로 입력해주세요")
 
-        # 중복 검증
-        exists = (
-            self.db.query(BusinessInfo)
-            .filter(BusinessInfo.BusinessName == name)
-            .first()
-        )
-        if exists:
-            raise HTTPException(status_code=409, detail="이미 등록된 사업자명입니다")
-
         biz = BusinessInfo(
             BusinessName=name, ZipCode=zip_code, Address=address,
             AddressDetail=address_detail, RepresentName=represent_name,
@@ -153,13 +144,6 @@ class BusinessService:
                     raise HTTPException(status_code=400, detail="사업자명을 입력해주세요")
                 if len(new_val) > 100:
                     raise HTTPException(status_code=400, detail="사업자명은 100자 이내로 입력해주세요")
-                exists = (
-                    self.db.query(BusinessInfo)
-                    .filter(BusinessInfo.BusinessName == new_val, BusinessInfo.id != biz_id)
-                    .first()
-                )
-                if exists:
-                    raise HTTPException(status_code=409, detail="이미 등록된 사업자명입니다")
             old_val = getattr(biz, attr)
             if old_val != new_val:
                 changes.append(f"{label}: {old_val or ''} → {new_val or ''}")

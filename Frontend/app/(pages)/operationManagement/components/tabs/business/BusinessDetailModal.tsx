@@ -6,6 +6,8 @@ import listStyles from '../../OperationManagementTabs.module.css';
 import type { BusinessItem } from './BusinessManageTab';
 import { apiFetch } from "@/app/lib/api";
 import { useAuth } from "@/app/context/AuthContext";
+import { useAlertModal } from "@/app/hooks/useAlertModal";
+import ConfirmOnlyModal from "@/app/components/modal/ConfirmOnlyModal";
 import { Pencil } from "lucide-react";
 
 type BusinessDetailModalProps = {
@@ -26,6 +28,7 @@ export default function BusinessDetailModal({
   const [business, setBusiness] = useState<BusinessItem | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({});
   const [contactError, setContactError] = useState("");
+  const apiAlert = useAlertModal();
 
   // 폼 필드
   const [name, setName] = useState("");
@@ -139,8 +142,20 @@ export default function BusinessDetailModal({
   // ── 연락처 자동 하이픈 ──
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, "").slice(0, 11);
+    // 서울 유선(02): 2자리 지역번호 → 2-3-4 또는 2-4-4
+    if (digits.startsWith("02")) {
+      if (digits.length <= 2) return digits;
+      if (digits.length <= 5) return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+      if (digits.length <= 9) return `${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`;
+      return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
     if (digits.length <= 3) return digits;
     if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    // 10자리 → 3-3-4: 옛날 01X 휴대폰(011/016/017/018/019), 유선 03X~06X
+    if (digits.length === 10 && /^0(1[16789]|[3-6])/.test(digits)) {
+      return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+    // 11자리 → 3-4-4: 010, 070, 11자리 01X/03X~06X
     return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
   };
 
@@ -182,13 +197,24 @@ export default function BusinessDetailModal({
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
-        throw new Error(e.detail ?? "저장 실패");
+        console.error(`[business save] ${res.status}: ${e.detail ?? ""}`);
+        if (res.status === 400) {
+          apiAlert.show(e.detail ?? "입력값을 확인해주세요");
+        } else if (res.status === 401 || res.status === 403) {
+          apiAlert.show("권한이 없습니다");
+        } else if (res.status === 404) {
+          apiAlert.show("대상을 찾을 수 없습니다");
+        } else {
+          apiAlert.show("일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요");
+        }
+        return;
       }
       onSaved();
       if (mode === "create") { onClose(); }
       else { if (businessId) await fetchBusiness(businessId); setIsEditMode(false); }
     } catch (e: any) {
       console.error(e?.message ?? e);
+      apiAlert.show("일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요");
     }
   };
 
@@ -251,6 +277,7 @@ export default function BusinessDetailModal({
   }
 
   return (
+    <>
     <div className={styles.modalOverlay} onClick={onClose}>
       <div className={styles.detailModalContent} onClick={(e) => e.stopPropagation()}>
 
@@ -281,7 +308,7 @@ export default function BusinessDetailModal({
                 <div className={styles.insertItemBox}>
                   <div className={styles.insertItemLabel}>사업장명 <span className={styles.requiredMark}>*</span></div>
                   <div className={styles.insertInputWrap}>
-                    <input type="text" maxLength={20} value={name}
+                    <input type="text" maxLength={20} value={name} spellCheck={false}
                       onChange={e => { setName(e.target.value); if (fieldErrors.name) setFieldErrors(p => ({...p, name: false})); }}
                       placeholder="20글자 이내로 작성해 주세요."
                       className={fieldErrors.name ? styles.inputError : ""} />
@@ -292,7 +319,7 @@ export default function BusinessDetailModal({
                 <div className={styles.insertItemBox}>
                   <div className={styles.insertItemLabel}>대표명 <span className={styles.requiredMark}>*</span></div>
                   <div className={styles.insertInputWrap}>
-                    <input type="text" maxLength={20} value={representName}
+                    <input type="text" maxLength={20} value={representName} spellCheck={false}
                       onChange={e => { setRepresentName(e.target.value); if (fieldErrors.representName) setFieldErrors(p => ({...p, representName: false})); }}
                       placeholder="20글자 이내로 작성해 주세요."
                       className={fieldErrors.representName ? styles.inputError : ""} />
@@ -305,7 +332,7 @@ export default function BusinessDetailModal({
                   <div className={styles.insertInputWrap}>
                     <input type="text" maxLength={13} value={contact}
                       onChange={e => handleContactChange(e.target.value)}
-                      placeholder="예: 010-1234-5678"
+                      placeholder="예: 02-1234-5678 또는 010-1234-5678"
                       className={fieldErrors.contact ? styles.inputError : ""} />
                     {contactError && <div className={styles.errorMessage}>{contactError}</div>}
                   </div>
@@ -327,7 +354,7 @@ export default function BusinessDetailModal({
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         <input type="text" value={zipCode} placeholder="우편번호" readOnly
                           onClick={handleAddressSearch}
-                          style={{ flex: "0 0 100px", cursor: "pointer", height: 36, borderRadius: 6, padding: "5px 10px", border: "1px solid var(--border-default)", background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)" }} />
+                          style={{ flex: "0 0 100px", cursor: "pointer", height: 36, borderRadius: 6, padding: "5px 10px", border: `1px solid ${fieldErrors.address ? "var(--color-error-soft)" : "var(--border-default)"}`, background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)" }} />
                         <button type="button" className={listStyles.placeAddBtn} onClick={handleAddressSearch} style={{ flexShrink: 0 }}>
                           주소 검색
                         </button>
@@ -339,7 +366,7 @@ export default function BusinessDetailModal({
                       <input type="text" maxLength={100} value={addressDetail}
                         placeholder="상세주소 입력 (선택, 100자 이내)"
                         onChange={e => setAddressDetail(e.target.value)}
-                        style={{ width: "100%", height: 36, borderRadius: 6, padding: "5px 10px", border: "1px solid var(--border-default)", background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)" }} />
+                        style={{ width: "100%", height: 36, borderRadius: 6, padding: "5px 10px", border: `1px solid ${fieldErrors.address ? "var(--color-error-soft)" : "var(--border-default)"}`, background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)" }} />
                     </div>
                     {fieldErrors.address && <div className={styles.errorMessage}>주소를 검색해주세요</div>}
                   </div>
@@ -351,7 +378,7 @@ export default function BusinessDetailModal({
                     <textarea maxLength={200} value={description}
                       placeholder="200자 이내로 작성해 주세요."
                       onChange={e => setDescription(e.target.value)}
-                      style={{ width: "100%", minHeight: 60, resize: "vertical", borderRadius: 6, padding: "10px 10px", border: "1px solid var(--border-default)", background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)", fontFamily: "inherit" }} />
+                      style={{ width: "100%", minHeight: 60, resize: "vertical", borderRadius: 6, padding: "10px 10px", background: "var(--surface-input)", color: "var(--text-primary)", fontSize: "var(--font-size-sm)", fontFamily: "inherit" }} />
                   </div>
                 </div>
               </div>
@@ -394,5 +421,9 @@ export default function BusinessDetailModal({
 
       </div>
     </div>
+    {apiAlert.isOpen && (
+      <ConfirmOnlyModal message={apiAlert.message} onConfirm={apiAlert.close} />
+    )}
+    </>
   );
 }
