@@ -14,6 +14,8 @@ from app.database.database import SessionLocal
 from app.database.models import ScheduleInfo, WayInfo, LocationInfo, RobotInfo
 from app.logs.service import log_event
 from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
+from app.common.geometry import segment_intersects_polygon
+from app.database.routes.danger_zone import load_zone_polygons
 
 
 def execute_schedule(schedule: ScheduleInfo) -> bool:
@@ -74,6 +76,29 @@ def execute_schedule(schedule: ScheduleInfo) -> bool:
                 db.commit()
                 return False
             places.append(place)
+
+        # 위험지역 교차 검사: 경로가 속한 맵의 모든 zone 폴리곤과 인접 장소쌍 선분 비교
+        route_map_id = places[0].MapId if places and places[0].MapId is not None else None
+        if route_map_id is not None:
+            polys = load_zone_polygons(db, route_map_id)
+            if polys:
+                for i in range(len(places) - 1):
+                    a = places[i]
+                    b = places[i + 1]
+                    p1 = (a.LocationX, a.LocationY)
+                    p2 = (b.LocationX, b.LocationY)
+                    for zone_name, poly in polys:
+                        if segment_intersects_polygon(p1, p2, poly):
+                            msg = f"스케줄 실행 실패: 경로가 위험지역 '{zone_name}' 통과 ({a.LacationName} → {b.LacationName})"
+                            print(f"[SCHEDULER] {msg}")
+                            log_event(
+                                "error", "nav_error", msg,
+                                error_json=f'{{"zoneName": "{zone_name}", "from": "{a.LacationName}", "to": "{b.LacationName}"}}',
+                                robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id(),
+                            )
+                            sched.TaskStatus = "오류"
+                            db.commit()
+                            return False
 
         # 웨이포인트 목록 생성 (send_move pathmove와 동일 로직)
         from app.navigation.waypoints import build_waypoints_from_places

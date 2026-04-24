@@ -13,7 +13,7 @@
 /* ─── 모달 컨테이너 (단일 컬럼) ─── */
 .modal {
   width: min(440px, 90vw);
-  max-height: min(620px, 85vh);
+  max-height: min(760px, 92vh);
   border-radius: 14px;
   background: var(--surface-3);
   padding: 14px 22px 14px;
@@ -85,6 +85,7 @@
   overflow-y: auto;
   overflow-x: visible;
   padding-right: 4px;
+  padding-bottom: 6px;
 }
 
 /* 스크롤바 */
@@ -251,7 +252,8 @@
 
 /* ─── 좌표 에러 행 ─── */
 .xyErrorRow {
-  margin: -4px 0 6px 0;
+  margin: -4px 0 2px 0;
+  padding-left: 76px; /* label width 68 + directionRow gap 8 — input 시작점과 정렬 */
   display: flex;
   gap: 10px;
 }
@@ -259,27 +261,40 @@
 /* ─── 방향 입력 래퍼 ─── */
 .directionRow {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 8px;
 }
 
+/* 방향: label 을 input 상단에 맞추기 위한 padding */
+.directionRow > .label {
+  padding-top: 4px;
+}
+
+/* 방향: input + 에러를 세로로 쌓는 컬럼 (휠과는 flex 형제) */
+.directionInputColumn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .directionInputWrap {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   flex: 1;
 }
 
-.directionInputWrap .xyInput {
-  flex: 1;
-  min-width: 0;
+.directionInputColumn .xyInput {
+  width: 100%;
   -moz-appearance: textfield;
   appearance: textfield;
 }
 
-.directionInputWrap .xyInput::-webkit-inner-spin-button,
-.directionInputWrap .xyInput::-webkit-outer-spin-button {
+.directionInputColumn .xyInput::-webkit-inner-spin-button,
+.directionInputColumn .xyInput::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
@@ -371,9 +386,14 @@
   width: 100%;
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 6px;
   margin-top: 10px;
   flex-shrink: 0;
+}
+
+/* 공용 btnBgRed 가 margin-right: 10px 를 가지고 있어 gap 과 중복됨 — 이 모달에서만 제거 */
+.footer > button:first-child {
+  margin-right: 0;
 }
 
 .footerBtn {
@@ -456,7 +476,28 @@
   font-size: var(--font-size-xs);
   color: var(--color-error-soft, #ff4b4b);
   margin-top: 2px;
-  line-height: 1.3;
+  line-height: 1.2;
+}
+
+/* 카운터와 에러가 같은 행을 공유 — 장소명 등 카운터 있는 필드 */
+.inputMetaRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  min-height: 13px;
+}
+
+.inputMetaRow .fieldError,
+.inputMetaRow .charCounter {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+.inputMetaRow .fieldError {
+  flex: 1;
+  min-width: 0;
 }
 
 .inputError {
@@ -494,6 +535,17 @@
   display: flex;
   gap: 6px;
   flex: 1;
+}
+
+/* ─── 로봇 fetch 재시도 ─── */
+.retryLink {
+  color: var(--color-info, #00B0EE);
+  cursor: pointer;
+  margin-left: 6px;
+  text-decoration: underline;
+}
+.retryLink:hover {
+  opacity: 0.8;
 }
 
 /* ─── 저장 버튼 스피너 ─── */

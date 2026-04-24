@@ -265,6 +265,9 @@ export default function AlertsConfirmModal({
                                                         </button>
                                                     </div>
                                                 </div>
+                                                {item.type === 'Notice' && item.title && (
+                                                    <div className={styles.aletsTitle}>{item.title}</div>
+                                                )}
                                                 <div className={styles.aletsContent}>{item.content}</div>
                                                 {item.detail && (
                                                     <div className={styles.aletsDetail}>

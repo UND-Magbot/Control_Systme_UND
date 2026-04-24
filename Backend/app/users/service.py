@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -7,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.database.models import UserInfo, UserPermission, MenuInfo
 from app.auth.password import hash_password, validate_password_format
 from app.auth.audit import write_audit
+
+logger = logging.getLogger(__name__)
 
 
 class UserService:
@@ -206,7 +209,18 @@ class UserService:
         # MenuKey → menu_info.id 변환 (그룹 노드 제외)
         all_rows = db.query(MenuInfo.id, MenuInfo.MenuKey, MenuInfo.IsGroup).all()
         key_to_id = {r.MenuKey: r.id for r in all_rows if not r.IsGroup}
+        dropped = [k for k in menu_keys if k not in key_to_id]
+        if dropped:
+            logger.warning(
+                "set_permissions: unknown MenuKey(s) ignored for user_id=%s: %s",
+                user_id, dropped,
+            )
         new_menu_ids = {key_to_id[k] for k in menu_keys if k in key_to_id}
+
+        # 첫 화면 메뉴(dashboard)는 모든 사용자에게 필수 권한
+        dashboard_id = next((r.id for r in all_rows if r.MenuKey == "dashboard"), None)
+        if dashboard_id is not None:
+            new_menu_ids.add(dashboard_id)
 
         # 보안: superadmin은 menu-permissions 강제 포함 (본인 락아웃 방지 + 일관성)
         if user.Permission == 1:
@@ -283,15 +297,19 @@ class UserService:
     @staticmethod
     def update_menu(db: Session, menu_id: int, menu_name: str | None, sort_order: int | None,
                     is_visible: bool | None, admin_id: int, ip_address: str | None = None) -> dict:
-        """MenuName/SortOrder/IsVisible만 수정 가능. MenuKey/ParentId/IsGroup는 무시."""
+        """MenuName/SortOrder/IsVisible만 수정 가능. MenuKey/ParentId/IsGroup는 seed.py에서만 관리."""
         menu = db.query(MenuInfo).filter(MenuInfo.id == menu_id).first()
         if not menu:
             raise HTTPException(status_code=404, detail="메뉴를 찾을 수 없습니다")
 
         changes: dict = {}
-        if menu_name is not None and menu_name != menu.MenuName:
-            changes["menu_name"] = {"from": menu.MenuName, "to": menu_name}
-            menu.MenuName = menu_name
+        if menu_name is not None:
+            trimmed = menu_name.strip()
+            if not trimmed:
+                raise HTTPException(status_code=400, detail="메뉴명은 공백일 수 없습니다")
+            if trimmed != menu.MenuName:
+                changes["menu_name"] = {"from": menu.MenuName, "to": trimmed}
+                menu.MenuName = trimmed
         if sort_order is not None and sort_order != (menu.SortOrder or 0):
             changes["sort_order"] = {"from": menu.SortOrder or 0, "to": sort_order}
             menu.SortOrder = sort_order
@@ -300,6 +318,10 @@ class UserService:
             if new_val != (menu.IsVisible or 0):
                 changes["is_visible"] = {"from": bool(menu.IsVisible), "to": bool(is_visible)}
                 menu.IsVisible = new_val
+                # 부모-자식 가시성 정합성: 켜면 조상까지 승격, 끄면 자손까지 숨김
+                cascade = _cascade_visibility(db, menu, new_val)
+                if cascade:
+                    changes["cascade_shown" if new_val else "cascade_hidden"] = cascade
 
         if changes:
             db.commit()
@@ -318,5 +340,32 @@ class UserService:
             "is_visible": bool(menu.IsVisible),
         }
 
-    # ── 내부 유틸 ──
+
+def _cascade_visibility(db: Session, menu: MenuInfo, new_val: int) -> list[str]:
+    """가시성 정합성 보정.
+    켤 때(1): 숨겨진 조상을 모두 표시로 올림 → 승격된 조상 MenuKey 목록 반환.
+    끌 때(0): 표시 중인 자손을 모두 숨김으로 내림 → 숨겨진 자손 MenuKey 목록 반환.
+    """
+    affected: list[str] = []
+    if new_val == 1:
+        cur = menu
+        while cur.ParentId is not None:
+            parent = db.query(MenuInfo).filter(MenuInfo.id == cur.ParentId).first()
+            if parent is None:
+                break
+            if (parent.IsVisible or 0) == 0:
+                parent.IsVisible = 1
+                affected.append(parent.MenuKey)
+            cur = parent
+    else:
+        stack = [menu.id]
+        while stack:
+            cur_id = stack.pop()
+            children = db.query(MenuInfo).filter(MenuInfo.ParentId == cur_id).all()
+            for c in children:
+                if (c.IsVisible or 0) == 1:
+                    c.IsVisible = 0
+                    affected.append(c.MenuKey)
+                stack.append(c.id)
+    return affected
 

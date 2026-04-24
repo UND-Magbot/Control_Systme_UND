@@ -54,12 +54,6 @@
   height: 40px;
 }
 
-.placeHintInline {
-  font-size: var(--font-size-sm);
-  color: var(--text-tertiary);
-  font-weight: 400;
-}
-
 .robotPlaceBox h2 {
   margin-bottom: 15px;
 }
@@ -126,7 +120,6 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
 }
 
 .placeRight {
@@ -140,7 +133,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 15px;
   height: 40px;
 }
 
@@ -193,49 +186,6 @@
   overflow-y: auto;
 }
 
-.placeTable {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: center;
-}
-
-.placeTable thead tr {
-  background: var(--surface-1);
-}
-
-.placeTable th,
-.placeTable td {
-  padding: 8px 4px;
-  height: 50px;
-}
-
-.placeTable th {
-  position: relative;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.placeTable tbody td {
-  color: var(--text-secondary);
-  font-size: var(--font-size-md);
-}
-
-.placeTable thead th:not(:last-child)::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translateY(-50%);
-  width: 1px;
-  height: 20px;
-  background: var(--border-subtle);
-}
-
-.placeTable tr:nth-child(2n) {
-  background-color: rgba(51, 56, 76, 0.8);
-}
-
 .pathWrap {
   width: 100%;
   flex: 1;
@@ -254,7 +204,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 15px;
 }
 
 .pathRight {
@@ -389,14 +339,18 @@
 
 .pathOrderCell {
   text-align: left;
-  padding: 0 10px !important;
+  padding: 8px 10px !important;
+  vertical-align: middle;
 }
 
 .pathOrderText {
   width: 100%;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
+  line-height: 1.5;
 }
 
 .status tbody tr.rowInactive td {
@@ -425,6 +379,16 @@
   border-top-color: var(--color-accent-light);
   border-radius: 50%;
   animation: pathSpin 0.8s linear infinite;
+}
+
+.status tbody tr.emptyRow {
+  cursor: default;
+  background: transparent;
+}
+
+.status tbody tr.emptyRow:hover td,
+.status tbody tr.emptyRow td {
+  background: transparent;
 }
 
 .pathEmptyWrap {

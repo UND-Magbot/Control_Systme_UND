@@ -22,6 +22,7 @@ export function useSvgPanZoom(_processedImgReady: boolean) {
   const [rotation, setRotation] = useState(0);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [svgEl, setSvgEl] = useState<SVGSVGElement | null>(null);
+  const [viewport, setViewport] = useState({ w: 0, h: 0 });
 
   // Why: 탭 전환으로 <svg>가 재마운트돼도 wheel 리스너가 새 엘리먼트에 다시 붙도록,
   // useRef 대신 state 갱신을 유발하는 콜백 ref로 노출한다. 기존 `.current` 접근도 유지.
@@ -47,6 +48,21 @@ export function useSvgPanZoom(_processedImgReady: boolean) {
     return () => svgEl.removeEventListener("wheel", handler);
   }, [svgEl]);
 
+  // viewport 크기 추적 (격자 오버레이 등 world 좌표 계산용)
+  useEffect(() => {
+    if (!svgEl) return;
+    const update = () => {
+      const r = svgEl.getBoundingClientRect();
+      setViewport((prev) =>
+        prev.w === r.width && prev.h === r.height ? prev : { w: r.width, h: r.height }
+      );
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(svgEl);
+    return () => ro.disconnect();
+  }, [svgEl]);
+
   return {
     zoom,
     setZoom,
@@ -55,5 +71,6 @@ export function useSvgPanZoom(_processedImgReady: boolean) {
     offset,
     setOffset,
     svgRef,
+    viewport,
   };
 }

@@ -1,50 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePageReady } from "@/app/context/PageLoadingContext";
-// import { useAuth } from "@/app/context/AuthContext";  // 메뉴 관리 탭 비노출로 임시 미사용
+// import { useAuth } from "@/app/context/AuthContext";
 import styles from "../Setting.module.css";
 import PermissionsTab from "./tabs/permissions/PermissionsTab";
 import BackupTab from "./tabs/backup/BackupTab";
-// 메뉴 관리 탭 — UI 개선 작업 중 임시 비노출. 노출 재개 시 주석 해제.
 // import MenuManageTab from "./tabs/menus/MenuManageTab";
 
-type SettingTab = "permissions" | /* "menus" | */ "backup";
+// 메뉴 관리 탭 비활성 중: 재활성화 시 "menus" 유니언/탭 항목/분기 주석 해제
+type SettingTab = "permissions" /* | "menus" */ | "backup";
+
+const TABS: { id: SettingTab; label: string }[] = [
+  { id: "permissions", label: "메뉴 권한" },
+  // { id: "menus", label: "메뉴 관리" }, // superadmin 전용 — 재활성화 시 isAdmin 분기 필요
+  { id: "backup", label: "DB 백업" },
+];
 
 export default function SettingsTabs() {
   const setPageReady = usePageReady();
-  // const { isAdmin } = useAuth();
-
-  const tabs = useMemo(
-    () => {
-      const base: { id: SettingTab; label: string }[] = [
-        { id: "permissions", label: "메뉴 권한" },
-      ];
-      // 메뉴 관리 탭 — UI 개선 작업 중 임시 비노출. 재노출 시 아래 및 위의 import 주석 해제.
-      // if (isAdmin) base.push({ id: "menus", label: "메뉴 관리" });
-      base.push({ id: "backup", label: "DB 백업" });
-      return base;
-    },
-    []
-  );
-
+  // const { isAdmin } = useAuth(); // 메뉴 관리 탭 재활성화 시 사용
   const [activeTab, setActiveTab] = useState<SettingTab>("permissions");
 
   useEffect(() => { setPageReady(); }, []);
-
-  // 탭 목록이 바뀌어 현재 탭이 사라졌을 때 첫 탭으로 복귀
-  useEffect(() => {
-    if (!tabs.some((t) => t.id === activeTab)) {
-      setActiveTab(tabs[0].id);
-    }
-  }, [tabs, activeTab]);
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div className="page-header-tab">
         <h1>설정</h1>
         <div className={styles.settingTab}>
-          {tabs.map((tab) => (
+          {TABS.map((tab) => (
             <div
               key={tab.id}
               className={activeTab === tab.id ? styles.active : ""}

@@ -13,7 +13,7 @@ import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import { apiFetch } from "@/app/lib/api";
 import type { FloorMapRow } from "@/app/(pages)/mapManagement/hooks/useFloorMapConfig";
 
-const PLACE_PAGE_SIZE = 6;
+const PLACE_PAGE_SIZE = 10;
 
 interface PlaceListProps {
   robots: RobotRowData[];
@@ -304,7 +304,7 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
 
             <tbody>
               {currentPlaceItems.length === 0 && (
-                <tr>
+                <tr className={styles.emptyRow}>
                   <td colSpan={placeDeleteMode ? 5 : 4} className={styles.emptyState}>등록된 장소가 없습니다.</td>
                 </tr>
               )}
@@ -429,7 +429,6 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
       <div className={styles.placeRight}>
         <div className={styles.robotPlaceBox}>
           <h2>장소 위치</h2>
-          <span className={styles.placeHintInline}>해당 장소의 좌표(X, Y, D) 입력은 "장소 등록" 화면에서 작성하실 수 있습니다.</span>
           {hideActions && (
             <div className={styles.rightHeaderActions}>
               {placeDeleteMode ? (

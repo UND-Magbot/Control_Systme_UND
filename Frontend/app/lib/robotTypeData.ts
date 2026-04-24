@@ -2,9 +2,8 @@ import type { RobotType } from "@/app/types";
 
 export default function getRobotType(): RobotType[] {
   return [
-    { id: 1, label: "QUADRUPED" },
-    { id: 2, label: "COBOT" },
-    { id: 3, label: "AMR" },
-    { id: 4, label: "HUMANOID" },
+    { id: 1, label: "기본 4족" },
+    { id: 2, label: "순찰 4족" },
+    { id: 3, label: "보안 4족" },
   ];
 }

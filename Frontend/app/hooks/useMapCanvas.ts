@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
-import type { MapConfig, NavPath } from "@/app/components/map/types";
+import type { MapConfig, NavPath, NavGuideLine, DangerZone } from "@/app/components/map/types";
 import { worldToPixel, pixelToWorld as pixelToWorldUtil } from "@/app/utils/mapCoordinates";
 import { createZoomHandler, type ZoomAction } from "@/app/utils/zoom";
 import { processMapImage, loadImage } from "@/app/utils/mapImageProcessor";
@@ -67,7 +67,9 @@ export type UseMapCanvasReturn = {
 export function useMapCanvas(
   config: MapConfig,
   navPath?: NavPath | null,
-  interactive = true
+  interactive = true,
+  guideLine: NavGuideLine = null,
+  dangerZones?: DangerZone[],
 ): UseMapCanvasReturn {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -141,6 +143,39 @@ export function useMapCanvas(
     setImageRect(rect);
     ctx.drawImage(processedImg, rect.x, rect.y, rect.w, rect.h);
 
+    // 3. 위험구간 렌더링 (NavPath/POI 보다 아래)
+    if (dangerZones && dangerZones.length > 0) {
+      const renderSize = { w: rect.w, h: rect.h };
+      for (const zone of dangerZones) {
+        if (!zone.points || zone.points.length < 3) continue;
+
+        // 폴리곤 경로 구성
+        const pixelPts = zone.points.map((pt) =>
+          worldToPixel(pt.x, pt.y, config, renderSize)
+        );
+
+        // 채우기
+        ctx.save();
+        ctx.beginPath();
+        for (let i = 0; i < pixelPts.length; i++) {
+          const sx = pixelPts[i].x + rect.x;
+          const sy = pixelPts[i].y + rect.y;
+          if (i === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        }
+        ctx.closePath();
+        ctx.fillStyle = "rgba(255, 80, 80, 0.18)";
+        ctx.fill();
+
+        // 점선 테두리
+        ctx.strokeStyle = "rgba(255, 80, 80, 0.9)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     // 3. NavPath 렌더링
     if (navPath && navPath.segments.length > 0) {
       const renderSize = { w: rect.w, h: rect.h };
@@ -193,7 +228,28 @@ export function useMapCanvas(
         }
       }
     }
-  }, [mapSize, processedImg, navPath, config]);
+
+    // 4. 로봇 → 다음 목적지 POI 가이드 라인
+    if (guideLine) {
+      const renderSize = { w: rect.w, h: rect.h };
+      const from = worldToPixel(guideLine.from.x, guideLine.from.y, config, renderSize);
+      const to = worldToPixel(guideLine.to.x, guideLine.to.y, config, renderSize);
+      const fx = from.x + rect.x;
+      const fy = from.y + rect.y;
+      const tx = to.x + rect.x;
+      const ty = to.y + rect.y;
+
+      ctx.save();
+      ctx.strokeStyle = "rgba(100, 200, 255, 0.6)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 5]);
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }, [mapSize, processedImg, navPath, guideLine, dangerZones, config]);
 
   // contain-fit 기준 좌표 변환
   const worldToPixelScreen = useCallback(

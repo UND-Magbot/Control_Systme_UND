@@ -72,7 +72,7 @@ class PermissionResponse(BaseModel):
 
 class MenuUpdateRequest(BaseModel):
     menu_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    sort_order: Optional[int] = Field(None, ge=0)
+    sort_order: Optional[int] = Field(None, ge=1, le=999)
     is_visible: Optional[bool] = None
 
 

@@ -85,7 +85,26 @@
 
 .toolbarRight {
     display: flex;
+    align-items: center;
     gap: 8px;
+    margin-left: auto;
+}
+
+.toolbarDivider {
+    width: 1px;
+    height: 22px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+
+/* 좌측 세로 툴바용 가로 divider — 생성/파괴/유틸 그룹 분리 */
+.leftToolsDivider {
+    width: 26px;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 4px auto;
+    flex-shrink: 0;
 }
 
 .toolbarBtn {
@@ -100,7 +119,7 @@
     transition: all 0.2s;
 }
 
-.toolbarBtn:hover {
+.toolbarBtn:not(:disabled):hover {
     background: var(--surface-elevated);
     color: var(--text-primary);
     border-color: rgba(255, 255, 255, 0.15);
@@ -156,6 +175,7 @@
     top: 10px;
     left: 68px;
     z-index: 10;
+    height: 52px;
     display: inline-flex;
     align-items: center;
     gap: 0;
@@ -180,7 +200,7 @@
     margin: 3px 1px;
 }
 
-.topToolBtn:hover {
+.topToolBtn:not(:disabled):hover {
     background: var(--surface-elevated);
     color: var(--text-primary);
 }
@@ -191,7 +211,7 @@
     opacity: 0.8;
 }
 
-.topToolBtn:hover .topToolIcon {
+.topToolBtn:not(:disabled):hover .topToolIcon {
     opacity: 1;
 }
 
@@ -210,7 +230,9 @@
 
 .toolBtn {
     width: 42px;
-    padding: 10px 0;
+    height: 52px;
+    padding: 6px 0;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -239,8 +261,15 @@
     box-shadow: 0 2px 8px rgba(0, 176, 238, 0.25);
 }
 
+/* 모든 아이콘을 동일한 22×22 슬롯에 중앙 정렬 → 이미지·유니코드·lucide SVG가 같은 시각 크기로 통일 */
 .toolBtnIcon {
-    font-size: 16px;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    line-height: 1;
 }
 
 .toolBtnImg {
@@ -334,16 +363,16 @@
 
 .zoomBtn {
     width: 42px;
-    padding: 7px 0;
+    padding: 10px 0;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     border: none;
     background: transparent;
     color: var(--text-secondary);
-    font-size: 16px;
+    font-size: 18px;
     cursor: pointer;
     transition: all 0.2s;
     border-radius: 8px;
@@ -361,14 +390,9 @@
 }
 
 .zoomLabel {
-    font-size: 8px;
+    font-size: 9px;
     font-weight: 500;
     letter-spacing: 0.3px;
-    opacity: 0.7;
-}
-
-.zoomBtn:hover .zoomLabel {
-    opacity: 1;
 }
 
 /* 오른쪽 패널 (오버레이, 슬라이드) */
@@ -990,7 +1014,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 14px;
+    padding: 9px 14px;
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 8px;
     background: var(--surface-input);
@@ -1049,6 +1073,150 @@
     padding: 3px 10px;
     border-radius: 20px;
     border: 1px solid rgba(146, 208, 80, 0.2);
+}
+
+/* 오프라인 뱃지 — 채도 낮춘 muted 톤 + dot prefix */
+.robotBadgeOffline {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    font-weight: 500;
+    color: rgba(255, 140, 140, 0.85);
+    background: rgba(255, 107, 107, 0.06);
+    border-color: rgba(255, 107, 107, 0.15);
+}
+.robotBadgeOffline::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 107, 107, 0.6);
+}
+
+/* 상태 확인 중 뱃지 */
+.robotBadgeMuted {
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 오프라인 로봇 행 비활성화 */
+.robotItemDisabled,
+.robotItemDisabled:hover {
+    opacity: 0.45;
+    cursor: default;
+    background: var(--surface-input);
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* "오프라인 숨기기" 토글 */
+.robotFilterToggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    user-select: none;
+}
+.robotFilterToggle img {
+    width: 16px;
+    height: 16px;
+}
+
+/* 로봇 행 커스텀 체크박스 */
+.robotItemCheckbox {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+/* 헤더/툴바용 ghost 아이콘 버튼 (닫기, 새로고침) */
+.robotIconGhostBtn {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
+}
+.robotIconGhostBtn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.06);
+}
+.robotIconGhostBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* border variant — 유틸리티 액션 구분용 (예: 새로고침) */
+.robotIconGhostBtnBordered {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface-button);
+}
+.robotIconGhostBtnBordered:hover {
+    background: var(--surface-elevated);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* 툴바 도움말 (?) 아이콘 hover 툴팁 — CSS only */
+.helpWrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.helpTooltip {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    padding-top: 8px; /* 버튼↔툴팁 hover 연속성을 위한 투명 bridge */
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 100;
+}
+.helpWrap:hover .helpTooltip,
+.helpWrap:focus-within .helpTooltip {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+.helpTooltipBox {
+    background: var(--surface-5);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-width: 240px;
+    max-width: 320px;
+    font-size: var(--font-size-md);
+    line-height: 1.5;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.helpTooltipTitle {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+.helpTooltipList {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+    font-size: var(--font-size-sm);
+}
+.helpTooltipList li {
+    padding: 1px 0;
 }
 
 .robotEmptyMsg {

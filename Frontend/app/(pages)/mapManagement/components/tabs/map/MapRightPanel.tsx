@@ -36,7 +36,7 @@ export default function MapRightPanel({
           disabled={!robotConnected}
           title={robotConnected ? undefined : "로봇 연결 후 사용 가능"}
         >
-          경로 만들기
+          경로 생성
         </button>
 
         <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "0 0 10px" }} />

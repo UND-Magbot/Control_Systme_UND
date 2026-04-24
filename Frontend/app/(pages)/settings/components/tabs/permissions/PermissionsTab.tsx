@@ -113,10 +113,16 @@ function MenuTreeNode({
   // 리프가 잠금 대상이면 해당 노드(리프)는 완전 잠금. 그룹 노드는 자유롭게 토글 가능
   const isLocked = !hasChildren && lockedIds.has(node.id);
 
+  const lockReason = isLocked
+    ? node.id === "dashboard"
+      ? "첫 화면 메뉴 필수"
+      : "본인은 해제 불가"
+    : null;
+
   return (
     <div className={styles.treeNode}>
       <div
-        className={styles.treeRow}
+        className={`${styles.treeRow} ${isLocked ? styles.treeRowLocked : ""}`}
         style={{ paddingLeft: `${depth * 24}px` }}
       >
         {hasChildren ? (
@@ -136,11 +142,20 @@ function MenuTreeNode({
         />
         <span
           className={`${styles.treeLabel} ${hasChildren ? styles.treeLabelParent : ""}`}
-          onClick={() => hasChildren && onToggleExpand(node.id)}
-          title={isLocked ? "본인의 메뉴 권한 접근은 해제할 수 없습니다" : undefined}
+          onClick={() => {
+            if (hasChildren) onToggleExpand(node.id);
+            else if (!isLocked) onToggle(node);
+          }}
+          title={lockReason ?? undefined}
         >
           {node.label}
         </span>
+        {isLocked && (
+          <>
+            <span className={styles.lockIcon} aria-hidden>🔒</span>
+            <span className={styles.lockCaption}>{lockReason}</span>
+          </>
+        )}
       </div>
       {hasChildren && isExpanded &&
         node.children!.map((child) => (
@@ -184,8 +199,7 @@ export default function PermissionsTab() {
         const res = await apiFetch("/api/users/menus");
         if (res.ok) {
           const data = await res.json();
-          // API 응답을 Full Menu 래퍼로 감싸기
-          setMenuTree([{ id: "full-menu", label: "Full Menu", children: data }]);
+          setMenuTree(data);
         }
       } catch { /* ignore */ }
     })();
@@ -243,6 +257,7 @@ export default function PermissionsTab() {
   const [leafStates, setLeafStates] = useState<Record<string, boolean>>({});
   const [originalStates, setOriginalStates] = useState<Record<string, boolean>>({});
   const [confirmMessage, setConfirmMessage] = useState<string | null>(null);
+  const [pendingUser, setPendingUser] = useState<ApiUser | null>(null);
 
   // 선택된 사용자 객체
   const selectedUser = useMemo(() => {
@@ -258,6 +273,12 @@ export default function PermissionsTab() {
         if (res.ok) {
           const data = await res.json();
           const record = permissionsToRecord(data.menu_ids, allLeafIds);
+          // dashboard는 모든 사용자 필수 권한이므로 UI 상 항상 체크 상태 유지
+          if (allLeafIds.includes("dashboard")) record["dashboard"] = true;
+          // 본인 자기 수정 시 menu-permissions 해제 불가 → 항상 체크 표시
+          if (currentUser && user.id === currentUser.id && allLeafIds.includes("menu-permissions")) {
+            record["menu-permissions"] = true;
+          }
           setLeafStates(record);
           setOriginalStates(record);
         }
@@ -266,7 +287,7 @@ export default function PermissionsTab() {
         setOriginalStates({});
       }
     },
-    [allLeafIds]
+    [allLeafIds, currentUser]
   );
 
   // 메뉴 트리 노드 접이식 토글
@@ -279,9 +300,10 @@ export default function PermissionsTab() {
     });
   }, []);
 
-  // 본인의 자신 권한을 수정 중일 때 제거할 수 없는 리프 ID 집합
+  // 해제할 수 없는 리프 ID 집합 (dashboard는 모든 사용자 필수, menu-permissions는 본인 자기 수정 시만)
   const lockedIds = useMemo(() => {
     const set = new Set<string>();
+    set.add("dashboard");
     if (currentUser && selectedUserId === currentUser.id) {
       set.add("menu-permissions");
     }
@@ -317,6 +339,41 @@ export default function PermissionsTab() {
       (key) => leafStates[key] !== originalStates[key]
     );
   }, [leafStates, originalStates]);
+
+  // 사용자 변경 시 dirty 체크 → 저장 안 된 변경사항 있으면 확인 다이얼로그
+  const handleSelectUserAttempt = useCallback(
+    (user: ApiUser) => {
+      if (user.id === selectedUserId) return;
+      if (isDirty) {
+        setPendingUser(user);
+      } else {
+        handleSelectUser(user);
+      }
+    },
+    [isDirty, selectedUserId, handleSelectUser]
+  );
+
+  // 검색 중일 때 매칭 노드의 조상을 자동 펼침
+  useEffect(() => {
+    if (!menuSearch) return;
+    const query = menuSearch.toLowerCase();
+    const ancestorIds = new Set<string>();
+    const walk = (nodes: MenuNode[], path: string[]) => {
+      for (const n of nodes) {
+        if (n.label.toLowerCase().includes(query)) {
+          path.forEach((id) => ancestorIds.add(id));
+        }
+        if (n.children) walk(n.children, [...path, n.id]);
+      }
+    };
+    walk(menuTree, []);
+    if (ancestorIds.size === 0) return;
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      ancestorIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [menuSearch, menuTree]);
 
   // 저장
   const [isSaving, setIsSaving] = useState(false);
@@ -404,7 +461,7 @@ export default function PermissionsTab() {
                   type="checkbox"
                   className={styles.userCheckbox}
                   checked={selectedUserId === user.id}
-                  onChange={() => handleSelectUser(user)}
+                  onChange={() => handleSelectUserAttempt(user)}
                 />
                 <span className={styles.userLabel}>
                   {user.user_name ?? user.login_id}
@@ -500,6 +557,37 @@ export default function PermissionsTab() {
             >
               <span className={modalStyles.btnIcon}><img src="/icon/check.png" alt="확인" /></span>
               <span>확인</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {pendingUser && (
+      <div className={modalStyles.confirmOverlay}>
+        <div className={modalStyles.confirmBox}>
+          <button className={modalStyles.closeBox} onClick={() => setPendingUser(null)}>
+            <img src="/icon/close_btn.png" alt="" />
+          </button>
+          <div className={modalStyles.confirmContents}>
+            {`저장하지 않은 변경사항이 있습니다.\n사용자를 변경하시겠습니까?`}
+          </div>
+          <div className={modalStyles.confirmButtons}>
+            <button
+              className={`${modalStyles.btnItemCommon} ${modalStyles.btnBgRed}`}
+              onClick={() => setPendingUser(null)}
+            >
+              <span>취소</span>
+            </button>
+            <button
+              className={`${modalStyles.btnItemCommon} ${modalStyles.btnBgBlue}`}
+              onClick={() => {
+                const u = pendingUser;
+                setPendingUser(null);
+                handleSelectUser(u);
+              }}
+            >
+              <span>이동</span>
             </button>
           </div>
         </div>

@@ -4,12 +4,13 @@ import styles from "./MapSection.module.css";
 import { ZoomControl } from "@/app/components/button";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Floor, RobotRowData, Video, Camera } from "@/app/types";
-import type { MapConfig, POIItem, RobotOnMap, NavPath, NavPathSegment, MapView } from "@/app/components/map/types";
+import type { MapConfig, POIItem, RobotOnMap, MapView, DangerZone } from "@/app/components/map/types";
 import type { CanvasMapHandle } from "@/app/components/map/CanvasMap";
 import CanvasMap from "@/app/components/map/CanvasMap";
 import { apiFetch } from "@/app/lib/api";
 import { getApiBase } from "@/app/config";
 import { useModalAlert } from "@/app/hooks/useModalAlert";
+import { useActiveRouteForRobot } from "@/app/hooks/useActiveRouteForRobot";
 import AlertModal from "@/app/components/modal/AlertModal";
 import dynamic from "next/dynamic";
 
@@ -19,9 +20,9 @@ const StopAllConfirmModal = dynamic(() => import("@/app/components/modal/Battery
 const _cache: {
   mapConfigs: Record<number, { mapId: number; config: MapConfig } | null>;  // floorId → config
   places: POIItem[] | null;
-  navPaths: Record<number, NavPath | null>;  // mapId → navPath
+  dangerZones: Record<number, DangerZone[]>;  // mapId → zones
   loaded: boolean;
-} = { mapConfigs: {}, places: null, navPaths: {}, loaded: false };
+} = { mapConfigs: {}, places: null, dangerZones: {}, loaded: false };
 
 type MapSectionProps = {
   floors: Floor[];
@@ -52,7 +53,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   const [selectedFloor, setSelectedFloor] = useState<Floor | null>(initial.floor);
   const [places, setPlaces] = useState<POIItem[]>(_cache.places ?? []);
   const [activeMapId, setActiveMapId] = useState<number | null>(null);
-  const [navPath, setNavPath] = useState<NavPath | null>(null);
+  const [dangerZones, setDangerZones] = useState<DangerZone[]>([]);
   const [mapView, setMapView] = useState<MapView>("2d");
 
   // 캐시에서 즉시 mapConfig 복원
@@ -224,52 +225,51 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
       .catch(() => setPlaces([]));
   }, []);
 
-  // 구간(경로) 데이터 (캐시 있으면 스킵)
+  // 위험구간 데이터 — 맵 단위로 캐시
   useEffect(() => {
-    if (!activeMapId) { setNavPath(null); return; }
-
-    const cached = _cache.navPaths[activeMapId];
+    if (!activeMapId) { setDangerZones([]); return; }
+    const cached = _cache.dangerZones[activeMapId];
     if (cached !== undefined) {
-      setNavPath(cached);
+      setDangerZones(cached);
       return;
     }
-
-    // 캐시 미스 → 이전 층의 navPath가 새 씬에 그려지지 않도록 즉시 초기화
-    setNavPath(null);
-
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await apiFetch(`/DB/routes?map_id=${activeMapId}`);
-        const routes: { StartPlaceName: string; EndPlaceName: string; Direction: string }[] = await res.json();
-        if (cancelled || !routes.length) {
-          _cache.navPaths[activeMapId] = null;
-          setNavPath(null);
-          return;
-        }
-
-        const segments: NavPathSegment[] = routes
-          .map((r): NavPathSegment | null => {
-            const from = places.find((p) => p.name === r.StartPlaceName);
-            const to = places.find((p) => p.name === r.EndPlaceName);
-            if (!from || !to) return null;
-            return {
-              from: { x: from.x, y: from.y, name: from.name },
-              to: { x: to.x, y: to.y, name: to.name },
-              direction: r.Direction === "bidirectional" ? "two-way" : "one-way",
-            };
-          })
-          .filter((s): s is NavPathSegment => s !== null);
-
-        const path = segments.length > 0 ? { segments } : null;
-        _cache.navPaths[activeMapId] = path;
-        if (!cancelled) setNavPath(path);
-      } catch {
-        if (!cancelled) setNavPath(null);
-      }
-    })();
+    apiFetch(`/DB/danger-zones?map_id=${activeMapId}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: { ZoneName: string; Description?: string | null; points: { x: number; y: number }[] }[]) => {
+        if (cancelled) return;
+        const zones: DangerZone[] = data.map((z) => ({
+          name: z.ZoneName,
+          description: z.Description ?? null,
+          points: z.points ?? [],
+        }));
+        _cache.dangerZones[activeMapId] = zones;
+        setDangerZones(zones);
+      })
+      .catch(() => {
+        if (!cancelled) setDangerZones([]);
+      });
     return () => { cancelled = true; };
-  }, [activeMapId, places]);
+  }, [activeMapId]);
+
+  // 선택된 로봇의 실시간 작업 경로 (정적 /DB/routes 폴링 대체)
+  const selectedRobotForRoute = useMemo(
+    () => robots.find((r) => r.id === selectedRobotId) ?? null,
+    [robots, selectedRobotId]
+  );
+  const robotPositionForRoute = useMemo(
+    () =>
+      selectedRobotForRoute?.position?.timestamp
+        ? { x: selectedRobotForRoute.position.x, y: selectedRobotForRoute.position.y }
+        : null,
+    [selectedRobotForRoute?.position?.x, selectedRobotForRoute?.position?.y, selectedRobotForRoute?.position?.timestamp]
+  );
+  const { navPath, guideLine, activeFloorId } = useActiveRouteForRobot({
+    robotName: selectedRobotName ?? selectedRobotForRoute?.no ?? null,
+    robotPosition: robotPositionForRoute,
+    selectedFloorId: selectedFloor?.id ?? null,
+    isNavigating: selectedRobotForRoute?.isNavigating ?? false,
+  });
 
   // 선택된 층의 장소만 필터 — useMemo로 레퍼런스 안정화
   // (매 렌더마다 새 배열이 만들어지면 CanvasMap/Map3DCanvas의 POI effect가
@@ -351,14 +351,17 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           <div className={styles.floorList}>
             {[...floors].reverse().map((floor) => {
               const originalIdx = floors.indexOf(floor);
+              const isActiveFloor = originalIdx === floorActiveIndex;
+              const hasActiveTask = activeFloorId === floor.id && !isActiveFloor;
               return (
                 <button
                   key={floor.id}
-                  className={`${styles.floorBtn} ${originalIdx === floorActiveIndex ? styles.floorBtnActive : ""}`}
+                  className={`${styles.floorBtn} ${isActiveFloor ? styles.floorBtnActive : ""}`}
                   onClick={() => handleFloorSelect(originalIdx, floor)}
                 >
                   {floor.label}
-                  {originalIdx === floorActiveIndex && <span className={styles.floorIndicator} />}
+                  {isActiveFloor && <span className={styles.floorIndicator} />}
+                  {hasActiveTask && <span className={styles.floorActiveTaskBadge} />}
                 </button>
               );
             })}
@@ -376,6 +379,9 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
             robots={floorRobots}
             pois={floorPois}
             navPath={navPath}
+            guideLine={guideLine}
+            dangerZones={dangerZones}
+            showDangerZones
             showPois
             showPath
             showLabels

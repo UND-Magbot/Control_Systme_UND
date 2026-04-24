@@ -63,11 +63,11 @@ export default function NoticeList({ canLinkNotice = true }: NoticeListProps) {
                   className={itemClasses}
                   onClick={canLinkNotice ? () => router.push(`/alerts?tab=notice&id=${notice.id}`) : undefined}
                   style={canLinkNotice ? undefined : { cursor: "default" }}
-                  title={notice.content}
+                  title={notice.title ?? notice.content}
                 >
                   <div>
                     {isUnread && <span className={styles.newBadge}>NEW</span>}
-                    <p className={styles.content}>{notice.content}</p>
+                    <p className={styles.content}>{notice.title ?? notice.content}</p>
                   </div>
                   <span className={styles.time}>{formatDate(notice.date)}</span>
                 </div>

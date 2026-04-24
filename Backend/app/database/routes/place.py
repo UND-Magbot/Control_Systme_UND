@@ -1,4 +1,5 @@
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -8,6 +9,24 @@ from app.auth.audit import write_audit, get_client_ip
 
 from app.database.routes import database, get_db
 from app.database.routes._helpers import get_floor_name
+
+
+def _place_name_conflict(db: Session, map_id: int | None, name: str, category: str | None, exclude_id: int | None = None):
+    """같은 MapId 내에 동일 장소명이 이미 존재하는지 검사 (대소문자·공백 무시, 위험지역 제외)."""
+    if map_id is None or category == "danger":
+        return False
+    trimmed = (name or "").strip().lower()
+    if not trimmed:
+        return False
+    q = (
+        db.query(LocationInfo)
+        .filter(LocationInfo.MapId == map_id)
+        .filter((LocationInfo.Category != "danger") | (LocationInfo.Category.is_(None)))
+        .filter(func.lower(func.trim(LocationInfo.LacationName)) == trimmed)
+    )
+    if exclude_id is not None:
+        q = q.filter(LocationInfo.id != exclude_id)
+    return db.query(q.exists()).scalar()
 
 
 class RobotPlaceInsertReq(BaseModel):
@@ -29,6 +48,9 @@ def insert_robot_place(
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit")),
 ):
+    if _place_name_conflict(db, req.MapId, req.LacationName, req.Category):
+        raise HTTPException(status_code=409, detail="같은 맵에 동일한 장소명이 이미 존재합니다.")
+
     place = LocationInfo(
         UserId=current_user.id,
         RobotName=req.RobotName,
@@ -57,10 +79,14 @@ def insert_robot_place(
 @database.get("/places")
 def get_places(
     map_id: int | None = None,
+    include_danger: bool = False,
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(get_current_user),  # 맵 뷰는 어느 탭에서든 표시 가능
 ):
     q = db.query(LocationInfo)
+    # 위험지역 꼭짓점은 장소 목록에서 숨김 (include_danger=true로 명시할 때만 포함)
+    if not include_danger:
+        q = q.filter((LocationInfo.Category != "danger") | (LocationInfo.Category.is_(None)))
     if map_id is not None:
         q = q.filter(LocationInfo.MapId == map_id)
     elif not is_admin(current_user) and current_user.BusinessId:
@@ -99,6 +125,9 @@ def update_place(place_id: int, req: RobotPlaceInsertReq, request: Request, db: 
 
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
+
+    if _place_name_conflict(db, req.MapId, req.LacationName, req.Category, exclude_id=place_id):
+        raise HTTPException(status_code=409, detail="같은 맵에 동일한 장소명이 이미 존재합니다.")
 
     changes = []
     field_map = {

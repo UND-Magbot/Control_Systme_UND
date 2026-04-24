@@ -23,7 +23,6 @@ const CATEGORY_OPTIONS: { value: POICategory; label: string }[] = [
   { value: "charge", label: "충전소" },
   { value: "standby", label: "대기소" },
   { value: "waypoint", label: "경유지" },
-  { value: "danger", label: "위험구역" },
 ];
 
 export type PlaceRowData = {

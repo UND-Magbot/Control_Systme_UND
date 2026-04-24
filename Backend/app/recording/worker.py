@@ -42,7 +42,7 @@ class CameraRecordingWorker:
         self.file_prefix: Optional[str] = None   # 이 세션의 파일명 접두사
 
     def start(self):
-        os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.output_dir, mode=0o775, exist_ok=True)
         self._thread = threading.Thread(target=self._run, daemon=True, name=f"rec-{self.robot_id}-{self.module_id}")
         self._thread.start()
 
@@ -223,13 +223,23 @@ class CameraRecordingWorker:
                         os.remove(filepath)
                     except Exception:
                         pass
+                else:
+                    # cv2 경로는 _finalize_segments에서 건너뛰므로 여기서 직접 완료 콜백 발행
+                    video_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
+                    if video_size > 0:
+                        thumb = self._generate_thumbnail_for_file(filepath)
+                        if self.on_segment_complete:
+                            self.on_segment_complete(
+                                filepath=filepath,
+                                thumbnail_path=thumb,
+                                video_size=video_size,
+                            )
 
                 # 프레임 읽기 실패 (스트림 끊김)
                 if not self._stop_event.is_set() and not ret:
                     break
 
                 seg_idx += 1
-                self._generate_thumbnail_for_file(filepath)
 
             cap.release()
 

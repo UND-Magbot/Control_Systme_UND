@@ -1,19 +1,10 @@
 "use client";
 
-import { MapPin, BatteryCharging, Home, Navigation, AlertTriangle } from "lucide-react";
-import type { POIItem, POICategory } from "./types";
+import { useState } from "react";
+import type { POIItem } from "./types";
 import styles from "./POIOverlay.module.css";
-
-/* ── 카테고리별 설정 ── */
-const CATEGORY_CONFIG: Record<POICategory, { icon: typeof MapPin; color: string }> = {
-  work:    { icon: MapPin,           color: "#ff6b6b" },
-  charge:  { icon: BatteryCharging,  color: "#4caf50" },
-  standby: { icon: Home,             color: "#9c7cfa" },
-  waypoint:{ icon: Navigation,       color: "#64b4ff" },
-  danger:  { icon: AlertTriangle,    color: "#ff9800" },
-};
-
-const DEFAULT_CONFIG = CATEGORY_CONFIG.work;
+import { getCategoryMeta } from "./categoryMeta";
+import PoiDisambiguationPopup, { type DisambiguationCandidate } from "./PoiDisambiguationPopup";
 
 type POIOverlayProps = {
   items: { poi: POIItem; screenX: number; screenY: number }[];
@@ -22,6 +13,10 @@ type POIOverlayProps = {
   onItemClick?: (poi: POIItem) => void;
   scale?: number;
 };
+
+// POI 아이콘의 가시 영역(~12px)에 맞춘 겹침 판정 반경.
+// 아이콘 렌더 크기(20px)의 투명 패딩을 제외한 실제 점 크기 기준.
+const POI_HIT_PX = 12;
 
 export default function POIOverlay({
   items,
@@ -32,11 +27,57 @@ export default function POIOverlay({
 }: POIOverlayProps) {
   const inverseScale = 1 / scale;
 
+  // 겹친 POI 선택 팝업 상태
+  const [pendingPick, setPendingPick] = useState<{
+    screenX: number;
+    screenY: number;
+    candidates: DisambiguationCandidate[];
+  } | null>(null);
+
+  const handleItemClick = (
+    clicked: { poi: POIItem; screenX: number; screenY: number },
+    e: React.MouseEvent,
+  ) => {
+    if (!onItemClick) return;
+
+    const overlapping = items.filter(
+      (it) =>
+        Math.hypot(it.screenX - clicked.screenX, it.screenY - clicked.screenY) <=
+        POI_HIT_PX,
+    );
+
+    if (overlapping.length <= 1) {
+      onItemClick(clicked.poi);
+      return;
+    }
+
+    setPendingPick({
+      screenX: e.clientX,
+      screenY: e.clientY,
+      candidates: overlapping.map(({ poi }) => ({
+        key: String(poi.id),
+        name: poi.name,
+        category: poi.category,
+      })),
+    });
+  };
+
+  const handlePick = (key: string) => {
+    if (!pendingPick || !onItemClick) {
+      setPendingPick(null);
+      return;
+    }
+    const picked = items.find(({ poi }) => String(poi.id) === key);
+    setPendingPick(null);
+    if (picked) onItemClick(picked.poi);
+  };
+
   return (
     <>
-      {items.map(({ poi, screenX, screenY }) => {
+      {items.map((item) => {
+        const { poi, screenX, screenY } = item;
         const isSelected = poi.id === selectedId;
-        const cfg = poi.category ? CATEGORY_CONFIG[poi.category] : DEFAULT_CONFIG;
+        const cfg = getCategoryMeta(poi.category);
         const Icon = cfg.icon;
 
         return (
@@ -49,7 +90,7 @@ export default function POIOverlay({
               transform: `translate(-50%, -50%) scale(${inverseScale})`,
               cursor: onItemClick ? "pointer" : "default",
             }}
-            onClick={() => onItemClick?.(poi)}
+            onClick={(e) => handleItemClick(item, e)}
           >
             {/* 마커 */}
             <Icon
@@ -72,6 +113,15 @@ export default function POIOverlay({
           </div>
         );
       })}
+
+      <PoiDisambiguationPopup
+        open={pendingPick !== null}
+        screenX={pendingPick?.screenX ?? 0}
+        screenY={pendingPick?.screenY ?? 0}
+        candidates={pendingPick?.candidates ?? []}
+        onPick={handlePick}
+        onCancel={() => setPendingPick(null)}
+      />
     </>
   );
 }

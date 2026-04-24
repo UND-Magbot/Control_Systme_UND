@@ -184,7 +184,7 @@ export function buildTaskCountDonut({ robots }: DonutCommonProps): DonutCommonIn
 
 const TASK_LABEL_KOR: Record<string, string> = {
   completed: "완료",
-  failed: "오류",
+  failed: "실패",
   cancelled: "취소",
 };
 
@@ -209,21 +209,17 @@ const TIME_LABEL_KOR: Record<string, string> = {
   standby: "대기시간",
 };
 
-const ROBOT_TYPE_KOR: Record<string, string> = {
-  QUADRUPED: "4족 보행",
-  COBOT: "협동 로봇",
-  AMR: "자율주행",
-  HUMANOID: "휴머노이드",
-};
+const ROBOT_TYPES_ALL = ["기본 4족", "순찰 4족", "보안 4족"];
 
 export function buildRobotTypeDonutFromApi(types: RobotTypeCount[]): DonutCommonInfo[] {
   if (!types || types.length === 0) {
-    return [
-      { id: 1, label: "QUADRUPED", value: 0, percent: 0, displayValue: "0" },
-      { id: 2, label: "COBOT",     value: 0, percent: 0, displayValue: "0" },
-      { id: 3, label: "AMR",       value: 0, percent: 0, displayValue: "0" },
-      { id: 4, label: "HUMANOID",  value: 0, percent: 0, displayValue: "0" },
-    ];
+    return ROBOT_TYPES_ALL.map((t, idx) => ({
+      id: idx + 1,
+      label: t,
+      value: 0,
+      percent: 0,
+      displayValue: "0",
+    }));
   }
 
   const values = types.map(t => t.count);
@@ -239,18 +235,17 @@ export function buildRobotTypeDonutFromApi(types: RobotTypeCount[]): DonutCommon
 }
 
 export function buildRobotTypeBarFromApi(types: RobotTypeCount[]): BarChartItem[] {
-  const allTypes = ["QUADRUPED", "COBOT", "AMR", "HUMANOID"];
   const typeMap: Record<string, number> = {};
-  allTypes.forEach(t => { typeMap[t] = 0; });
+  ROBOT_TYPES_ALL.forEach(t => { typeMap[t] = 0; });
   (types ?? []).forEach(t => { typeMap[t.type] = t.count; });
 
-  const entries = allTypes.map(t => ({ key: t, value: typeMap[t] }));
+  const entries = ROBOT_TYPES_ALL.map(t => ({ key: t, value: typeMap[t] }));
   const values = entries.map(e => e.value);
   const percents = makeFixedPercents(values);
 
   return entries
     .map((e, idx) => ({
-      label: ROBOT_TYPE_KOR[e.key] ?? e.key,
+      label: e.key,
       value: e.value,
       percent: percents[idx],
     }))

@@ -13,7 +13,7 @@ export type RobotPosition = {
   yaw: number;
 };
 
-export type POICategory = "work" | "charge" | "standby" | "waypoint" | "danger";
+export type POICategory = "work" | "charge" | "standby" | "waypoint";
 
 export type POIItem = {
   id: number;
@@ -32,10 +32,22 @@ export type NavPathSegment = {
   to: { x: number; y: number; name?: string };
   direction: "one-way" | "two-way";
   waypoints?: { x: number; y: number }[];
+  floorId?: number;
 };
 
 export type NavPath = {
   segments: NavPathSegment[];
+};
+
+export type NavGuideLine = {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+} | null;
+
+export type DangerZone = {
+  name: string;
+  description?: string | null;
+  points: { x: number; y: number }[];
 };
 
 export type MapView = "2d" | "3d";
@@ -55,6 +67,9 @@ export type CanvasMapProps = {
   robots?: RobotOnMap[];
   pois?: POIItem[];
   navPath?: NavPath | null;
+  guideLine?: NavGuideLine;
+  dangerZones?: DangerZone[];
+  showDangerZones?: boolean;
   selectedPoiId?: number | null;
   floor?: string;
   showRobot?: boolean;

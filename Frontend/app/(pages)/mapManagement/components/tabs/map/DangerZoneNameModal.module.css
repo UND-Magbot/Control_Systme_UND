@@ -1,0 +1,78 @@
+.input,
+.textarea {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-input);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.input {
+  font-size: var(--font-size-md);
+}
+
+.textarea {
+  font-size: var(--font-size-sm);
+  height: 64px;
+  resize: none;
+  overflow-y: auto;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: var(--color-info);
+}
+
+/* 커스텀 스크롤바 (고정 height 초과 시) */
+.textarea::-webkit-scrollbar {
+  width: 6px;
+}
+
+.textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.textarea::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 버튼 그룹 — 간격/정렬 개선 */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.footer > button {
+  width: 120px;
+  height: 40px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+
+.footer > button:active {
+  transform: translateY(1px);
+}
+
+/* 취소 버튼 — 중립 톤 + 명확한 테두리 */
+.cancelBtn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--text-primary);
+}
