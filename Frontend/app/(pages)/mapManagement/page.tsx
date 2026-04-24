@@ -36,6 +36,8 @@ import { useRouteCreation } from "./hooks/useRouteCreation";
 import { processMapImage } from "./utils/processMapImage";
 import RobotConnectModal from "./components/tabs/map/RobotConnectModal";
 import MapSyncModal from "./components/tabs/map/MapSyncModal";
+import MapSyncProgressModal from "./components/tabs/map/MapSyncProgressModal";
+import type { RobotSyncState } from "./components/tabs/map/MapSyncProgressModal";
 import MappingStartModal from "./components/tabs/map/MappingStartModal";
 import MappingProgressModal from "./components/tabs/map/MappingProgressModal";
 import MappingSuccessModal from "./components/tabs/map/MappingSuccessModal";
@@ -136,6 +138,8 @@ export default function MapManagementPage() {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncRobots, setSyncRobots] = useState<Robot[]>([]);
   const [selectedSyncIds, setSelectedSyncIds] = useState<number[]>([]);
+  const [syncProgressStates, setSyncProgressStates] = useState<RobotSyncState[]>([]);
+  const [showSyncProgressModal, setShowSyncProgressModal] = useState(false);
   const [robotPos, setRobotPos] = useState<{ x: number; y: number; yaw: number } | null>(null);
 
   // ── 맵 메타 (origin, resolution) — 훅으로 분리 ──
@@ -1169,24 +1173,101 @@ export default function MapManagementPage() {
     modalConfirm(`로봇 [${names}]에 맵 '${mapData.MapName}'을(를) 동기화하시겠습니까?`, async () => {
       setShowSyncModal(false);
 
+      const initial: RobotSyncState[] = selected.map((robot) => ({
+        robot,
+        status: "waiting",
+        step: 0,
+        msg: "",
+        retryCount: 0,
+      }));
+      setSyncProgressStates(initial);
+      setShowSyncProgressModal(true);
+
+      const updateRobot = (robotId: number, patch: Partial<RobotSyncState>) => {
+        setSyncProgressStates((prev) =>
+          prev.map((s) => (s.robot.id === robotId ? { ...s, ...patch } : s))
+        );
+      };
+
       const results: string[] = [];
       for (const robot of selected) {
+        updateRobot(robot.id, { status: "in-progress", step: 1, msg: "맵 파일 전송 중", retryCount: 0 });
+
         try {
-          const res = await apiFetch(`/map/maps/sync`, {
+          const res = await fetch(`${API_BASE}/map/maps/sync`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+            },
             body: JSON.stringify({ map_id: mapData.id, robot_id: robot.id }),
           });
-          if (!res.ok) {
-            const err = await res.json();
-            results.push(`${robot.RobotName}: 실패 - ${err.detail || "오류"}`);
+
+          if (!res.ok || !res.body) {
+            let detail = `HTTP ${res.status}`;
+            try {
+              const err = await res.json();
+              detail = err.detail || detail;
+            } catch {}
+            updateRobot(robot.id, { status: "failed", errorMsg: detail });
+            results.push(`${robot.RobotName} — 동기화 실패 (${detail})`);
+            continue;
+          }
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+          let buffer = "";
+          let finalMsg = "";
+          let finalStatus: "ok" | "error" | null = null;
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            let nlIdx = buffer.indexOf("\n");
+            while (nlIdx >= 0) {
+              const line = buffer.slice(0, nlIdx).trim();
+              buffer = buffer.slice(nlIdx + 1);
+              if (line) {
+                try {
+                  const evt = JSON.parse(line);
+                  if (evt.event === "retry") {
+                    updateRobot(robot.id, {
+                      retryCount: (evt.attempt ?? 1) - 1,
+                      step: 1,
+                      msg: "맵 파일 전송 중",
+                    });
+                  } else if (evt.event === "step") {
+                    updateRobot(robot.id, { step: evt.step, msg: evt.msg });
+                  } else if (evt.event === "done") {
+                    finalStatus = evt.status;
+                    finalMsg = evt.msg || "";
+                  }
+                } catch (e) {
+                  console.warn("[sync] 이벤트 파싱 실패:", line, e);
+                }
+              }
+              nlIdx = buffer.indexOf("\n");
+            }
+          }
+
+          if (finalStatus === "ok") {
+            updateRobot(robot.id, { status: "success" });
+            results.push(`${robot.RobotName} — 동기화 완료`);
           } else {
-            results.push(`${robot.RobotName}: 성공`);
+            const reason = finalMsg || "알 수 없는 오류";
+            updateRobot(robot.id, { status: "failed", errorMsg: reason });
+            results.push(`${robot.RobotName} — 동기화 실패 (${reason})`);
           }
         } catch (e: any) {
-          results.push(`${robot.RobotName}: 실패 - ${e.message}`);
+          updateRobot(robot.id, { status: "failed", errorMsg: e.message });
+          results.push(`${robot.RobotName} — 동기화 실패 (${e.message})`);
         }
       }
+
+      setShowSyncProgressModal(false);
       modalAlert(results.join("\n"));
     });
   };
@@ -2055,6 +2136,10 @@ export default function MapManagementPage() {
         setSelectedSyncIds={setSelectedSyncIds}
         onClose={() => setShowSyncModal(false)}
         onConfirm={handleSyncConfirm}
+      />
+      <MapSyncProgressModal
+        isOpen={showSyncProgressModal}
+        states={syncProgressStates}
       />
 
       {/* ── 장소 인라인 수정 팝오버 ── */}

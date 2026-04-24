@@ -130,6 +130,7 @@ export default function ViewportArea({
     width: '100%',
     height: '100%',
     objectFit: 'cover',
+    objectPosition: 'top',   // 4:3 → 16:9 크롭 시 상단(OSD) 유지
     position: 'absolute',
     top: 0,
     left: 0,
