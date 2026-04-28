@@ -53,8 +53,8 @@ npm run start      # 프로덕션
 ### Backend (개별)
 ```bash
 cd Backend
-python -m venv .venv
-.venv\Scripts\activate          # Windows
+python -m venv noah              # 가상환경 이름은 noah (.gitignore 처리됨)
+noah\Scripts\activate            # Windows
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
