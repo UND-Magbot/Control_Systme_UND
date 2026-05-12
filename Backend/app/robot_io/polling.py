@@ -173,9 +173,11 @@ def status_thread():
 ARRIVAL_COOLDOWN = 1.5
 NAV_POLL_INTERVAL = 1.0
 NAV_RETRY_TIMEOUT = 30.0   # 전송 후 N초 내 이동 시작 안 하면 재전송
-NAV_MAX_RETRIES = 3        # 최대 재전송 횟수
+NAV_HANG_TIMEOUT = 60.0    # 이동 시작 후 N초 내 도착 못 하면 hang 판정 → 현재 WP 재전송
+NAV_MAX_RETRIES = 3        # 최대 재전송 횟수 (ever_moved=False / 255 일시정지 / hang 합산)
 ARRIVAL_CONFIRM_COUNT = 3  # status==0 연속 N회 확인 후 도착 판정 (오판 방지)
 NEAR_SKIP_DISTANCE = 0.5   # 목표 웨이포인트까지 이 거리(m) 이내면 이미 도착으로 간주
+RECEIVER_UNRESPONSIVE_THRESHOLD = 30  # NAV_STATUS 연속 N회 타임아웃 시 receiver 응답 불능 로그(1회)
 
 
 def nav_thread():
@@ -361,6 +363,34 @@ def nav_thread():
                     except Exception as e:
                         print(f"[ERR] 재전송 실패: {e}")
 
+                # Hang 감지: 이동은 시작했으나 도착 못한 채 일정 시간 경과
+                # (status=3 무한 지속 등 NOS 측 정체 상태 복구)
+                if (is_nav_active() and ever_moved and not arrived
+                        and sent_time > 0
+                        and not _is_charging
+                        and cooldown_ok
+                        and (time.time() - sent_time) > NAV_HANG_TIMEOUT):
+                    from app.navigation.send_move import current_wp_index as h_idx, waypoints_list as h_list
+                    hang_elapsed = time.time() - sent_time
+                    if retry_count < NAV_MAX_RETRIES:
+                        retry_count += 1
+                        print(f"[WARN] NAV hang 감지 (elapsed={hang_elapsed:.0f}s, status={status}) — 현재 WP 재전송 ({retry_count}/{NAV_MAX_RETRIES})")
+                        log_event("error", "nav_hang_retry",
+                                  f"NAV hang 감지 — 현재 WP 재전송 ({retry_count}/{NAV_MAX_RETRIES})",
+                                  detail=f"WP{h_idx}/{len(h_list)}, status={status}, elapsed={hang_elapsed:.0f}s",
+                                  robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
+                        try:
+                            navigation_resend_current()
+                        except Exception as e:
+                            print(f"[ERR] hang 재전송 실패: {e}")
+                    else:
+                        arrived = True
+                        print(f"[WARN] NAV hang 재전송 한도 초과 — 다음 WP로 강제 진행 (elapsed={hang_elapsed:.0f}s)")
+                        log_event("error", "nav_hang_skip",
+                                  f"NAV hang 재전송 한도 초과 — 다음 WP로 강제 진행",
+                                  detail=f"WP{h_idx}/{len(h_list)}, elapsed={hang_elapsed:.0f}s",
+                                  robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
+
                 rid = runtime.get_robot_id_by_ip(ROBOT_IP)
                 if rid is not None:
                     runtime.update_nav(rid, False, status, time.time())
@@ -370,6 +400,12 @@ def nav_thread():
             consecutive_timeouts += 1
             if is_nav_active():
                 print(f"[NAV DEBUG] NAV_STATUS 응답 타임아웃 ({consecutive_timeouts}회)")
+            # NOS receiver 응답 불능 감지 — 임계값 도달 시 1회만 로그 기록 (alerts 발생 안 함)
+            if consecutive_timeouts == RECEIVER_UNRESPONSIVE_THRESHOLD:
+                log_event("error", "receiver_unresponsive",
+                          f"NOS receiver 응답 불능 의심 (NAV_STATUS {consecutive_timeouts}회 연속 타임아웃)",
+                          detail=f"NOS({RECEIVER_IP}:{RECEIVER_PORT}) receiver.py 점검 필요",
+                          robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         except Exception as e:
             print("[ERR NAV]", e)
             from app.navigation.send_move import current_wp_index as err_wp_idx, waypoints_list as err_wp_list
