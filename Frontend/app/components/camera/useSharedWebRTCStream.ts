@@ -40,9 +40,11 @@ const registry = new Map<string, Entry>();
 const ICE_GATHER_TIMEOUT_MS = 2000;
 const CONNECT_TIMEOUT_MS = 12000;
 const RETRY_DELAY_MS = 3000;
-// refCount=0 직후 즉시 정리하지 않고 약간 지연시켜, StrictMode의 mount→cleanup→mount
-// 진동이나 빠른 라우트 전환에서 불필요한 재협상이 일어나지 않게 한다.
-const RELEASE_GRACE_MS = 200;
+// refCount=0 직후 즉시 정리하지 않고 지연시켜, StrictMode 진동·빠른 라우트 전환·
+// 사용자가 카메라 탭을 빠르게 왕복하는 경우 같은 entry(PC)를 재사용하게 한다.
+// ViewportArea의 토글 race fix(300ms unmount/mount)와 조합되면 같은 카메라로
+// 돌아오는 경우 새 PC가 만들어지지 않고 기존 PC를 그대로 재사용한다.
+const RELEASE_GRACE_MS = 5000;
 
 function notify(entry: Entry) {
   entry.listeners.forEach((l) => l());
