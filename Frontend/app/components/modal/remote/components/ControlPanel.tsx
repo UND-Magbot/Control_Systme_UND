@@ -18,6 +18,7 @@ type PathOption = {
   wayPoints: string;
   waitSeconds?: number[];
   taskType: string;
+  floorId: number | null;
 };
 
 type ControlPanelProps = {
