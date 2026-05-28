@@ -133,6 +133,28 @@ export default function ViewportArea({
   // RTSP 카메라는 MediaMTX WebRTC(WebRTCPlayer)로 저지연 송출
   const isWebrtcCam = !!activeCam && (activeCam.streamType ?? 'rtsp') === 'rtsp';
 
+  // --- 카메라 토글 시 WebRTCPlayer 짧은 unmount → mount ---
+  // 이전 PC가 완전히 close되고 mediamtx에서 ICE 자원이 정리되기 전에 새 PC가
+  // 같은 단일 UDP(:8189)에 끼어들면 두 번째 ICE가 connectivity check를 놓치는
+  // race가 있어, 토글 직후 ~300ms 인스턴스를 비워둔 뒤 새로 mount한다.
+  const [playerOff, setPlayerOff] = useState(false);
+  const [playerNonce, setPlayerNonce] = useState(0);
+  const prevCamIdRef = useRef<number | undefined>(activeCam?.id);
+  useEffect(() => {
+    const prev = prevCamIdRef.current;
+    const next = activeCam?.id;
+    if (prev !== undefined && next !== undefined && prev !== next) {
+      setPlayerOff(true);
+      const t = setTimeout(() => {
+        setPlayerOff(false);
+        setPlayerNonce((n) => n + 1);
+      }, 300);
+      prevCamIdRef.current = next;
+      return () => clearTimeout(t);
+    }
+    prevCamIdRef.current = next;
+  }, [activeCam?.id]);
+
   const handlePtzZoom = useCallback(
     async (action: 'zoom_in' | 'zoom_out') => {
       if (!activeCam) {
@@ -226,10 +248,10 @@ export default function ViewportArea({
         )}
 
         {/* 카메라 메인 — RTSP는 WebRTC 저지연, 그 외(열화상·외부 MJPEG)는 <img> */}
-        {/* key={activeCam.id} — 카메라 탭 전환 시 WebRTCPlayer 인스턴스 자체를
-            unmount → remount하여 공유 entry의 refCount가 깨끗하게 갱신되도록 한다. */}
-        {isWebrtcCam && activeCam ? (
-          <WebRTCPlayer key={activeCam.id} whepUrl={activeCam.webrtcUrl} videoStyle={camImgStyle} />
+        {/* 카메라 토글 시 playerOff=true로 잠시 unmount → 300ms 후 새 nonce로 mount.
+            이전 PC가 close + DELETE 완료된 뒤 새 PC가 시작되어 ICE 충돌을 피한다. */}
+        {isWebrtcCam && activeCam && !playerOff ? (
+          <WebRTCPlayer key={playerNonce} whepUrl={activeCam.webrtcUrl} videoStyle={camImgStyle} />
         ) : cameraStream ? (
           <img
             ref={cameraImgRef}
