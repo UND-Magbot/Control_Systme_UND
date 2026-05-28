@@ -226,8 +226,10 @@ export default function ViewportArea({
         )}
 
         {/* 카메라 메인 — RTSP는 WebRTC 저지연, 그 외(열화상·외부 MJPEG)는 <img> */}
+        {/* key={activeCam.id} — 카메라 탭 전환 시 WebRTCPlayer 인스턴스 자체를
+            unmount → remount하여 공유 entry의 refCount가 깨끗하게 갱신되도록 한다. */}
         {isWebrtcCam && activeCam ? (
-          <WebRTCPlayer whepUrl={activeCam.webrtcUrl} videoStyle={camImgStyle} />
+          <WebRTCPlayer key={activeCam.id} whepUrl={activeCam.webrtcUrl} videoStyle={camImgStyle} />
         ) : cameraStream ? (
           <img
             ref={cameraImgRef}
