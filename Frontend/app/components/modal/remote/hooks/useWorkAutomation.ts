@@ -9,20 +9,25 @@ type PathOption = {
   id: number;
   wayName: string;
   wayPoints: string;
+  waitSeconds?: number[];
   taskType: string;
+  floorId: number | null;
 };
 
 type UseWorkAutomationOptions = {
   onAlert?: (message: string) => void;
+  /** 로봇이 현재 위치한 층 id. 경로 목록을 이 층에 속한 것만 보여주기 위해 사용. */
+  currentFloorId?: number | null;
 };
 
 export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOptions = {}) {
-  const { onAlert } = options;
+  const { onAlert, currentFloorId } = options;
   const [isWorking, setIsWorking] = useState(false);
   const [loopCount, setLoopCount] = useState<number | string>(10);
   const [isPending, setIsPending] = useState(false);
   const [loopCurrent, setLoopCurrent] = useState(0);
   const [loopTotal, setLoopTotal] = useState(0);
+  const [loopInfinite, setLoopInfinite] = useState(false);
 
   // 경로 목록 & 작업 유형 필터
   const [paths, setPaths] = useState<PathOption[]>([]);
@@ -30,7 +35,7 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
   const [taskTypeFilter, setTaskTypeFilter] = useState<string | null>(null);
 
   // 직접 경로 생성 모드
-  type CreatedPoint = { x: number; y: number; yaw: number };
+  type CreatedPoint = { x: number; y: number; yaw: number; waitSeconds?: number };
   const [isCreating, setIsCreating] = useState(false);
   const [createdPoints, setCreatedPoints] = useState<CreatedPoint[]>([]);
 
@@ -44,12 +49,30 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
       const res = await apiFetch('/DB/paths');
       if (!res.ok) return;
       const data = await res.json();
-      const list: PathOption[] = data.map((p: any) => ({
-        id: p.id,
-        wayName: p.WayName,
-        wayPoints: p.WayPoints || '',
-        taskType: p.TaskType || '',
-      }));
+      const list: PathOption[] = data.map((p: any) => {
+        let waitSeconds: number[] | undefined;
+        if (p.WaitSeconds) {
+          try {
+            const parsed = JSON.parse(p.WaitSeconds);
+            if (Array.isArray(parsed)) {
+              waitSeconds = parsed.map((n: any) => {
+                const v = Number(n);
+                return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+              });
+            }
+          } catch {
+            waitSeconds = undefined;
+          }
+        }
+        return {
+          id: p.id,
+          wayName: p.WayName,
+          wayPoints: p.WayPoints || '',
+          waitSeconds,
+          taskType: p.TaskType || '',
+          floorId: p.FloorId ?? null,
+        };
+      });
       setPaths(list);
       return list;
     } catch {
@@ -82,16 +105,21 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
         if (data.is_navigating) {
           setIsWorking(true);
           wasWorkingRef.current = true;
+          const infinite = Boolean(data.loop_infinite);
           const total = Number(data.loop_total) || 0;
+          const count = Number(data.loop_count) || 0;
           const remaining = Number(data.loop_remaining) || 0;
+          setLoopInfinite(infinite);
           setLoopTotal(total);
-          setLoopCurrent(total > 0 ? Math.max(1, total - remaining) : 0);
+          // 백엔드가 회차(loop_count)를 직접 제공. 누락 시 total-remaining으로 보정.
+          setLoopCurrent(count > 0 ? count : total > 0 ? Math.max(1, total - remaining) : 0);
         } else {
           if (wasWorkingRef.current) {
             onAlert?.('작업이 완료되었습니다.');
             wasWorkingRef.current = false;
           }
           setIsWorking(false);
+          setLoopInfinite(false);
           setLoopTotal(0);
           setLoopCurrent(0);
         }
@@ -163,26 +191,43 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
       if (!res.ok) throw new Error();
       const data = await res.json();
       if (data.status === 'ok') {
-        setCreatedPoints((prev) => [...prev, { x: data.x, y: data.y, yaw: data.yaw }]);
+        setCreatedPoints((prev) => [...prev, { x: data.x, y: data.y, yaw: data.yaw, waitSeconds: 0 }]);
+      } else {
+        // status: 'error' (예: 로봇 위치 응답 없음) — 무시하지 말고 사유를 알린다.
+        onAlert?.(data.msg || '위치 저장에 실패했습니다.');
       }
     } catch {
       onAlert?.('위치 저장에 실패했습니다.');
     }
   }, [onAlert]);
 
+  const setPointWait = useCallback((idx: number, waitSeconds: number) => {
+    setCreatedPoints((prev) => {
+      if (idx < 0 || idx >= prev.length) return prev;
+      const next = [...prev];
+      next[idx] = { ...next[idx], waitSeconds: Math.max(0, Math.floor(waitSeconds)) };
+      return next;
+    });
+  }, []);
+
   const clearPoints = useCallback(() => {
     setCreatedPoints([]);
   }, []);
 
-  const finishCreating = useCallback(async (wayName?: string) => {
+  const finishCreating = useCallback(async (wayName?: string, taskType?: string) => {
     if (createdPoints.length < 2) {
       onAlert?.('최소 2개 이상의 위치를 저장해야 합니다.');
       return;
     }
 
     try {
-      const body: any = { waypoints: createdPoints };
+      const waits = createdPoints.map((p) => Math.max(0, Math.floor(p.waitSeconds ?? 0)));
+      const body: any = {
+        waypoints: createdPoints.map(({ x, y, yaw }) => ({ x, y, yaw })),
+      };
       if (wayName && wayName.trim()) body.way_name = wayName.trim();
+      if (waits.some((w) => w > 0)) body.wait_seconds = waits;
+      if (taskType && taskType.trim()) body.task_type = taskType.trim();
 
       const res = await apiFetch('/nav/createpath', {
         method: 'POST',
@@ -216,11 +261,18 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
     setCreatedPoints([]);
   }, []);
 
-  // 필터된 경로 목록
-  const filteredPaths = useMemo(
-    () => (taskTypeFilter ? paths.filter((p) => p.taskType === taskTypeFilter) : paths),
-    [paths, taskTypeFilter],
-  );
+  // 필터된 경로 목록 — 로봇 현재 층 + 작업 유형 모두 일치하는 경로만.
+  // currentFloorId 가 undefined(전달 안 됨)면 층 필터 미적용 (호환성).
+  // null(로봇 위치 불명)이면 모두 제외 — "현재 층의 경로만" 요구사항 엄격 적용.
+  const filteredPaths = useMemo(() => {
+    return paths.filter((p) => {
+      if (currentFloorId !== undefined) {
+        if (currentFloorId === null || p.floorId !== currentFloorId) return false;
+      }
+      if (taskTypeFilter && p.taskType !== taskTypeFilter) return false;
+      return true;
+    });
+  }, [paths, taskTypeFilter, currentFloorId]);
 
   // 필터가 바뀌어 선택된 경로가 더 이상 포함되지 않으면 선택 해제
   useEffect(() => {
@@ -229,6 +281,13 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
       setSelectedPath(null);
     }
   }, [taskTypeFilter, selectedPath]);
+
+  // 반대 방향: 경로를 먼저 선택했는데 필터가 비어 있으면 경로의 taskType으로 자동 채움.
+  // 의존성은 selectedPath만 — 사용자가 이후에 필터를 "전체"로 비워도 재실행되지 않음.
+  useEffect(() => {
+    if (!selectedPath || !selectedPath.taskType) return;
+    setTaskTypeFilter((prev) => prev ?? selectedPath.taskType);
+  }, [selectedPath]);
 
   const handleLoopCountChange = useCallback((value: string) => {
     setLoopCount(value === '' ? '' : parseInt(value) || '');
@@ -244,6 +303,7 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
     loopCount,
     loopCurrent,
     loopTotal,
+    loopInfinite,
     isPending,
     startWork,
     stopWork,
@@ -261,6 +321,7 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
     createdPoints,
     startCreating,
     savePoint,
+    setPointWait,
     clearPoints,
     finishCreating,
     cancelCreating,

@@ -12,10 +12,6 @@ type ModeSpeedControlProps = {
   /** 로봇 충전 중 여부 — true면 자세 섹션 숨기고 '충전 해제' 버튼 활성. */
   isCharging?: boolean;
   disabled?: boolean;
-  /** 긴급 정지는 작업 중이어도 눌러야 하므로 disabled와 분리 */
-  emergencyDisabled?: boolean;
-  /** 긴급 정지 클릭 — 확인 모달은 상위에서 처리 */
-  onEmergencyStop?: () => void;
 };
 
 type Mode = 'stand' | 'sit';
@@ -23,7 +19,7 @@ type Speed = 'slow' | 'normal' | 'fast';
 type Terrain = 'flat' | 'stair';
 type RobotMode = 'regular' | 'navigation' | 'assist';
 
-export default function ModeSpeedControl({ robotType, motionState, isCharging = false, disabled = false, emergencyDisabled = false, onEmergencyStop }: ModeSpeedControlProps) {
+export default function ModeSpeedControl({ robotType, motionState, isCharging = false, disabled = false }: ModeSpeedControlProps) {
   const caps = getRobotCapabilities(robotType);
   const { execute: execMode, state: modeState } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execSpeed, state: speedState } = useRemoteCommand({ debounceMs: 300 });
@@ -209,20 +205,6 @@ export default function ModeSpeedControl({ robotType, motionState, isCharging = 
         </div>
       </div>
 
-      {/* 기타 — 긴급 정지 (대시보드 로봇 카드와 동일, 확인 모달은 상위에서) */}
-      {onEmergencyStop && (
-        <div className={`${styles.controlGroup} ${styles.controlGroupSpaced}`}>
-          <div className={styles.controlLabel}>기타</div>
-          <button
-            type="button"
-            className={styles.emergencyBtn}
-            onClick={onEmergencyStop}
-            disabled={emergencyDisabled}
-          >
-            긴급 정지
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -55,6 +55,7 @@ const TYPE_OPTIONS: SelectOption[] = [
 const PROTOCOL_OPTIONS: SelectOption[] = [
   { id: 'rtsp', label: 'RTSP' },
   { id: 'ws', label: 'WebSocket' },
+  { id: 'http', label: 'HTTP' },
 ];
 
 function moduleTypeIcon(type: string, size = 20) {
@@ -74,6 +75,14 @@ function flattenTree(items: RobotModule[]): RobotModule[] {
     if (m.children?.length) result.push(...flattenTree(m.children));
   }
   return result;
+}
+
+// `user:password@host` 형태일 때 비밀번호 부분만 `***`로 마스킹.
+// 평범한 IP면 그대로 반환.
+function maskCredentials(raw: string | null | undefined): string {
+  if (!raw) return '-';
+  const m = raw.match(/^([^:@]+):([^@]+)@(.+)$/);
+  return m ? `${m[1]}:***@${m[3]}` : raw;
 }
 
 export default function ModuleManageModal({ isOpen, onClose, robotId, robotName, isAdmin = false }: Props) {
@@ -401,7 +410,7 @@ export default function ModuleManageModal({ isOpen, onClose, robotId, robotName,
                       <div className={styles.detailInfoRow}>
                         <span className={styles.detailInfoLabel}>IP</span>
                         <span className={styles.detailInfoValue}>
-                          {String(selectedModule.config.cameraIP ?? '-')}
+                          {maskCredentials(selectedModule.config.cameraIP as string | null | undefined)}
                         </span>
                       </div>
                       <div className={styles.detailInfoRow}>

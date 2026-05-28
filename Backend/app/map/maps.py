@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
+import json
 import os
 import re
 import time
@@ -267,121 +269,128 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
 @router.post("/maps/sync")
 def sync_map(req: SyncMapReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     """
-    선택한 맵의 zip을 대상 로봇에 업로드 → 압축 해제 → symlink 교체 → localization 재시작
+    선택한 맵의 zip을 대상 로봇에 업로드 → 압축 해제 → symlink 교체 → localization 재시작.
+
+    진행 상황은 NDJSON 스트림으로 전송한다.
+      - {"event":"retry","attempt":N}
+      - {"event":"step","step":N,"total":3,"msg":"..."}
+      - {"event":"done","status":"ok"|"error","msg":"...","map_name":...}
     """
     from app.database.models import RobotInfo
     from app.map.mapping_control import get_ssh_client, ssh_exec, NOS_MAP_BASE_DIR, BASE_DIR
     import app.robot_io.runtime as runtime
 
-    # 맵 조회
     m = db.query(RobotMapInfo).filter(RobotMapInfo.id == req.map_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="맵을 찾을 수 없습니다.")
     if not m.ZipFilePath:
         raise HTTPException(status_code=400, detail="이 맵에는 동기화용 zip 파일이 없습니다.")
 
-    # zip 파일 존재 확인
     local_zip = os.path.join(BASE_DIR, m.ZipFilePath.replace("./", ""))
     if not os.path.exists(local_zip):
         raise HTTPException(status_code=404, detail=f"zip 파일을 찾을 수 없습니다: {m.ZipFilePath}")
 
-    # 로봇 조회
     robot = db.query(RobotInfo).filter(RobotInfo.id == req.robot_id).first()
     if not robot:
         raise HTTPException(status_code=404, detail="로봇을 찾을 수 없습니다.")
 
     zip_filename = os.path.basename(local_zip)
-    # zip 파일명에서 맵 디렉토리명 추출 (예: MapName-20260410.zip → MapName-20260410)
     dir_name = zip_filename.rsplit(".zip", 1)[0]
+    ip_addr = get_client_ip(request)
+    user_id = current_user.id
 
-    client = None
-    try:
+    def _evt(**kwargs) -> bytes:
+        return (json.dumps(kwargs, ensure_ascii=False) + "\n").encode("utf-8")
+
+    def event_stream():
+        client = None
         sync_success = False
-        for attempt in range(3):
-            try:
-                client = get_ssh_client()
+        last_error: Optional[str] = None
 
-                # 1. SFTP로 zip 업로드
-                remote_zip = f"{NOS_MAP_BASE_DIR}/{zip_filename}"
-                sftp = client.open_sftp()
-                print(f"📤 SFTP 업로드: {local_zip} → {remote_zip}")
-                sftp.put(local_zip, remote_zip)
-                sftp.close()
+        try:
+            for attempt in range(3):
+                try:
+                    if attempt > 0:
+                        yield _evt(event="retry", attempt=attempt + 1)
+                    client = get_ssh_client()
 
-                # 2. 로봇에서 zip 압축 해제
-                unzip_cmd = f"cd {NOS_MAP_BASE_DIR} && sudo unzip -o {zip_filename}"
-                ssh_exec(client, unzip_cmd, exec_timeout=120)
-                print(f"📦 로봇에서 압축 해제 완료: {dir_name}")
+                    # 1/3 — SFTP 업로드
+                    yield _evt(event="step", step=1, total=3, msg="맵 파일 전송 중")
+                    remote_zip = f"{NOS_MAP_BASE_DIR}/{zip_filename}"
+                    sftp = client.open_sftp()
+                    print(f"📤 SFTP 업로드: {local_zip} → {remote_zip}")
+                    sftp.put(local_zip, remote_zip)
+                    sftp.close()
 
-                # 3. 업로드한 zip 파일 정리
-                ssh_exec(client, f"sudo rm -f {remote_zip}")
+                    # 2/3 — 압축 해제 + 정리 + active 심볼릭 링크
+                    unzip_cmd = f"cd {NOS_MAP_BASE_DIR} && sudo unzip -o {zip_filename}"
+                    ssh_exec(client, unzip_cmd, exec_timeout=120)
+                    print(f"📦 로봇에서 압축 해제 완료: {dir_name}")
+                    ssh_exec(client, f"sudo rm -f {remote_zip}")
+                    map_dir = f"{NOS_MAP_BASE_DIR}/{dir_name}"
+                    activate_cmd = f"sudo rm -f {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
+                    ssh_exec(client, activate_cmd)
+                    yield _evt(event="step", step=2, total=3, msg="맵 파일 활성화 완료")
 
-                # 4. active 심볼릭 링크 교체
-                map_dir = f"{NOS_MAP_BASE_DIR}/{dir_name}"
-                activate_cmd = f"sudo rm -f {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
-                ssh_exec(client, activate_cmd)
+                    # 3/3 — localization 재시작
+                    yield _evt(event="step", step=3, total=3, msg="로봇이 새 맵에 적응하는 중")
+                    ssh_exec(client, "sudo systemctl restart localization")
+                    print(f"🗺️ 맵 동기화 완료: {m.MapName} → 로봇 {robot.RobotName} (localization 재시작)")
 
-                # 5. localization 서비스 재시작
-                ssh_exec(client, "sudo systemctl restart localization")
-                print(f"🗺️ 맵 동기화 완료: {m.MapName} → 로봇 {robot.RobotName} (localization 재시작)")
+                    sync_success = True
+                    break
+                except Exception as e:
+                    last_error = str(e)
+                    print(f"[SSH] 맵 동기화 실패 ({attempt+1}/3): {e}")
+                    if client:
+                        try: client.close()
+                        except: pass
+                        client = None
+                    if attempt < 2:
+                        time.sleep(3)
 
-                sync_success = True
-                break
-            except HTTPException:
-                raise
-            except Exception as e:
-                print(f"[SSH] 맵 동기화 실패 ({attempt+1}/3): {e}")
-                if client:
-                    try: client.close()
-                    except: pass
-                    client = None
-                if attempt < 2:
-                    time.sleep(3)
+            if not sync_success:
+                yield _evt(event="done", status="error",
+                           msg=f"맵 동기화 실패: {last_error or 'SSH 연결 불안정'}")
+                return
 
-        if not sync_success:
-            raise Exception("SSH 연결 불안정으로 맵 동기화 실패")
+            robot.CurrentFloorId = m.FloorId
+            robot.CurrentMapId = m.id
+            db.commit()
+            runtime.update_floor(req.robot_id, m.FloorId, m.id)
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"[ERR] 맵 동기화 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"맵 동기화 실패: {str(e)}")
-    finally:
-        if client:
-            try: client.close()
-            except: pass
+            init_pose_sent = False
+            init_pose_row = db.query(MapInitPose).filter(
+                MapInitPose.MapId == req.map_id,
+                MapInitPose.RobotId == req.robot_id,
+            ).first()
+            if init_pose_row:
+                time.sleep(5)
+                init_items = {"PosX": init_pose_row.PosX, "PosY": init_pose_row.PosY, "PosZ": 0.0, "Yaw": init_pose_row.Yaw}
+                _send_init_pose(robot.RobotIP, robot.RobotPort or 30000, init_items)
+                init_pose_sent = True
 
-    # CurrentFloorId, CurrentMapId 업데이트
-    robot.CurrentFloorId = m.FloorId
-    robot.CurrentMapId = m.id
-    db.commit()
+            write_audit(db, user_id, "map_synced", "map", m.id,
+                        detail=f"맵 동기화: {m.MapName} → 로봇 {robot.RobotName}",
+                        ip_address=ip_addr)
 
-    # 런타임에도 반영
-    runtime.update_floor(req.robot_id, m.FloorId, m.id)
+            yield _evt(
+                event="done",
+                status="ok",
+                msg=f"맵 '{m.MapName}'이(가) 로봇 '{robot.RobotName}'에 동기화되었습니다.",
+                map_name=m.MapName,
+                floor_id=m.FloorId,
+                init_pose_sent=init_pose_sent,
+            )
+        except Exception as e:
+            print(f"[ERR] 맵 동기화 실패: {e}")
+            yield _evt(event="done", status="error", msg=f"맵 동기화 실패: {str(e)}")
+        finally:
+            if client:
+                try: client.close()
+                except: pass
 
-    # init_pose 전송
-    init_pose_sent = False
-    init_pose_row = db.query(MapInitPose).filter(
-        MapInitPose.MapId == req.map_id,
-        MapInitPose.RobotId == req.robot_id,
-    ).first()
-    if init_pose_row:
-        time.sleep(5)
-        init_items = {"PosX": init_pose_row.PosX, "PosY": init_pose_row.PosY, "PosZ": 0.0, "Yaw": init_pose_row.Yaw}
-        _send_init_pose(robot.RobotIP, robot.RobotPort or 30000, init_items)
-        init_pose_sent = True
-
-    write_audit(db, current_user.id, "map_synced", "map", m.id,
-                detail=f"맵 동기화: {m.MapName} → 로봇 {robot.RobotName}",
-                ip_address=get_client_ip(request))
-
-    return {
-        "status": "ok",
-        "msg": f"맵 '{m.MapName}'이(가) 로봇 '{robot.RobotName}'에 동기화되었습니다.",
-        "map_name": m.MapName,
-        "floor_id": m.FloorId,
-        "init_pose_sent": init_pose_sent,
-    }
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
 # =========================

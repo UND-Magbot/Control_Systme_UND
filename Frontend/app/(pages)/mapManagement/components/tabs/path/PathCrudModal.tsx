@@ -6,11 +6,12 @@ import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import type { RobotRowData, Floor } from "@/app/types";
 import ResetUpdate from "./PathDeleteConfirmModal";
 import PathAlertsModal from "./PathAlertsModal";
+import PathStopOptionsModal from "./PathStopOptionsModal";
 import PathMapView from "./PathMapView";
 import FilterSelectBox, { type FilterOption } from "@/app/components/button/FilterSelectBox";
 import { Route, Waypoints } from "lucide-react";
 
-export type PathWorkType = "task1" | "task2" | "task3";
+export type PathWorkType = "task1" | "task2" | "task3" | "test";
 
 export type PlaceRow = {
   id: number;
@@ -36,8 +37,11 @@ export type PathRow = {
   workType: string;
   pathName: string;
   pathOrder: string;
+  waitSeconds?: number[];
   updatedAt: string;
 };
+
+type SelectedStop = PlaceRow & { waitSeconds?: number };
 
 type Mode = "create" | "edit";
 
@@ -64,7 +68,7 @@ type Props = {
   onSubmit: (payload: Omit<PathRow, "id" | "updatedAt"> & { id?: number }) => Promise<void>;
 };
 
-const WORK_TYPES: PathWorkType[] = ["task1", "task2", "task3"];
+const WORK_TYPES: PathWorkType[] = ["task1", "task2", "task3", "test"];
 
 function restorePathOrder(initial: PathRow, placeRows: PlaceRow[]) {
   const raw = initial.pathOrder ?? "";
@@ -72,22 +76,24 @@ function restorePathOrder(initial: PathRow, placeRows: PlaceRow[]) {
     .split(" - ")
     .map((s) => s.trim())
     .filter(Boolean);
+  const waits = initial.waitSeconds ?? [];
 
-  console.log("[restorePathOrder] raw pathOrder:", JSON.stringify(raw));
-  console.log("[restorePathOrder] parsed names:", names);
-  console.log("[restorePathOrder] placeRows count:", placeRows.length);
-  console.log("[restorePathOrder] placeRow names:", placeRows.map(p => p.placeName));
-
-  const valid: PlaceRow[] = [];
+  const valid: SelectedStop[] = [];
   const missing: string[] = [];
 
   for (let i = 0; i < names.length; i++) {
     const found = placeRows.find((p) => p.placeName === names[i]);
-    if (found) valid.push(found);
-    else missing.push(names[i]);
+    if (found) {
+      const w = waits[i];
+      valid.push({
+        ...found,
+        waitSeconds: typeof w === "number" && w >= 0 ? Math.floor(w) : 0,
+      });
+    } else {
+      missing.push(names[i]);
+    }
   }
 
-  console.log("[restorePathOrder] valid:", valid.length, "missing:", missing);
   return { valid, missing };
 }
 
@@ -131,15 +137,16 @@ export default function PathCrudModal({
   const [initialSnapshot, setInitialSnapshot] = useState<{
     workType: PathWorkType | null;
     pathName: string;
-    selectedOrder: PlaceRow[];
+    selectedOrder: SelectedStop[];
   } | null>(null);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
 
 
   // ---------- 경로 순서(선택된 장소들) ----------
-  const [selectedOrder, setSelectedOrder] = useState<PlaceRow[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<SelectedStop[]>([]);
   const [activePlaceId, setActivePlaceId] = useState<number | null>(null);
+  const [optionsModalIdx, setOptionsModalIdx] = useState<number | null>(null);
   const placeScrollRef = useRef<HTMLDivElement>(null);
   const placeTrackRef = useRef<HTMLDivElement>(null);
   const placeThumbRef = useRef<HTMLDivElement>(null);
@@ -352,8 +359,18 @@ export default function PathCrudModal({
       if (prev.length === 0 && mode === "create") {
         setSelectedRobot(row.robotNo);
       }
-      return [...prev, row]; // ✅ 클릭 시 경로 순서에 "추가(append)"
+      return [...prev, { ...row, waitSeconds: 0 }]; // ✅ 클릭 시 경로 순서에 "추가(append)"
     });
+  };
+
+  const applyStopOptions = (waitSeconds: number) => {
+    setSelectedOrder((prev) => {
+      if (optionsModalIdx == null) return prev;
+      const next = [...prev];
+      next[optionsModalIdx] = { ...next[optionsModalIdx], waitSeconds };
+      return next;
+    });
+    setOptionsModalIdx(null);
   };
 
   const removeOrderItem = (index: number) => {
@@ -408,7 +425,11 @@ export default function PathCrudModal({
       workType !== initialSnapshot.workType ||
       pathName !== initialSnapshot.pathName ||
       selectedOrder.length !== initialSnapshot.selectedOrder.length ||
-      selectedOrder.some((p, i) => p.id !== initialSnapshot.selectedOrder[i]?.id)
+      selectedOrder.some(
+        (p, i) =>
+          p.id !== initialSnapshot.selectedOrder[i]?.id ||
+          (p.waitSeconds ?? 0) !== (initialSnapshot.selectedOrder[i]?.waitSeconds ?? 0)
+      )
     );
   }, [mode, workType, pathName, selectedOrder, initialSnapshot]);
 
@@ -469,12 +490,14 @@ export default function PathCrudModal({
 
     setIsSubmitting(true);
     try {
+      const waitSeconds = selectedOrder.map((p) => Math.max(0, Math.floor(p.waitSeconds ?? 0)));
       await onSubmit({
         id: mode === "edit" && initial ? initial.id : undefined,
         robotNo,
         workType: workType!,
         pathName: pathName.trim(),
         pathOrder: selectedOrder.map((p) => p.placeName).join(" - "),
+        waitSeconds,
       });
       onClose();
     } catch {
@@ -627,6 +650,18 @@ export default function PathCrudModal({
             onConfirm={() => setAlertMessage(null)}
           />
 
+          <PathStopOptionsModal
+            isOpen={optionsModalIdx != null}
+            placeName={
+              optionsModalIdx != null ? selectedOrder[optionsModalIdx]?.placeName ?? "" : ""
+            }
+            initialWaitSeconds={
+              optionsModalIdx != null ? selectedOrder[optionsModalIdx]?.waitSeconds ?? 0 : 0
+            }
+            onCancel={() => setOptionsModalIdx(null)}
+            onConfirm={applyStopOptions}
+          />
+
           {/* 미저장 변경사항 닫기 확인 */}
           <ResetUpdate
             isOpen={isCloseConfirmOpen}
@@ -735,6 +770,16 @@ export default function PathCrudModal({
 
                           <button
                             type="button"
+                            className={styles.orderOptions}
+                            onClick={() => setOptionsModalIdx(idx)}
+                            aria-label="옵션"
+                            title="정지 옵션 설정"
+                          >
+                            <span className={styles.optionsCircle}>+</span>
+                          </button>
+
+                          <button
+                            type="button"
                             className={styles.orderDelete}
                             onClick={() => removeOrderItem(idx)}
                             aria-label="delete"
@@ -748,6 +793,12 @@ export default function PathCrudModal({
                             <div>{p.robotNo}</div>
                             <div className={styles.metaSep} />
                             <div>{p.floor}</div>
+                            {p.waitSeconds != null && p.waitSeconds > 0 && (
+                              <>
+                                <div className={styles.metaSep} />
+                                <div className={styles.waitBadge}>대기 {p.waitSeconds}s</div>
+                              </>
+                            )}
                           </div>
 
                           <div className={styles.orderMoves}>

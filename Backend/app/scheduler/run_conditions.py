@@ -21,6 +21,61 @@ def _is_exception_date(schedule: ScheduleInfo, now: datetime) -> bool:
     return today_str in {d.strip() for d in exceptions.split(",") if d.strip()}
 
 
+def has_remaining_today(schedule: ScheduleInfo, now: datetime) -> bool:
+    """오늘 안에 아직 실행되지 않은 회차가 남아 있는지 판정.
+
+    on_navigation_complete에서 '오늘이 series_end 당일'인 경우 상태를
+    "완료"로 전환할지 "대기"로 유지할지 결정하는 데 사용한다.
+
+    - weekly: ExecutionTime 리스트에 현재 시:분 이후의 시각이 있는지
+    - interval: now + IntervalMinutes 가 ActiveEndTime 내에 있는지
+    - 자정 넘김(ActiveStart > ActiveEnd) interval: 보수적으로 True 반환
+      (정확 판정이 복잡하므로 상태 전환을 미루는 쪽으로 안전)
+    """
+    mode = getattr(schedule, 'ScheduleMode', None) or (
+        "weekly" if schedule.Repeat == "Y" else "once"
+    )
+
+    if mode == "weekly":
+        exec_time = getattr(schedule, 'ExecutionTime', None)
+        if not exec_time:
+            # 레거시 폴백: StartDate 단일 시각만 존재 → 이미 실행됐으면 남은 회차 없음
+            return False
+        now_min = now.hour * 60 + now.minute
+        for t in exec_time.split(","):
+            try:
+                h, m = t.strip().split(":")
+                if int(h) * 60 + int(m) > now_min:
+                    return True
+            except ValueError:
+                continue
+        return False
+
+    if mode == "interval":
+        interval_min = getattr(schedule, 'IntervalMinutes', None)
+        if not interval_min or interval_min <= 0:
+            return False
+        active_start_str = getattr(schedule, 'ActiveStartTime', None) or "00:00"
+        active_end_str = getattr(schedule, 'ActiveEndTime', None) or "23:59"
+        try:
+            as_h, as_m = active_start_str.split(":")
+            ae_h, ae_m = active_end_str.split(":")
+            active_start_min = int(as_h) * 60 + int(as_m)
+            active_end_min = int(ae_h) * 60 + int(ae_m)
+        except ValueError:
+            return False
+
+        # 자정 넘김은 보수적으로 True (상태 잔존 허용, 실행 안전)
+        if active_start_min > active_end_min:
+            return True
+
+        next_run_min = now.hour * 60 + now.minute + interval_min
+        return next_run_min <= active_end_min
+
+    # once는 이 함수 호출 대상 아님
+    return False
+
+
 def should_run_now(schedule: ScheduleInfo, now: datetime) -> bool:
     """스케줄이 지금 실행되어야 하는지 판단 (모드 디스패처)."""
     mode = getattr(schedule, 'ScheduleMode', None) or (

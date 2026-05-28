@@ -4,11 +4,43 @@ from pydantic import BaseModel
 from datetime import datetime
 from fastapi.encoders import jsonable_encoder
 
-from app.database.models import WayInfo, RouteInfo, UserInfo
+from app.database.models import WayInfo, RouteInfo, UserInfo, LocationInfo
 from app.auth.dependencies import require_any_permission, is_admin, get_business_robot_names
 from app.auth.audit import write_audit, get_client_ip
 
 from app.database.routes import database, get_db
+
+
+def _derive_path_floor_ids(db: Session, paths) -> dict[int, int | None]:
+    """경로 ID → FloorId 매핑.
+
+    WayInfo 에는 FloorId 가 없으므로, 각 경로의 첫 번째 웨이포인트(LocationInfo)의
+    FloorId 를 경로의 층으로 본다. 배치 쿼리로 N+1 방지.
+    경로에 웨이포인트가 없거나 매칭 장소를 못 찾으면 해당 경로의 FloorId 는 None.
+    """
+    first_name_by_pid: dict[int, str] = {}
+    for p in paths:
+        if not p.WayPoints:
+            continue
+        parts = [n.strip() for n in p.WayPoints.split(" - ") if n and n.strip()]
+        if parts:
+            first_name_by_pid[p.id] = parts[0]
+    if not first_name_by_pid:
+        return {p.id: None for p in paths}
+
+    names = set(first_name_by_pid.values())
+    rows = (
+        db.query(LocationInfo.LacationName, LocationInfo.FloorId)
+        .filter(LocationInfo.LacationName.in_(names))
+        .all()
+    )
+    name_to_floor: dict[str, int | None] = {}
+    for r in rows:
+        # 같은 이름의 장소가 여러 층에 있을 일은 드물지만, 먼저 매칭된 것을 사용
+        if r.LacationName not in name_to_floor:
+            name_to_floor[r.LacationName] = r.FloorId
+
+    return {p.id: name_to_floor.get(first_name_by_pid.get(p.id, "")) for p in paths}
 
 
 class PathInsertReq(BaseModel):
@@ -16,6 +48,7 @@ class PathInsertReq(BaseModel):
     TaskType: str
     WayName: str
     WayPoints: str
+    WaitSeconds: str | None = None  # JSON array of int
 
 
 @database.post("/path")
@@ -26,6 +59,7 @@ def insert_path(req: PathInsertReq, request: Request, db: Session = Depends(get_
         TaskType=req.TaskType,
         WayName=req.WayName,
         WayPoints=req.WayPoints,
+        WaitSeconds=req.WaitSeconds,
     )
     db.add(path)
     db.commit()
@@ -42,7 +76,14 @@ def get_paths(db: Session = Depends(get_db), current_user: UserInfo = Depends(re
     if not is_admin(current_user) and current_user.BusinessId:
         biz_names = get_business_robot_names(db, current_user.BusinessId)
         q = q.filter(WayInfo.RobotName.in_(biz_names) | (WayInfo.RobotName == "") | (WayInfo.RobotName.is_(None)))
-    return q.order_by(WayInfo.id.desc()).all()
+    paths = q.order_by(WayInfo.id.desc()).all()
+    floor_map = _derive_path_floor_ids(db, paths)
+    result = []
+    for p in paths:
+        data = jsonable_encoder(p)
+        data["FloorId"] = floor_map.get(p.id)
+        result.append(data)
+    return result
 
 
 class PathRes(BaseModel):
@@ -52,6 +93,7 @@ class PathRes(BaseModel):
     TaskType: str | None
     WayName: str | None
     WayPoints: str | None
+    WaitSeconds: str | None
     UpdateTime: datetime | None
 
     class Config:
@@ -64,22 +106,33 @@ def get_paths_legacy(db: Session = Depends(get_db), current_user: UserInfo = Dep
     if not is_admin(current_user) and current_user.BusinessId:
         biz_names = get_business_robot_names(db, current_user.BusinessId)
         q = q.filter(WayInfo.RobotName.in_(biz_names) | (WayInfo.RobotName == "") | (WayInfo.RobotName.is_(None)))
-    return jsonable_encoder(q.all())
+    paths = q.all()
+    floor_map = _derive_path_floor_ids(db, paths)
+    result = []
+    for p in paths:
+        data = jsonable_encoder(p)
+        data["FloorId"] = floor_map.get(p.id)
+        result.append(data)
+    return result
 
 
 @database.get("/way-names")
 def get_way_names(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit", "schedule-list"))):
-    q = db.query(WayInfo.id, WayInfo.WayName, WayInfo.RobotName)
+    # FloorId 계산을 위해 WayPoints 까지 포함해 조회 (경량 필드만)
+    q = db.query(WayInfo.id, WayInfo.WayName, WayInfo.RobotName, WayInfo.TaskType, WayInfo.WayPoints)
     if not is_admin(current_user) and current_user.BusinessId:
         biz_names = get_business_robot_names(db, current_user.BusinessId)
         q = q.filter(WayInfo.RobotName.in_(biz_names) | (WayInfo.RobotName == "") | (WayInfo.RobotName.is_(None)))
     paths = q.order_by(WayInfo.id.desc()).all()
+    floor_map = _derive_path_floor_ids(db, paths)
 
     return [
         {
             "id": p.id,
             "WayName": p.WayName,
             "RobotName": p.RobotName,
+            "TaskType": p.TaskType,
+            "FloorId": floor_map.get(p.id),
         }
         for p in paths
     ]
@@ -104,6 +157,9 @@ def update_path(path_id: int, req: PathInsertReq, request: Request, db: Session 
     if path.WayPoints != req.WayPoints:
         changes.append(f"경유지 변경")
         path.WayPoints = req.WayPoints
+    if path.WaitSeconds != req.WaitSeconds:
+        changes.append(f"대기 시간 변경")
+        path.WaitSeconds = req.WaitSeconds
 
     db.commit()
     db.refresh(path)

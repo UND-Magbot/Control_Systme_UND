@@ -28,6 +28,7 @@ ALERT_TRIGGER_RULES = {
     "nav_error":               ("Schedule", "error"),
     "remote_send_error":       ("Robot", "error"),
     "robot_error_code":        ("Robot", "error"),
+    "thermal_temp_high":       ("Robot", "event"),  # 열화상에서 고온 객체 감지 (45°C+)
 }
 
 # 로그 Action → 알림 제목 매핑
@@ -40,6 +41,7 @@ ACTION_TITLES = {
     "robot_charging_complete": "충전 완료",
     "rtsp_error":              "카메라 오류",
     "remote_send_error":       "원격 제어 오류",
+    "thermal_temp_high":       "고온 감지",
     "nav_poll_timeout":        "네비게이션 폴링 타임아웃",
     "position_recv_error":     "위치 수신 오류",
     "db_operation_error":      "데이터베이스 오류",

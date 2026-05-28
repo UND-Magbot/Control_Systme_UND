@@ -130,6 +130,13 @@ def status_thread():
                     log_event("robot", "robot_online", "로봇 온라인",
                               robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
+                # 배터리 임계치 도달 시 자동 충전 복귀 트리거 (정책은 auto_return 모듈 참조)
+                try:
+                    from app.robot_control.auto_return import check_battery_and_return
+                    check_battery_and_return(rid)
+                except Exception as e:
+                    print(f"[AUTO-RETURN] check 실패: {e}")
+
         if not success:
             elapsed = time.time() - last_success_time
 
@@ -428,8 +435,20 @@ def nav_thread():
             try:
                 navigation_send_next()
                 # 네비게이션이 완료되었으면 스케줄러 콜백 호출
-                if not is_nav_active() and get_active_schedule_id() is not None:
-                    on_navigation_complete()
+                if not is_nav_active():
+                    if get_active_schedule_id() is not None:
+                        on_navigation_complete()
+                    # 작업 완료 후 충전소 자동 복귀 (스케줄러 / 원격 startpath)
+                    import app.navigation.send_move as nav_mod
+                    if getattr(nav_mod, "auto_return_to_charge", False):
+                        nav_mod.auto_return_to_charge = False
+                        try:
+                            from app.robot_control.charge import _return_to_charge_internal
+                            result = _return_to_charge_internal(cancel_running=False)
+                            if not result.get("ok"):
+                                print(f"[AUTO-CHARGE] 복귀 스킵: {result.get('msg')}")
+                        except Exception as e:
+                            print(f"[AUTO-CHARGE ERR] 자동 충전소 복귀 실패: {e}")
             except Exception as e:
                 print(f"[ERR] navigation_send_next 실패: {e}")
                 from app.navigation.send_move import current_wp_index, waypoints_list

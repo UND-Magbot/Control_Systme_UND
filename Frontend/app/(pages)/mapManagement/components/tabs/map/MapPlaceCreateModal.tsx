@@ -6,6 +6,7 @@ import styles from "./MapPlaceCreateModal.module.css";
 import DropdownSelect from "@/app/components/button/DropdownSelect";
 
 import { API_BASE } from "@/app/config";
+import { apiFetch } from "@/app/lib/api";
 
 type DBRobot = { id: number; RobotName: string };
 
@@ -118,7 +119,7 @@ export default function MapPlaceCreateModal({
   // DB 로봇 목록 fetch
   const fetchRobots = useCallback(() => {
     setRobotFetchError(false);
-    fetch(`${API_BASE}/DB/robots`)
+    apiFetch("/DB/robots")
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

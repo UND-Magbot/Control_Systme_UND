@@ -18,8 +18,6 @@ import ViewportArea from './components/ViewportArea';
 import MovementPad from './components/MovementPad';
 import ControlPanel from './components/ControlPanel';
 import AlertDialog from './components/AlertDialog';
-import BatteryPathModal from '@/app/components/modal/BatteryChargeModal';
-
 import styles from './RemoteModal.module.css';
 
 export type RemoteModalProps = {
@@ -81,23 +79,12 @@ export default function RemoteModal({
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const showAlert = useCallback((msg: string) => setAlertMsg(msg), []);
 
-  // --- 긴급 정지 확인 모달 ---
-  const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
-  const handleEmergencyStop = useCallback(() => setEmergencyConfirmOpen(true), []);
-  const handleEmergencyConfirm = useCallback(() => {
-    apiFetch('/nav/stopmove', { method: 'POST' })
-      .then(async (res) => {
-        if (!res.ok) return;
-        const data = await res.json().catch(() => null);
-        showAlert(data?.was_active ? '작업이 중지되었습니다.' : '진행 중인 작업이 없습니다.');
-      })
-      .catch((err) => console.error('긴급 정지 실패', err));
-    setEmergencyConfirmOpen(false);
-  }, [showAlert]);
-
   // --- 커스텀 훅 (카메라 준비 후에만 활성화) ---
   const cam = useCameraStream({ isOpen: isOpen && camerasReady, camera: robotCameras, initialCam, initialCamIndex });
-  const work = useWorkAutomation(isOpen, { onAlert: showAlert });
+  const work = useWorkAutomation(isOpen, {
+    onAlert: showAlert,
+    currentFloorId: selectedRobot?.currentFloorId ?? null,
+  });
   const { position: robotPos, isReady: robotConnected, hasError: positionError } = useRobotPosition(isOpen);
   const moveCmd = useRemoteCommand({ debounceMs: 100, onError: showAlert });
   const recording = useRecording(isOpen, selectedRobot?.id);
@@ -201,13 +188,12 @@ export default function RemoteModal({
               robotType={selectedRobot?.type ?? ''}
               motionState={selectedRobot?.motionState ?? null}
               isCharging={selectedRobot?.isCharging ?? false}
-              onEmergencyStop={handleEmergencyStop}
-              emergencyDisabled={isDisconnected || !(work.isWorking || (selectedRobot?.isNavigating ?? false))}
               isWorking={work.isWorking}
               isWorkPending={work.isPending}
               loopCount={work.loopCount}
               loopCurrent={work.loopCurrent}
               loopTotal={work.loopTotal}
+              loopInfinite={work.loopInfinite}
               isDisconnected={isDisconnected || readOnly}
               onStartWork={work.startWork}
               onStopWork={work.stopWork}
@@ -222,6 +208,7 @@ export default function RemoteModal({
               createdPoints={work.createdPoints}
               onStartCreating={work.startCreating}
               onSavePoint={work.savePoint}
+              onSetPointWait={work.setPointWait}
               onClearPoints={work.clearPoints}
               onFinishCreating={work.finishCreating}
               onCancelCreating={work.cancelCreating}
@@ -233,14 +220,6 @@ export default function RemoteModal({
           <AlertDialog message={alertMsg} onClose={() => setAlertMsg(null)} />
         )}
 
-        {emergencyConfirmOpen && (
-          <BatteryPathModal
-            isOpen={emergencyConfirmOpen}
-            message="긴급 정지하시겠습니까?"
-            onConfirm={handleEmergencyConfirm}
-            onCancel={() => setEmergencyConfirmOpen(false)}
-          />
-        )}
       </div>
     </div>
   );

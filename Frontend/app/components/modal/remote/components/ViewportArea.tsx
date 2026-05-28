@@ -3,8 +3,10 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import type { Camera } from '@/app/types';
 import { CanvasMap } from '@/app/components/map';
+import WebRTCPlayer from '@/app/components/camera/WebRTCPlayer';
 import { getOccGridConfig } from '@/app/components/map/mapConfigs';
 import type { RobotPosition } from '@/app/components/map/types';
+import { apiFetch } from '@/app/lib/api';
 import styles from './ViewportArea.module.css';
 
 type ViewportAreaProps = {
@@ -125,11 +127,39 @@ export default function ViewportArea({
     setTranslate({ x: 0, y: 0 });
   }, []);
 
+  // --- 카메라 PTZ 줌 (열화상만, 단발 클릭) ---
+  const activeCam: Camera | undefined = camera[cameraTabActiveIndex];
+  const isPtzCapable = activeCam?.streamType === 'http';
+  // RTSP 카메라는 MediaMTX WebRTC(WebRTCPlayer)로 저지연 송출
+  const isWebrtcCam = !!activeCam && (activeCam.streamType ?? 'rtsp') === 'rtsp';
+
+  const handlePtzZoom = useCallback(
+    async (action: 'zoom_in' | 'zoom_out') => {
+      if (!activeCam) {
+        console.warn('[PTZ] activeCam 없음');
+        return;
+      }
+      console.debug(`[PTZ] ${action} → /Video/${activeCam.id}/ptz`, activeCam);
+      try {
+        const res = await apiFetch(`/Video/${activeCam.id}/ptz?action=${action}`, { method: 'POST' });
+        if (!res.ok) {
+          console.warn(`[PTZ] ${action} HTTP ${res.status}`, await res.text().catch(() => ''));
+        } else {
+          console.debug(`[PTZ] ${action} ok`);
+        }
+      } catch (e) {
+        console.warn(`[PTZ] ${action} 네트워크 오류`, e);
+      }
+    },
+    [activeCam],
+  );
+
   // --- camera img style ---
+  // 모든 카메라를 16:9 컨테이너에 fill로 늘려 꽉 채움 (잘림·검은 여백 없음, 비율 왜곡 허용).
   const camImgStyle: React.CSSProperties = {
     width: '100%',
     height: '100%',
-    objectFit: 'cover',
+    objectFit: 'fill',
     position: 'absolute',
     top: 0,
     left: 0,
@@ -176,16 +206,16 @@ export default function ViewportArea({
         onMouseUp={endPan}
         onMouseLeave={endPan}
       >
-        {/* 카메라 로딩 */}
-        {isCamLoading && (
+        {/* 카메라 로딩 (MJPEG 경로 전용 — WebRTC는 WebRTCPlayer가 자체 표시) */}
+        {!isWebrtcCam && isCamLoading && (
           <div className={styles.loadingOverlay}>
             <div className={styles.loadingSpinner} />
             <span>카메라 연결 중...</span>
           </div>
         )}
 
-        {/* 카메라 에러 */}
-        {camError && (
+        {/* 카메라 에러 (MJPEG 경로 전용) */}
+        {!isWebrtcCam && camError && (
           <div className={styles.errorOverlay}>
             <span className={styles.errorTitle}>카메라 연결 실패</span>
             <span className={styles.errorDesc}>카메라 스트림에 연결할 수 없습니다</span>
@@ -195,8 +225,10 @@ export default function ViewportArea({
           </div>
         )}
 
-        {/* 카메라 이미지 (항상 메인) */}
-        {cameraStream && (
+        {/* 카메라 메인 — RTSP는 WebRTC 저지연, 그 외(열화상·외부 MJPEG)는 <img> */}
+        {isWebrtcCam && activeCam ? (
+          <WebRTCPlayer whepUrl={activeCam.webrtcUrl} videoStyle={camImgStyle} />
+        ) : cameraStream ? (
           <img
             ref={cameraImgRef}
             key={retryKey}
@@ -207,7 +239,7 @@ export default function ViewportArea({
             style={camImgStyle}
             alt="camera"
           />
-        )}
+        ) : null}
       </div>
 
       {/* ── 줌 리셋 ── */}
@@ -220,6 +252,28 @@ export default function ViewportArea({
         >
           <span>↻</span>
         </button>
+      )}
+
+      {/* ── 카메라 PTZ 줌 (열화상만) ── */}
+      {isOverlayReady && isPtzCapable && (
+        <div className={styles.ptzZoomGroup}>
+          <button
+            type="button"
+            className={styles.ptzZoomBtn}
+            onClick={() => handlePtzZoom('zoom_in')}
+            title="카메라 줌 인"
+          >
+            <span>+</span>
+          </button>
+          <button
+            type="button"
+            className={styles.ptzZoomBtn}
+            onClick={() => handlePtzZoom('zoom_out')}
+            title="카메라 줌 아웃"
+          >
+            <span>−</span>
+          </button>
+        </div>
       )}
 
       {/* 녹화 버튼은 StatusBar로 이동 */}

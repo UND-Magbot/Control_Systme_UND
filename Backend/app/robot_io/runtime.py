@@ -46,6 +46,7 @@ def init_runtime(robots, last_statuses: Optional[dict] = None) -> None:
                 "current_floor_id": r.CurrentFloorId,
                 "current_map_id": getattr(r, "CurrentMapId", None),
                 "business_id": r.BusinessId,
+                "limit_battery": int(r.LimitBattery) if r.LimitBattery is not None else 30,
                 "position": {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0},
                 "battery": {},
                 "charge_state": {"state": 0, "error_code": 0, "timestamp": 0},
@@ -99,6 +100,7 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
                    device_temp: dict | None = None,
                    basic_status: dict | None = None) -> None:
     """heartbeat 수신 시 배터리, 충전 상태, 디바이스 온도, 기본 상태(Sleep/PowerManagement) 갱신."""
+    charge_log_payload = None  # 락 밖에서 처리할 charge_state 변화 정보
     with _lock:
         entry = _runtime.get(robot_id)
         if not entry:
@@ -109,6 +111,14 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
         if battery:
             entry["battery"] = battery
         if charge_state:
+            # charge_state 변화 감지 (도킹 실패 원인 진단용)
+            prev_cs = entry.get("charge_state") or {}
+            prev_state = prev_cs.get("state")
+            prev_err = prev_cs.get("error_code")
+            new_state = charge_state.get("state")
+            new_err = charge_state.get("error_code")
+            if prev_state != new_state or prev_err != new_err:
+                charge_log_payload = (prev_state, new_state, prev_err, new_err)
             entry["charge_state"] = charge_state
         if basic_status is not None:
             # None이 들어올 수 있으므로 기존 값 유지 방식으로 병합
@@ -137,6 +147,34 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
 
         if device_temp:
             entry["device_temp"] = device_temp
+
+    # 락 밖에서 charge_state 변화 로그 처리 (락 보유 시간 최소화)
+    if charge_log_payload is not None:
+        prev_state, new_state, prev_err, new_err = charge_log_payload
+        state_label = _CHARGE_STATE_LABEL.get(new_state, f"unknown({new_state})")
+        err_code = new_err if new_err is not None else 0
+        err_label = _CHARGE_ERROR_MSG.get(new_err, f"unknown(0x{err_code:04X})")
+        print(
+            f"[CHARGE] state {prev_state}→{new_state} ({state_label}), "
+            f"error_code={new_err} ({err_label})"
+        )
+        # 비정상 상태(4=로봇 오류, 5=도크에 있지만 전류 없음)나 신규 실에러 코드는 DB에도 기록
+        is_abnormal_state = new_state in (4, 5)
+        is_real_error = new_err not in (None, 0, 1) and prev_err != new_err
+        if is_abnormal_state or is_real_error:
+            try:
+                from app.logs.service import log_event
+                from app.user_cache import get_robot_name, get_robot_business_id
+                log_event(
+                    "robot",
+                    "charge_state_change",
+                    f"충전 상태: {state_label} / 에러 코드={new_err} ({err_label})",
+                    robot_id=robot_id,
+                    robot_name=get_robot_name(),
+                    business_id=get_robot_business_id(),
+                )
+            except Exception as e:
+                print(f"[WARN] charge_state DB 로그 실패: {e}")
 
 
 def update_position(robot_id: int, x: float, y: float, yaw: float) -> None:
@@ -381,6 +419,7 @@ def get_nav(robot_id: int) -> dict:
 
 def add_or_update_robot(robot) -> None:
     """DB의 RobotInfo 객체로 런타임 엔트리 추가 또는 갱신 (서버 재시작 불필요)."""
+    limit = int(robot.LimitBattery) if robot.LimitBattery is not None else 30
     with _lock:
         existing = _runtime.get(robot.id)
         if existing:
@@ -388,6 +427,7 @@ def add_or_update_robot(robot) -> None:
             existing["robot_type"] = robot.RobotType or ""
             existing["robot_ip"] = robot.RobotIP
             existing["robot_port"] = robot.RobotPort or 30000
+            existing["limit_battery"] = limit
         else:
             _runtime[robot.id] = {
                 "robot_id": robot.id,
@@ -397,6 +437,7 @@ def add_or_update_robot(robot) -> None:
                 "robot_port": robot.RobotPort or 30000,
                 "current_floor_id": robot.CurrentFloorId,
                 "current_map_id": getattr(robot, "CurrentMapId", None),
+                "limit_battery": limit,
                 "position": {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0},
                 "battery": {},
                 "charge_state": {"state": 0, "error_code": 0, "timestamp": 0},

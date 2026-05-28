@@ -103,6 +103,7 @@ def get_status(request: Request, db: Session = Depends(get_db)):
 def get_nav():
     from app.navigation.send_move import (
         is_navigating, current_wp_index, waypoints_list, nav_loop_remaining, nav_loop_total,
+        nav_loop_count, nav_loop_infinite,
     )
     return {
         "is_navigating": is_navigating,
@@ -110,4 +111,6 @@ def get_nav():
         "total_wp": len(waypoints_list),
         "loop_remaining": nav_loop_remaining,
         "loop_total": nav_loop_total,
+        "loop_count": nav_loop_count,
+        "loop_infinite": nav_loop_infinite,
     }

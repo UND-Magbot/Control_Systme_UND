@@ -34,7 +34,10 @@ const AlertContext = createContext<AlertContextType>({
   handleMarkAllRead: async () => {},
 });
 
-const POLL_INTERVAL = 30_000;
+// 폴링 주기 — 2초. 열화상 고온 감지처럼 즉시 모달이 떠야 하는 알림 때문에
+// 짧게 잡는다. 응답 크기가 작아 backend 부하는 미미하다.
+// (정말 0지연이 필요하면 SSE/WebSocket으로 전환 검토)
+const POLL_INTERVAL = 2_000;
 
 export function AlertProvider({ children }: { children: React.ReactNode }) {
   const [unreadAlerts, setUnreadAlerts] = useState<AlertMockData[]>([]);

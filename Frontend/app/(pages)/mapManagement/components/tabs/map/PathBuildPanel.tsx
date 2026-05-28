@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import PathStopOptionsModal from "../path/PathStopOptionsModal";
 
 type Props = {
   isOpen: boolean;
@@ -10,6 +11,8 @@ type Props = {
   setPathBuildWorkType: (v: string) => void;
   pathBuildOrder: string[];
   setPathBuildOrder: React.Dispatch<React.SetStateAction<string[]>>;
+  pathBuildWaits: number[];
+  setPathBuildWaits: React.Dispatch<React.SetStateAction<number[]>>;
   placeCoordMap: Map<string, { x: number; y: number }>;
   onCancel: () => void;
   onSave: () => void;
@@ -27,11 +30,26 @@ export default function PathBuildPanel({
   setPathBuildWorkType,
   pathBuildOrder,
   setPathBuildOrder,
+  pathBuildWaits,
+  setPathBuildWaits,
   placeCoordMap,
   onCancel,
   onSave,
 }: Props) {
+  const [optionsIdx, setOptionsIdx] = useState<number | null>(null);
+
   if (!isOpen) return null;
+
+  const applyWait = (waitSeconds: number) => {
+    if (optionsIdx == null) return;
+    setPathBuildWaits((prev) => {
+      const next = [...prev];
+      while (next.length < pathBuildOrder.length) next.push(0);
+      next[optionsIdx] = waitSeconds;
+      return next;
+    });
+    setOptionsIdx(null);
+  };
 
   return (
     <div
@@ -152,6 +170,7 @@ export default function PathBuildPanel({
             <option value="task1">task1</option>
             <option value="task2">task2</option>
             <option value="task3">task3</option>
+            <option value="test">test</option>
           </select>
         </div>
       </div>
@@ -245,6 +264,22 @@ export default function PathBuildPanel({
                   }}
                 >
                   {name}
+                  {pathBuildWaits[i] > 0 && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        padding: "1px 5px",
+                        borderRadius: 4,
+                        background: "rgba(127, 208, 255, 0.15)",
+                        border: "1px solid rgba(127, 208, 255, 0.4)",
+                        color: "#7fd0ff",
+                        fontSize: 10,
+                        fontWeight: 600,
+                      }}
+                    >
+                      대기 {pathBuildWaits[i]}s
+                    </span>
+                  )}
                 </span>
                 {i > 0 && i < pathBuildOrder.length && (
                   <span
@@ -265,9 +300,34 @@ export default function PathBuildPanel({
                   </span>
                 )}
                 <button
-                  onClick={() =>
-                    setPathBuildOrder((prev) => prev.filter((_, idx) => idx !== i))
-                  }
+                  onClick={() => setOptionsIdx(i)}
+                  title="정지 옵션 설정"
+                  aria-label="옵션"
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    border: "1.5px solid #7fd0ff",
+                    background: "transparent",
+                    color: "#7fd0ff",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    padding: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  +
+                </button>
+                <button
+                  onClick={() => {
+                    setPathBuildOrder((prev) => prev.filter((_, idx) => idx !== i));
+                    setPathBuildWaits((prev) => prev.filter((_, idx) => idx !== i));
+                  }}
                   style={{
                     background: "none",
                     border: "none",
@@ -331,6 +391,14 @@ export default function PathBuildPanel({
           저장
         </button>
       </div>
+
+      <PathStopOptionsModal
+        isOpen={optionsIdx != null}
+        placeName={optionsIdx != null ? pathBuildOrder[optionsIdx] ?? "" : ""}
+        initialWaitSeconds={optionsIdx != null ? pathBuildWaits[optionsIdx] ?? 0 : 0}
+        onCancel={() => setOptionsIdx(null)}
+        onConfirm={applyWait}
+      />
     </div>
   );
 }

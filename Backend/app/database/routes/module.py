@@ -34,6 +34,9 @@ def _build_module_tree(modules: list[RobotModule], robot: RobotInfo) -> list[dic
             ip = ci.CameraIP or robot.RobotIP
             if ci.StreamType == "ws":
                 stream_url = f"ws://{ip}:{ci.Port}"
+            elif ci.StreamType == "http":
+                # 외부 MJPEG HTTP 서버를 직접 임베드 (백엔드 프록시 거치지 않음)
+                stream_url = f"http://{ip}:{ci.Port}{ci.Path or ''}"
             else:
                 stream_url = f"/Video/{m.id}"
             node["config"] = {
@@ -88,7 +91,7 @@ class ModuleCreateReq(BaseModel):
     parentModuleId: Optional[int] = None
     sortOrder: int = 0
     # 카메라 전용
-    streamType: Optional[str] = None    # "rtsp" | "ws"
+    streamType: Optional[str] = None    # "rtsp" | "ws" | "http"
     cameraIP: Optional[str] = None
     port: Optional[int] = None
     path: Optional[str] = None

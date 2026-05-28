@@ -10,7 +10,17 @@ services:
     build: ./Backend
     container_name: control-backend
     network_mode: host
+    environment:
+      - TZ=Asia/Seoul
+      # 카메라 RTSP 전송 방식: tcp(기본, 손실 없음) | udp(저지연, 깨끗한 망 전용).
+      # H.265 카메라라 불안정 망에서 udp는 화면 깨짐 발생 → tcp 권장.
+      - RTSP_TRANSPORT=tcp
+      # uvicorn 바인딩 포트. Dockerfile 기본값(8010)을 그대로 쓰지만, 다른 환경에서
+      # 충돌 시 여기만 바꾸면 컨테이너 안의 uvicorn도 그 포트로 뜬다.
+      # (network_mode: host 라 호스트 포트와 동일.)
+      - PORT=8010
     volumes:
       - ./Backend/data:/app/data
       - ./Backend/static:/app/static
+      - ./backend_logs:/backend_logs
     restart: unless-stopped

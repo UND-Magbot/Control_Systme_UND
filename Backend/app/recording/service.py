@@ -326,7 +326,7 @@ def cleanup_orphaned(db: Session) -> int:
 
 
 def get_active_camera_modules(db: Session, robot_id: int):
-    """로봇의 활성 RTSP 카메라 모듈 목록 반환"""
+    """로봇의 녹화 가능한 활성 카메라 모듈 (rtsp / http MJPEG)"""
     modules = (
         db.query(RobotModule)
         .join(ModuleCameraInfo, RobotModule.id == ModuleCameraInfo.ModuleId)
@@ -334,17 +334,19 @@ def get_active_camera_modules(db: Session, robot_id: int):
             RobotModule.RobotId == robot_id,
             RobotModule.ModuleType == "camera",
             RobotModule.IsActive == 1,
-            ModuleCameraInfo.StreamType == "rtsp",
+            ModuleCameraInfo.StreamType.in_(["rtsp", "http"]),
         )
         .all()
     )
     return modules
 
 
-def build_rtsp_url(db: Session, module: RobotModule, robot: RobotInfo = None) -> Optional[str]:
-    """모듈에서 RTSP URL 생성. robot 객체를 전달하면 DB 재조회를 생략한다."""
+def build_stream_url(db: Session, module: RobotModule, robot: RobotInfo = None) -> Optional[str]:
+    """모듈에서 녹화용 입력 URL 생성. rtsp / http MJPEG 둘 다 지원.
+    robot 객체를 전달하면 DB 재조회를 생략한다.
+    """
     ci = module.camera_info
-    if not ci or ci.StreamType != "rtsp":
+    if not ci or ci.StreamType not in ("rtsp", "http"):
         return None
 
     if robot is None:
@@ -353,4 +355,7 @@ def build_rtsp_url(db: Session, module: RobotModule, robot: RobotInfo = None) ->
     if not ip:
         return None
 
-    return f"rtsp://{ip}:{ci.Port}{ci.Path}"
+    path = ci.Path or ""
+    if ci.StreamType == "rtsp":
+        return f"rtsp://{ip}:{ci.Port}{path}"
+    return f"http://{ip}:{ci.Port}{path}"

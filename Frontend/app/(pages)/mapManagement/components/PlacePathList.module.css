@@ -149,23 +149,27 @@
   gap: 10px;
 }
 
-.placeTable th:nth-child(1) { width: 28%; }
+/* 장소 목록 (4칸): 로봇명 / 층별 / 장소명 / 좌표(X,Y,D) */
+.status.placeTable th:nth-child(1),
+.status.placeTable td:nth-child(1) { width: 22%; }
+.status.placeTable th:nth-child(2),
+.status.placeTable td:nth-child(2) { width: 10%; }
+.status.placeTable th:nth-child(3),
+.status.placeTable td:nth-child(3) { width: 28%; }
+.status.placeTable th:nth-child(4),
+.status.placeTable td:nth-child(4) { width: 40%; }
 
-.placeTable th:nth-child(2) { width: 10%; }
-
-.placeTable th:nth-child(3) { width: 32%; }
-
-.placeTable th:nth-child(4) { width: 30%; }
-
-.placeTableDelete th:nth-child(1) { width: 5%; }
-
-.placeTableDelete th:nth-child(2) { width: 25%; }
-
-.placeTableDelete th:nth-child(3) { width: 10%; }
-
-.placeTableDelete th:nth-child(4) { width: 30%; }
-
-.placeTableDelete th:nth-child(5) { width: 30%; }
+/* 장소 목록 삭제 모드 (5칸): ☑ / 로봇명 / 층별 / 장소명 / 좌표 */
+.status.placeTableDelete th:nth-child(1),
+.status.placeTableDelete td:nth-child(1) { width: 5%; }
+.status.placeTableDelete th:nth-child(2),
+.status.placeTableDelete td:nth-child(2) { width: 20%; }
+.status.placeTableDelete th:nth-child(3),
+.status.placeTableDelete td:nth-child(3) { width: 10%; }
+.status.placeTableDelete th:nth-child(4),
+.status.placeTableDelete td:nth-child(4) { width: 25%; }
+.status.placeTableDelete th:nth-child(5),
+.status.placeTableDelete td:nth-child(5) { width: 40%; }
 
 .placeMapCard {
   width: 100%;
@@ -359,27 +363,29 @@
   height: 11px;
 }
 
-.pathTable { min-width: 580px; }
+/* 경로 목록 (4칸): 로봇명 / 작업유형 / 경로명 / 경로순서 */
+.status.pathTable { min-width: 580px; }
+.status.pathTable th:nth-child(1),
+.status.pathTable td:nth-child(1) { width: 20%; }
+.status.pathTable th:nth-child(2),
+.status.pathTable td:nth-child(2) { width: 12%; }
+.status.pathTable th:nth-child(3),
+.status.pathTable td:nth-child(3) { width: 20%; }
+.status.pathTable th:nth-child(4),
+.status.pathTable td:nth-child(4) { width: 48%; }
 
-.pathTable th:nth-child(1) { width: 15%; }
-
-.pathTable th:nth-child(2) { width: 13%; }
-
-.pathTable th:nth-child(3) { width: 17%; }
-
-.pathTable th:nth-child(4) { width: 55%; }
-
-.pathTableDelete { min-width: 620px; }
-
-.pathTableDelete th:nth-child(1) { width: 5%; }
-
-.pathTableDelete th:nth-child(2) { width: 13%; }
-
-.pathTableDelete th:nth-child(3) { width: 12%; }
-
-.pathTableDelete th:nth-child(4) { width: 15%; }
-
-.pathTableDelete th:nth-child(5) { width: 55%; }
+/* 경로 목록 삭제 모드 (5칸): ☑ / 로봇명 / 작업유형 / 경로명 / 경로순서 */
+.status.pathTableDelete { min-width: 620px; }
+.status.pathTableDelete th:nth-child(1),
+.status.pathTableDelete td:nth-child(1) { width: 5%; }
+.status.pathTableDelete th:nth-child(2),
+.status.pathTableDelete td:nth-child(2) { width: 17%; }
+.status.pathTableDelete th:nth-child(3),
+.status.pathTableDelete td:nth-child(3) { width: 12%; }
+.status.pathTableDelete th:nth-child(4),
+.status.pathTableDelete td:nth-child(4) { width: 18%; }
+.status.pathTableDelete th:nth-child(5),
+.status.pathTableDelete td:nth-child(5) { width: 48%; }
 
 .pathOrderCell {
   text-align: left;
@@ -488,11 +494,17 @@
 .status th {
   padding: 8px 4px;
   height: 44px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status td {
   padding: 8px 4px;
   height: 48px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status thead tr {
