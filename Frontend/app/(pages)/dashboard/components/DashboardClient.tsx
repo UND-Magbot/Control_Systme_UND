@@ -61,9 +61,10 @@ export default function DashboardClient({
     const firstOnline = liveRobots.find((r) => r.power === "On");
     const firstId = firstOnline?.id ?? null;
     setSelectedRobotId((prev) => {
-      // 이미 선택된 로봇이 아직 online이면 유지
-      if (prev != null && liveRobots.some((r) => r.id === prev && r.power === "On")) return prev;
-      // 선택된 로봇이 없거나 offline으로 전환된 경우 → 첫 online 로봇 자동 선택
+      // 이미 선택된 로봇이 목록에 있으면 유지 — offline 으로 잠깐 전환돼도
+      // 선택을 풀지 않는다(네트워크 블립마다 카메라/맵이 깜빡이는 것 방지).
+      if (prev != null && liveRobots.some((r) => r.id === prev)) return prev;
+      // 선택이 없거나 로봇이 목록에서 사라진 경우 → 첫 online 로봇 자동 선택
       return firstId;
     });
   }, [statusLoaded, liveRobots]);
@@ -73,15 +74,14 @@ export default function DashboardClient({
     [liveRobots, robots, selectedRobotId]
   );
 
-  const selectedRobotNetwork = selectedRobot?.network;
-
-  // 로봇 선택 변경 또는 online 복귀 시 카메라 로드 (초기 로드 포함)
+  // 로봇 선택 변경 시 카메라 목록 로드 (초기 로드 포함).
+  // 네트워크 상태와 무관하게 selectedRobotId 기준으로만 로드한다 — 카메라
+  // 목록은 DB 조회라 오프라인이어도 가져올 수 있고, 실제 스트림 끊김/재연결은
+  // 백엔드 RTSP 프록시가 투명하게 처리하므로 오프라인 시 목록을 비우지 않는다.
   useEffect(() => {
-    // statusLoaded 전에는 로봇/네트워크 상태가 아직 정착되지 않았으므로
-    // camerasLoading을 true로 유지해 CameraSlots가 로딩 UI를 계속 표시하도록 둔다.
-    // (이 상태에서 false로 뒤집으면 "로봇 연결 끊김" 이 잠깐 깜빡임)
+    // statusLoaded 전에는 로봇 상태가 정착되지 않았으므로 로딩 UI를 유지한다.
     if (!statusLoaded) return;
-    if (!selectedRobotId || selectedRobotNetwork !== "Online") {
+    if (!selectedRobotId) {
       setRobotCameras([]);
       setCamerasLoading(false);
       return;
@@ -96,7 +96,7 @@ export default function DashboardClient({
         if (!cancelled) setCamerasLoading(false);
       });
     return () => { cancelled = true; };
-  }, [statusLoaded, selectedRobotId, selectedRobotNetwork]);
+  }, [statusLoaded, selectedRobotId]);
 
   // 선택된 로봇의 통계 데이터 로드
   useEffect(() => {

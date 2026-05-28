@@ -18,4 +18,4 @@ REQ_INTERVAL_POS = 2.0
 REQ_INTERVAL_HB = 1.0
 
 # 기본 초기 pose
-INIT_POSE = {"PosX": 3.998, "PosY": -2.612, "PosZ": 0.0, "Yaw": -1.604}
+INIT_POSE = {"PosX": 3.965, "PosY": -2.395, "PosZ": 0.0, "Yaw": -1.664}

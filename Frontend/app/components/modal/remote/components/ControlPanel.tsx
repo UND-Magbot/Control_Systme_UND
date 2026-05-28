@@ -16,6 +16,7 @@ type PathOption = {
   id: number;
   wayName: string;
   wayPoints: string;
+  waitSeconds?: number[];
 };
 
 type ControlPanelProps = {
@@ -27,6 +28,7 @@ type ControlPanelProps = {
   loopCount: number | string;
   loopCurrent: number;
   loopTotal: number;
+  loopInfinite: boolean;
   isDisconnected: boolean;
   onStartWork: (loop: number) => void;
   onStopWork: () => void;
@@ -41,11 +43,12 @@ type ControlPanelProps = {
   onTaskTypeFilterChange: (value: string | null) => void;
   // 직접 경로 생성
   isCreating: boolean;
-  createdPoints: { x: number; y: number; yaw: number }[];
+  createdPoints: { x: number; y: number; yaw: number; waitSeconds?: number }[];
   onStartCreating: () => void;
   onSavePoint: () => void;
+  onSetPointWait: (idx: number, waitSeconds: number) => void;
   onClearPoints: () => void;
-  onFinishCreating: (wayName?: string) => void;
+  onFinishCreating: (wayName?: string, taskType?: string) => void;
   onCancelCreating: () => void;
 };
 
@@ -58,6 +61,7 @@ export default function ControlPanel({
   loopCount,
   loopCurrent,
   loopTotal,
+  loopInfinite,
   isDisconnected,
   onStartWork,
   onStopWork,
@@ -72,6 +76,7 @@ export default function ControlPanel({
   createdPoints,
   onStartCreating,
   onSavePoint,
+  onSetPointWait,
   onClearPoints,
   onFinishCreating,
   onCancelCreating,
@@ -100,6 +105,7 @@ export default function ControlPanel({
             loopCount={loopCount}
             loopCurrent={loopCurrent}
             loopTotal={loopTotal}
+            loopInfinite={loopInfinite}
             disabled={isDisconnected}
             onStartWork={onStartWork}
             onStopWork={onStopWork}
@@ -114,6 +120,7 @@ export default function ControlPanel({
             createdPoints={createdPoints}
             onStartCreating={onStartCreating}
             onSavePoint={onSavePoint}
+            onSetPointWait={onSetPointWait}
             onClearPoints={onClearPoints}
             onFinishCreating={onFinishCreating}
             onCancelCreating={onCancelCreating}

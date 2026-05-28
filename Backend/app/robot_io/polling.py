@@ -130,6 +130,13 @@ def status_thread():
                     log_event("robot", "robot_online", "로봇 온라인",
                               robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
+                # 배터리 임계치 도달 시 자동 충전 복귀 트리거 (정책은 auto_return 모듈 참조)
+                try:
+                    from app.robot_control.auto_return import check_battery_and_return
+                    check_battery_and_return(rid)
+                except Exception as e:
+                    print(f"[AUTO-RETURN] check 실패: {e}")
+
         if not success:
             elapsed = time.time() - last_success_time
 

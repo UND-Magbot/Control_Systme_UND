@@ -91,6 +91,13 @@ def cancel_active_schedule(reason: str = "사용자 취소"):
                 )
                 db.add(single_day)
             db.commit()
+            log_event(
+                "schedule", "schedule_cancel",
+                f"스케줄 취소: {sched.WorkName} (사유: {reason})",
+                detail=f"id={schedule_id}, mode={mode}, robot={sched.RobotName}",
+                robot_id=get_robot_id(), robot_name=get_robot_name(),
+                business_id=get_robot_business_id(),
+            )
             print(f"[SCHEDULER] 스케줄 #{schedule_id} → {sched.TaskStatus} ({reason})")
     except Exception as e:
         print(f"[SCHEDULER ERR] 취소 처리 실패: {e}")
@@ -193,6 +200,103 @@ def on_navigation_error(error_msg: str = ""):
         db.close()
 
 
+# ─── 실행 전 가드: 로봇 오프라인 시 당일 스킵 ───
+
+def _is_target_robot_online(sched: ScheduleInfo) -> bool:
+    """스케줄 대상 로봇이 폴링 기준 '온라인 확정' 상태인지 판정.
+
+    polling._was_online[rid] 가 True 인 경우만 True를 반환한다.
+    12초(OFFLINE_AFTER_SEC) 이상 응답이 없으면 polling 스레드가 자동으로
+    False로 떨구므로, 단발 끊김으로 인한 오판은 없다.
+    """
+    from app.database.models import RobotInfo
+    from app.robot_io import polling
+
+    db = SessionLocal()
+    try:
+        robot = (
+            db.query(RobotInfo)
+            .filter(RobotInfo.RobotName == sched.RobotName,
+                    RobotInfo.DeletedAt.is_(None))
+            .first()
+        )
+        if not robot:
+            return False
+        return bool(polling._was_online.get(robot.id, False))
+    finally:
+        db.close()
+
+
+def _skip_today_due_to_offline(sched: ScheduleInfo) -> None:
+    """로봇 오프라인으로 인한 당일 스킵 처리.
+
+    - once: TaskStatus='취소'
+    - weekly/interval: SeriesExceptions에 오늘 추가 + 하루치 '취소' row 생성
+      (cancel_active_schedule 의 weekly/interval 분기와 동일한 모양)
+
+    execute_schedule 을 호출하지 않으므로 LastRunDate 가 갱신되지 않고,
+    _active_schedule_id 도 잡히지 않는다 → stuck 자체가 발생할 수 없다.
+    """
+    db = SessionLocal()
+    try:
+        s = db.query(ScheduleInfo).filter(ScheduleInfo.id == sched.id).first()
+        if not s:
+            return
+
+        mode = getattr(s, 'ScheduleMode', None) or (
+            "weekly" if s.Repeat == "Y" else "once"
+        )
+        today = datetime.now().date()
+        today_str = today.strftime("%Y-%m-%d")
+
+        if mode == "once":
+            s.TaskStatus = "취소"
+        else:
+            existing = set()
+            if s.SeriesExceptions:
+                existing = {d.strip() for d in s.SeriesExceptions.split(",") if d.strip()}
+            if today_str in existing:
+                # 이미 오늘 한 번 스킵 처리됨 → 중복 row 생성 방지
+                return
+            existing.add(today_str)
+            s.SeriesExceptions = ",".join(sorted(existing))
+
+            start_dt = s.StartDate
+            hour = start_dt.hour if start_dt else 0
+            minute = start_dt.minute if start_dt else 0
+            today_dt = datetime.combine(
+                today,
+                datetime.min.time().replace(hour=hour, minute=minute),
+            )
+            db.add(ScheduleInfo(
+                UserId=s.UserId, RobotName=s.RobotName, WorkName=s.WorkName,
+                TaskType=s.TaskType, WayName=s.WayName,
+                TaskStatus="취소", ScheduleMode=mode,
+                StartDate=today_dt, EndDate=today_dt,
+                Repeat=s.Repeat, Repeat_Day=s.Repeat_Day, Repeat_End=today_str,
+                ExecutionTime=s.ExecutionTime, IntervalMinutes=s.IntervalMinutes,
+                ActiveStartTime=s.ActiveStartTime, ActiveEndTime=s.ActiveEndTime,
+                SeriesStartDate=today, SeriesEndDate=today,
+                SeriesExceptions=None, SeriesGroupId=s.SeriesGroupId,
+                RunCount=1, MaxRunCount=None,
+            ))
+
+        db.commit()
+        log_event(
+            "schedule", "schedule_skip_offline",
+            f"스케줄 스킵: {s.WorkName} (로봇 오프라인)",
+            detail=f"id={s.id}, robot={s.RobotName}, mode={mode}",
+            robot_id=get_robot_id(), robot_name=get_robot_name(),
+            business_id=get_robot_business_id(),
+        )
+        print(f"[SCHEDULER] #{s.id} {s.WorkName} → 로봇 오프라인으로 당일 스킵")
+    except Exception as e:
+        print(f"[SCHEDULER ERR] offline skip 처리 실패: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 # ─── 시작 시 복구 ───
 
 def recover_stale_schedules():
@@ -259,6 +363,14 @@ def scheduler_thread():
                         break  # 이미 실행 중인 스케줄이 있으면 스킵
 
                     if should_run_now(sched, now):
+                        # 로봇 오프라인이면 execute_schedule 을 호출하지 않고
+                        # 당일 스킵 처리한 뒤 다음 스케줄로 넘어간다.
+                        # (offline 상태에서 execute가 호출되면 LastRunDate만 찍히고
+                        #  완료 콜백이 안 와서 _active_schedule_id 가 stuck 됨)
+                        if not _is_target_robot_online(sched):
+                            _skip_today_due_to_offline(sched)
+                            continue
+
                         with _lock:
                             _active_schedule_id = sched.id
                         if not execute_schedule(sched):

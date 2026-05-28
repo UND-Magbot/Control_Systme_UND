@@ -193,6 +193,7 @@ export default function RemoteModal({
               loopCount={work.loopCount}
               loopCurrent={work.loopCurrent}
               loopTotal={work.loopTotal}
+              loopInfinite={work.loopInfinite}
               isDisconnected={isDisconnected || readOnly}
               onStartWork={work.startWork}
               onStopWork={work.stopWork}
@@ -207,6 +208,7 @@ export default function RemoteModal({
               createdPoints={work.createdPoints}
               onStartCreating={work.startCreating}
               onSavePoint={work.savePoint}
+              onSetPointWait={work.setPointWait}
               onClearPoints={work.clearPoints}
               onFinishCreating={work.finishCreating}
               onCancelCreating={work.cancelCreating}

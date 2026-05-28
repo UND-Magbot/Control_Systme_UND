@@ -4,12 +4,15 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useRemoteCommand } from '../hooks/useRemoteCommand';
 import { apiFetch } from '@/app/lib/api';
 import InlineConfirm from './InlineConfirm';
+import PathStopOptionsModal from '@/app/(pages)/mapManagement/components/tabs/path/PathStopOptionsModal';
+import { formatPathOrderWithWaits } from '@/app/lib/pathOrder';
 import styles from './ControlPanel.module.css';
 
 type PathOption = {
   id: number;
   wayName: string;
   wayPoints: string;
+  waitSeconds?: number[];
 };
 
 type WorkProgressPanelProps = {
@@ -18,6 +21,7 @@ type WorkProgressPanelProps = {
   loopCount: number | string;
   loopCurrent: number;
   loopTotal: number;
+  loopInfinite: boolean;
   disabled?: boolean;
   onStartWork: (loop: number) => void;
   onStopWork: () => void;
@@ -32,11 +36,12 @@ type WorkProgressPanelProps = {
   onTaskTypeFilterChange: (value: string | null) => void;
   // 직접 경로 생성
   isCreating: boolean;
-  createdPoints: { x: number; y: number; yaw: number }[];
+  createdPoints: { x: number; y: number; yaw: number; waitSeconds?: number }[];
   onStartCreating: () => void;
   onSavePoint: () => void;
+  onSetPointWait: (idx: number, waitSeconds: number) => void;
   onClearPoints: () => void;
-  onFinishCreating: (wayName?: string) => void;
+  onFinishCreating: (wayName?: string, taskType?: string) => void;
   onCancelCreating: () => void;
 };
 
@@ -46,6 +51,7 @@ export default function WorkProgressPanel({
   loopCount,
   loopCurrent,
   loopTotal,
+  loopInfinite,
   disabled = false,
   onStartWork,
   onStopWork,
@@ -60,10 +66,12 @@ export default function WorkProgressPanel({
   createdPoints,
   onStartCreating,
   onSavePoint,
+  onSetPointWait,
   onClearPoints,
   onFinishCreating,
   onCancelCreating,
 }: WorkProgressPanelProps) {
+  const [optionsIdx, setOptionsIdx] = useState<number | null>(null);
   const isDisabled = disabled || isPending;
   const { execute: execInit, state: initState } = useRemoteCommand({ debounceMs: 1000 });
 
@@ -84,6 +92,8 @@ export default function WorkProgressPanel({
   // 경로 이름 입력
   const [pathName, setPathName] = useState('');
   const [autoName, setAutoName] = useState(true);
+  // 작업 유형 (직접 경로 생성 시) — 기본 task1, 백엔드 기본값과 동일
+  const [createTaskType, setCreateTaskType] = useState<string>('task1');
 
   // 드롭다운
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -106,9 +116,9 @@ export default function WorkProgressPanel({
         <div className={styles.workStatusBanner}>
           <span className={styles.workingDot} />
           <span>작업 진행 중</span>
-          {loopTotal > 1 && loopCurrent > 0 && (
+          {(loopInfinite || loopTotal > 1) && loopCurrent > 0 && (
             <span className={styles.loopCounter}>
-              {loopCurrent} / {loopTotal} 회
+              {loopCurrent} / {loopInfinite ? '∞' : loopTotal} 회
             </span>
           )}
         </div>
@@ -116,7 +126,7 @@ export default function WorkProgressPanel({
           <div className={styles.wpPathPreview}>
             <span className={styles.wpPathLabel}>{selectedPath.wayName}</span>
             <span className={styles.wpPathDetail}>
-              {selectedPath.wayPoints.split(' - ').join(' → ')}
+              {formatPathOrderWithWaits(selectedPath.wayPoints, selectedPath.waitSeconds, ' → ')}
             </span>
           </div>
         )}
@@ -135,45 +145,59 @@ export default function WorkProgressPanel({
   // 직접 경로 생성 모드
   if (isCreating) {
     return (
-      <div className={styles.wpPanel}>
-        <div className={styles.wpSection}>
-          <div className={styles.wpCreateHeader}>직접 경로 생성</div>
-        </div>
+      <div className={`${styles.wpPanel} ${styles.wpPanelCreate}`}>
+        <div className={styles.wpCreateHeader}>직접 경로 생성</div>
 
-        <div className={styles.wpSection}>
+        <div className={`${styles.wpSection} ${styles.wpCreateListSection}`}>
           <div className={styles.wpCreatePreviewLabel}>현재 경로</div>
-          <div className={styles.wpCreatePreviewPath}>
-            {createdPoints.length === 0
-              ? '저장된 위치가 없습니다'
-              : createdPoints.map((p, i) => `P${i + 1}(${p.x}, ${p.y})`).join(' → ')}
+          <div className={styles.wpCreatePointList}>
+            {createdPoints.length === 0 ? (
+              <div className={styles.wpCreatePointEmpty}>저장된 위치가 없습니다</div>
+            ) : (
+              createdPoints.map((p, i) => (
+                <div key={i} className={styles.wpCreatePointChip}>
+                  <span className={styles.wpCreatePointIndex}>P{i + 1}</span>
+                  <span className={styles.wpCreatePointCoord}>({p.x}, {p.y})</span>
+                  {p.waitSeconds && p.waitSeconds > 0 ? (
+                    <span className={styles.wpCreatePointWait}>대기 {p.waitSeconds}s</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={styles.wpCreatePointOptions}
+                    onClick={() => setOptionsIdx(i)}
+                    title="정지 옵션 설정"
+                    aria-label="옵션"
+                  >
+                    +
+                  </button>
+                </div>
+              ))
+            )}
           </div>
           <div className={styles.wpCreatePreviewCount}>
             {createdPoints.length}개 지점
           </div>
         </div>
 
-        <div className={styles.wpSection}>
-          <div className={styles.wpCreateActions}>
-            <button
-              type="button"
-              className={styles.actionBtn}
-              onClick={onSavePoint}
-              disabled={isDisabled}
-            >
-              위치 저장
-            </button>
-            <InlineConfirm
-              label="위치 초기화"
-              confirmLabel="정말 초기화?"
-              onConfirm={onClearPoints}
-              disabled={isDisabled || createdPoints.length === 0}
-              variant="danger"
-            />
-          </div>
+        <div className={styles.wpCreateActions}>
+          <button
+            type="button"
+            className={styles.actionBtn}
+            onClick={onSavePoint}
+            disabled={isDisabled}
+          >
+            위치 저장
+          </button>
+          <InlineConfirm
+            label="위치 초기화"
+            confirmLabel="정말 초기화?"
+            onConfirm={onClearPoints}
+            disabled={isDisabled || createdPoints.length === 0}
+            variant="danger"
+          />
         </div>
 
-        <div className={styles.wpSection}>
-          <div className={styles.wpCreatePreviewLabel}>경로 이름</div>
+        <div className={styles.wpCreateNameSection}>
           <input
             type="text"
             className={styles.wpNameInput}
@@ -182,33 +206,63 @@ export default function WorkProgressPanel({
             onChange={(e) => setPathName(e.target.value)}
             disabled={autoName}
           />
-          <label className={styles.wpAutoNameRow}>
-            <input
-              type="checkbox"
-              checked={autoName}
-              onChange={(e) => { setAutoName(e.target.checked); if (e.target.checked) setPathName(''); }}
-            />
-            <span className={styles.wpAutoNameLabel}>이름 자동 생성</span>
-          </label>
+          <div className={styles.wpAutoNameLine}>
+            <label className={styles.wpAutoNameRow}>
+              <input
+                type="checkbox"
+                checked={autoName}
+                onChange={(e) => { setAutoName(e.target.checked); if (e.target.checked) setPathName(''); }}
+              />
+              <span className={styles.wpAutoNameLabel}>이름 자동 생성</span>
+            </label>
+            <select
+              className={styles.wpCreateTaskTypeSelect}
+              value={createTaskType}
+              onChange={(e) => setCreateTaskType(e.target.value)}
+              disabled={isDisabled}
+              aria-label="작업 유형"
+            >
+              <option value="task1">task1</option>
+              <option value="task2">task2</option>
+              <option value="task3">task3</option>
+              <option value="test">test</option>
+            </select>
+          </div>
         </div>
 
         <div className={styles.wpCreateFooter}>
           <button
             type="button"
             className={styles.wpCancelBtn}
-            onClick={() => { onCancelCreating(); setPathName(''); setAutoName(true); }}
+            onClick={() => { onCancelCreating(); setPathName(''); setAutoName(true); setCreateTaskType('task1'); }}
           >
             취소
           </button>
           <button
             type="button"
             className={styles.wpConfirmBtn}
-            onClick={() => { onFinishCreating(autoName ? undefined : pathName); setPathName(''); setAutoName(true); }}
+            onClick={() => {
+              onFinishCreating(autoName ? undefined : pathName, createTaskType);
+              setPathName('');
+              setAutoName(true);
+              setCreateTaskType('task1');
+            }}
             disabled={createdPoints.length < 2 || (!autoName && !pathName.trim())}
           >
             완료
           </button>
         </div>
+
+        <PathStopOptionsModal
+          isOpen={optionsIdx != null}
+          placeName={optionsIdx != null ? `P${optionsIdx + 1}` : ''}
+          initialWaitSeconds={optionsIdx != null ? createdPoints[optionsIdx]?.waitSeconds ?? 0 : 0}
+          onCancel={() => setOptionsIdx(null)}
+          onConfirm={(w) => {
+            if (optionsIdx != null) onSetPointWait(optionsIdx, w);
+            setOptionsIdx(null);
+          }}
+        />
       </div>
     );
   }
@@ -261,6 +315,7 @@ export default function WorkProgressPanel({
             <option value="task1">task1</option>
             <option value="task2">task2</option>
             <option value="task3">task3</option>
+            <option value="test">test</option>
           </select>
         </div>
 
@@ -270,7 +325,7 @@ export default function WorkProgressPanel({
             className={styles.wpDropdownBtn}
             onClick={() => setDropdownOpen(!dropdownOpen)}
             disabled={isDisabled}
-            title={selectedPath ? `${selectedPath.wayName}\n${selectedPath.wayPoints.split(' - ').join(' → ')}` : undefined}
+            title={selectedPath ? `${selectedPath.wayName}\n${formatPathOrderWithWaits(selectedPath.wayPoints, selectedPath.waitSeconds, ' → ')}` : undefined}
           >
             <span className={styles.wpDropdownText}>
               {selectedPath ? selectedPath.wayName : '경로를 선택하세요'}
@@ -283,7 +338,7 @@ export default function WorkProgressPanel({
                 <div className={styles.wpDropdownEmpty}>등록된 경로가 없습니다</div>
               )}
               {paths.map((p) => {
-                const fullPath = p.wayPoints.split(' - ').join(' → ');
+                const fullPath = formatPathOrderWithWaits(p.wayPoints, p.waitSeconds, ' → ');
                 return (
                   <button
                     key={p.id}
@@ -308,7 +363,7 @@ export default function WorkProgressPanel({
         {selectedPath && (
           <div className={styles.wpPathPreview}>
             <span className={styles.wpPathDetail}>
-              {selectedPath.wayPoints.split(' - ').join(' → ')}
+              {formatPathOrderWithWaits(selectedPath.wayPoints, selectedPath.waitSeconds, ' → ')}
             </span>
           </div>
         )}
@@ -350,6 +405,31 @@ export default function WorkProgressPanel({
               onClick={() => onStartWork(Number(loopCount) || 1)}
               disabled={isDisabled || !selectedPath}
             >
+              시작
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.workDivider} />
+
+        <div className={styles.workRow}>
+          <span className={styles.workRowLabel}>무한 반복</span>
+          <div className={styles.loopInputRow}>
+            <span
+              className={styles.loopInfiniteBadge}
+              title="작업 중지를 누를 때까지 계속 반복합니다"
+            >
+              <span className={styles.loopInfiniteSymbol}>∞</span>
+              무제한
+            </span>
+            <button
+              type="button"
+              className={`${styles.workStartBtn} ${styles.workStartBtnInfinite}`}
+              onClick={() => onStartWork(-1)}
+              disabled={isDisabled || !selectedPath}
+              title="작업 중지를 누를 때까지 무한 반복합니다"
+            >
+              <span className={styles.loopInfiniteSymbol}>∞</span>
               시작
             </button>
           </div>

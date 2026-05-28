@@ -12,7 +12,7 @@ export type Camera = {
     id: number;
     label: string;
     webrtcUrl: string;
-    streamType?: "rtsp" | "ws";
+    streamType?: "rtsp" | "ws" | "http";
 };
 
 export type RobotModule = {
@@ -235,6 +235,7 @@ export type PathRow = {
   workType: string;
   pathName: string;
   pathOrder: string; // "A - B - ... - A" (첫=끝)
+  waitSeconds?: number[]; // 각 경유지 도착 후 대기(초) — pathOrder 항목 수와 일치
   updatedAt: string;
 };
 

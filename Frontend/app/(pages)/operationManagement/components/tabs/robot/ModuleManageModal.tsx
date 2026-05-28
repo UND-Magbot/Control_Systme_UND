@@ -55,6 +55,7 @@ const TYPE_OPTIONS: SelectOption[] = [
 const PROTOCOL_OPTIONS: SelectOption[] = [
   { id: 'rtsp', label: 'RTSP' },
   { id: 'ws', label: 'WebSocket' },
+  { id: 'http', label: 'HTTP' },
 ];
 
 function moduleTypeIcon(type: string, size = 20) {

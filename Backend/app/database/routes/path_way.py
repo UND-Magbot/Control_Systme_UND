@@ -48,6 +48,7 @@ class PathInsertReq(BaseModel):
     TaskType: str
     WayName: str
     WayPoints: str
+    WaitSeconds: str | None = None  # JSON array of int
 
 
 @database.post("/path")
@@ -58,6 +59,7 @@ def insert_path(req: PathInsertReq, request: Request, db: Session = Depends(get_
         TaskType=req.TaskType,
         WayName=req.WayName,
         WayPoints=req.WayPoints,
+        WaitSeconds=req.WaitSeconds,
     )
     db.add(path)
     db.commit()
@@ -91,6 +93,7 @@ class PathRes(BaseModel):
     TaskType: str | None
     WayName: str | None
     WayPoints: str | None
+    WaitSeconds: str | None
     UpdateTime: datetime | None
 
     class Config:
@@ -154,6 +157,9 @@ def update_path(path_id: int, req: PathInsertReq, request: Request, db: Session 
     if path.WayPoints != req.WayPoints:
         changes.append(f"경유지 변경")
         path.WayPoints = req.WayPoints
+    if path.WaitSeconds != req.WaitSeconds:
+        changes.append(f"대기 시간 변경")
+        path.WaitSeconds = req.WaitSeconds
 
     db.commit()
     db.refresh(path)

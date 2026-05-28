@@ -375,6 +375,7 @@ export default function MapManagementPage() {
   const {
     isPathBuildMode, setIsPathBuildMode,
     pathBuildOrder, setPathBuildOrder,
+    pathBuildWaits, setPathBuildWaits,
     pathBuildName, setPathBuildName,
     pathBuildWorkType, setPathBuildWorkType,
     reset: resetPathBuild,
@@ -427,6 +428,10 @@ export default function MapManagementPage() {
     if (!robotName) { modalAlert("로봇 정보를 확인할 수 없습니다. 로봇을 연결하거나 장소에 로봇을 지정해주세요."); return; }
 
     try {
+      const waits = pathBuildOrder.map((_, i) =>
+        Math.max(0, Math.floor(pathBuildWaits[i] ?? 0))
+      );
+      const hasWait = waits.some((w) => w > 0);
       const res = await apiFetch(`/DB/path`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -435,12 +440,14 @@ export default function MapManagementPage() {
           TaskType: pathBuildWorkType,
           WayName: pathBuildName.trim(),
           WayPoints: pathBuildOrder.join(" - "),
+          WaitSeconds: hasWait ? JSON.stringify(waits) : null,
         }),
       });
       if (!res.ok) throw new Error("경로 저장 실패");
       modalAlert("경로가 저장되었습니다.");
       setIsPathBuildMode(false);
       setPathBuildOrder([]);
+      setPathBuildWaits([]);
       setPathBuildName("");
       setRightPanelOpen(true);
     } catch (e) {
@@ -509,6 +516,7 @@ export default function MapManagementPage() {
         setRouteEndName(null);
         setIsPathBuildMode(false);
         setPathBuildOrder([]);
+        setPathBuildWaits([]);
       }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -1616,6 +1624,7 @@ export default function MapManagementPage() {
                               const last = pathBuildOrder[pathBuildOrder.length - 1];
                               if (last === place.name) return; // 연속 동일 장소 방지
                               setPathBuildOrder((prev) => [...prev, place.name]);
+                              setPathBuildWaits((prev) => [...prev, 0]);
                             }
                             return;
                           }
@@ -2003,10 +2012,13 @@ export default function MapManagementPage() {
             setPathBuildWorkType={setPathBuildWorkType}
             pathBuildOrder={pathBuildOrder}
             setPathBuildOrder={setPathBuildOrder}
+            pathBuildWaits={pathBuildWaits}
+            setPathBuildWaits={setPathBuildWaits}
             placeCoordMap={placeCoordMap}
             onCancel={() => {
               setIsPathBuildMode(false);
               setPathBuildOrder([]);
+              setPathBuildWaits([]);
               setRightPanelOpen(true);
             }}
             onSave={handleSavePath}

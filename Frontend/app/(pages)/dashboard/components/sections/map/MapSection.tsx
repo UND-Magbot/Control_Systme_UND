@@ -11,17 +11,29 @@ import { apiFetch } from "@/app/lib/api";
 import { getApiBase } from "@/app/config";
 import { useModalAlert } from "@/app/hooks/useModalAlert";
 import AlertModal from "@/app/components/modal/AlertModal";
+import { useOutsideClick } from "@/app/hooks/useOutsideClick";
 import dynamic from "next/dynamic";
 
 const StopAllConfirmModal = dynamic(() => import("@/app/components/modal/BatteryChargeModal"), { ssr: false });
+
+// 대시보드 맵 작업유형 필터 옵션. 신규 유형 추가 시 여기에 더한다.
+const TASK_TYPE_OPTIONS = ["task1", "task2", "task3", "test"] as const;
+
+type PathRow = {
+  id: number;
+  taskType: string;
+  wayPoints: string;
+  floorId: number | null;
+};
 
 // ── 모듈 레벨 캐시 — 탭 전환해도 유지, npm run dev 재시작 시 초기화 ──
 const _cache: {
   mapConfigs: Record<number, { mapId: number; config: MapConfig } | null>;  // floorId → config
   places: POIItem[] | null;
   navPaths: Record<number, NavPath | null>;  // mapId → navPath
+  paths: PathRow[] | null;
   loaded: boolean;
-} = { mapConfigs: {}, places: null, navPaths: {}, loaded: false };
+} = { mapConfigs: {}, places: null, navPaths: {}, paths: null, loaded: false };
 
 type MapSectionProps = {
   floors: Floor[];
@@ -54,6 +66,11 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   const [activeMapId, setActiveMapId] = useState<number | null>(null);
   const [navPath, setNavPath] = useState<NavPath | null>(null);
   const [mapView, setMapView] = useState<MapView>("2d");
+  const [paths, setPaths] = useState<PathRow[]>(_cache.paths ?? []);
+  const [taskTypeFilter, setTaskTypeFilter] = useState<string | null>(null); // null = 전체
+  const [taskMenuOpen, setTaskMenuOpen] = useState(false);
+  const taskMenuRef = useRef<HTMLDivElement>(null);
+  useOutsideClick(taskMenuRef, useCallback(() => setTaskMenuOpen(false), []));
 
   // 캐시에서 즉시 mapConfig 복원
   const cachedEntry = selectedFloor ? _cache.mapConfigs[selectedFloor.id] : undefined;
@@ -271,13 +288,70 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
     return () => { cancelled = true; };
   }, [activeMapId, places]);
 
+  // 경로 목록 (작업유형 필터용). 캐시 있으면 스킵.
+  useEffect(() => {
+    if (_cache.paths) return;
+    apiFetch(`/DB/paths`)
+      .then((res) => res.ok ? res.json() : [])
+      .then((data: any[]) => {
+        const mapped: PathRow[] = data.map((p) => ({
+          id: p.id,
+          taskType: p.TaskType ?? "",
+          wayPoints: p.WayPoints ?? "",
+          floorId: p.FloorId ?? null,
+        }));
+        _cache.paths = mapped;
+        setPaths(mapped);
+      })
+      .catch(() => setPaths([]));
+  }, []);
+
+  // 작업유형 필터가 켜진 경우, 해당 유형 경로에 등장하는 장소 이름 집합과
+  // 인접 (a,b) 쌍 집합을 만들어 POI/구간 필터링에 사용.
+  // 필터가 없으면 null 반환 (= 제한 없음).
+  const taskFilterSets = useMemo(() => {
+    if (!taskTypeFilter) return null;
+    const placeNames = new Set<string>();
+    const pairs = new Set<string>(); // "a||b" — 정렬된 쌍으로 양방향 매칭
+    for (const p of paths) {
+      if (p.taskType !== taskTypeFilter) continue;
+      const names = p.wayPoints.split(" - ").map((s) => s.trim()).filter(Boolean);
+      for (let i = 0; i < names.length; i++) {
+        placeNames.add(names[i]);
+        if (i > 0) {
+          const a = names[i - 1];
+          const b = names[i];
+          const key = a < b ? `${a}||${b}` : `${b}||${a}`;
+          pairs.add(key);
+        }
+      }
+    }
+    return { placeNames, pairs };
+  }, [paths, taskTypeFilter]);
+
   // 선택된 층의 장소만 필터 — useMemo로 레퍼런스 안정화
   // (매 렌더마다 새 배열이 만들어지면 CanvasMap/Map3DCanvas의 POI effect가
   //  불필요하게 재실행되어 씬이 깜빡이는 원인이 됨)
-  const floorPois = useMemo(
-    () => (selectedFloor ? places.filter((p) => p.floorId === selectedFloor.id) : []),
-    [places, selectedFloor?.id]
-  );
+  const floorPois = useMemo(() => {
+    if (!selectedFloor) return [];
+    const base = places.filter((p) => p.floorId === selectedFloor.id);
+    if (!taskFilterSets) return base;
+    return base.filter((p) => taskFilterSets.placeNames.has(p.name));
+  }, [places, selectedFloor?.id, taskFilterSets]);
+
+  // 작업유형 필터 적용된 NavPath. 필터된 인접 쌍에 속한 segment만 통과.
+  const filteredNavPath = useMemo<NavPath | null>(() => {
+    if (!navPath) return null;
+    if (!taskFilterSets) return navPath;
+    const segments = navPath.segments.filter((s) => {
+      const a = s.from.name;
+      const b = s.to.name;
+      if (!a || !b) return false;
+      const key = a < b ? `${a}||${b}` : `${b}||${a}`;
+      return taskFilterSets.pairs.has(key);
+    });
+    return segments.length > 0 ? { segments } : null;
+  }, [navPath, taskFilterSets]);
 
   const handleFloorSelect = (idx: number, floor: Floor) => {
     // 층 변경 시 mapConfig/activeMapId를 즉시 null 로 만들어
@@ -375,12 +449,51 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
             view={mapView}
             robots={floorRobots}
             pois={floorPois}
-            navPath={navPath}
+            navPath={filteredNavPath}
             showPois
             showPath
             showLabels
             onPoiNavigate={handlePoiNavigate}
           />
+        )}
+        {hasRobots && hasFloors && mapConfig && (
+          <div ref={taskMenuRef} className={styles.taskFilter}>
+            <button
+              type="button"
+              className={styles.taskFilterBtn}
+              onClick={() => setTaskMenuOpen((v) => !v)}
+              aria-haspopup="listbox"
+              aria-expanded={taskMenuOpen}
+            >
+              <span className={styles.taskFilterLabel}>{taskTypeFilter ?? "전체"}</span>
+              <span className={`${styles.taskFilterCaret} ${taskMenuOpen ? styles.taskFilterCaretOpen : ""}`} />
+            </button>
+            {taskMenuOpen && (
+              <div className={styles.taskFilterMenu} role="listbox">
+                <button
+                  type="button"
+                  className={`${styles.taskFilterItem} ${taskTypeFilter === null ? styles.taskFilterItemActive : ""}`}
+                  onClick={() => { setTaskTypeFilter(null); setTaskMenuOpen(false); }}
+                  role="option"
+                  aria-selected={taskTypeFilter === null}
+                >
+                  전체
+                </button>
+                {TASK_TYPE_OPTIONS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`${styles.taskFilterItem} ${taskTypeFilter === t ? styles.taskFilterItemActive : ""}`}
+                    onClick={() => { setTaskTypeFilter(t); setTaskMenuOpen(false); }}
+                    role="option"
+                    aria-selected={taskTypeFilter === t}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {hasRobots && hasFloors && (
           <ZoomControl

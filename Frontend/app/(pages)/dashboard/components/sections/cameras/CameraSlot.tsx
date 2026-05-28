@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import styles from "./CameraSlots.module.css";
 import type { Camera, RobotRowData } from "@/app/types";
 import { CAMERA_BASE } from "@/app/config";
+import WebRTCPlayer from "@/app/components/camera/WebRTCPlayer";
 import { getBatteryColor, isSingleBatteryMode } from "@/app/constants/robotIcons";
 import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 
@@ -12,12 +13,16 @@ type CameraSlotProps = {
   robotName: string;
   robot?: RobotRowData | null;
   onExpand?: (e: React.MouseEvent) => void;
+  /** 작게 보이는 슬롯용 — 백엔드 프록시에서 저해상도·저품질로 받아 부하를 줄임 */
+  lowRes?: boolean;
 };
 
-const CAM_TIMEOUT_MS = 10_000;
+// 첫 프레임 대기 한도 — 백엔드 RTSP 프록시는 WAKE 후 캡처 open + 재연결까지
+// 수 초가 걸릴 수 있어 넉넉히 둔다(짧게 잡으면 정상인데도 "연결 실패"로 오인).
+const CAM_TIMEOUT_MS = 20_000;
 const CAM_RETRY_MS = 5_000;
 
-export default function CameraSlot({ camera, robotName, robot, onExpand }: CameraSlotProps) {
+export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes = false }: CameraSlotProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
@@ -33,6 +38,8 @@ export default function CameraSlot({ camera, robotName, robot, onExpand }: Camer
   const errorCountRef = useRef(0);
 
   const isThermal = (camera.streamType ?? "rtsp") === "ws";
+  // RTSP 카메라는 MediaMTX WebRTC(WebRTCPlayer)로 저지연 송출
+  const isWebrtc = (camera.streamType ?? "rtsp") === "rtsp";
 
   const clearTimers = useCallback(() => {
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
@@ -102,7 +109,11 @@ export default function CameraSlot({ camera, robotName, robot, onExpand }: Camer
     const base = raw.startsWith("ws") || raw.startsWith("http")
       ? raw
       : `${CAMERA_BASE}${raw}`;
-    const url = base + (base.includes("?") ? "&" : "?") + "t=" + Date.now();
+    // 작은 슬롯(lowRes)은 백엔드 RTSP 프록시에서 저해상도·저품질로 받아
+    // 인코딩 부하를 줄인다. rtsp(백엔드 프록시) 경로에만 적용.
+    const quality =
+      lowRes && (camera.streamType ?? "rtsp") === "rtsp" ? "&w=640&q=55" : "";
+    const url = base + (base.includes("?") ? "&" : "?") + "t=" + Date.now() + quality;
 
     // 이전 img src를 해제하여 브라우저 연결을 끊고 새 URL 즉시 세팅
     if (mjpegImgRef.current) {
@@ -111,21 +122,34 @@ export default function CameraSlot({ camera, robotName, robot, onExpand }: Camer
     setStreamUrl(url);
 
     timeoutRef.current = setTimeout(() => {
+      errorCountRef.current += 1;
+      clearTimers();
+      // 첫 프레임 지연 — 2회까지는 조용히 재시도(스피너 유지), 그 이상만 에러 UI.
+      // (백엔드 프록시가 투명 재연결하므로 결국 프레임이 도착한다)
+      if (errorCountRef.current <= 2) {
+        if (!unmountedRef.current && connectRef.current) connectRef.current();
+        return;
+      }
       setStreamUrl("");
       setIsLoading(false);
       setHasError(true);
-      // 5초 간격 자동 재시도
       retryRef.current = setInterval(() => {
         if (!unmountedRef.current && connectRef.current) connectRef.current();
       }, CAM_RETRY_MS);
     }, CAM_TIMEOUT_MS);
-  }, [camera]);
+  }, [camera, clearTimers, lowRes]);
 
   const connect = useCallback(() => {
     clearTimers();
+    if (isWebrtc) {
+      // RTSP 카메라는 WebRTCPlayer가 연결·재시도를 자체 처리 — MJPEG 타이머 불필요
+      setIsLoading(false);
+      setHasError(false);
+      return;
+    }
     if (isThermal) connectThermal();
     else connectMjpeg();
-  }, [isThermal, connectThermal, connectMjpeg, clearTimers]);
+  }, [isWebrtc, isThermal, connectThermal, connectMjpeg, clearTimers]);
 
   // connectRef에 최신 connect 주입
   useEffect(() => {
@@ -177,7 +201,9 @@ export default function CameraSlot({ camera, robotName, robot, onExpand }: Camer
       )}
 
       {/* 스트림 */}
-      {isThermal && thermalUrl ? (
+      {isWebrtc ? (
+        <WebRTCPlayer whepUrl={camera.webrtcUrl} videoClassName={styles.cameraImg} />
+      ) : isThermal && thermalUrl ? (
         <img
           src={thermalUrl}
           className={styles.cameraImg}

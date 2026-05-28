@@ -40,8 +40,15 @@ def _get_current_schedule_id() -> Optional[int]:
         return None
 
 
+# ── 자동 녹화 기능 토글 (False면 자동 녹화 비활성) ──
+AUTO_RECORDING_ENABLED = False
+
+
 def start_auto_recording(robot_id: int):
     """네비게이션 시작 시 호출 — 로봇의 전체 카메라 자동 녹화 시작"""
+    if not AUTO_RECORDING_ENABLED:
+        print("[REC] 자동 녹화 비활성화됨 — 건너뜀")
+        return
     db = SessionLocal()
     try:
         # 수동 녹화 세션이 있으면 먼저 중지
@@ -72,9 +79,9 @@ def start_auto_recording(robot_id: int):
                 if key in _sessions:
                     continue  # 이미 녹화 중
 
-            rtsp_url = rec_service.build_rtsp_url(db, module, robot=robot)
-            if not rtsp_url:
-                reason = f"RTSP URL 생성 실패 (CameraIP/RobotIP 미설정)"
+            url = rec_service.build_stream_url(db, module, robot=robot)
+            if not url:
+                reason = f"스트림 URL 생성 실패 (CameraIP/RobotIP 미설정)"
                 print(f"[REC] module_id={module.id}: {reason}")
                 _log_recording_error(robot_id, module.id, reason)
                 continue
@@ -90,7 +97,8 @@ def start_auto_recording(robot_id: int):
 
             # Worker 생성 및 시작
             worker = CameraRecordingWorker(
-                rtsp_url=rtsp_url,
+                url=url,
+                stream_type=module.camera_info.StreamType,
                 output_dir=output_dir,
                 robot_id=robot_id,
                 module_id=module.id,
@@ -167,9 +175,9 @@ def start_manual_recording(robot_id: int, module_id: int) -> dict:
             return {"error": "카메라 모듈을 찾을 수 없습니다"}
 
         robot = db.query(RobotInfo).filter(RobotInfo.id == robot_id).first()
-        rtsp_url = rec_service.build_rtsp_url(db, module, robot=robot)
-        if not rtsp_url:
-            return {"error": "RTSP URL 생성 실패"}
+        url = rec_service.build_stream_url(db, module, robot=robot)
+        if not url:
+            return {"error": "스트림 URL 생성 실패"}
 
         group_id = str(uuid.uuid4())
         output_dir = _build_output_dir(robot_id)
@@ -180,7 +188,8 @@ def start_manual_recording(robot_id: int, module_id: int) -> dict:
         )
 
         worker = CameraRecordingWorker(
-            rtsp_url=rtsp_url,
+            url=url,
+            stream_type=module.camera_info.StreamType,
             output_dir=output_dir,
             robot_id=robot_id,
             module_id=module_id,

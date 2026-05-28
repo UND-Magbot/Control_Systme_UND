@@ -23,8 +23,10 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
-# drdds/msg/StdStatus 메시지를 직접 정의
-from std_msgs.msg import Int32
+# /CHARGE_STATUS 의 실제 publish 타입(ros2 topic info 로 확인): drdds/msg/StdStatus
+# - int32 state
+# - uint32 error_code
+from drdds.msg import StdStatus
 
 # ── receiver.py로 전달할 UDP 포트 ──
 RECEIVER_PORT = 50001
@@ -42,34 +44,22 @@ class ChargeStatusRelay(Node):
             depth=10,
         )
 
-        # drdds/msg/StdStatus는 커스텀 메시지이므로 raw 구독 사용
         self.latest_state = 0
         self.latest_error_code = 0
 
         self.create_subscription(
-            Int32,  # placeholder — 아래 raw 콜백에서 처리
+            StdStatus,
             "/CHARGE_STATUS",
             self.on_charge_status,
             qos,
         )
 
-        self.get_logger().info("구독 시작: /CHARGE_STATUS")
+        self.get_logger().info("구독 시작: /CHARGE_STATUS (drdds/msg/StdStatus)")
 
     def on_charge_status(self, msg):
-        """
-        /CHARGE_STATUS 토픽 콜백
-        drdds/msg/StdStatus: int32 state, uint32 error_code
-        """
-        # 메시지 타입에 따라 필드 접근 방식이 다를 수 있음
-        if hasattr(msg, "state"):
-            state = msg.state
-            error_code = getattr(msg, "error_code", 0)
-        elif hasattr(msg, "data"):
-            # Int32 fallback
-            state = msg.data
-            error_code = 0
-        else:
-            return
+        """/CHARGE_STATUS 토픽 콜백 (drdds/msg/StdStatus: int32 state, uint32 error_code)."""
+        state = int(msg.state)
+        error_code = int(msg.error_code)
 
         self.latest_state = state
         self.latest_error_code = error_code

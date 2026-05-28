@@ -5,6 +5,16 @@ import type { RobotPosition } from "@/app/components/map/types";
 import { apiFetch } from "@/app/lib/api";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/** API 응답이 유효한 좌표(유한수 x/y/yaw)인지 검증한다. */
+function isValidPosition(data: unknown): data is RobotPosition {
+  if (!data || typeof data !== "object") return false;
+  const p = data as Record<string, unknown>;
+  return (
+    Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.yaw)
+  );
+}
+
 const LERP_FACTOR = 0.08;
 const POLL_INTERVAL = 1000;
 const FRAME_INTERVAL = 1000 / 15; // ~15fps로 throttle
@@ -53,7 +63,15 @@ export function useRobotPosition(enabled = true): UseRobotPositionReturn {
     const fetchPos = () => {
       apiFetch(`/robot/position`)
         .then((res) => res.json())
-        .then((data: RobotPosition) => {
+        .then((data: unknown) => {
+          if (!isValidPosition(data)) {
+            // 좌표 누락·비정상 응답 → 실패로 간주 (NaN 좌표 전파 방지)
+            failCountRef.current += 1;
+            if (failCountRef.current >= ERROR_THRESHOLD) {
+              setHasError(true);
+            }
+            return;
+          }
           targetRef.current = data;
           failCountRef.current = 0;
           setHasError(false);

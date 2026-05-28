@@ -76,8 +76,9 @@ def execute_schedule(schedule: ScheduleInfo) -> bool:
             places.append(place)
 
         # 웨이포인트 목록 생성 (send_move pathmove와 동일 로직)
-        from app.navigation.waypoints import build_waypoints_from_places
-        waypoints = build_waypoints_from_places(places)
+        from app.navigation.waypoints import build_waypoints_from_places, parse_wait_seconds
+        wait_list = parse_wait_seconds(path.WaitSeconds, len(places))
+        waypoints = build_waypoints_from_places(places, wait_list)
 
         # 충전 중이면 해제 후 도킹 포인트 경유 + 180° 회전 preamble 앞에 삽입
         undock_preamble = prepare_undock_waypoints()

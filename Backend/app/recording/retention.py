@@ -55,22 +55,33 @@ def _run_retention():
 
         for date_key, records in by_date.items():
             zip_path = os.path.join(RECORDINGS_BASE, f"archive_{date_key}.zip")
-            files_to_zip = []
+            # 같은 날짜 여러 레코드가 동일 디렉토리를 VideoPath로 공유하므로
+            # 절대경로 기준 dedup 필요 — 안 그러면 한 파일이 N번 추가됨.
+            files_to_zip: list[str] = []
+            seen_paths: set[str] = set()
 
             for rec in records:
                 if rec.VideoPath and os.path.exists(rec.VideoPath):
                     if os.path.isdir(rec.VideoPath):
                         for f in os.listdir(rec.VideoPath):
                             fp = os.path.join(rec.VideoPath, f)
-                            if os.path.isfile(fp):
+                            if os.path.isfile(fp) and fp not in seen_paths:
+                                seen_paths.add(fp)
                                 files_to_zip.append(fp)
-                    elif os.path.isfile(rec.VideoPath):
+                    elif os.path.isfile(rec.VideoPath) and rec.VideoPath not in seen_paths:
+                        seen_paths.add(rec.VideoPath)
                         files_to_zip.append(rec.VideoPath)
 
             if files_to_zip:
                 with zipfile.ZipFile(zip_path, "a", zipfile.ZIP_DEFLATED) as zf:
+                    # 이전 retention 실행에서 이미 추가된 엔트리가 있을 수 있어 한 번 더 가드
+                    existing = set(zf.namelist())
                     for fp in files_to_zip:
-                        zf.write(fp, os.path.basename(fp))
+                        arcname = os.path.basename(fp)
+                        if arcname in existing:
+                            continue
+                        zf.write(fp, arcname)
+                        existing.add(arcname)
 
                 # 원본 삭제
                 for fp in files_to_zip:
