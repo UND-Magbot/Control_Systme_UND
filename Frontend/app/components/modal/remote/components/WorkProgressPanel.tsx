@@ -25,7 +25,7 @@ type WorkProgressPanelProps = {
   loopTotal: number;
   loopInfinite: boolean;
   disabled?: boolean;
-  onStartWork: (loop: number) => void;
+  onStartWork: (loop: number, autoCharge: boolean) => void;
   onStopWork: () => void;
   onLoopCountChange: (value: string) => void;
   onLoopCountBlur: () => void;
@@ -75,6 +75,8 @@ export default function WorkProgressPanel({
 }: WorkProgressPanelProps) {
   const [optionsIdx, setOptionsIdx] = useState<number | null>(null);
   const isDisabled = disabled || isPending;
+  // 작업 완료 후 자동 충전 복귀 — 기본 ON. 반복 테스트 등에서 해제 가능.
+  const [autoChargeReturn, setAutoChargeReturn] = useState(true);
   const { execute: execInit, state: initState } = useRemoteCommand({ debounceMs: 1000 });
 
   // 충전소 좌표 (initpose 기준점)
@@ -373,12 +375,23 @@ export default function WorkProgressPanel({
 
       {/* 실행 영역 */}
       <div className={styles.wpSection}>
+        {/* 작업 완료 후 자동 충전 복귀 토글 (기본 ON) */}
+        <label className={styles.wpAutoNameRow}>
+          <input
+            type="checkbox"
+            checked={autoChargeReturn}
+            onChange={(e) => setAutoChargeReturn(e.target.checked)}
+            disabled={isDisabled}
+          />
+          <span className={styles.wpAutoNameLabel}>작업 완료 후 자동 충전 복귀</span>
+        </label>
+
         <div className={styles.workRow}>
           <span className={styles.workRowLabel}>단일 실행</span>
           <button
             type="button"
             className={styles.workStartBtn}
-            onClick={() => onStartWork(1)}
+            onClick={() => onStartWork(1, autoChargeReturn)}
             disabled={isDisabled || !selectedPath}
           >
             시작
@@ -404,7 +417,7 @@ export default function WorkProgressPanel({
             <button
               type="button"
               className={styles.workStartBtn}
-              onClick={() => onStartWork(Number(loopCount) || 1)}
+              onClick={() => onStartWork(Number(loopCount) || 1, autoChargeReturn)}
               disabled={isDisabled || !selectedPath}
             >
               시작
@@ -427,7 +440,7 @@ export default function WorkProgressPanel({
             <button
               type="button"
               className={`${styles.workStartBtn} ${styles.workStartBtnInfinite}`}
-              onClick={() => onStartWork(-1)}
+              onClick={() => onStartWork(-1, autoChargeReturn)}
               disabled={isDisabled || !selectedPath}
               title="작업 중지를 누를 때까지 무한 반복합니다"
             >

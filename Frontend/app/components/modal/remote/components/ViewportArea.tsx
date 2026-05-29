@@ -5,7 +5,7 @@ import type { Camera } from '@/app/types';
 import { CanvasMap } from '@/app/components/map';
 import WebRTCPlayer from '@/app/components/camera/WebRTCPlayer';
 import { getOccGridConfig } from '@/app/components/map/mapConfigs';
-import type { RobotPosition } from '@/app/components/map/types';
+import type { RobotPosition, MapConfig } from '@/app/components/map/types';
 import { apiFetch } from '@/app/lib/api';
 import styles from './ViewportArea.module.css';
 
@@ -24,6 +24,7 @@ type ViewportAreaProps = {
   // map
   robotPos: RobotPosition;
   robotConnected: boolean;
+  mapConfig?: MapConfig | null;
   // disconnect overlay
   isDisconnected: boolean;
 };
@@ -41,8 +42,11 @@ export default function ViewportArea({
   onCamImgError,
   robotPos,
   robotConnected,
+  mapConfig,
   isDisconnected,
 }: ViewportAreaProps) {
+  // 로봇 현재 층 맵이 로드되면 그것을, 아직 없으면 고정 맵으로 폴백
+  const resolvedMapConfig = mapConfig ?? getOccGridConfig();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const cameraImgRef = useRef<HTMLImageElement | null>(null);
 
@@ -345,7 +349,8 @@ export default function ViewportArea({
           {/* 맵 영역 */}
           <div className={styles.pipMapArea} onClick={() => setMapState('expanded')}>
             <CanvasMap
-              config={getOccGridConfig()}
+              key={resolvedMapConfig.imageSrc}
+              config={resolvedMapConfig}
               robotPos={robotPos}
               showRobot={robotConnected}
               robotMarkerSize={14}
@@ -359,7 +364,8 @@ export default function ViewportArea({
       {mapState === 'expanded' && (
         <div className={styles.pipExpanded}>
           <CanvasMap
-            config={getOccGridConfig()}
+            key={resolvedMapConfig.imageSrc}
+            config={resolvedMapConfig}
             robotPos={robotPos}
             showRobot={robotConnected}
             robotMarkerSize={20}

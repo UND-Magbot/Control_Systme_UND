@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import styles from "./RobotCardList.module.css";
-import type { RobotRowData } from "@/app/types";
+import type { RobotRowData, Camera, Video } from "@/app/types";
+import { useAuth } from "@/app/context/AuthContext";
 import {
   ROBOT_TYPE_COLOR,
   ROBOT_TYPE_INDEX,
@@ -21,6 +22,7 @@ const PlacePathModal = dynamic(() => import("@/app/components/modal/PlacePathMod
 const BatteryPathModal = dynamic(() => import("@/app/components/modal/BatteryChargeModal"), { ssr: false });
 const FloorChangeModal = dynamic(() => import("./FloorChangeModal"), { ssr: false });
 const ReturnToWorkModal = dynamic(() => import("./ReturnToWorkModal"), { ssr: false });
+const RemoteModal = dynamic(() => import("@/app/components/modal/remote/RemoteModal"), { ssr: false });
 
 type RobotLocation = {
   floor: string;
@@ -32,8 +34,8 @@ type RobotCardProps = {
   isSelected: boolean;
   onClick: () => void;
   robots: RobotRowData[];
-  video: unknown[];
-  cameras: unknown[];
+  video: Video[];
+  cameras: Camera[];
   robotLocation: RobotLocation;
   floors?: { id: number; label: string }[];
   canControlRobot?: boolean;
@@ -49,6 +51,9 @@ const ROBOT_ICONS = [
 
 export default function RobotCard({ robot, isSelected, onClick, robots, video, cameras, robotLocation, floors = [], canControlRobot = true, hasActiveSchedule = false }: RobotCardProps) {
   const { modal, modalAlert, closeModal } = useModalAlert();
+  const { user } = useAuth();
+  // 원격 제어 노출 기준 — 운영관리 "원격" 버튼과 동일하게 role 1(관리자)·2(매니저) 허용
+  const canRemote = user?.role === 1 || user?.role === 2;
   const currentFloorName = floors.find((f) => f.id === robot.currentFloorId)?.label ?? "층";
   const typeIdx = ROBOT_TYPE_INDEX[robot.type] ?? 0;
   const isUnregistered = robot.power === "-";
@@ -81,6 +86,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
   const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
   const [floorChangeOpen, setFloorChangeOpen] = useState(false);
   const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [remoteOpen, setRemoteOpen] = useState(false);
 
   const handleScheduleReturn = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -159,6 +165,17 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
             >
               현재 층 변경
             </button>
+            {/* 원격 제어 — 운영관리를 거치지 않고 카드에서 바로 진입 (role 1·2 + 전원 On) */}
+            {canRemote && (
+              <button
+                className={`${styles.floorChangeBtn} ${robot.power !== "On" ? styles.floorChangeBtnDisabled : ""}`}
+                onClick={(e) => { e.stopPropagation(); if (robot.power === "On") setRemoteOpen(true); }}
+                title={robot.power === "On" ? "원격 제어" : "로봇 전원이 꺼져있습니다"}
+                disabled={robot.power !== "On"}
+              >
+                원격 제어
+              </button>
+            )}
             <span className={`${styles.networkBadge} ${badgeClass}`}>
               <span className={`${styles.dot} ${dotClass}`} />
               {isUnregistered ? "Offline" : robot.network}
@@ -302,6 +319,18 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
           currentMapId={robot.currentMapId}
           onClose={() => setFloorChangeOpen(false)}
           onComplete={() => {}}
+        />
+      )}
+
+      {remoteOpen && (
+        <RemoteModal
+          isOpen={remoteOpen}
+          onClose={() => setRemoteOpen(false)}
+          selectedRobots={robot}
+          robots={robots}
+          video={video}
+          camera={cameras}
+          primaryView="map"
         />
       )}
 

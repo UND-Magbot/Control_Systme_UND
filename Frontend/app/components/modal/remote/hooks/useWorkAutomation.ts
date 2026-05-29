@@ -141,12 +141,12 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
 
   // 경로 기반 작업 시작
   const startWork = useCallback(
-    async (loop: number) => {
+    async (loop: number, autoCharge: boolean = true) => {
       if (isPending || !selectedPath) return;
       setIsPending(true);
       try {
         const res = await apiFetch(
-          `/nav/startpath?way_name=${encodeURIComponent(selectedPath.wayName)}&loop=${loop}`,
+          `/nav/startpath?way_name=${encodeURIComponent(selectedPath.wayName)}&loop=${loop}&auto_charge=${autoCharge}`,
           { method: 'POST' },
         );
         if (!res.ok) {
