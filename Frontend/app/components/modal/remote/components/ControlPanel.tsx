@@ -32,7 +32,7 @@ type ControlPanelProps = {
   loopTotal: number;
   loopInfinite: boolean;
   isDisconnected: boolean;
-  onStartWork: (loop: number) => void;
+  onStartWork: (loop: number, autoCharge: boolean) => void;
   onStopWork: () => void;
   onLoopCountChange: (value: string) => void;
   onLoopCountBlur: () => void;

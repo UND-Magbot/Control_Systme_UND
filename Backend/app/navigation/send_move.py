@@ -271,8 +271,12 @@ def navigation_send_next():
     nav_sent_time = time.time()
 
 @move.post("/startpath")
-def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo = Depends(require_permission("robot-list"))):
-    """DB 경로(WayInfo)를 읽어 네비게이션 시작."""
+def start_path_navigation(way_name: str, loop: int = 1, auto_charge: bool = True, current_user: UserInfo = Depends(require_permission("robot-list"))):
+    """DB 경로(WayInfo)를 읽어 네비게이션 시작.
+
+    auto_charge: 작업 완료 후 충전소 자동 복귀 여부 (기본 True).
+                 원격 화면 체크박스로 끌 수 있음(반복 테스트 등).
+    """
     from app.robot_control.charge import prepare_undock_waypoints
 
     global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining, nav_loop_total, nav_loop_count, nav_loop_infinite, auto_return_to_charge
@@ -317,7 +321,7 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
     nav_loop_total = 0 if nav_loop_infinite else loop
     nav_loop_count = 1
     loop_label = "무한 반복" if nav_loop_infinite else f"{loop}회"
-    auto_return_to_charge = True  # 원격 제어 실행 완료 후 충전소 자동 복귀
+    auto_return_to_charge = auto_charge  # 원격 제어 실행 완료 후 충전소 자동 복귀 (체크박스로 토글)
     _signal_nav_reset(full=True)
     _update_is_working(get_robot_id(), True)
 

@@ -336,7 +336,8 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
     if (!selectedFloor) return [];
     const base = places.filter((p) => p.floorId === selectedFloor.id);
     if (!taskFilterSets) return base;
-    return base.filter((p) => taskFilterSets.placeNames.has(p.name));
+    // 충전소(dock/charger)는 작업유형 필터와 무관하게 항상 표시
+    return base.filter((p) => p.category === "charge" || taskFilterSets.placeNames.has(p.name));
   }, [places, selectedFloor?.id, taskFilterSets]);
 
   // 작업유형 필터 적용된 NavPath. 필터된 인접 쌍에 속한 segment만 통과.
