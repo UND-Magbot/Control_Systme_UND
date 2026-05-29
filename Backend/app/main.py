@@ -64,9 +64,12 @@ import cv2
 
 app = FastAPI(title="Control API", version="0.1.0")
 
+# allow_origins=["*"] + allow_credentials=True 는 CORS 명세상 충돌 조합이라
+# credentials 동반 요청에서 ACAO 헤더가 누락될 수 있다. origin을 반사하는
+# allow_origin_regex 로 두면 모든 출처를 허용하면서 credentials 와도 호환된다.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
