@@ -449,6 +449,34 @@
   gap: 10px;
 }
 
+/* 기본 모드 패널 — 경로 상세를 펼치거나 화면이 짧아 내용이 tabContent를 넘치면
+   패널 내부 스크롤로 처리해 아래 실행(무한 반복) 라인이 잘리지 않게 한다.
+   스크롤바는 전역(page-container/모달 body)과 동일한 얇고 은은한 스타일로 통일. */
+.wpPanelDefault {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.wpPanelDefault::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wpPanelDefault::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wpPanelDefault::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.wpPanelDefault::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 /* 경로 생성 모드 패널 — 내용이 tabContent를 넘으면 패널이 줄며
    위치 목록 섹션만 스크롤된다(전체 패널 스크롤바 없음). */
 .wpPanelCreate {
@@ -730,7 +758,26 @@
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 2px;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.wpCreatePointList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wpCreatePointList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wpCreatePointList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.wpCreatePointList::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .wpCreatePointEmpty {
