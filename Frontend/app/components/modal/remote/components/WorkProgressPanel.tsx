@@ -102,6 +102,8 @@ export default function WorkProgressPanel({
   // 드롭다운
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // 경로 상세 미리보기 — 길면 패널을 밀어내므로 기본 접힘
+  const [pathDetailOpen, setPathDetailOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -273,10 +275,12 @@ export default function WorkProgressPanel({
 
   // 기본 모드: 경로 선택 + 실행
   return (
-    <div className={styles.wpPanel}>
+    <div className={`${styles.wpPanel} ${styles.wpPanelDefault}`}>
       {/* 로봇 위치 재조정 */}
       <div className={styles.wpSection}>
-        <div className={styles.controlLabel}>로봇 위치</div>
+        <div className={styles.controlLabel}>
+          로봇 위치{initPoseCoord ? ' (충전소 좌표 기준)' : ''}
+        </div>
         <button
           type="button"
           className={styles.actionBtn}
@@ -285,11 +289,6 @@ export default function WorkProgressPanel({
         >
           {initState === 'pending' ? '처리 중...' : '위치 재조정'}
         </button>
-        {initPoseCoord && (
-          <div className={styles.wpInitPoseCoord}>
-            충전소 좌표 기준
-          </div>
-        )}
       </div>
 
       {/* 경로 선택 드롭다운 */}
@@ -363,8 +362,19 @@ export default function WorkProgressPanel({
           )}
         </div>
 
-        {/* 선택된 경로 미리보기 */}
+        {/* 선택된 경로 미리보기 — 기본 접힘(긴 경로가 패널을 밀어내는 것 방지), 토글로 펼침 */}
         {selectedPath && (
+          <div className={styles.wpSectionHeader}>
+            <button
+              type="button"
+              className={styles.wpCreateBtnSmall}
+              onClick={() => setPathDetailOpen((v) => !v)}
+            >
+              경로 상세 {pathDetailOpen ? '▲' : '▼'}
+            </button>
+          </div>
+        )}
+        {selectedPath && pathDetailOpen && (
           <div className={styles.wpPathPreview}>
             <span className={styles.wpPathDetail}>
               {formatPathOrderWithWaits(selectedPath.wayPoints, selectedPath.waitSeconds, ' → ')}
