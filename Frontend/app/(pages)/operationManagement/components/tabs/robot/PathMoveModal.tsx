@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import type { PathRow } from "@/app/types";
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
+import { formatPathOrderWithWaits } from "@/app/lib/pathOrder";
 
 type Props = {
   isOpen: boolean;
@@ -101,7 +102,7 @@ export default function PathMoveModal({
                           : styles.pathMoveBadge3
                         }`}>{path.workType}</span>
                       </div>
-                      <div className={styles.pathMoveOrder}>{path.pathOrder}</div>
+                      <div className={styles.pathMoveOrder}>{formatPathOrderWithWaits(path.pathOrder, path.waitSeconds)}</div>
                     </div>
                   </div>
                 );

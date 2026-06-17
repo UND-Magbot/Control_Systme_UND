@@ -436,14 +436,31 @@ export default function RobotDetailModal({
         const res = await apiFetch(`/DB/getpath`);
         if (!res.ok) throw new Error("경로 목록 조회 실패");
         const data = await res.json();
-        setPathRows(data.map((p: any) => ({
-          id: p.id,
-          robotNo: p.RobotName,
-          workType: p.TaskType,
-          pathName: p.WayName,
-          pathOrder: p.WayPoints,
-          updatedAt: p.UpdateTime ? new Date(p.UpdateTime).toLocaleString("ko-KR") : "-",
-        })));
+        setPathRows(data.map((p: any) => {
+          let waitSeconds: number[] | undefined;
+          if (p.WaitSeconds) {
+            try {
+              const parsed = JSON.parse(p.WaitSeconds);
+              if (Array.isArray(parsed)) {
+                waitSeconds = parsed.map((n: any) => {
+                  const v = Number(n);
+                  return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+                });
+              }
+            } catch {
+              waitSeconds = undefined;
+            }
+          }
+          return {
+            id: p.id,
+            robotNo: p.RobotName,
+            workType: p.TaskType,
+            pathName: p.WayName,
+            pathOrder: p.WayPoints,
+            waitSeconds,
+            updatedAt: p.UpdateTime ? new Date(p.UpdateTime).toLocaleString("ko-KR") : "-",
+          };
+        }));
       } catch (err) {
         console.error("경로 목록 로드 실패", err);
       }

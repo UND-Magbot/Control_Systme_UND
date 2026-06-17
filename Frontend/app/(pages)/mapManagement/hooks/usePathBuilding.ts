@@ -14,12 +14,14 @@ import { useCallback, useState } from "react";
 export function usePathBuilding() {
   const [isPathBuildMode, setIsPathBuildMode] = useState(false);
   const [pathBuildOrder, setPathBuildOrder] = useState<string[]>([]);
+  const [pathBuildWaits, setPathBuildWaits] = useState<number[]>([]);
   const [pathBuildName, setPathBuildName] = useState("");
   const [pathBuildWorkType, setPathBuildWorkType] = useState("task1");
 
   const reset = useCallback(() => {
     setIsPathBuildMode(false);
     setPathBuildOrder([]);
+    setPathBuildWaits([]);
   }, []);
 
   return {
@@ -27,6 +29,8 @@ export function usePathBuilding() {
     setIsPathBuildMode,
     pathBuildOrder,
     setPathBuildOrder,
+    pathBuildWaits,
+    setPathBuildWaits,
     pathBuildName,
     setPathBuildName,
     pathBuildWorkType,

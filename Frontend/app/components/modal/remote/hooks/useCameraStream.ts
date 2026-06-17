@@ -159,6 +159,15 @@ export function useCameraStream({
       setActiveCam(cam.id);
       setCameraTabActiveIndex(idx);
 
+      if ((cam.streamType ?? "rtsp") === "rtsp") {
+        // RTSP 카메라는 ViewportArea가 WebRTC(WebRTCPlayer)로 직접 송출 →
+        // MJPEG 스트림/타이머를 돌리지 않는다.
+        setIsCamLoading(false);
+        setCamError(false);
+        setCameraStream("");
+        return;
+      }
+
       setCameraStream("");
       const nextUrl = cam.webrtcUrl || `${CAMERA_BASE}/Video/${cam.id}`;
       requestAnimationFrame(() => setCameraStream(nextUrl));
@@ -200,6 +209,15 @@ export function useCameraStream({
     setSelectedCam(baseCam.id);
     setActiveCam(baseCam.id);
     setCameraTabActiveIndex(nextIdx);
+
+    if ((baseCam.streamType ?? "rtsp") === "rtsp") {
+      // RTSP 카메라는 ViewportArea가 WebRTC(WebRTCPlayer)로 직접 송출 →
+      // MJPEG 스트림/타이머를 돌리지 않는다.
+      setIsCamLoading(false);
+      setCamError(false);
+      setCameraStream("");
+      return;
+    }
 
     const nextUrl = baseCam.webrtcUrl || `${CAMERA_BASE}/Video/${baseCam.id}`;
     setCameraStream(nextUrl);

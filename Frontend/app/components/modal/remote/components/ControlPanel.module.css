@@ -1,6 +1,7 @@
 /* ======================== ControlPanel (사이드바) ======================== */
 .controlSidebar {
   width: 320px;
+  flex: 1;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -10,6 +11,7 @@
 
 .tabContent {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -386,6 +388,35 @@
   white-space: nowrap;
 }
 
+/* ── 무한 반복 ── */
+.loopInfiniteBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 12px;
+  margin-right: 6px;
+  border: 1px dashed var(--color-info);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-info);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.loopInfiniteSymbol {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.workStartBtnInfinite {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 
 .workStartBtn:disabled {
   cursor: not-allowed;
@@ -418,6 +449,50 @@
   gap: 10px;
 }
 
+/* 기본 모드 패널 — 경로 상세를 펼치거나 화면이 짧아 내용이 tabContent를 넘치면
+   패널 내부 스크롤로 처리해 아래 실행(무한 반복) 라인이 잘리지 않게 한다.
+   스크롤바는 전역(page-container/모달 body)과 동일한 얇고 은은한 스타일로 통일. */
+.wpPanelDefault {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.wpPanelDefault::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wpPanelDefault::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wpPanelDefault::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.wpPanelDefault::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 경로 생성 모드 패널 — 내용이 tabContent를 넘으면 패널이 줄며
+   위치 목록 섹션만 스크롤된다(전체 패널 스크롤바 없음). */
+.wpPanelCreate {
+  min-height: 0;
+  gap: 6px;
+}
+
+/* 위치 목록 섹션 — wpPanel 자식 중 유일하게 줄어들 수 있는 섹션.
+   내용(저장된 위치)만큼 커지다가 공간이 부족해지면 줄며 내부 스크롤.
+   .wpSection의 flex-shrink:0을 이기도록 복합 선택자로 우선순위를 높인다
+   (소스 순서상 .wpSection이 뒤에 와서 단일 선택자로는 덮어써짐). */
+.wpSection.wpCreateListSection {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
 .wpSection {
   background: var(--surface-2);
   border-radius: 10px;
@@ -425,6 +500,8 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* 기본적으로 섹션은 줄어들지 않음 — 경로 생성 모드에서 위치 목록 섹션만 예외 */
+  flex-shrink: 0;
 }
 
 /* 충전소 좌표 텍스트 */
@@ -653,6 +730,7 @@
   color: var(--text-primary);
   padding-bottom: 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
 }
 
 .wpCreatePreviewLabel {
@@ -660,14 +738,7 @@
   color: var(--text-secondary);
   font-weight: 500;
   margin-bottom: 4px;
-}
-
-.wpCreatePreviewPath {
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  line-height: 1.5;
-  word-break: break-all;
-  min-height: 20px;
+  flex-shrink: 0;
 }
 
 .wpCreatePreviewCount {
@@ -675,11 +746,117 @@
   color: var(--text-secondary);
   margin-top: 4px;
   text-align: right;
+  flex-shrink: 0;
+}
+
+/* 저장된 위치 목록 — 내용만큼 커지다가, 섹션이 줄면 함께 줄며 내부 스크롤.
+   목록 섹션 안에서 줄어들 수 있는 유일한 요소(라벨·카운트는 flex-shrink:0). */
+.wpCreatePointList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.wpCreatePointList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wpCreatePointList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wpCreatePointList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.wpCreatePointList::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.wpCreatePointEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.wpCreatePointChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--surface-5, rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: var(--font-size-xs);
+}
+
+.wpCreatePointIndex {
+  flex-shrink: 0;
+  width: 26px;
+  height: 20px;
+  border-radius: 4px;
+  background: #FF6B35;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.wpCreatePointCoord {
+  flex: 1;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.wpCreatePointWait {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(127, 208, 255, 0.15);
+  border: 1px solid rgba(127, 208, 255, 0.4);
+  color: #7fd0ff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.wpCreatePointOptions {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #7fd0ff;
+  background: transparent;
+  color: #7fd0ff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wpCreatePointOptions:hover {
+  background: rgba(127, 208, 255, 0.18);
 }
 
 .wpCreateActions {
   display: flex;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 /* 경로 이름 입력 */
@@ -687,6 +864,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex-shrink: 0;
+}
+
+.wpAutoNameLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .wpAutoNameRow {
@@ -699,6 +884,27 @@
 .wpAutoNameLabel {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+}
+
+.wpCreateTaskTypeSelect {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  outline: none;
+  cursor: pointer;
+}
+
+.wpCreateTaskTypeSelect:focus {
+  border-color: var(--color-info);
+}
+
+.wpCreateTaskTypeSelect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .wpNameInput {
@@ -724,6 +930,7 @@
   display: flex;
   gap: 8px;
   padding-top: 4px;
+  flex-shrink: 0;
 }
 
 .wpCancelBtn {

@@ -223,6 +223,7 @@ class WayInfo(Base):
     TaskType = Column(String(50))
     WayName = Column(String(50))
     WayPoints = Column(Text)
+    WaitSeconds = Column(Text)  # JSON array of int, len == stop count of WayPoints
     UpdateTime= Column(DateTime)
 
 
@@ -366,10 +367,10 @@ class ModuleCameraInfo(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     ModuleId = Column(Integer, ForeignKey("robot_module.id", ondelete="CASCADE"), unique=True, nullable=False)
-    StreamType = Column(String(10), nullable=False)             # rtsp | ws
+    StreamType = Column(String(10), nullable=False)             # rtsp | ws | http
     CameraIP = Column(String(45), nullable=True)                # NULL → RobotIP 사용
-    Port = Column(Integer, nullable=True)                       # 8554 (RTSP), 8765 (WS)
-    Path = Column(String(100), nullable=True)                   # /video1, /video2
+    Port = Column(Integer, nullable=True)                       # 8554 (RTSP), 8765 (WS), 8554 (HTTP MJPEG)
+    Path = Column(String(100), nullable=True)                   # /video1, /video2, /stream
 
     module = relationship("RobotModule", back_populates="camera_info")
 

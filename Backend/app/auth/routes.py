@@ -23,7 +23,10 @@ router = APIRouter(prefix="/api/auth", tags=["인증"])
 
 
 REFRESH_MAX_AGE = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600  # 7일
-COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", "localhost")
+# domain 을 비워두면 브라우저가 요청 호스트(현재 origin) 에 쿠키를 저장한다.
+# "localhost" 같은 고정값을 강제하면 원격 IP 접속 시 쿠키 저장이 거부되어 로그인 실패가 발생.
+# 멀티-서브도메인 운영처럼 명시적 도메인이 필요할 때만 COOKIE_DOMAIN 환경변수를 설정.
+COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN") or None
 
 def _set_token_cookies(response: Response, access_token: str, refresh_token: str, remember: bool = False):
     """HttpOnly 쿠키에 토큰 설정.

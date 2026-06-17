@@ -3,8 +3,10 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import type { Camera } from '@/app/types';
 import { CanvasMap } from '@/app/components/map';
+import WebRTCPlayer from '@/app/components/camera/WebRTCPlayer';
 import { getOccGridConfig } from '@/app/components/map/mapConfigs';
-import type { RobotPosition } from '@/app/components/map/types';
+import type { RobotPosition, MapConfig } from '@/app/components/map/types';
+import { apiFetch } from '@/app/lib/api';
 import styles from './ViewportArea.module.css';
 
 type ViewportAreaProps = {
@@ -22,6 +24,7 @@ type ViewportAreaProps = {
   // map
   robotPos: RobotPosition;
   robotConnected: boolean;
+  mapConfig?: MapConfig | null;
   // disconnect overlay
   isDisconnected: boolean;
 };
@@ -39,8 +42,11 @@ export default function ViewportArea({
   onCamImgError,
   robotPos,
   robotConnected,
+  mapConfig,
   isDisconnected,
 }: ViewportAreaProps) {
+  // 로봇 현재 층 맵이 로드되면 그것을, 아직 없으면 고정 맵으로 폴백
+  const resolvedMapConfig = mapConfig ?? getOccGridConfig();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const cameraImgRef = useRef<HTMLImageElement | null>(null);
 
@@ -125,12 +131,61 @@ export default function ViewportArea({
     setTranslate({ x: 0, y: 0 });
   }, []);
 
+  // --- 카메라 PTZ 줌 (열화상만, 단발 클릭) ---
+  const activeCam: Camera | undefined = camera[cameraTabActiveIndex];
+  const isPtzCapable = activeCam?.streamType === 'http';
+  // RTSP 카메라는 MediaMTX WebRTC(WebRTCPlayer)로 저지연 송출
+  const isWebrtcCam = !!activeCam && (activeCam.streamType ?? 'rtsp') === 'rtsp';
+
+  // --- 카메라 토글 시 WebRTCPlayer 짧은 unmount → mount ---
+  // 이전 PC가 완전히 close되고 mediamtx에서 ICE 자원이 정리되기 전에 새 PC가
+  // 같은 단일 UDP(:8189)에 끼어들면 두 번째 ICE가 connectivity check를 놓치는
+  // race가 있어, 토글 직후 ~300ms 인스턴스를 비워둔 뒤 새로 mount한다.
+  const [playerOff, setPlayerOff] = useState(false);
+  const [playerNonce, setPlayerNonce] = useState(0);
+  const prevCamIdRef = useRef<number | undefined>(activeCam?.id);
+  useEffect(() => {
+    const prev = prevCamIdRef.current;
+    const next = activeCam?.id;
+    if (prev !== undefined && next !== undefined && prev !== next) {
+      setPlayerOff(true);
+      const t = setTimeout(() => {
+        setPlayerOff(false);
+        setPlayerNonce((n) => n + 1);
+      }, 300);
+      prevCamIdRef.current = next;
+      return () => clearTimeout(t);
+    }
+    prevCamIdRef.current = next;
+  }, [activeCam?.id]);
+
+  const handlePtzZoom = useCallback(
+    async (action: 'zoom_in' | 'zoom_out') => {
+      if (!activeCam) {
+        console.warn('[PTZ] activeCam 없음');
+        return;
+      }
+      console.debug(`[PTZ] ${action} → /Video/${activeCam.id}/ptz`, activeCam);
+      try {
+        const res = await apiFetch(`/Video/${activeCam.id}/ptz?action=${action}`, { method: 'POST' });
+        if (!res.ok) {
+          console.warn(`[PTZ] ${action} HTTP ${res.status}`, await res.text().catch(() => ''));
+        } else {
+          console.debug(`[PTZ] ${action} ok`);
+        }
+      } catch (e) {
+        console.warn(`[PTZ] ${action} 네트워크 오류`, e);
+      }
+    },
+    [activeCam],
+  );
+
   // --- camera img style ---
+  // 모든 카메라를 16:9 컨테이너에 fill로 늘려 꽉 채움 (잘림·검은 여백 없음, 비율 왜곡 허용).
   const camImgStyle: React.CSSProperties = {
     width: '100%',
     height: '100%',
-    objectFit: 'cover',
-    objectPosition: 'top',   // 4:3 → 16:9 크롭 시 상단(OSD) 유지
+    objectFit: 'fill',
     position: 'absolute',
     top: 0,
     left: 0,
@@ -177,16 +232,16 @@ export default function ViewportArea({
         onMouseUp={endPan}
         onMouseLeave={endPan}
       >
-        {/* 카메라 로딩 */}
-        {isCamLoading && (
+        {/* 카메라 로딩 (MJPEG 경로 전용 — WebRTC는 WebRTCPlayer가 자체 표시) */}
+        {!isWebrtcCam && isCamLoading && (
           <div className={styles.loadingOverlay}>
             <div className={styles.loadingSpinner} />
             <span>카메라 연결 중...</span>
           </div>
         )}
 
-        {/* 카메라 에러 */}
-        {camError && (
+        {/* 카메라 에러 (MJPEG 경로 전용) */}
+        {!isWebrtcCam && camError && (
           <div className={styles.errorOverlay}>
             <span className={styles.errorTitle}>카메라 연결 실패</span>
             <span className={styles.errorDesc}>카메라 스트림에 연결할 수 없습니다</span>
@@ -196,8 +251,12 @@ export default function ViewportArea({
           </div>
         )}
 
-        {/* 카메라 이미지 (항상 메인) */}
-        {cameraStream && (
+        {/* 카메라 메인 — RTSP는 WebRTC 저지연, 그 외(열화상·외부 MJPEG)는 <img> */}
+        {/* 카메라 토글 시 playerOff=true로 잠시 unmount → 300ms 후 새 nonce로 mount.
+            이전 PC가 close + DELETE 완료된 뒤 새 PC가 시작되어 ICE 충돌을 피한다. */}
+        {isWebrtcCam && activeCam && !playerOff ? (
+          <WebRTCPlayer key={playerNonce} whepUrl={activeCam.webrtcUrl} videoStyle={camImgStyle} />
+        ) : cameraStream ? (
           <img
             ref={cameraImgRef}
             key={retryKey}
@@ -208,7 +267,7 @@ export default function ViewportArea({
             style={camImgStyle}
             alt="camera"
           />
-        )}
+        ) : null}
       </div>
 
       {/* ── 줌 리셋 ── */}
@@ -221,6 +280,28 @@ export default function ViewportArea({
         >
           <span>↻</span>
         </button>
+      )}
+
+      {/* ── 카메라 PTZ 줌 (열화상만) ── */}
+      {isOverlayReady && isPtzCapable && (
+        <div className={styles.ptzZoomGroup}>
+          <button
+            type="button"
+            className={styles.ptzZoomBtn}
+            onClick={() => handlePtzZoom('zoom_in')}
+            title="카메라 줌 인"
+          >
+            <span>+</span>
+          </button>
+          <button
+            type="button"
+            className={styles.ptzZoomBtn}
+            onClick={() => handlePtzZoom('zoom_out')}
+            title="카메라 줌 아웃"
+          >
+            <span>−</span>
+          </button>
+        </div>
       )}
 
       {/* 녹화 버튼은 StatusBar로 이동 */}
@@ -268,7 +349,8 @@ export default function ViewportArea({
           {/* 맵 영역 */}
           <div className={styles.pipMapArea} onClick={() => setMapState('expanded')}>
             <CanvasMap
-              config={getOccGridConfig()}
+              key={resolvedMapConfig.imageSrc}
+              config={resolvedMapConfig}
               robotPos={robotPos}
               showRobot={robotConnected}
               robotMarkerSize={14}
@@ -282,7 +364,8 @@ export default function ViewportArea({
       {mapState === 'expanded' && (
         <div className={styles.pipExpanded}>
           <CanvasMap
-            config={getOccGridConfig()}
+            key={resolvedMapConfig.imageSrc}
+            config={resolvedMapConfig}
             robotPos={robotPos}
             showRobot={robotConnected}
             robotMarkerSize={20}

@@ -1,3 +1,8 @@
+# 콘솔 로그 파일 출력 (장기 자율주행 반복 테스트 오류 검출용)
+# 다른 모듈보다 먼저 설정해야 import 단계의 출력까지 파일에 남는다.
+from app.console_logger import setup_console_logging
+setup_console_logging()
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +17,7 @@ from app.database.database import engine, Base, SessionLocal
 from app.database.models import RobotInfo
 from app.logs.routes import router as log_router
 from app.alerts.routes import router as alert_router
+from app.alerts.external import router as alert_external_router
 from app.notices.routes import router as notice_router
 from app.businesses.routes import router as business_router
 from app.auth.routes import router as auth_router
@@ -39,20 +45,31 @@ import json
 import struct
 import math
 
-# OpenCV RTSP를 TCP 우선 모드로 설정 (UDP 끊김 방지)
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|loglevel;error"
+# OpenCV RTSP 전송 방식 — RTSP_TRANSPORT 환경변수로 tcp/udp 전환 (기본 tcp).
+# 카메라가 H.265(HEVC) 인코딩이라 udp는 패킷 손실 시 참조 프레임이 사라져
+# 'Could not find ref with POC' → 회색/깨진 화면이 된다. 불안정 네트워크에서는
+# 손실 없는 tcp가 안전하다. udp는 네트워크가 깨끗할 때만 유효.
+_rtsp_transport = os.environ.get("RTSP_TRANSPORT", "tcp").strip().lower()
+if _rtsp_transport not in ("tcp", "udp"):
+    _rtsp_transport = "tcp"
+# fflags;nobuffer + flags;low_delay — 디코더/디먹서 버퍼링을 줄여 지연 최소화.
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
+    f"rtsp_transport;{_rtsp_transport}"
+    "|fflags;nobuffer|flags;low_delay"
+    "|loglevel;error"
+)
+print(f"[OK] RTSP transport: {_rtsp_transport} (low-latency)")
 import cv2
 
 
 app = FastAPI(title="Control API", version="0.1.0")
 
-_cors_origins = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
-_cors_origin_regex = os.getenv("CORS_ALLOWED_ORIGIN_REGEX") or None
-
+# allow_origins=["*"] + allow_credentials=True 는 CORS 명세상 충돌 조합이라
+# credentials 동반 요청에서 ACAO 헤더가 누락될 수 있다. origin을 반사하는
+# allow_origin_regex 로 두면 모든 출처를 허용하면서 credentials 와도 호환된다.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_origin_regex=_cors_origin_regex,
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,6 +89,7 @@ app.include_router(mapping_ctrl_router)
 app.include_router(ws_mapping_router)
 app.include_router(log_router)
 app.include_router(alert_router)
+app.include_router(alert_external_router)
 app.include_router(notice_router)
 app.include_router(business_router)
 app.include_router(auth_router)
@@ -127,7 +145,7 @@ def startup_event():
             print(f"[OK] 현재 사용자: {cached_user['UserName']} (id={cached_user['id']})")
 
         # robot_info에서 첫 번째 로봇 캐싱
-        robot = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+        robot = db.query(RobotInfo).order_by(RobotInfo.id.desc()).first()
         if robot:
             cached_robot["id"] = robot.id
             cached_robot["RobotName"] = robot.RobotName

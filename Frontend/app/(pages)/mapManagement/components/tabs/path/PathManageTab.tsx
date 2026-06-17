@@ -12,10 +12,11 @@ import PathMapView from "@/app/(pages)/mapManagement/components/tabs/path/PathMa
 import PathAlertsModal from "@/app/(pages)/mapManagement/components/tabs/path/PathAlertsModal";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import { apiFetch } from "@/app/lib/api";
+import { formatPathOrderWithWaits } from "@/app/lib/pathOrder";
 import type { FloorMapRow } from "@/app/(pages)/mapManagement/hooks/useFloorMapConfig";
 
-const PATH_PAGE_SIZE = 10;
-const robotTypes = ["task1", "task2", "task3"];
+const PATH_PAGE_SIZE = 6;
+const robotTypes = ["task1", "task2", "task3", "test"];
 
 const PATH_API = {
   LIST: `/DB/getpath`,
@@ -30,6 +31,7 @@ export type PathRow = {
   workType: string;
   pathName: string;
   pathOrder: string;
+  waitSeconds?: number[];
   updatedAt: string;
 };
 
@@ -201,16 +203,33 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
       if (!res.ok) throw new Error("경로 목록 조회 실패");
 
       const data = await res.json();
-      const mapped: PathRow[] = data.map((p: any) => ({
-        id: p.id,
-        robotNo: p.RobotName,
-        workType: p.TaskType,
-        pathName: p.WayName,
-        pathOrder: p.WayPoints,
-        updatedAt: p.UpdateTime
-          ? new Date(p.UpdateTime).toLocaleString("ko-KR")
-          : "-",
-      }));
+      const mapped: PathRow[] = data.map((p: any) => {
+        let waitSeconds: number[] | undefined;
+        if (p.WaitSeconds) {
+          try {
+            const parsed = JSON.parse(p.WaitSeconds);
+            if (Array.isArray(parsed)) {
+              waitSeconds = parsed.map((n: any) => {
+                const v = Number(n);
+                return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
+              });
+            }
+          } catch {
+            waitSeconds = undefined;
+          }
+        }
+        return {
+          id: p.id,
+          robotNo: p.RobotName,
+          workType: p.TaskType,
+          pathName: p.WayName,
+          pathOrder: p.WayPoints,
+          waitSeconds,
+          updatedAt: p.UpdateTime
+            ? new Date(p.UpdateTime).toLocaleString("ko-KR")
+            : "-",
+        };
+      });
       setPathRows(mapped);
     } catch (err) {
       console.error("경로 목록 로드 실패", err);
@@ -232,6 +251,7 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
     workType: string;
     pathName: string;
     pathOrder: string;
+    waitSeconds?: number[];
   }) => {
     setPathLoading(true);
     try {
@@ -247,6 +267,9 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
           TaskType: payload.workType,
           WayName: payload.pathName,
           WayPoints: payload.pathOrder,
+          WaitSeconds: payload.waitSeconds && payload.waitSeconds.length > 0
+            ? JSON.stringify(payload.waitSeconds)
+            : null,
         }),
       });
 
@@ -386,7 +409,7 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
 
                 <tbody>
                   {currentPathItems.length === 0 && !pathLoading && (
-                    <tr className={styles.emptyRow}>
+                    <tr>
                       <td colSpan={pathDeleteMode ? 5 : 4}>
                         <div className={styles.pathEmptyWrap}>
                           <div className={styles.pathEmptyIcon}>!</div>
@@ -419,7 +442,12 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
                         <td>{row.workType}</td>
                         <td>{row.pathName}</td>
                         <td className={styles.pathOrderCell}>
-                          <div className={styles.pathOrderText} title={row.pathOrder}>{row.pathOrder}</div>
+                          {(() => {
+                            const display = formatPathOrderWithWaits(row.pathOrder, row.waitSeconds);
+                            return (
+                              <div className={styles.pathOrderText} title={display}>{display}</div>
+                            );
+                          })()}
                         </td>
                       </tr>
                     );

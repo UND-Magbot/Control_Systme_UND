@@ -31,6 +31,11 @@ def start_charge():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        # 진단용 마커: 이 시점부터 charge_state 시계열을 추적해야 함
+        print(
+            "🔋 [CHARGE START] 충전소 이동 명령(UDP Charge=1) 송신 — "
+            "이후 [CHARGE] state 전환 로그로 도킹 결과 추적"
+        )
         log_event("robot", "robot_charging_start", "충전소 이동 명령 전송",
                   robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         return {"status": "ok", "msg": "충전소 이동 명령 전송 완료"}
@@ -277,6 +282,7 @@ def _return_to_charge_internal(cancel_running: bool = True) -> dict:
         nav.is_navigating = True
         nav.nav_loop_remaining = 0
         nav.nav_loop_total = 0
+        nav.nav_loop_infinite = False  # 무한 반복 중이었더라도 충전 복귀가 우선
         nav.charge_on_arrival = True
         nav.auto_return_to_charge = False  # 이미 복귀 중 — 중복 트리거 방지
         _signal_nav_reset(full=True)

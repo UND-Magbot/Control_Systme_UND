@@ -1,30 +1,39 @@
 import type { Camera, RobotModule } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
-import { CAMERA_BASE } from "@/app/config";
+import { getWebrtcBase } from "@/app/config";
 
 /**
  * 모듈 트리에서 type="camera"인 노드를 flat 배열로 추출
  */
 function extractCameras(modules: RobotModule[]): Camera[] {
   const cameras: Camera[] = [];
+  const webrtcBase = getWebrtcBase();
 
   function walk(nodes: RobotModule[]) {
     for (const node of nodes) {
       if (node.type === "camera" && node.isActive && node.config) {
         const cfg = node.config as {
-          streamType: "rtsp" | "ws";
+          streamType: "rtsp" | "ws" | "http";
           streamUrl: string;
+          path?: string | null;
         };
+
+        let url: string;
+        if (cfg.streamType === "rtsp") {
+          // RTSP 카메라는 MediaMTX(WebRTC/WHEP)로 저지연 송출한다.
+          // 규칙: MediaMTX 경로명 = 로봇 RTSP path의 basename (예: "/video1" → "video1").
+          const mtxPath = (cfg.path ?? "").replace(/^\/+/, "").trim();
+          url = mtxPath ? `${webrtcBase}/${mtxPath}/whep` : "";
+        } else {
+          // ws(열화상)/http(외부 MJPEG)는 외부 절대 URL을 그대로 사용
+          url = cfg.streamUrl;
+        }
+
         cameras.push({
           id: node.id,
           label: node.label,
           streamType: cfg.streamType,
-          // MJPEG(rtsp) 스트림은 CAMERA_BASE(127.0.0.1)로 호출해
-          // API와 다른 origin을 사용 → HTTP/1.1 연결 풀 분리
-          webrtcUrl:
-            cfg.streamType === "ws"
-              ? cfg.streamUrl
-              : `${CAMERA_BASE}${cfg.streamUrl}`,
+          webrtcUrl: url,
         });
       }
       if (node.children?.length) walk(node.children);

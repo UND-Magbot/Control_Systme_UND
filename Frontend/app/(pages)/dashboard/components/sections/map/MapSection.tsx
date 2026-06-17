@@ -4,25 +4,36 @@ import styles from "./MapSection.module.css";
 import { ZoomControl } from "@/app/components/button";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Floor, RobotRowData, Video, Camera } from "@/app/types";
-import type { MapConfig, POIItem, RobotOnMap, MapView, DangerZone } from "@/app/components/map/types";
+import type { MapConfig, POIItem, RobotOnMap, NavPath, NavPathSegment, MapView } from "@/app/components/map/types";
 import type { CanvasMapHandle } from "@/app/components/map/CanvasMap";
 import CanvasMap from "@/app/components/map/CanvasMap";
 import { apiFetch } from "@/app/lib/api";
 import { getApiBase } from "@/app/config";
 import { useModalAlert } from "@/app/hooks/useModalAlert";
-import { useActiveRouteForRobot } from "@/app/hooks/useActiveRouteForRobot";
 import AlertModal from "@/app/components/modal/AlertModal";
+import { useOutsideClick } from "@/app/hooks/useOutsideClick";
 import dynamic from "next/dynamic";
 
 const StopAllConfirmModal = dynamic(() => import("@/app/components/modal/BatteryChargeModal"), { ssr: false });
+
+// 대시보드 맵 작업유형 필터 옵션. 신규 유형 추가 시 여기에 더한다.
+const TASK_TYPE_OPTIONS = ["task1", "task2", "task3", "test"] as const;
+
+type PathRow = {
+  id: number;
+  taskType: string;
+  wayPoints: string;
+  floorId: number | null;
+};
 
 // ── 모듈 레벨 캐시 — 탭 전환해도 유지, npm run dev 재시작 시 초기화 ──
 const _cache: {
   mapConfigs: Record<number, { mapId: number; config: MapConfig } | null>;  // floorId → config
   places: POIItem[] | null;
-  dangerZones: Record<number, DangerZone[]>;  // mapId → zones
+  navPaths: Record<number, NavPath | null>;  // mapId → navPath
+  paths: PathRow[] | null;
   loaded: boolean;
-} = { mapConfigs: {}, places: null, dangerZones: {}, loaded: false };
+} = { mapConfigs: {}, places: null, navPaths: {}, paths: null, loaded: false };
 
 type MapSectionProps = {
   floors: Floor[];
@@ -53,8 +64,13 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   const [selectedFloor, setSelectedFloor] = useState<Floor | null>(initial.floor);
   const [places, setPlaces] = useState<POIItem[]>(_cache.places ?? []);
   const [activeMapId, setActiveMapId] = useState<number | null>(null);
-  const [dangerZones, setDangerZones] = useState<DangerZone[]>([]);
+  const [navPath, setNavPath] = useState<NavPath | null>(null);
   const [mapView, setMapView] = useState<MapView>("2d");
+  const [paths, setPaths] = useState<PathRow[]>(_cache.paths ?? []);
+  const [taskTypeFilter, setTaskTypeFilter] = useState<string | null>(null); // null = 전체
+  const [taskMenuOpen, setTaskMenuOpen] = useState(false);
+  const taskMenuRef = useRef<HTMLDivElement>(null);
+  useOutsideClick(taskMenuRef, useCallback(() => setTaskMenuOpen(false), []));
 
   // 캐시에서 즉시 mapConfig 복원
   const cachedEntry = selectedFloor ? _cache.mapConfigs[selectedFloor.id] : undefined;
@@ -225,59 +241,118 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
       .catch(() => setPlaces([]));
   }, []);
 
-  // 위험구간 데이터 — 맵 단위로 캐시
+  // 구간(경로) 데이터 (캐시 있으면 스킵)
   useEffect(() => {
-    if (!activeMapId) { setDangerZones([]); return; }
-    const cached = _cache.dangerZones[activeMapId];
+    if (!activeMapId) { setNavPath(null); return; }
+
+    const cached = _cache.navPaths[activeMapId];
     if (cached !== undefined) {
-      setDangerZones(cached);
+      setNavPath(cached);
       return;
     }
-    let cancelled = false;
-    apiFetch(`/DB/danger-zones?map_id=${activeMapId}`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: { ZoneName: string; Description?: string | null; points: { x: number; y: number }[] }[]) => {
-        if (cancelled) return;
-        const zones: DangerZone[] = data.map((z) => ({
-          name: z.ZoneName,
-          description: z.Description ?? null,
-          points: z.points ?? [],
-        }));
-        _cache.dangerZones[activeMapId] = zones;
-        setDangerZones(zones);
-      })
-      .catch(() => {
-        if (!cancelled) setDangerZones([]);
-      });
-    return () => { cancelled = true; };
-  }, [activeMapId]);
 
-  // 선택된 로봇의 실시간 작업 경로 (정적 /DB/routes 폴링 대체)
-  const selectedRobotForRoute = useMemo(
-    () => robots.find((r) => r.id === selectedRobotId) ?? null,
-    [robots, selectedRobotId]
-  );
-  const robotPositionForRoute = useMemo(
-    () =>
-      selectedRobotForRoute?.position?.timestamp
-        ? { x: selectedRobotForRoute.position.x, y: selectedRobotForRoute.position.y }
-        : null,
-    [selectedRobotForRoute?.position?.x, selectedRobotForRoute?.position?.y, selectedRobotForRoute?.position?.timestamp]
-  );
-  const { navPath, guideLine, activeFloorId } = useActiveRouteForRobot({
-    robotName: selectedRobotName ?? selectedRobotForRoute?.no ?? null,
-    robotPosition: robotPositionForRoute,
-    selectedFloorId: selectedFloor?.id ?? null,
-    isNavigating: selectedRobotForRoute?.isNavigating ?? false,
-  });
+    // 캐시 미스 → 이전 층의 navPath가 새 씬에 그려지지 않도록 즉시 초기화
+    setNavPath(null);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`/DB/routes?map_id=${activeMapId}`);
+        const routes: { StartPlaceName: string; EndPlaceName: string; Direction: string }[] = await res.json();
+        if (cancelled || !routes.length) {
+          _cache.navPaths[activeMapId] = null;
+          setNavPath(null);
+          return;
+        }
+
+        const segments: NavPathSegment[] = routes
+          .map((r): NavPathSegment | null => {
+            const from = places.find((p) => p.name === r.StartPlaceName);
+            const to = places.find((p) => p.name === r.EndPlaceName);
+            if (!from || !to) return null;
+            return {
+              from: { x: from.x, y: from.y, name: from.name },
+              to: { x: to.x, y: to.y, name: to.name },
+              direction: r.Direction === "bidirectional" ? "two-way" : "one-way",
+            };
+          })
+          .filter((s): s is NavPathSegment => s !== null);
+
+        const path = segments.length > 0 ? { segments } : null;
+        _cache.navPaths[activeMapId] = path;
+        if (!cancelled) setNavPath(path);
+      } catch {
+        if (!cancelled) setNavPath(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeMapId, places]);
+
+  // 경로 목록 (작업유형 필터용). 캐시 있으면 스킵.
+  useEffect(() => {
+    if (_cache.paths) return;
+    apiFetch(`/DB/paths`)
+      .then((res) => res.ok ? res.json() : [])
+      .then((data: any[]) => {
+        const mapped: PathRow[] = data.map((p) => ({
+          id: p.id,
+          taskType: p.TaskType ?? "",
+          wayPoints: p.WayPoints ?? "",
+          floorId: p.FloorId ?? null,
+        }));
+        _cache.paths = mapped;
+        setPaths(mapped);
+      })
+      .catch(() => setPaths([]));
+  }, []);
+
+  // 작업유형 필터가 켜진 경우, 해당 유형 경로에 등장하는 장소 이름 집합과
+  // 인접 (a,b) 쌍 집합을 만들어 POI/구간 필터링에 사용.
+  // 필터가 없으면 null 반환 (= 제한 없음).
+  const taskFilterSets = useMemo(() => {
+    if (!taskTypeFilter) return null;
+    const placeNames = new Set<string>();
+    const pairs = new Set<string>(); // "a||b" — 정렬된 쌍으로 양방향 매칭
+    for (const p of paths) {
+      if (p.taskType !== taskTypeFilter) continue;
+      const names = p.wayPoints.split(" - ").map((s) => s.trim()).filter(Boolean);
+      for (let i = 0; i < names.length; i++) {
+        placeNames.add(names[i]);
+        if (i > 0) {
+          const a = names[i - 1];
+          const b = names[i];
+          const key = a < b ? `${a}||${b}` : `${b}||${a}`;
+          pairs.add(key);
+        }
+      }
+    }
+    return { placeNames, pairs };
+  }, [paths, taskTypeFilter]);
 
   // 선택된 층의 장소만 필터 — useMemo로 레퍼런스 안정화
   // (매 렌더마다 새 배열이 만들어지면 CanvasMap/Map3DCanvas의 POI effect가
   //  불필요하게 재실행되어 씬이 깜빡이는 원인이 됨)
-  const floorPois = useMemo(
-    () => (selectedFloor ? places.filter((p) => p.floorId === selectedFloor.id) : []),
-    [places, selectedFloor?.id]
-  );
+  const floorPois = useMemo(() => {
+    if (!selectedFloor) return [];
+    const base = places.filter((p) => p.floorId === selectedFloor.id);
+    if (!taskFilterSets) return base;
+    // 충전소(dock/charger)는 작업유형 필터와 무관하게 항상 표시
+    return base.filter((p) => p.category === "charge" || taskFilterSets.placeNames.has(p.name));
+  }, [places, selectedFloor?.id, taskFilterSets]);
+
+  // 작업유형 필터 적용된 NavPath. 필터된 인접 쌍에 속한 segment만 통과.
+  const filteredNavPath = useMemo<NavPath | null>(() => {
+    if (!navPath) return null;
+    if (!taskFilterSets) return navPath;
+    const segments = navPath.segments.filter((s) => {
+      const a = s.from.name;
+      const b = s.to.name;
+      if (!a || !b) return false;
+      const key = a < b ? `${a}||${b}` : `${b}||${a}`;
+      return taskFilterSets.pairs.has(key);
+    });
+    return segments.length > 0 ? { segments } : null;
+  }, [navPath, taskFilterSets]);
 
   const handleFloorSelect = (idx: number, floor: Floor) => {
     // 층 변경 시 mapConfig/activeMapId를 즉시 null 로 만들어
@@ -351,17 +426,14 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           <div className={styles.floorList}>
             {[...floors].reverse().map((floor) => {
               const originalIdx = floors.indexOf(floor);
-              const isActiveFloor = originalIdx === floorActiveIndex;
-              const hasActiveTask = activeFloorId === floor.id && !isActiveFloor;
               return (
                 <button
                   key={floor.id}
-                  className={`${styles.floorBtn} ${isActiveFloor ? styles.floorBtnActive : ""}`}
+                  className={`${styles.floorBtn} ${originalIdx === floorActiveIndex ? styles.floorBtnActive : ""}`}
                   onClick={() => handleFloorSelect(originalIdx, floor)}
                 >
                   {floor.label}
-                  {isActiveFloor && <span className={styles.floorIndicator} />}
-                  {hasActiveTask && <span className={styles.floorActiveTaskBadge} />}
+                  {originalIdx === floorActiveIndex && <span className={styles.floorIndicator} />}
                 </button>
               );
             })}
@@ -378,15 +450,51 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
             view={mapView}
             robots={floorRobots}
             pois={floorPois}
-            navPath={navPath}
-            guideLine={guideLine}
-            dangerZones={dangerZones}
-            showDangerZones
+            navPath={filteredNavPath}
             showPois
             showPath
             showLabels
             onPoiNavigate={handlePoiNavigate}
           />
+        )}
+        {hasRobots && hasFloors && mapConfig && (
+          <div ref={taskMenuRef} className={styles.taskFilter}>
+            <button
+              type="button"
+              className={styles.taskFilterBtn}
+              onClick={() => setTaskMenuOpen((v) => !v)}
+              aria-haspopup="listbox"
+              aria-expanded={taskMenuOpen}
+            >
+              <span className={styles.taskFilterLabel}>{taskTypeFilter ?? "전체"}</span>
+              <span className={`${styles.taskFilterCaret} ${taskMenuOpen ? styles.taskFilterCaretOpen : ""}`} />
+            </button>
+            {taskMenuOpen && (
+              <div className={styles.taskFilterMenu} role="listbox">
+                <button
+                  type="button"
+                  className={`${styles.taskFilterItem} ${taskTypeFilter === null ? styles.taskFilterItemActive : ""}`}
+                  onClick={() => { setTaskTypeFilter(null); setTaskMenuOpen(false); }}
+                  role="option"
+                  aria-selected={taskTypeFilter === null}
+                >
+                  전체
+                </button>
+                {TASK_TYPE_OPTIONS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`${styles.taskFilterItem} ${taskTypeFilter === t ? styles.taskFilterItemActive : ""}`}
+                    onClick={() => { setTaskTypeFilter(t); setTaskMenuOpen(false); }}
+                    role="option"
+                    aria-selected={taskTypeFilter === t}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {hasRobots && hasFloors && (
           <ZoomControl

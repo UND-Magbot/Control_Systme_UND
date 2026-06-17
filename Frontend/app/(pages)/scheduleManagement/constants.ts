@@ -9,6 +9,7 @@ export const WORK_TYPES: WorkType[] = [
   { id: 1, label: "task1" },
   { id: 2, label: "task2" },
   { id: 3, label: "task3" },
+  { id: 4, label: "test" },
 ];
 
 // 작업 등록/수정 모달의 작업유형 드롭다운에서 "전체(리셋)" 옵션으로 사용.

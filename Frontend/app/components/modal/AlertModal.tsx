@@ -8,13 +8,16 @@ type Props = {
   mode: "alert" | "confirm";
   onConfirm: () => void;
   onClose: () => void;
+  /** 기본 z-index(120) 위에 다른 모달(카메라 확대 등 z-index 200)이 있을 때
+   *  알람을 더 위에 띄우기 위해 사용. 미지정 시 모듈 CSS의 기본 z-index 유지. */
+  zIndex?: number;
 };
 
-export default function MapAlertModal({ open, message, mode, onConfirm, onClose }: Props) {
+export default function MapAlertModal({ open, message, mode, onConfirm, onClose, zIndex }: Props) {
   if (!open) return null;
 
   return (
-    <div className={styles.confirmOverlay}>
+    <div className={styles.confirmOverlay} style={zIndex !== undefined ? { zIndex } : undefined}>
       <div className={styles.confirmBox}>
         <button className={styles.closeBox} onClick={onClose}>
           <img src="/icon/close_btn.png" alt="" />

@@ -534,7 +534,7 @@
 
 .orderTop {
   display: grid;
-  grid-template-columns: 24px 1fr 20px;
+  grid-template-columns: 24px 1fr 22px 20px;
   align-items: center;
   gap: 6px;
 }
@@ -572,6 +572,49 @@
 .orderDelete img {
   width: 10px;
   height: 10px;
+}
+
+.orderOptions {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.optionsCircle {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1.5px solid #7fd0ff;
+  color: #7fd0ff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.orderOptions:hover .optionsCircle {
+  background: rgba(127, 208, 255, 0.18);
+}
+
+.waitBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(127, 208, 255, 0.15);
+  border: 1px solid rgba(127, 208, 255, 0.4);
+  color: #7fd0ff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .orderBottom {

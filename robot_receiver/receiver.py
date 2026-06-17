@@ -6,6 +6,7 @@ import json
 import struct
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 ROBOT_IP = "10.21.31.103"
 ROBOT_PORT = 30000
@@ -493,6 +494,133 @@ def robot_sniff_loop():
             print(f"[SNIFF ERR] {e}")
 
 
+# ============================================================
+# UDP 수신 핸들러 (멀티스레드)
+#
+# - FAST: 즉시 응답해야 하는 폴링/빠른 명령 → 메인 loop에서 직접 처리
+# - SLOW: hold_motion / wait_stand_ready / NAV ASDU / INIT_POSE 등
+#         수백 ms~수 초 block 하는 명령 → 워커 스레드에 위임
+#         (하나의 느린 명령이 폴링 응답을 막지 않도록 함)
+# ============================================================
+
+_FAST_RESPONSE_ACTIONS = {
+    "POSITION", "STATUS", "NAV_STATUS",
+    "MAPPING_ODOM", "MAPPING_CLOUD", "MAPPING_ALIGNED",
+    "STOP", "CANCEL_NAV", "SLOW", "NORMAL", "FAST", "WAKE",
+    "FRONTON", "FRONTOFF", "REARON", "REAROFF",
+}
+
+_SLOW_CMD_ACTIONS = {
+    "UP", "DOWN", "LEFT", "RIGHT", "LEFTTURN", "RIGHTTURN",
+    "STAND", "SIT", "NAV", "INIT_POSE",
+}
+
+_cmd_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cmd-worker")
+
+
+def _handle_fast(action, msg, addr):
+    """메인 loop에서 직접 호출 — 모두 1ms 내 처리되어야 함."""
+    if action == "POSITION":
+        server_sock.sendto(json.dumps(latest_position).encode("utf-8"), addr)
+    elif action == "STATUS":
+        server_sock.sendto(json.dumps({
+            "BatteryStatus": latest_battery,
+            "ChargeStatus": latest_charge_state,
+            "DeviceTemperature": latest_device_temp,
+            "BasicStatus": latest_basic_status,
+        }).encode("utf-8"), addr)
+    elif action == "NAV_STATUS":
+        server_sock.sendto(json.dumps(latest_nav_status).encode("utf-8"), addr)
+    elif action == "MAPPING_ODOM":
+        server_sock.sendto(get_mapping_data("MAPPING_ODOM"), addr)
+    elif action == "MAPPING_CLOUD":
+        server_sock.sendto(get_mapping_data("MAPPING_CLOUD"), addr)
+    elif action == "MAPPING_ALIGNED":
+        server_sock.sendto(get_mapping_data("MAPPING_ALIGNED"), addr)
+    elif action == "STOP": stop_robot()
+    elif action == "CANCEL_NAV": cancel_nav()
+    elif action == "SLOW": set_slow()
+    elif action == "NORMAL": set_normal()
+    elif action == "FAST": set_fast()
+    elif action == "WAKE": set_wake()
+    elif action == "FRONTON": set_flash("front", "on")
+    elif action == "FRONTOFF": set_flash("front", "off")
+    elif action == "REARON": set_flash("rear", "on")
+    elif action == "REAROFF": set_flash("rear", "off")
+
+
+def _handle_nav(msg, addr):
+    """NAV 명령 — send_nav_command 내부에 sleep(0.3) 있음."""
+    idx = msg.get("idx", 1)
+    x = msg.get("x", 0.0)
+    y = msg.get("y", 0.0)
+    yaw = msg.get("yaw", 0.0)
+    print(f"[RECV NAV] idx={idx}, x={x}, y={y}, yaw={yaw}")
+    send_nav_command(int(idx), float(x), float(y), float(yaw))
+    ack = json.dumps({"ack": True, "idx": int(idx)}).encode("utf-8")
+    server_sock.sendto(ack, addr)
+
+
+def _handle_init_pose(msg, addr):
+    """INIT_POSE — 로봇 응답 대기 최대 3초."""
+    init_items = msg.get("items", {"PosX": 3.635, "PosY": 0.144, "PosZ": 0.0, "Yaw": -0.042})
+    print(f"🔧 [INIT_POSE] receiver 경유 수신: {init_items}")
+    init_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    init_sock.settimeout(3.0)
+    try:
+        asdu = {
+            "PatrolDevice": {
+                "Type": 2101,
+                "Command": 1,
+                "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "Items": init_items
+            }
+        }
+        asdu_bytes = json.dumps(asdu).encode("utf-8")
+        asdu_len = len(asdu_bytes)
+        header = struct.pack(
+            "<4BHHB7B",
+            0xEB, 0x91, 0xEB, 0x90,
+            asdu_len, 1, 0x01,
+            *(0x00,) * 7
+        )
+        packet = header + asdu_bytes
+        init_sock.sendto(packet, (ROBOT_IP, ROBOT_PORT))
+        print(f"🔧 [INIT_POSE] 로봇에 전송 완료 ({len(packet)} bytes)")
+        resp_data, resp_addr = init_sock.recvfrom(4096)
+        try:
+            resp = json.loads(resp_data.decode("utf-8"))
+        except:
+            resp = json.loads(resp_data[16:].decode("utf-8"))
+        print(f"✅ [INIT_POSE] 로봇 응답: {resp} (from {resp_addr})")
+        server_sock.sendto(json.dumps({"status": "ok", "response": resp}).encode("utf-8"), addr)
+    except socket.timeout:
+        print("⚠️ [INIT_POSE] 로봇 응답 타임아웃 (3초)")
+        server_sock.sendto(json.dumps({"status": "timeout"}).encode("utf-8"), addr)
+    except Exception as e:
+        print(f"❌ [INIT_POSE] 에러: {e}")
+        server_sock.sendto(json.dumps({"status": "error", "msg": str(e)}).encode("utf-8"), addr)
+    finally:
+        init_sock.close()
+
+
+def _handle_slow(action, msg, addr):
+    """워커 스레드에서 실행 — hold_motion / wait_stand_ready / ASDU 송신 등 block 작업."""
+    try:
+        if action == "UP": hold_motion(move_forward, duration=1.0)
+        elif action == "DOWN": hold_motion(move_backward, duration=1.0)
+        elif action == "LEFT": hold_motion(move_left, duration=1.5, interval=0.0001)
+        elif action == "RIGHT": hold_motion(move_right, duration=1.5, interval=0.0001)
+        elif action == "LEFTTURN": hold_motion(turn_left, duration=0.5)
+        elif action == "RIGHTTURN": hold_motion(turn_right, duration=0.5)
+        elif action == "STAND": stand_robot()
+        elif action == "SIT": sit_robot()
+        elif action == "NAV": _handle_nav(msg, addr)
+        elif action == "INIT_POSE": _handle_init_pose(msg, addr)
+    except Exception as e:
+        print(f"[SLOW CMD ERR] action={action}: {e}")
+
+
 def udp_receiver_loop():
     print(f"PC 명령 수신 대기중... (UDP:{SERVER_UDP_PORT})")
 
@@ -504,108 +632,13 @@ def udp_receiver_loop():
 
             print(f"수신: {action}")
 
-            # 액션 매핑
-            if action == "POSITION":
-                server_sock.sendto(json.dumps(latest_position).encode("utf-8"), addr)
-
-            elif action == "STATUS":
-                server_sock.sendto(json.dumps({
-                    "BatteryStatus": latest_battery,
-                    "ChargeStatus": latest_charge_state,
-                    "DeviceTemperature": latest_device_temp,
-                    "BasicStatus": latest_basic_status,
-                }).encode("utf-8"), addr)
-
-            elif action == "NAV_STATUS":
-                server_sock.sendto(json.dumps(latest_nav_status).encode("utf-8"), addr)
-
-            elif action == "INIT_POSE":
-                # 디버그: receiver 경유 init_pose (전용 소켓 사용)
-                init_items = msg.get("items", {"PosX": 3.635, "PosY": 0.144, "PosZ": 0.0, "Yaw": -0.042})
-                print(f"🔧 [INIT_POSE] receiver 경유 수신: {init_items}")
-
-                init_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                init_sock.settimeout(3.0)
-                try:
-                    asdu = {
-                        "PatrolDevice": {
-                            "Type": 2101,
-                            "Command": 1,
-                            "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                            "Items": init_items
-                        }
-                    }
-                    asdu_bytes = json.dumps(asdu).encode("utf-8")
-                    asdu_len = len(asdu_bytes)
-                    header = struct.pack(
-                        "<4BHHB7B",
-                        0xEB, 0x91, 0xEB, 0x90,
-                        asdu_len, 1, 0x01,
-                        *(0x00,) * 7
-                    )
-                    packet = header + asdu_bytes
-                    init_sock.sendto(packet, (ROBOT_IP, ROBOT_PORT))
-                    print(f"🔧 [INIT_POSE] 로봇에 전송 완료 ({len(packet)} bytes)")
-
-                    # 3초간 응답 대기
-                    resp_data, resp_addr = init_sock.recvfrom(4096)
-                    try:
-                        resp = json.loads(resp_data.decode("utf-8"))
-                    except:
-                        resp = json.loads(resp_data[16:].decode("utf-8"))
-                    print(f"✅ [INIT_POSE] 로봇 응답: {resp} (from {resp_addr})")
-                    server_sock.sendto(json.dumps({"status": "ok", "response": resp}).encode("utf-8"), addr)
-                except socket.timeout:
-                    print("⚠️ [INIT_POSE] 로봇 응답 타임아웃 (3초)")
-                    server_sock.sendto(json.dumps({"status": "timeout"}).encode("utf-8"), addr)
-                except Exception as e:
-                    print(f"❌ [INIT_POSE] 에러: {e}")
-                    server_sock.sendto(json.dumps({"status": "error", "msg": str(e)}).encode("utf-8"), addr)
-                finally:
-                    init_sock.close()
-
-            elif action == "MAPPING_ODOM":
-                server_sock.sendto(get_mapping_data("MAPPING_ODOM"), addr)
-            elif action == "MAPPING_CLOUD":
-                server_sock.sendto(get_mapping_data("MAPPING_CLOUD"), addr)
-            elif action == "MAPPING_ALIGNED":
-                server_sock.sendto(get_mapping_data("MAPPING_ALIGNED"), addr)
-
-            elif action == "UP": hold_motion(move_forward, duration=1.0)
-            elif action == "DOWN": hold_motion(move_backward, duration=1.0)
-            elif action == "LEFT": hold_motion(move_left, duration = 1.5, interval = 0.0001)
-            elif action == "RIGHT":hold_motion(move_right, duration = 1.5, interval = 0.0001)
-            elif action == "LEFTTURN": hold_motion(turn_left, duration=0.5)
-            elif action == "RIGHTTURN": hold_motion(turn_right, duration=0.5)
-            elif action == "STOP": stop_robot()
-            elif action == "CANCEL_NAV": cancel_nav()
-            elif action == "STAND": stand_robot()
-            elif action == "SIT": sit_robot()
-            elif action == "SLOW": set_slow()
-            elif action == "NORMAL": set_normal()
-            elif action == "FAST": set_fast()
-            elif action == "WAKE": set_wake()
-            elif action == "FRONTON" : set_flash("front","on")
-            elif action == "FRONTOFF" : set_flash("front","off")
-            elif action == "REARON" : set_flash("rear","on")
-            elif action == "REAROFF" : set_flash("rear","off")
-            elif action == "NAV":
-                idx = msg.get("idx", 1)
-                x = msg.get("x", 0.0)
-                y = msg.get("y", 0.0)
-                yaw = msg.get("yaw", 0.0)
-
-                print(f"[RECV NAV] idx={idx}, x={x}, y={y}, yaw={yaw}")
-                f_x = float(x)
-                f_y = float(y)
-                f_yaw = float(yaw)
-                i_idx = int(idx)
-
-                send_nav_command(i_idx, f_x, f_y, f_yaw)
-
-                # ACK 응답 → Backend
-                ack = json.dumps({"ack": True, "idx": i_idx}).encode("utf-8")
-                server_sock.sendto(ack, addr)
+            if action in _FAST_RESPONSE_ACTIONS:
+                _handle_fast(action, msg, addr)
+            elif action in _SLOW_CMD_ACTIONS:
+                # 워커 풀에 위임 — 메인 loop은 즉시 다음 패킷 수신으로 복귀
+                _cmd_executor.submit(_handle_slow, action, msg, addr)
+            else:
+                print(f"[UNKNOWN ACTION] {action}")
 
         except socket.timeout:
             continue

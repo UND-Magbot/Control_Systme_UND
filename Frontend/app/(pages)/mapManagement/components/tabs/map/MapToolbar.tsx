@@ -1,8 +1,6 @@
 "use client";
 
 import React from "react";
-import { HelpCircle } from "lucide-react";
-import CustomSelect, { type SelectOption } from "@/app/components/select/CustomSelect";
 import styles from "../../../mapManagement.module.css";
 import type { Business, FloorItem, RobotMap, Robot } from "../../../types/map";
 
@@ -46,95 +44,69 @@ export default function MapToolbar({
   onDeleteMap,
   onOpenRobotModal,
 }: Props) {
-  const noRobotConnected = connectedRobots.length === 0;
-
-  const bizOptions: SelectOption[] = businesses.map((b) => ({ id: b.id, label: b.BusinessName }));
-  const floorOptions: SelectOption[] = floors.map((f) => ({ id: f.id, label: f.FloorName }));
-  const mapOptions: SelectOption[] = maps.map((m) => ({ id: m.id, label: m.MapName }));
-
-  const bizSelected = bizOptions.find((o) => o.id === selectedBiz) ?? null;
-  const floorSelected = floorOptions.find((o) => o.id === selectedFloor) ?? null;
-  const mapSelected = mapOptions.find((o) => o.id === selectedMap) ?? null;
-
   return (
     <div className={styles.toolbar}>
       <span className={styles.toolbarLabel}>사업장:</span>
-      <CustomSelect
-        options={bizOptions}
-        value={bizSelected}
-        onChange={(opt) => onBizChange(Number(opt.id))}
-        placeholder="사업장 선택"
-        width={160}
-        overlay
-        emptyMessage="등록된 사업장이 없습니다"
-      />
+      <select
+        value={selectedBiz}
+        onChange={(e) => onBizChange(Number(e.target.value))}
+      >
+        <option value="">사업장 선택</option>
+        {businesses.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.BusinessName}
+          </option>
+        ))}
+      </select>
 
       <span className={styles.toolbarLabel}>층:</span>
-      <CustomSelect
-        options={floorOptions}
-        value={floorSelected}
-        onChange={(opt) => onFloorChange(Number(opt.id))}
-        placeholder="층 선택"
-        width={110}
-        overlay
-        emptyMessage="등록된 층이 없습니다"
-      />
+      <select
+        value={selectedFloor}
+        onChange={(e) => onFloorChange(Number(e.target.value))}
+      >
+        <option value="">층 선택</option>
+        {floors.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.FloorName}
+          </option>
+        ))}
+      </select>
 
       <span className={styles.toolbarLabel}>영역:</span>
-      <CustomSelect
-        options={mapOptions}
-        value={mapSelected}
-        onChange={(opt) => onMapChange(Number(opt.id))}
-        placeholder="영역 선택"
-        width={160}
-        overlay
-        emptyMessage="등록된 영역이 없습니다"
-      />
-
-      <div className={styles.toolbarDivider} aria-hidden="true" />
-
-      <button className={styles.robotConnectBtn} onClick={onOpenRobotModal}>
-        {connectedRobots.length > 0
-          ? connectedRobots.map((r) => r.RobotName).join(", ")
-          : "로봇 연결"}
-      </button>
-      <button
-        className={styles.toolbarBtn}
-        onClick={onClearModes}
-        disabled={noRobotConnected}
-        style={noRobotConnected ? { opacity: 0.4, cursor: "default" } : undefined}
+      <select
+        value={selectedMap}
+        onChange={(e) =>
+          onMapChange(e.target.value === "" ? "" : Number(e.target.value))
+        }
       >
-        위치재조정
-      </button>
+        <option value="">영역 선택</option>
+        {maps.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.MapName}
+          </option>
+        ))}
+      </select>
 
-      <div className={styles.toolbarRight}>
-        <div className={styles.helpWrap}>
-          <button
-            type="button"
-            className={styles.robotIconGhostBtn}
-            aria-label="도구 사용법"
-          >
-            <HelpCircle size={20} strokeWidth={2} />
-          </button>
-          <div className={styles.helpTooltip} role="tooltip">
-            <div className={styles.helpTooltipBox}>
-              <span className={styles.helpTooltipTitle}>로봇 연결 후 사용 가능한 도구</span>
-              <ul className={styles.helpTooltipList}>
-                <li>충전소 생성</li>
-                <li>현 위치에서 장소 생성</li>
-                <li>위치재조정</li>
-              </ul>
-            </div>
-          </div>
-        </div>
+      <div className={styles.toolbarCenter}>
         <button className={styles.toolbarBtn} onClick={onSaveAll}>
           저장
         </button>
         <button className={styles.toolbarBtn} onClick={onOpenSyncModal}>
-          맵 동기화
+          동기화
+        </button>
+        <button className={styles.toolbarBtn} onClick={onClearModes}>
+          위치재조정
         </button>
         <button className={styles.toolbarBtn} onClick={onDeleteMap}>
           삭제
+        </button>
+      </div>
+
+      <div className={styles.toolbarRight}>
+        <button className={styles.robotConnectBtn} onClick={onOpenRobotModal}>
+          {connectedRobots.length > 0
+            ? connectedRobots.map((r) => r.RobotName).join(", ")
+            : "로봇 연결"}
         </button>
       </div>
     </div>

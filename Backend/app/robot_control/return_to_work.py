@@ -234,6 +234,7 @@ def return_to_work(mode: str = "direct"):
     nav.current_wp_index = 0
     nav.is_navigating = True
     nav.nav_loop_remaining = 0
+    nav.nav_loop_infinite = False  # 무한 반복 중이었더라도 작업 복귀가 우선
     nav.charge_on_arrival = False
     _signal_nav_reset(full=True)
 

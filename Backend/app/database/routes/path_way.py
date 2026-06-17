@@ -7,7 +7,6 @@ from fastapi.encoders import jsonable_encoder
 from app.database.models import WayInfo, RouteInfo, UserInfo, LocationInfo
 from app.auth.dependencies import require_any_permission, is_admin, get_business_robot_names
 from app.auth.audit import write_audit, get_client_ip
-from app.common.geometry import segment_intersects_polygon
 
 from app.database.routes import database, get_db
 
@@ -49,6 +48,7 @@ class PathInsertReq(BaseModel):
     TaskType: str
     WayName: str
     WayPoints: str
+    WaitSeconds: str | None = None  # JSON array of int
 
 
 @database.post("/path")
@@ -59,6 +59,7 @@ def insert_path(req: PathInsertReq, request: Request, db: Session = Depends(get_
         TaskType=req.TaskType,
         WayName=req.WayName,
         WayPoints=req.WayPoints,
+        WaitSeconds=req.WaitSeconds,
     )
     db.add(path)
     db.commit()
@@ -92,6 +93,7 @@ class PathRes(BaseModel):
     TaskType: str | None
     WayName: str | None
     WayPoints: str | None
+    WaitSeconds: str | None
     UpdateTime: datetime | None
 
     class Config:
@@ -155,6 +157,9 @@ def update_path(path_id: int, req: PathInsertReq, request: Request, db: Session 
     if path.WayPoints != req.WayPoints:
         changes.append(f"경유지 변경")
         path.WayPoints = req.WayPoints
+    if path.WaitSeconds != req.WaitSeconds:
+        changes.append(f"대기 시간 변경")
+        path.WaitSeconds = req.WaitSeconds
 
     db.commit()
     db.refresh(path)
@@ -208,37 +213,6 @@ def get_routes(map_id: int | None = None, db: Session = Depends(get_db)):
 
 @database.post("/routes")
 def insert_route(req: RouteInsertReq, db: Session = Depends(get_db)):
-    # 위험지역 교차 검사: 같은 맵의 시작/끝 POI 좌표를 가져와 폴리곤과 교차 여부 확인
-    start_place = (
-        db.query(LocationInfo)
-        .filter(
-            LocationInfo.MapId == req.MapId,
-            LocationInfo.LacationName == req.StartPlaceName,
-            (LocationInfo.Category != "danger") | (LocationInfo.Category.is_(None)),
-        )
-        .first()
-    )
-    end_place = (
-        db.query(LocationInfo)
-        .filter(
-            LocationInfo.MapId == req.MapId,
-            LocationInfo.LacationName == req.EndPlaceName,
-            (LocationInfo.Category != "danger") | (LocationInfo.Category.is_(None)),
-        )
-        .first()
-    )
-    if start_place and end_place:
-        from app.database.routes.danger_zone import load_zone_polygons
-        polys = load_zone_polygons(db, req.MapId)
-        p1 = (start_place.LocationX, start_place.LocationY)
-        p2 = (end_place.LocationX, end_place.LocationY)
-        for zone_name, poly in polys:
-            if segment_intersects_polygon(p1, p2, poly):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"경로가 위험지역 '{zone_name}'을(를) 통과합니다",
-                )
-
     route = RouteInfo(
         MapId=req.MapId,
         StartPlaceName=req.StartPlaceName,

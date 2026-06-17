@@ -15,6 +15,7 @@ import { useRecording } from './hooks/useRecording';
 
 import StatusBar from './components/StatusBar';
 import ViewportArea from './components/ViewportArea';
+import { useRemoteFloorMap } from './hooks/useRemoteFloorMap';
 import MovementPad from './components/MovementPad';
 import ControlPanel from './components/ControlPanel';
 import AlertDialog from './components/AlertDialog';
@@ -86,6 +87,8 @@ export default function RemoteModal({
     currentFloorId: selectedRobot?.currentFloorId ?? null,
   });
   const { position: robotPos, isReady: robotConnected, hasError: positionError } = useRobotPosition(isOpen);
+  // 로봇 현재 층의 실제 맵 (없으면 null → ViewportArea가 고정 맵으로 폴백)
+  const floorMapConfig = useRemoteFloorMap(selectedRobot?.currentFloorId ?? null);
   const moveCmd = useRemoteCommand({ debounceMs: 100, onError: showAlert });
   const recording = useRecording(isOpen, selectedRobot?.id);
 
@@ -174,6 +177,7 @@ export default function RemoteModal({
             robotPos={robotPos}
             robotConnected={robotConnected}
             isDisconnected={isDisconnected}
+            mapConfig={floorMapConfig}
           />
 
           <div className={styles.sidebar}>
@@ -193,6 +197,7 @@ export default function RemoteModal({
               loopCount={work.loopCount}
               loopCurrent={work.loopCurrent}
               loopTotal={work.loopTotal}
+              loopInfinite={work.loopInfinite}
               isDisconnected={isDisconnected || readOnly}
               onStartWork={work.startWork}
               onStopWork={work.stopWork}
@@ -207,6 +212,7 @@ export default function RemoteModal({
               createdPoints={work.createdPoints}
               onStartCreating={work.startCreating}
               onSavePoint={work.savePoint}
+              onSetPointWait={work.setPointWait}
               onClearPoints={work.clearPoints}
               onFinishCreating={work.finishCreating}
               onCancelCreating={work.cancelCreating}

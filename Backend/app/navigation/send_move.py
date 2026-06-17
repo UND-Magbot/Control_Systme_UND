@@ -17,6 +17,8 @@ is_navigating = False
 nav_sent_time = 0
 nav_loop_remaining = 0
 nav_loop_total = 0
+nav_loop_count = 0          # 현재 진행 중인 반복 회차 (1부터 시작)
+nav_loop_infinite = False   # 무한 반복 모드 (작업 중지 전까지 계속)
 charge_on_arrival = False  # 도착 후 자동 충전 플래그 (도킹 포인트 도착 시 start_charge 호출)
 auto_return_to_charge = False  # 작업 완료 후 충전소로 자동 복귀 플래그
                                 # startpath(원격 반복 포함) / 스케줄러만 True.
@@ -51,9 +53,14 @@ def check_and_clear_reset_flag():
     return False, False
 
 def _signal_nav_reset(full=False):
-    global _nav_reset_flag, _nav_full_reset_flag
+    global _nav_reset_flag, _nav_full_reset_flag, nav_sent_time
     _nav_reset_flag = True
     _nav_full_reset_flag = full
+    # 이전 작업의 stale nav_sent_time이 남아 있으면 nav_thread가
+    # elapsed > NAV_RETRY_TIMEOUT으로 오판해 새 명령 송신 직후 즉시 재전송이 발동된다.
+    # 새 명령은 곧 navigation_send_next/resend_current에서 nav_sent_time을 다시 갱신하므로
+    # 그 사이 폴링 사이클에서 재전송이 트리거되지 않도록 0으로 비워둔다.
+    nav_sent_time = 0
 
 
 def _update_is_working(robot_id: int, working: bool):
@@ -75,12 +82,14 @@ def _update_is_working(robot_id: int, working: bool):
 
 @move.post("/stopmove")
 def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
-    global is_navigating, current_wp_index, nav_loop_remaining, nav_loop_total, charge_on_arrival, auto_return_to_charge
+    global is_navigating, current_wp_index, nav_loop_remaining, nav_loop_total, nav_loop_count, nav_loop_infinite, charge_on_arrival, auto_return_to_charge
     was_active = is_navigating
     is_navigating = False
     current_wp_index = 0
     nav_loop_remaining = 0
     nav_loop_total = 0
+    nav_loop_count = 0
+    nav_loop_infinite = False
     charge_on_arrival = False
     auto_return_to_charge = False
     _signal_nav_reset(full=True)
@@ -132,14 +141,38 @@ def navigation_resend_current():
     nav_sent_time = time.time()
 
 def navigation_send_next():
-    global current_wp_index, waypoints_list, is_navigating, nav_sent_time, nav_loop_remaining, nav_loop_total
+    global current_wp_index, waypoints_list, is_navigating, nav_sent_time, nav_loop_remaining, nav_loop_total, nav_loop_count, nav_loop_infinite
 
     if not is_navigating:
         return
 
+    # 직전 웨이포인트 도착 후 경로별 대기 시간 적용 (첫 출발/preamble은 0이라 자동 skip)
+    if 0 < current_wp_index <= len(waypoints_list):
+        prev_wp = waypoints_list[current_wp_index - 1]
+        wait_s = int(prev_wp.get("wait_seconds", 0) or 0)
+        if wait_s > 0:
+            wp_name = prev_wp.get("name", f"WP{current_wp_index}")
+            print(f"⏸ 도착 후 대기: {wait_s}초 ({wp_name})")
+            log_event("schedule", "nav_wait",
+                      f"{wp_name} 도착 후 대기 {wait_s}초",
+                      robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
+            for _ in range(wait_s):
+                if not is_navigating:
+                    print("⏸ 대기 중 정지 감지 — wait 중단")
+                    return
+                time.sleep(1)
+
     if current_wp_index >= len(waypoints_list):
-        if nav_loop_remaining > 0:
+        if nav_loop_infinite:
+            nav_loop_count += 1
+            current_wp_index = 0
+            print(f"[SYNC] 무한 반복 — {nav_loop_count}회차 시작")
+            log_event("schedule", "nav_loop",
+                      f"무한 반복 — {nav_loop_count}회차 시작",
+                      robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
+        elif nav_loop_remaining > 0:
             nav_loop_remaining -= 1
+            nav_loop_count += 1
             current_wp_index = 0
             print(f"[SYNC] 반복 시작 (남은 횟수: {nav_loop_remaining + 1})")
             log_event("schedule", "nav_loop",
@@ -148,6 +181,7 @@ def navigation_send_next():
         else:
             is_navigating = False
             nav_loop_total = 0
+            nav_loop_infinite = False
             _update_is_working(get_robot_id(), False)
 
             try:
@@ -160,8 +194,44 @@ def navigation_send_next():
             global charge_on_arrival
             if charge_on_arrival:
                 charge_on_arrival = False
+
+                # 도킹 위치 정확도 진단 (localization drift 의심 시 추적)
+                dock_diag_msg = ""
+                try:
+                    import math
+                    from app.robot_io import runtime
+                    rid = get_robot_id()
+                    if rid and waypoints_list:
+                        dock_target = waypoints_list[-1]
+                        pos = runtime.get_position(rid)
+                        dx = pos["x"] - dock_target["x"]
+                        dy = pos["y"] - dock_target["y"]
+                        dist = (dx ** 2 + dy ** 2) ** 0.5
+                        target_yaw = float(dock_target.get("yaw", 0.0) or 0.0)
+                        dyaw = pos["yaw"] - target_yaw
+                        while dyaw > math.pi:
+                            dyaw -= 2 * math.pi
+                        while dyaw <= -math.pi:
+                            dyaw += 2 * math.pi
+                        dock_diag_msg = (
+                            f"위치 차이 {dist * 100:.1f}cm "
+                            f"(dx={dx * 100:+.1f}cm, dy={dy * 100:+.1f}cm, "
+                            f"dyaw={math.degrees(dyaw):+.1f}°)"
+                        )
+                        print(
+                            f"🔋 [DOCK DIAG] {dock_diag_msg} | "
+                            f"actual=({pos['x']:.3f},{pos['y']:.3f},yaw={pos['yaw']:.3f}) "
+                            f"target=({dock_target['x']:.3f},{dock_target['y']:.3f},yaw={target_yaw:.3f})"
+                        )
+                except Exception as diag_err:
+                    print(f"[WARN] 도킹 위치 진단 실패: {diag_err}")
+
                 print("🔋 도킹 포인트 도착 완료 — 충전소 이동 명령 전송")
-                log_event("schedule", "dock_arrival", "도킹 포인트 도착 완료, 충전 명령 전송",
+                arrival_msg = (
+                    f"도킹 포인트 도착 완료, 충전 명령 전송 ({dock_diag_msg})"
+                    if dock_diag_msg else "도킹 포인트 도착 완료, 충전 명령 전송"
+                )
+                log_event("schedule", "dock_arrival", arrival_msg,
                           robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
                 try:
                     from app.robot_control.charge import start_charge
@@ -201,11 +271,15 @@ def navigation_send_next():
     nav_sent_time = time.time()
 
 @move.post("/startpath")
-def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo = Depends(require_permission("robot-list"))):
-    """DB 경로(WayInfo)를 읽어 네비게이션 시작."""
+def start_path_navigation(way_name: str, loop: int = 1, auto_charge: bool = True, current_user: UserInfo = Depends(require_permission("robot-list"))):
+    """DB 경로(WayInfo)를 읽어 네비게이션 시작.
+
+    auto_charge: 작업 완료 후 충전소 자동 복귀 여부 (기본 True).
+                 원격 화면 체크박스로 끌 수 있음(반복 테스트 등).
+    """
     from app.robot_control.charge import prepare_undock_waypoints
 
-    global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining, nav_loop_total, auto_return_to_charge
+    global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining, nav_loop_total, nav_loop_count, nav_loop_infinite, auto_return_to_charge
 
     db = SessionLocal()
     try:
@@ -214,8 +288,10 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
             return {"status": "error", "msg": f"경로 '{way_name}'을(를) 찾을 수 없습니다."}
 
         place_names = [n.strip() for n in path.WayPoints.split(" - ")]
+        from app.navigation.waypoints import parse_wait_seconds
+        wait_list = parse_wait_seconds(path.WaitSeconds, len(place_names))
         waypoints = []
-        for name in place_names:
+        for i, name in enumerate(place_names):
             place = db.query(LocationInfo).filter(LocationInfo.LacationName == name).first()
             if place:
                 waypoints.append({
@@ -223,6 +299,7 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
                     "y": place.LocationY,
                     "yaw": place.Yaw or 0.0,
                     "name": place.LacationName,
+                    "wait_seconds": wait_list[i],
                 })
 
         if not waypoints:
@@ -238,16 +315,20 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
     waypoints_list = waypoints
     current_wp_index = 0
     is_navigating = True
-    nav_loop_remaining = loop - 1
-    nav_loop_total = loop
-    auto_return_to_charge = True  # 원격 제어 실행 완료 후 충전소 자동 복귀
+    # loop <= 0 이면 무한 반복 (작업 중지 전까지 계속)
+    nav_loop_infinite = loop <= 0
+    nav_loop_remaining = 0 if nav_loop_infinite else max(0, loop - 1)
+    nav_loop_total = 0 if nav_loop_infinite else loop
+    nav_loop_count = 1
+    loop_label = "무한 반복" if nav_loop_infinite else f"{loop}회"
+    auto_return_to_charge = auto_charge  # 원격 제어 실행 완료 후 충전소 자동 복귀 (체크박스로 토글)
     _signal_nav_reset(full=True)
     _update_is_working(get_robot_id(), True)
 
     route_detail = " → ".join(wp["name"] for wp in waypoints_list)
-    print(f"🚗 NAV START (경로: {way_name}) — {len(waypoints_list)}개 웨이포인트, 반복: {loop}회")
+    print(f"🚗 NAV START (경로: {way_name}) — {len(waypoints_list)}개 웨이포인트, 반복: {loop_label}")
     log_event("schedule", "nav_start",
-              f"경로 주행 시작: {way_name} ({len(waypoints_list)}개 웨이포인트, {loop}회 반복)",
+              f"경로 주행 시작: {way_name} ({len(waypoints_list)}개 웨이포인트, {loop_label})",
               detail=f"경로: {route_detail}",
               robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
@@ -267,7 +348,7 @@ def start_path_navigation(way_name: str, loop: int = 1, current_user: UserInfo =
         print(f"[WARN] 자동 녹화 시작 실패: {e}")
 
     navigation_send_next()
-    return {"status": "ok", "msg": f"경로 '{way_name}' 주행 시작 ({loop}회)", "way_name": way_name}
+    return {"status": "ok", "msg": f"경로 '{way_name}' 주행 시작 ({loop_label})", "way_name": way_name}
 
 
 @move.post("/placemove/{place_id}")
@@ -331,8 +412,9 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
         places.append(place)
 
     # 웨이포인트 목록 생성 (yaw = 다음 포인트 방향, 마지막은 저장된 yaw)
-    from app.navigation.waypoints import build_waypoints_from_places
-    waypoints = build_waypoints_from_places(places)
+    from app.navigation.waypoints import build_waypoints_from_places, parse_wait_seconds
+    wait_list = parse_wait_seconds(path.WaitSeconds, len(places))
+    waypoints = build_waypoints_from_places(places, wait_list)
 
     # 충전 중이면 해제 후 도킹 포인트 경유 + 180° 회전 preamble 삽입
     undock_preamble = prepare_undock_waypoints()

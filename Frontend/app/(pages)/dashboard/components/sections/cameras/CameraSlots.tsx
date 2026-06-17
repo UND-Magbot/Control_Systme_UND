@@ -69,19 +69,9 @@ export default function CameraSlots({
             </div>
           ))}
         </>
-      ) : !isOnline ? (
-        <div className={dashStyles.cameraPanel}>
-          <div className={styles.emptySlot}>
-            <span>로봇 연결 끊김</span>
-          </div>
-        </div>
-      ) : robotCameras.length === 0 ? (
-        <div className={dashStyles.cameraPanel}>
-          <div className={styles.emptySlot}>
-            <span>카메라를 등록해주세요</span>
-          </div>
-        </div>
-      ) : (
+      ) : robotCameras.length > 0 ? (
+        // 카메라가 있으면 오프라인이어도 슬롯을 유지한다 — 실제 스트림 끊김/재연결은
+        // 백엔드 RTSP 프록시가 투명하게 처리하므로 패널을 붕괴시키지 않는다.
         <>
           {visibleCams.map((cam) => (
             <div key={cam.id} className={`${dashStyles.cameraPanel} ${styles.camSlotWrapper}`}>
@@ -89,14 +79,27 @@ export default function CameraSlots({
                 camera={cam}
                 robotName=""
                 onExpand={(e) => openExpand(cam, e)}
+                lowRes
               />
             </div>
           ))}
         </>
+      ) : !isOnline ? (
+        <div className={dashStyles.cameraPanel}>
+          <div className={styles.emptySlot}>
+            <span>로봇 연결 끊김</span>
+          </div>
+        </div>
+      ) : (
+        <div className={dashStyles.cameraPanel}>
+          <div className={styles.emptySlot}>
+            <span>카메라를 등록해주세요</span>
+          </div>
+        </div>
       )}
 
       {/* 스크롤 버튼 */}
-      {isOnline && hasMultiplePages && (
+      {hasMultiplePages && (
         <div className={styles.scrollBar}>
           <button
             className={styles.scrollBtn}
