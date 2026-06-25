@@ -3,9 +3,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { Camera } from '@/app/types';
 import { CAMERA_BASE } from '@/app/config';
+import { createThermalFrameSink, type ThermalFrameSink } from '@/app/components/camera/thermalFrameSink';
 
 const CAM_TIMEOUT_MS = 10_000;
 const CAM_RETRY_MS = 5_000;
+// 열화상(WS) 스트림 watchdog — 멈춤/half-open 자동 복구 (대시보드 CameraSlot과 동일)
+const THERMAL_STALL_MS = 6_000;
+const THERMAL_WATCHDOG_MS = 2_000;
 
 type UseCameraStreamOptions = {
   isOpen: boolean;
@@ -32,11 +36,20 @@ export function useCameraStream({
   const camTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const prevObjectUrlRef = useRef<string | null>(null);
   const didInitRef = useRef(false);
   const userTouchedRef = useRef(false);
   const unmountedRef = useRef(false);
   const errorCountRef = useRef(0);
+  const wsWatchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFrameAtRef = useRef(0);
+  const connectThermalRef = useRef<(cam: Camera, silent?: boolean) => void>(() => {});
+
+  // 열화상 프레임 싱크 — 최신 프레임만 ~15fps 상한으로 렌더(backlog/빨리감기 방지)
+  const sinkRef = useRef<ThermalFrameSink | null>(null);
+  const getSink = useCallback(() => {
+    if (!sinkRef.current) sinkRef.current = createThermalFrameSink(setThermalUrl);
+    return sinkRef.current;
+  }, []);
 
   // --- 타이머 헬퍼 ---
   const clearCamTimeout = useCallback(() => {
@@ -90,13 +103,70 @@ export function useCameraStream({
     }, CAM_TIMEOUT_MS);
   }, [clearCamTimeout, startRetryTimer]);
 
-  // --- 열화상 WS (현재 미사용) ---
+  // --- 열화상 WS ---
   const closeThermalWS = useCallback(() => {
+    if (wsWatchdogRef.current) { clearInterval(wsWatchdogRef.current); wsWatchdogRef.current = null; }
     if (wsRef.current) {
-      wsRef.current.close();
+      try { wsRef.current.close(); } catch {}
       wsRef.current = null;
     }
   }, []);
+
+  // 열화상 실패/멈춤 → 재연결(≤2회 조용히) 또는 에러 UI + 주기 재시도
+  const onThermalFail = useCallback((cam: Camera) => {
+    if (wsWatchdogRef.current) { clearInterval(wsWatchdogRef.current); wsWatchdogRef.current = null; }
+    clearCamTimeout();
+    errorCountRef.current += 1;
+    if (errorCountRef.current <= 2) {
+      if (!unmountedRef.current) connectThermalRef.current(cam, true);
+      return;
+    }
+    clearRetryTimer();
+    setIsCamLoading(false);
+    setCamError(true);
+    retryTimerRef.current = setInterval(() => {
+      if (!unmountedRef.current) connectThermalRef.current(cam, true);
+    }, CAM_RETRY_MS);
+  }, [clearCamTimeout, clearRetryTimer]);
+
+  // 열화상 WebSocket 연결 (silent=true면 마지막 프레임 유지한 채 조용히 재연결)
+  const connectThermal = useCallback((cam: Camera, silent = false) => {
+    if (wsRef.current) { try { wsRef.current.close(); } catch {} wsRef.current = null; }
+    if (wsWatchdogRef.current) { clearInterval(wsWatchdogRef.current); wsWatchdogRef.current = null; }
+    clearCamTimeout();
+    clearRetryTimer();
+    setCameraStream("");
+    if (!silent) {
+      getSink().reset();   // 마지막 프레임 폐기 + thermalUrl(null)
+      setIsCamLoading(true);
+    }
+    setCamError(false);
+
+    const ws = new WebSocket(cam.webrtcUrl);
+    wsRef.current = ws;
+    lastFrameAtRef.current = Date.now();
+
+    camTimeoutRef.current = setTimeout(() => onThermalFail(cam), CAM_TIMEOUT_MS);
+
+    ws.onerror = () => onThermalFail(cam);
+    // onerror가 안 뜨는 (반)종료도 onclose에서 재연결
+    ws.onclose = () => { if (wsRef.current === ws && !unmountedRef.current) onThermalFail(cam); };
+    ws.onmessage = (e) => {
+      if (e.data instanceof Blob) {
+        lastFrameAtRef.current = Date.now();
+        onConnectSuccess();
+        getSink().push(e.data);   // 최신 프레임만 합쳐 ~15fps로 렌더
+      }
+    };
+
+    // 새 프레임이 THERMAL_STALL_MS 동안 없으면(멈춤/half-open) 마지막 프레임 유지한 채 재연결
+    wsWatchdogRef.current = setInterval(() => {
+      if (unmountedRef.current) return;
+      if (Date.now() - lastFrameAtRef.current > THERMAL_STALL_MS) onThermalFail(cam);
+    }, THERMAL_WATCHDOG_MS);
+  }, [clearCamTimeout, clearRetryTimer, onConnectSuccess, onThermalFail, getSink]);
+
+  useEffect(() => { connectThermalRef.current = connectThermal; }, [connectThermal]);
 
   // --- 재연결 ---
   const retryConnection = useCallback(() => {
@@ -151,8 +221,10 @@ export function useCameraStream({
   const handleCameraTab = useCallback(
     (idx: number, cam: Camera) => {
       userTouchedRef.current = true;
+      closeThermalWS();
       clearCamTimeout();
       clearRetryTimer();
+      errorCountRef.current = 0;
       setIsCamLoading(true);
       setCamError(false);
       setSelectedCam(cam.id);
@@ -168,12 +240,18 @@ export function useCameraStream({
         return;
       }
 
+      if (cam.streamType === "ws") {
+        // 열화상 — WebSocket 송출 (watchdog/재연결 견고화 포함)
+        connectThermal(cam);
+        return;
+      }
+
       setCameraStream("");
       const nextUrl = cam.webrtcUrl || `${CAMERA_BASE}/Video/${cam.id}`;
       requestAnimationFrame(() => setCameraStream(nextUrl));
       startCamTimeoutInner();
     },
-    [clearCamTimeout, clearRetryTimer, closeThermalWS, startCamTimeoutInner],
+    [clearCamTimeout, clearRetryTimer, closeThermalWS, startCamTimeoutInner, connectThermal],
   );
 
   // --- 초기화 ---
@@ -202,8 +280,10 @@ export function useCameraStream({
         ? initialCamIndex
         : Math.max(0, camera.findIndex((c) => c.id === baseCam.id));
 
+    closeThermalWS();
     clearCamTimeout();
     clearRetryTimer();
+    errorCountRef.current = 0;
     setIsCamLoading(true);
     setCamError(false);
     setSelectedCam(baseCam.id);
@@ -216,6 +296,12 @@ export function useCameraStream({
       setIsCamLoading(false);
       setCamError(false);
       setCameraStream("");
+      return;
+    }
+
+    if (baseCam.streamType === "ws") {
+      // 열화상 — WebSocket 송출 (watchdog/재연결 견고화 포함)
+      connectThermal(baseCam);
       return;
     }
 
@@ -232,11 +318,7 @@ export function useCameraStream({
       clearCamTimeout();
       clearRetryTimer();
       setCameraStream("");
-      setThermalUrl(null);
-      if (prevObjectUrlRef.current) {
-        URL.revokeObjectURL(prevObjectUrlRef.current);
-        prevObjectUrlRef.current = null;
-      }
+      sinkRef.current?.reset();   // 대기 프레임·objectURL 정리 + thermalUrl(null)
     } else {
       unmountedRef.current = false;
     }

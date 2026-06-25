@@ -95,6 +95,132 @@ def _send_stop_charge_packet() -> bool:
         sock.close()
 
 
+def _get_robot_floor_id(db) -> int | None:
+    """현재 로봇(get_robot_id)의 활성 층 ID. 미설정이면 None."""
+    from app.database.models import RobotInfo
+
+    rid = get_robot_id()
+    if not rid:
+        return None
+    robot = db.query(RobotInfo).filter(RobotInfo.id == rid).first()
+    return robot.CurrentFloorId if robot else None
+
+
+def _find_charge_station(db, floor_id: int | None):
+    """충전소(Category=charge)를 로봇 현재 층 기준으로 선택.
+
+    - 층을 알면 그 층의 충전소만 반환한다(다른 층 좌표로 보내면 물리적으로 엉뚱한
+      위치이므로, 현재 층에 없으면 None 을 반환해 caller 가 중단하게 한다).
+    - 층 미상(None)이면 첫 충전소로 폴백한다(단일 층/층 미설정 환경 하위호환).
+    """
+    q = db.query(LocationInfo).filter(LocationInfo.Category == "charge")
+    if floor_id is not None:
+        return q.filter(LocationInfo.FloorId == floor_id).first()
+    return q.first()
+
+
+def build_overheat_return_route() -> list[dict] | None:
+    """모터 과열 보호용 — 현재 층 충전소의 접근통로(ch-N 내림차순→도킹 ch-1) 웨이포인트 리스트.
+
+    충전 복귀와 동일한 루트를 쓰되, nav 상태는 건드리지 않고 웨이포인트만 반환한다
+    (전환은 navigation_send_next / trigger_overheat_protection 가 수행). 현재 층에
+    충전소나 도킹 포인트(ch-1)가 없으면 None.
+    """
+    db = SessionLocal()
+    try:
+        floor_id = _get_robot_floor_id(db)
+        charge_station = _find_charge_station(db, floor_id)
+        if not charge_station:
+            return None
+        prefix = f"{charge_station.LacationName}-"
+        q = db.query(LocationInfo).filter(LocationInfo.LacationName.like(f"{prefix}%"))
+        if floor_id is not None:
+            q = q.filter(LocationInfo.FloorId == floor_id)
+        numbered: list[tuple[int, LocationInfo]] = []
+        for row in q.all():
+            suffix = row.LacationName[len(prefix):]
+            if suffix.isdigit():
+                numbered.append((int(suffix), row))
+        if not any(n == 1 for n, _ in numbered):
+            return None  # 도킹 포인트(ch-1) 없음
+        numbered.sort(key=lambda t: t[0], reverse=True)
+        return [
+            {"x": row.LocationX, "y": row.LocationY, "yaw": row.Yaw or 0.0, "name": row.LacationName}
+            for _, row in numbered
+        ]
+    finally:
+        db.close()
+
+
+def trigger_overheat_protection() -> None:
+    """모터 과열 위험 시 보호 동작 실행.
+
+    - 작업 중: 현재 포인트까지 수행 후 충전소 도킹 루트로 전환 → 도킹 포인트에서 SIT
+      (overheat_return_pending 예약 → navigation_send_next 가 다음 도착 시 전환).
+    - 유휴: 즉시 도킹 루트 주행 시작 → 도착 후 SIT.
+    - 도킹 루트 없음(현재 층 충전소/ch-1 미등록): 제자리 SIT 로 모터 부하 제거(안전 폴백).
+    - 이미 보호 진행 중이면 무시(중복 트리거 가드).
+    """
+    import app.navigation.send_move as nav
+    from app.navigation.send_move import _signal_nav_reset, navigation_send_next
+    from app.robot_io.sender import send_to_robot
+    from app.scheduler.loop import cancel_active_schedule, get_active_schedule_id
+
+    if getattr(nav, "overheat_return_pending", False) or getattr(nav, "sit_on_arrival", False):
+        print("🌡️ 모터 과열 보호 이미 진행 중 — 중복 트리거 무시")
+        return
+
+    # 스케줄 작업 중이었다면 '취소' 처리 (과열로 중단했으므로 '완료'로 오기록 방지).
+    # cancel_active_schedule 은 _active_schedule_id 만 비우고 nav 상태는 두므로, 아래
+    # is_navigating 분기는 그대로 동작한다(현재 포인트 완료 후 도킹 루트 전환).
+    if get_active_schedule_id() is not None:
+        cancel_active_schedule("모터 과열 보호")
+
+    route = build_overheat_return_route()
+
+    if nav.is_navigating:
+        if route:
+            # 현재 WP 도착 시 충전소 루트로 전환(현재 포인트까지는 수행됨)
+            nav.overheat_return_pending = True
+            print("🌡️ 모터 과열 보호: 현재 포인트 완료 후 충전소 도킹 루트로 전환 예약")
+        else:
+            # 도킹 루트 없음 → 작업 정지 후 제자리 SIT
+            nav.is_navigating = False
+            nav.current_wp_index = 0
+            nav.charge_on_arrival = False
+            nav.auto_return_to_charge = False
+            _signal_nav_reset(full=True)
+            try:
+                send_to_robot("STOP")
+                time.sleep(0.5)
+                send_to_robot("SIT")
+            except Exception as e:
+                print(f"[ERR] 과열 보호 SIT 전송 실패: {e}")
+            print("🌡️ 모터 과열 보호: 도킹 루트 없음 — 작업 정지 후 제자리 SIT")
+        return
+
+    # 유휴 상태
+    if route:
+        nav.waypoints_list = route
+        nav.current_wp_index = 0
+        nav.is_navigating = True
+        nav.nav_loop_remaining = 0
+        nav.nav_loop_total = 0
+        nav.nav_loop_infinite = False
+        nav.charge_on_arrival = False
+        nav.sit_on_arrival = True
+        nav.auto_return_to_charge = False
+        _signal_nav_reset(full=True)
+        print("🌡️ 모터 과열 보호(유휴): 충전소 도킹 루트 주행 시작 — 도착 후 SIT")
+        navigation_send_next()
+    else:
+        try:
+            send_to_robot("SIT")
+        except Exception as e:
+            print(f"[ERR] 과열 보호 SIT 전송 실패: {e}")
+        print("🌡️ 모터 과열 보호(유휴): 도킹 루트 없음 — 제자리 SIT")
+
+
 def prepare_undock_waypoints(
     max_wait_seconds: float = 20.0,
     poll_interval: float = 1.0,
@@ -167,23 +293,19 @@ def prepare_undock_waypoints(
             robot_id=rid, robot_name=get_robot_name(), business_id=get_robot_business_id(),
         )
 
-    # 3) 도킹 포인트 조회
+    # 3) 도킹 포인트 조회 (로봇 현재 층 기준)
     db = SessionLocal()
     try:
-        charge_station = (
-            db.query(LocationInfo)
-            .filter(LocationInfo.Category == "charge")
-            .first()
-        )
+        floor_id = _get_robot_floor_id(db)
+        charge_station = _find_charge_station(db, floor_id)
         if not charge_station:
-            print("[WARN] 등록된 충전소 없음 — 도킹 preamble 생략")
+            print(f"[WARN] 현재 층(FloorId={floor_id})에 등록된 충전소 없음 — 도킹 preamble 생략")
             return None
         dock_name = f"{charge_station.LacationName}-1"
-        dock = (
-            db.query(LocationInfo)
-            .filter(LocationInfo.LacationName == dock_name)
-            .first()
-        )
+        dock_q = db.query(LocationInfo).filter(LocationInfo.LacationName == dock_name)
+        if floor_id is not None:
+            dock_q = dock_q.filter(LocationInfo.FloorId == floor_id)
+        dock = dock_q.first()
         if not dock:
             print(f"[WARN] 도킹 포인트 '{dock_name}' 없음 — 도킹 preamble 생략")
             return None
@@ -229,23 +351,36 @@ def _return_to_charge_internal(cancel_running: bool = True) -> dict:
 
     db = SessionLocal()
     try:
-        # 충전소(category=charge) 찾기 → 도킹 포인트는 "{충전소이름}-1"
-        charge_station = (
-            db.query(LocationInfo)
-            .filter(LocationInfo.Category == "charge")
-            .first()
-        )
+        # 충전소(category=charge)를 로봇 현재 층 기준으로 선택 → 도킹 포인트는 "{충전소이름}-1"
+        floor_id = _get_robot_floor_id(db)
+        charge_station = _find_charge_station(db, floor_id)
         if not charge_station:
-            return {"ok": False, "msg": "등록된 충전소가 없습니다.",
+            msg = (f"현재 층(FloorId={floor_id})에 등록된 충전소가 없습니다."
+                   if floor_id is not None else "등록된 충전소가 없습니다.")
+            return {"ok": False, "msg": msg,
                     "dock_point": None, "charge_station": None}
 
         dock_name = f"{charge_station.LacationName}-1"
-        dock_point = (
-            db.query(LocationInfo)
-            .filter(LocationInfo.LacationName == dock_name)
-            .first()
-        )
-        if not dock_point:
+
+        # 충전소 접근 통로: "<충전소>-N" 웨이포인트를 전부 모아 번호 내림차순으로
+        # 경유한다(ch-3 → ch-2 → ch-1). 운영자가 벽/꺾인 길목을 피해 ch-2, ch-3...를
+        # 추가로 찍어두면 코드 변경 없이 자동으로 그 통로를 따라 도킹한다.
+        # N=1(ch-1)이 물리적 도킹/충전 지점이며 경로의 마지막이다(여기서 start_charge).
+        # 같은 이름의 충전소가 다른 층에도 있을 수 있으므로 접근점도 현재 층으로 필터한다.
+        prefix = f"{charge_station.LacationName}-"
+        approach_q = db.query(LocationInfo).filter(LocationInfo.LacationName.like(f"{prefix}%"))
+        if floor_id is not None:
+            approach_q = approach_q.filter(LocationInfo.FloorId == floor_id)
+        numbered: list[tuple[int, LocationInfo]] = []
+        for row in approach_q.all():
+            suffix = row.LacationName[len(prefix):]
+            if suffix.isdigit():
+                numbered.append((int(suffix), row))
+        # 바깥(큰 번호) → 도킹(ch-1) 순서
+        numbered.sort(key=lambda t: t[0], reverse=True)
+
+        dock_point = next((row for n, row in numbered if n == 1), None)
+        if dock_point is None:
             return {"ok": False, "msg": f"도킹 포인트 '{dock_name}'을(를) 찾을 수 없습니다.",
                     "dock_point": None, "charge_station": charge_station.LacationName}
 
@@ -271,13 +406,19 @@ def _return_to_charge_internal(cancel_running: bool = True) -> dict:
 
             time.sleep(1)  # 로봇 정지 대기
 
-        # 도킹 포인트로 네비게이션 + 도착 후 자동 충전 플래그
-        nav.waypoints_list = [{
-            "x": dock_point.LocationX,
-            "y": dock_point.LocationY,
-            "yaw": dock_point.Yaw or 0.0,
-            "name": dock_name,
-        }]
+        # 접근 통로(ch-N 내림차순) → 도킹(ch-1) 순으로 웨이포인트 구성.
+        # 도착 후 자동 충전은 마지막 점(ch-1)에서 navigation_send_next가 처리한다.
+        # 운영자가 ch-2/ch-3를 추가하기 전(ch-1만 존재)이면 도킹점 직행으로 동작한다.
+        nav.waypoints_list = [
+            {
+                "x": row.LocationX,
+                "y": row.LocationY,
+                "yaw": row.Yaw or 0.0,
+                "name": row.LacationName,
+            }
+            for _, row in numbered
+        ]
+        route_label = " → ".join(row.LacationName for _, row in numbered)
         nav.current_wp_index = 0
         nav.is_navigating = True
         nav.nav_loop_remaining = 0
@@ -287,9 +428,12 @@ def _return_to_charge_internal(cancel_running: bool = True) -> dict:
         nav.auto_return_to_charge = False  # 이미 복귀 중 — 중복 트리거 방지
         _signal_nav_reset(full=True)
 
-        print(f"🔋 충전소 복귀 시작: {dock_name} → x={dock_point.LocationX}, y={dock_point.LocationY}")
+        print(
+            f"🔋 충전소 복귀 시작: {route_label} "
+            f"(도킹 x={dock_point.LocationX}, y={dock_point.LocationY})"
+        )
         log_event("schedule", "return_to_charge",
-                  f"충전소 복귀 시작: {dock_name}(으)로 이동",
+                  f"충전소 복귀 시작: {route_label}",
                   robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
         navigation_send_next()

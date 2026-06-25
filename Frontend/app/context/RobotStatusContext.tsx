@@ -24,6 +24,7 @@ type StatusEntry = {
   sleep: number | null;
   power_management: 0 | 1 | null;
   motion_state: number | null;
+  gait: number | null;
   is_charging: boolean;
   is_navigating: boolean;
   charge_state: number;
@@ -81,6 +82,7 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
             sleep: existing.sleep,
             powerManagement: existing.powerManagement,
             motionState: existing.motionState,
+            gait: existing.gait,
             position: existing.position,
             battery: existing.battery,
             batteryLeft: existing.batteryLeft,
@@ -151,7 +153,8 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
               power: match.power,
               sleep: match.sleep,
               powerManagement: match.power_management,
-              motionState: match.motion_state,
+              motionState: match.motion_state ?? r.motionState,
+              gait: match.gait,
             };
           }
 
@@ -172,7 +175,8 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
             power: match.power,
             sleep: match.sleep,
             powerManagement: match.power_management,
-            motionState: match.motion_state,
+            motionState: match.motion_state ?? r.motionState,
+            gait: match.gait,
           };
         })
       );

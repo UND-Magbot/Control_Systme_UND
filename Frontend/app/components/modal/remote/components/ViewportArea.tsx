@@ -14,6 +14,7 @@ type ViewportAreaProps = {
   isCamLoading: boolean;
   camError: boolean;
   cameraStream: string;
+  thermalUrl: string | null;
   retryKey: number;
   cameraTabActiveIndex: number;
   camera: Camera[];
@@ -33,6 +34,7 @@ export default function ViewportArea({
   isCamLoading,
   camError,
   cameraStream,
+  thermalUrl,
   retryKey,
   cameraTabActiveIndex,
   camera,
@@ -136,6 +138,8 @@ export default function ViewportArea({
   const isPtzCapable = activeCam?.streamType === 'http';
   // RTSP 카메라는 MediaMTX WebRTC(WebRTCPlayer)로 저지연 송출
   const isWebrtcCam = !!activeCam && (activeCam.streamType ?? 'rtsp') === 'rtsp';
+  // 열화상은 WebSocket→Blob→<img> (useCameraStream의 thermalUrl)
+  const isThermalCam = activeCam?.streamType === 'ws';
 
   // --- 카메라 토글 시 WebRTCPlayer 짧은 unmount → mount ---
   // 이전 PC가 완전히 close되고 mediamtx에서 ICE 자원이 정리되기 전에 새 PC가
@@ -256,6 +260,17 @@ export default function ViewportArea({
             이전 PC가 close + DELETE 완료된 뒤 새 PC가 시작되어 ICE 충돌을 피한다. */}
         {isWebrtcCam && activeCam && !playerOff ? (
           <WebRTCPlayer key={playerNonce} whepUrl={activeCam.webrtcUrl} videoStyle={camImgStyle} />
+        ) : isThermalCam ? (
+          // 열화상 — WS가 채우는 thermalUrl(blob). 연결/재연결은 useCameraStream이 관리(watchdog 포함).
+          thermalUrl ? (
+            <img
+              ref={cameraImgRef}
+              src={thermalUrl}
+              draggable={false}
+              style={camImgStyle}
+              alt="thermal"
+            />
+          ) : null
         ) : cameraStream ? (
           <img
             ref={cameraImgRef}

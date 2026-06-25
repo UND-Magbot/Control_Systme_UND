@@ -31,19 +31,6 @@ _lock = threading.Lock()
 _state: dict[int, dict] = {}  # robot_id → {"armed": bool, "last_trigger_ts": float}
 
 
-def _battery_pct(battery: dict, robot_type: str) -> int | None:
-    """현재 배터리 % 추출. 듀얼은 더 낮은 셀을 기준으로(보수적)."""
-    from app.robot_io.runtime import _is_dual_battery
-
-    if _is_dual_battery(robot_type):
-        left = battery.get("BatteryLevelLeft")
-        right = battery.get("BatteryLevelRight")
-        vals = [int(v) for v in (left, right) if v is not None]
-        return min(vals) if vals else None
-    soc = battery.get("SOC")
-    return int(soc) if soc is not None else None
-
-
 def check_battery_and_return(robot_id: int) -> None:
     """heartbeat 직후 호출. 조건 충족 시 자동 복귀 트리거."""
     import app.robot_io.runtime as runtime
@@ -68,7 +55,7 @@ def check_battery_and_return(robot_id: int) -> None:
     if limit <= 0:
         return
 
-    bat_pct = _battery_pct(battery, robot_type)
+    bat_pct = runtime.battery_percent(battery, robot_type)
     if bat_pct is None:
         return
 

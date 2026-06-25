@@ -167,6 +167,7 @@ export default function RemoteModal({
             isCamLoading={cam.isCamLoading}
             camError={cam.camError}
             cameraStream={cam.cameraStream}
+            thermalUrl={cam.thermalUrl}
             retryKey={cam.retryKey}
             cameraTabActiveIndex={cam.cameraTabActiveIndex}
             camera={robotCameras}
@@ -191,6 +192,7 @@ export default function RemoteModal({
             <ControlPanel
               robotType={selectedRobot?.type ?? ''}
               motionState={selectedRobot?.motionState ?? null}
+              gait={selectedRobot?.gait ?? null}
               isCharging={selectedRobot?.isCharging ?? false}
               isWorking={work.isWorking}
               isWorkPending={work.isPending}

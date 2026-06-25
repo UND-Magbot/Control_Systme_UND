@@ -24,6 +24,7 @@ type PathOption = {
 type ControlPanelProps = {
   robotType: string;
   motionState?: number | null;
+  gait?: number | null;
   isCharging?: boolean;
   isWorking: boolean;
   isWorkPending: boolean;
@@ -57,6 +58,7 @@ type ControlPanelProps = {
 export default function ControlPanel({
   robotType,
   motionState,
+  gait,
   isCharging = false,
   isWorking,
   isWorkPending,
@@ -90,11 +92,12 @@ export default function ControlPanel({
     <div className={styles.controlSidebar}>
       <TabMenu tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
 
-      <div className={styles.tabContent}>
+      <div className={`${styles.tabContent} ${activeTab === 'control' ? styles.tabContentScroll : ''}`}>
         {activeTab === 'control' && (
           <ModeSpeedControl
             robotType={robotType}
             motionState={motionState}
+            gait={gait}
             isCharging={isCharging}
             disabled={controlDisabled}
           />

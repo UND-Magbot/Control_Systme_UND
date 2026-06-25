@@ -54,3 +54,33 @@
 .retryBtn:hover {
   background: rgba(255, 255, 255, 0.16);
 }
+
+/* 일시 재연결 표식 — 영상 위에 떠 마지막 프레임을 가리지 않는다 */
+.badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(20, 22, 30, 0.7);
+  color: #f0c674;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.badgeDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f0c674;
+  animation: webrtcblink 1s ease-in-out infinite;
+}
+
+@keyframes webrtcblink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}

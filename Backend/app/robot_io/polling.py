@@ -62,25 +62,36 @@ _was_online: dict[int, bool] = {}  # robot_id → 이전 온라인 상태
 
 # 시간 기반 임계값 — 마지막 성공 시각으로부터 경과한 시간으로 판정
 UNSTABLE_ALARM_AFTER_SEC = 15.0   # 15초 이상 끊김 → 불안정 알람 (1회)
-OFFLINE_AFTER_SEC = 20.0          # 20초 이상 끊김 → 오프라인 확정
+OFFLINE_AFTER_SEC = 35.0          # 35초 이상 끊김 → 오프라인 확정 (runtime ERROR_MAX_AGE와 일치)
+
+# STATUS UDP 재시도 — 혼잡 무선에서 패킷 1~2개 유실로 즉시 실패 처리되어
+# Offline로 깜빡이는 것을 막기 위해 한 폴링 사이클 안에서 짧게 여러 번 시도한다.
+STATUS_RETRY_ATTEMPTS = 3
+STATUS_RETRY_TIMEOUT = 0.7
 
 
 def _try_status_once() -> dict | None:
-    """STATUS 요청 1회 시도. 성공 시 응답 dict, 실패 시 None."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(1.0)
-    try:
-        msg = json.dumps({"action": "STATUS"}).encode("utf-8")
-        sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
-        data, addr = sock.recvfrom(8192)
-        return json.loads(data.decode("utf-8"))
-    except socket.timeout:
-        return None
-    except Exception as e:
-        print("[ERR STATUS]", e)
-        return None
-    finally:
-        sock.close()
+    """STATUS 요청을 한 폴링 사이클에서 최대 STATUS_RETRY_ATTEMPTS회 시도.
+
+    첫 응답이 오면 즉시 반환하므로 정상 구간에서는 추가 비용이 없고,
+    혼잡으로 UDP가 1~2개 유실될 때만 재시도가 동작해 오프라인 오판을 줄인다.
+    """
+    for _ in range(STATUS_RETRY_ATTEMPTS):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(STATUS_RETRY_TIMEOUT)
+        try:
+            msg = json.dumps({"action": "STATUS"}).encode("utf-8")
+            sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
+            data, addr = sock.recvfrom(8192)
+            return json.loads(data.decode("utf-8"))
+        except socket.timeout:
+            continue
+        except Exception as e:
+            print("[ERR STATUS]", e)
+            return None
+        finally:
+            sock.close()
+    return None
 
 
 BOOT_GRACE_SEC = 30.0  # 백엔드 시작 후 이 시간 동안은 불안정 알람 억제
@@ -90,8 +101,8 @@ def status_thread():
     """receiver.py 경유로 배터리 상태 폴링 + 온라인/오프라인 전환 로그.
 
     시간 기반 판정: 마지막 성공 시각 기준 경과 시간으로 불안정/오프라인 알람.
-    - 10초 이상 끊김 → 불안정 알람 (1회만)
-    - 12초 이상 끊김 → 오프라인 확정
+    - UNSTABLE_ALARM_AFTER_SEC 이상 끊김 → 불안정 알람 (1회만)
+    - OFFLINE_AFTER_SEC 이상 끊김 → 오프라인 확정
     """
     print(f"[LISTEN] 상태 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
@@ -109,6 +120,8 @@ def status_thread():
             charge_state = resp.get("ChargeStatus")
             device_temp = resp.get("DeviceTemperature", {})
             basic_status = resp.get("BasicStatus", {}) or {}
+            motion_info = resp.get("MotionInfo", {}) or {}
+            abnormal_status = resp.get("AbnormalStatus", []) or []
             # 응답이 도달했으면 last_heartbeat는 반드시 갱신한다
             # (battery가 아직 비어있을 수 있지만 네트워크는 살아있음).
             rid = runtime.get_robot_id_by_ip(ROBOT_IP)
@@ -118,11 +131,20 @@ def status_thread():
                     charge_state=charge_state,
                     device_temp=device_temp,
                     basic_status=basic_status,
+                    gait=motion_info.get("gait"),
+                    abnormal_status=abnormal_status,
                 )
                 success = True
                 last_success_time = time.time()
                 ever_succeeded = True
                 unstable_alarm_fired = False  # 성공 시 알람 플래그 리셋
+
+                # 관절 모터 과열 감지 + 위험 시 보호 동작(충전소 도킹 후 SIT)
+                try:
+                    from app.robot_control.motor_thermal import check_motor_overheat
+                    check_motor_overheat(rid, device_temp)
+                except Exception as e:
+                    print(f"[WARN] 모터 과열 체크 실패: {e}")
 
                 # 오프라인 → 온라인 전환 감지
                 if not _was_online.get(rid, False):
@@ -242,12 +264,16 @@ def nav_thread():
             consecutive_timeouts = 0
 
             status = nav.get("status")
-            nav_ts = nav.get("timestamp", 0)
+            nav_age = nav.get("age")  # receiver가 자기 monotonic 시계로 계산한 경과시간(초)
 
             # stale 데이터 무시 (5초 이상 오래된 데이터)
-            if nav_ts > 0 and (time.time() - nav_ts) > 5.0:
+            # age는 receiver(로봇 NOS) 한 머신 안에서만 계산되므로 서버-로봇 시계 오프셋과 무관하다.
+            # (이전 구현은 서버 time.time()에서 로봇 timestamp를 빼서, 두 시계가 어긋나면
+            #  멀쩡한 데이터를 전부 stale로 폐기하는 버그가 있었다.)
+            # 구버전 receiver(age 미전송, age=None)면 잘못된 cross-clock 비교 대신 필터를 건너뛴다.
+            if nav_age is not None and nav_age > 5.0:
                 if is_nav_active():
-                    print(f"[NAV DEBUG] stale 데이터 무시 (age={time.time() - nav_ts:.1f}s)")
+                    print(f"[NAV DEBUG] stale 데이터 무시 (age={nav_age:.1f}s)")
                 time.sleep(NAV_POLL_INTERVAL)
                 continue
 

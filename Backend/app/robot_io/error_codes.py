@@ -72,3 +72,21 @@ ROBOT_ERROR_CODES = {
     0x8509: "자율 충전 중 도킹 진입 시간 초과",
     0x8510: "자율 충전 중 도킹 해제 시간 초과",
 }
+
+
+# 에러 코드 → 발생 부위/영역 분류.
+# 운영자가 알림만 보고 "어디서 난 오류인지" 즉시 파악할 수 있도록,
+# ROBOT_ERROR_CODES 테이블의 그룹(코드 대역)과 동일하게 분류한다.
+def get_error_category(code: int) -> str:
+    """에러 코드의 발생 부위/영역을 한글 라벨로 반환."""
+    if 0x8100 <= code <= 0x81FF:
+        return "배터리"
+    if 0x8200 <= code <= 0x82FF:
+        return "CPU"
+    if 0x8500 <= code <= 0x85FF:
+        return "자율 충전"
+    if 0x8000 <= code <= 0x80FF:
+        return "모터/관절 드라이버"
+    if (0x2300 <= code <= 0x23FF) or (0xA300 <= code <= 0xA3FF):
+        return "내비게이션/작업"
+    return "기타"

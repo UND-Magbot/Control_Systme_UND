@@ -1,0 +1,51 @@
+###############################################
+#  mediamtx_t2.yml  —  Tier 2 (재인코딩 제거 / 직접 중계)
+#
+#  ⚠ 전제: 로봇 push_video.sh 를 H.264(mpph264enc) 로 바꿔야 함!
+#     로봇이 H.265 그대로면 WebRTC가 못 받아 화면이 안 뜬다.
+#     (로봇 라인 예: ... ! videoconvert ! mpph264enc rc-mode=0 bps=700000
+#      bps-max=900000 qp-min=12 qp-max=45 gop=15 ! rtspclientsink ...)
+#
+#  관제PC : ffmpeg 없음. MediaMTX가 로봇 H.264를 그대로 WebRTC로 중계.
+#  → 디코드+재인코드 사이클 제거 → 지연·관제PC CPU 최소.
+#
+#  사용: 로봇을 H.264로 바꾼 뒤 이 파일로 mediamtx 재시작.
+#  화면 안 뜨면(H.264 프로파일 협상 실패) 로봇 mpph264enc 에 profile=baseline 추가.
+###############################################
+
+logLevel: info
+readTimeout: 10s
+writeTimeout: 10s
+
+rtmp: no
+hls: no
+srt: no
+
+api: yes
+apiAddress: :9997
+
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp]
+
+webrtc: yes
+webrtcAddress: :8889
+webrtcEncryption: no
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189          # UDP 손실/차단 시 TCP 폴백
+webrtcICEServers2: []
+webrtcIPsFromInterfaces: yes          # 관제 PC LAN IP 자동 감지
+webrtcAdditionalHosts:
+  - 127.0.0.1
+  # - 192.168.20.8                    # (선택) 자동감지가 안 잡으면 관제 PC 실제 IP 직접 추가
+
+pathDefaults:
+  rtspTransport: tcp                  # 로봇 RTSP를 TCP로 당김
+  sourceOnDemand: no                  # 즉시 표시(대기 0초)
+
+paths:
+  # ffmpeg 없이 로봇 H.264 RTSP를 직접 끌어와 WebRTC로 중계 (무재인코딩)
+  video1:
+    source: rtsp://10.21.31.103:8554/video1
+  video2:
+    source: rtsp://10.21.31.103:8554/video2

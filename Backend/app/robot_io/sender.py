@@ -38,6 +38,16 @@ def send_to_robot(action: str) -> None:
     print(f"서버 → 로봇 UDP 송신 완료: {msg}")
 
 
+def send_posture_to_robot(x: float, y: float, z: float,
+                          roll: float, pitch: float, yaw: float) -> None:
+    """자세(Posture) 제어 — Type 2/21 6축 setpoint를 receiver로 fire-and-forget 송신.
+    각 값 [-1,1] = 최대 기울기/이동 비율. (Regular/Standard 모드 전용)
+    """
+    msg = {"action": "POSTURE", "X": x, "Y": y, "Z": z,
+           "Roll": roll, "Pitch": pitch, "Yaw": yaw}
+    _udp_send(msg)
+
+
 def send_nav_to_robot(idx: int, x: float, y: float, yaw: float) -> None:
     """NAV 명령 송신 + receiver ACK 대기."""
     msg = {"action": "NAV", "idx": idx, "x": x, "y": y, "yaw": yaw}

@@ -5,6 +5,7 @@ import styles from "./CameraSlots.module.css";
 import type { Camera, RobotRowData } from "@/app/types";
 import { CAMERA_BASE } from "@/app/config";
 import WebRTCPlayer from "@/app/components/camera/WebRTCPlayer";
+import { createThermalFrameSink, type ThermalFrameSink } from "@/app/components/camera/thermalFrameSink";
 import { getBatteryColor, isSingleBatteryMode } from "@/app/constants/robotIcons";
 import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 
@@ -21,6 +22,9 @@ type CameraSlotProps = {
 // 수 초가 걸릴 수 있어 넉넉히 둔다(짧게 잡으면 정상인데도 "연결 실패"로 오인).
 const CAM_TIMEOUT_MS = 20_000;
 const CAM_RETRY_MS = 5_000;
+// 열화상(WS) 스트림 watchdog — 새 프레임이 끊겨도(half-open/서버 정지) 자동 복구.
+const THERMAL_STALL_MS = 6_000;      // 이 시간 동안 새 프레임 없으면 재연결
+const THERMAL_WATCHDOG_MS = 2_000;   // watchdog 점검 주기
 
 export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes = false }: CameraSlotProps) {
   const [isLoading, setIsLoading] = useState(true);
@@ -29,13 +33,22 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
   const [thermalUrl, setThermalUrl] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const prevObjectUrlRef = useRef<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mjpegImgRef = useRef<HTMLImageElement | null>(null);
   const unmountedRef = useRef(false);
   const connectRef = useRef<(() => void) | null>(null);
   const errorCountRef = useRef(0);
+  const wsWatchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFrameAtRef = useRef(0);
+  const everFrameRef = useRef(false);   // 한 번이라도 프레임을 받았는가(재연결 시 스피너 억제용)
+
+  // 열화상 프레임 싱크 — 최신 프레임만 ~15fps 상한으로 렌더(backlog/빨리감기 방지)
+  const sinkRef = useRef<ThermalFrameSink | null>(null);
+  const getSink = useCallback(() => {
+    if (!sinkRef.current) sinkRef.current = createThermalFrameSink(setThermalUrl);
+    return sinkRef.current;
+  }, []);
 
   const isThermal = (camera.streamType ?? "rtsp") === "ws";
   // RTSP 카메라는 MediaMTX WebRTC(WebRTCPlayer)로 저지연 송출
@@ -54,6 +67,8 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
   }, [clearTimers]);
 
   const onFail = useCallback(() => {
+    // 진행 중인 watchdog 정지 (재연결/에러대기 중 중복 발화 방지)
+    if (wsWatchdogRef.current) { clearInterval(wsWatchdogRef.current); wsWatchdogRef.current = null; }
     errorCountRef.current += 1;
 
     if (errorCountRef.current <= 2) {
@@ -74,34 +89,47 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
   }, [clearTimers]);
 
   const connectThermal = useCallback(() => {
-    if (wsRef.current) wsRef.current.close();
-    setIsLoading(true);
+    if (wsRef.current) { try { wsRef.current.close(); } catch {} wsRef.current = null; }
+    if (wsWatchdogRef.current) { clearInterval(wsWatchdogRef.current); wsWatchdogRef.current = null; }
+    // 마지막 프레임이 있으면(재연결) 로딩 오버레이 없이 직전 프레임 유지, 최초 연결이면 로딩 표시
+    if (!everFrameRef.current) setIsLoading(true);
     setHasError(false);
 
     const ws = new WebSocket(camera.webrtcUrl);
     wsRef.current = ws;
+    lastFrameAtRef.current = Date.now();
 
     timeoutRef.current = setTimeout(() => {
       setIsLoading(false);
       setHasError(true);
-      ws.close();
+      try { ws.close(); } catch {}
     }, CAM_TIMEOUT_MS);
 
     ws.onerror = () => onFail();
+    // 소켓이 (반)종료돼도 onerror가 안 뜰 수 있어 onclose에서도 재연결 처리
+    ws.onclose = () => {
+      if (wsRef.current === ws && !unmountedRef.current) onFail();
+    };
     ws.onmessage = (e) => {
       if (e.data instanceof Blob) {
+        lastFrameAtRef.current = Date.now();
+        everFrameRef.current = true;
         onSuccess();
-        const url = URL.createObjectURL(e.data);
-        if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
-        prevObjectUrlRef.current = url;
-        setThermalUrl(url);
+        getSink().push(e.data);   // 최신 프레임만 합쳐 ~15fps로 렌더
       }
     };
-  }, [onSuccess, onFail]);
+
+    // 프레임 watchdog — 새 프레임이 THERMAL_STALL_MS 동안 없으면(멈춤/half-open) 재연결한다.
+    // 마지막 프레임은 유지하므로 검은 화면 대신 직전 화면이 남는다.
+    wsWatchdogRef.current = setInterval(() => {
+      if (unmountedRef.current) return;
+      if (Date.now() - lastFrameAtRef.current > THERMAL_STALL_MS) onFail();
+    }, THERMAL_WATCHDOG_MS);
+  }, [onSuccess, onFail, getSink]);
 
   const connectMjpeg = useCallback(() => {
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
-    setThermalUrl(null);
+    sinkRef.current?.reset();   // 열화상 → MJPEG 전환 시 대기 프레임·objectURL 정리
     setIsLoading(true);
     setHasError(false);
 
@@ -163,8 +191,9 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
     return () => {
       unmountedRef.current = true;
       clearTimers();
+      if (wsWatchdogRef.current) { clearInterval(wsWatchdogRef.current); wsWatchdogRef.current = null; }
       if (wsRef.current) wsRef.current.close();
-      if (prevObjectUrlRef.current) URL.revokeObjectURL(prevObjectUrlRef.current);
+      sinkRef.current?.reset();   // 대기 프레임·objectURL 정리 + thermalUrl(null)
       if (mjpegImgRef.current) {
         try {
           mjpegImgRef.current.src = "";
