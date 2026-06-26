@@ -138,10 +138,17 @@ def check_and_init_pose(robot_id: int) -> None:
         st["prev_powered"] = powered
         st["prev_near_origin"] = near_origin
 
-        rising_power = powered and not prev_powered          # 신호 1: Sleep 상승에지
-        reset_to_origin = near_origin and not prev_near_origin  # 신호 2: 위치 원점 점프(SLAM 리셋)
-        if not (rising_power or reset_to_origin):
-            return  # 재부팅 신호 아님
+        rising_power = powered and not prev_powered          # Sleep!=0 → 0 (전원 on 또는 네트워크 복구)
+        reset_to_origin = near_origin and not prev_near_origin  # 위치 원점 점프(SLAM 리셋)
+        # 전원 off→on(재부팅)과 네트워크 두절→복구(offline→online)를 구분한다.
+        #   - 전원 off→on: 로봇이 부팅하며 SLAM 위치를 (0,0,0) 부근으로 리셋 → near_origin.
+        #   - 네트워크 두절→복구: 로봇이 계속 켜져 있어 위치가 유지됨(원점 아님).
+        # mark_offline 이 offline 시 prev_powered 를 내리므로 네트워크 복구만으로도
+        # rising_power 가 뜬다. 따라서 rising_power 는 위치가 원점으로 리셋됐을 때만
+        # 재부팅으로 인정하여, 네트워크 복구 시 불필요한 위치 초기화를 막는다.
+        reboot_detected = reset_to_origin or (rising_power and near_origin)
+        if not reboot_detected:
+            return  # 전원 off→on 아님(네트워크 두절 복구 등) — init_pose 트리거 안 함
 
         # 쿨다운·중복 가드
         if st["in_progress"]:
@@ -150,7 +157,7 @@ def check_and_init_pose(robot_id: int) -> None:
             return
         st["last_trigger_ts"] = now
         st["in_progress"] = True
-        trigger_reason = "Sleep 상승에지" if rising_power else "위치 원점 리셋(SLAM 재부팅)"
+        trigger_reason = "위치 원점 리셋(SLAM 재부팅)" if reset_to_origin else "Sleep 상승에지+위치 원점"
 
     # 주행 중이면 보류(움직이는 중 좌표 리셋 금지)
     if _is_navigating():
