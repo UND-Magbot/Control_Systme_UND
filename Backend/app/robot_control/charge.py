@@ -12,6 +12,12 @@ from app.logs.service import log_event
 
 router = APIRouter()
 
+# 충전 복귀 시 "이미 도킹 포인트에 있음"으로 판정하는 거리 임계값(m).
+# 현재 위치가 도킹 포인트(ch-1)로부터 이 거리 안쪽이면 접근 경유지(ch-2, ch-3...)를
+# 건너뛰고 도킹 포인트로 직행한다. 경유지는 벽/꺾인 길목 회피용이라, 실제로 도킹
+# 영역에 있을 때만 생략해야 안전하므로 보수적으로 작게 잡는다.
+AT_DOCK_THRESHOLD_M = 1.2
+
 
 @router.post("/robot/charge")
 def start_charge():
@@ -463,6 +469,27 @@ def _return_to_charge_internal(cancel_running: bool = True) -> dict:
 
             time.sleep(1)  # 로봇 정지 대기
 
+        # 현재 위치가 이미 도킹 포인트(ch-1) 근처면 접근 경유지(ch-2, ch-3...)를 생략하고
+        # 도킹 포인트로 직행한다. (이미 도킹 영역에 있는데 바깥 경유지로 나갔다 오는 낭비
+        # 방지). 위치 미초기화/미수신이면 판정하지 않고 안전하게 전체 경유 루트를 쓴다.
+        route_numbered = numbered
+        if len(numbered) > 1:
+            try:
+                from app.robot_io import runtime
+                pos = runtime.get_position(get_robot_id())
+                if not pos.get("initpose_pending") and pos.get("timestamp"):
+                    dx = pos["x"] - dock_point.LocationX
+                    dy = pos["y"] - dock_point.LocationY
+                    dist = (dx * dx + dy * dy) ** 0.5
+                    if dist <= AT_DOCK_THRESHOLD_M:
+                        route_numbered = [(1, dock_point)]
+                        print(
+                            f"🔋 현재 위치가 도킹 포인트 근처({dist * 100:.0f}cm ≤ "
+                            f"{AT_DOCK_THRESHOLD_M * 100:.0f}cm) — 접근 경유지 생략, 도킹 포인트 직행"
+                        )
+            except Exception as e:
+                print(f"[WARN] 도킹 근접 판정 실패 — 전체 경유 루트 사용: {e}")
+
         # 접근 통로(ch-N 내림차순) → 도킹(ch-1) 순으로 웨이포인트 구성.
         # 도착 후 자동 충전은 마지막 점(ch-1)에서 navigation_send_next가 처리한다.
         # 운영자가 ch-2/ch-3를 추가하기 전(ch-1만 존재)이면 도킹점 직행으로 동작한다.
@@ -473,9 +500,9 @@ def _return_to_charge_internal(cancel_running: bool = True) -> dict:
                 "yaw": row.Yaw or 0.0,
                 "name": row.LacationName,
             }
-            for _, row in numbered
+            for _, row in route_numbered
         ]
-        route_label = " → ".join(row.LacationName for _, row in numbered)
+        route_label = " → ".join(row.LacationName for _, row in route_numbered)
         nav.current_wp_index = 0
         nav.is_navigating = True
         nav.nav_loop_remaining = 0
