@@ -116,15 +116,23 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   const floorRobots: RobotOnMap[] = useMemo(() => {
     if (!selectedFloor) return [];
     return robots
-      .filter((r) =>
+      .map((r) => {
+        // 위치 미확정(localization 발산/리셋 등)이면 발산하는 라이브 좌표 대신
+        // 마지막 신뢰 위치에 고정 표시한다(없으면 라이브로 폴백).
+        const uncertain = !!r.initposePending;
+        const src = uncertain && r.trustedPosition ? r.trustedPosition : r.position;
+        return { r, src, uncertain };
+      })
+      .filter(({ r, src }) =>
         r.currentFloorId === selectedFloor.id
-        && r.position?.timestamp > 0
+        && (src?.timestamp ?? 0) > 0
         && r.power === "On"
       )
-      .map((r) => ({
+      .map(({ r, src, uncertain }) => ({
         id: r.id,
         name: r.no,
-        position: { x: r.position.x, y: r.position.y, yaw: r.position.yaw },
+        position: { x: src.x, y: src.y, yaw: src.yaw },
+        uncertain,
       }));
   }, [robots, selectedFloor?.id]);
 

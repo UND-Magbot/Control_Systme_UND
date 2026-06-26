@@ -9,6 +9,8 @@ type RobotMarkerProps = {
   name?: string;
   size?: number;
   scale?: number;
+  /** 위치 미확정 — 마지막 신뢰 위치에 회색·반투명 '미확정' 스타일로 표시. */
+  uncertain?: boolean;
 };
 
 export default function RobotMarker({
@@ -18,6 +20,7 @@ export default function RobotMarker({
   name,
   size = 34,
   scale = 1,
+  uncertain = false,
 }: RobotMarkerProps) {
   const inverseScale = 1 / scale;
 
@@ -32,6 +35,7 @@ export default function RobotMarker({
         left: screenX,
         top: screenY,
         transform: `translate(-50%, -50%) scale(${inverseScale})`,
+        opacity: uncertain ? 0.55 : 1,
       }}
     >
       <svg
@@ -44,12 +48,14 @@ export default function RobotMarker({
       >
         <polygon
           points="2,4 22,12 2,20 6,12"
-          fill="#1A73E8"
-          stroke="#1557B0"
+          fill={uncertain ? "#9AA0A6" : "#1A73E8"}
+          stroke={uncertain ? "#5F6368" : "#1557B0"}
           strokeWidth="1"
+          strokeDasharray={uncertain ? "2 2" : undefined}
         />
       </svg>
       {name && <span className={styles.name}>{name}</span>}
+      {uncertain && <span className={styles.uncertainBadge}>위치 미확정</span>}
     </div>
   );
 }

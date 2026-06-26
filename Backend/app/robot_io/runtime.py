@@ -113,6 +113,14 @@ def init_runtime(robots, last_statuses: Optional[dict] = None) -> None:
                         "yaw": ls.PosYaw or 0.0,
                         "timestamp": 0,
                     }
+                    # DB 마지막 위치 = 신뢰 위치. 재시작 직후 이미 미확정인 로봇도
+                    # 맵에 마지막 신뢰 위치를 표시할 수 있도록 시드한다(timestamp는 마지막 heartbeat).
+                    entry["_last_trusted_position"] = {
+                        "x": ls.PosX or 0.0,
+                        "y": ls.PosY or 0.0,
+                        "yaw": ls.PosYaw or 0.0,
+                        "timestamp": ls.LastHeartbeat.timestamp(),
+                    }
                 if ls.CurrentFloorId is not None:
                     entry["current_floor_id"] = ls.CurrentFloorId
                 entry["last_heartbeat"] = ls.LastHeartbeat.timestamp()
@@ -376,6 +384,24 @@ def update_position(robot_id: int, x: float, y: float, yaw: float) -> None:
             "yaw": yaw,
             "timestamp": time.time(),
         }
+        # '마지막 신뢰 위치' 스냅샷 — 위치가 신뢰 가능(미확정 아님)할 때만 갱신한다.
+        # 미확정(initpose_pending: localization 발산/리셋 등) 중에는 발산 좌표로 덮어쓰지
+        # 않아, 맵 마커가 발산을 따라 맵 밖으로 사라지지 않고 마지막 신뢰 위치에 고정된다.
+        if not entry.get("_initpose_pending", False):
+            entry["_last_trusted_position"] = dict(entry["position"])
+
+
+def get_trusted_position(robot_id: int) -> dict | None:
+    """마지막 '신뢰' 위치(미확정 직전, 재시작 시 DB 복원값). 없으면 None.
+
+    위치 급변 가드가 재시작 직후(라이브 prev 없음) 비교 기준으로 사용한다.
+    """
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return None
+        tp = entry.get("_last_trusted_position")
+        return dict(tp) if tp else None
 
 
 def update_nav(robot_id: int, arrived: bool, last_state, timestamp: float) -> None:
@@ -519,6 +545,8 @@ def _build_status(entry: dict) -> dict:
         "initpose_pending": bool(entry.get("_initpose_pending", False)),
         "timestamp": entry["last_heartbeat"],
         "position": entry["position"],
+        # 마지막 '신뢰' 위치(미확정 직전). 미확정 동안 맵 마커를 발산 좌표 대신 여기에 고정하기 위함.
+        "trusted_position": entry.get("_last_trusted_position"),
     }
 
 

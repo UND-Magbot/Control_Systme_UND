@@ -909,7 +909,21 @@
     font-size: var(--font-size-xl);
     font-weight: 600;
     color: var(--text-primary);
-    margin-bottom: 24px;
+    margin-bottom: 16px;
+}
+
+.successGuide {
+    max-width: 360px;
+    margin: 0 auto 24px;
+    font-size: var(--font-size-sm);
+    line-height: 1.6;
+    color: var(--text-secondary);
+    text-align: left;
+}
+
+.successGuide strong {
+    color: var(--color-warning, var(--text-primary));
+    font-weight: 600;
 }
 
 .robotConnectBtn {

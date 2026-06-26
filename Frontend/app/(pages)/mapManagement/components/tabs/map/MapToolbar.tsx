@@ -117,6 +117,8 @@ export default function MapToolbar({
         <button className={styles.toolbarBtn} onClick={onDeleteMap}>
           삭제
         </button>
+        {/* 위치 재조정 버튼 — 우선 미표시(요청). 위치 교정은 '관리자 문의'로 일원화.
+            재활성화하려면 아래 블록 주석 해제(props/wiring 유지됨).
         <button
           className={styles.toolbarBtn}
           onClick={onOpenInitPoseModal}
@@ -129,6 +131,7 @@ export default function MapToolbar({
         >
           위치 재조정
         </button>
+        */}
       </div>
 
       <div className={styles.toolbarRight}>

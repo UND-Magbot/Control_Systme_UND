@@ -195,15 +195,33 @@ def read_active_target(client: paramiko.SSHClient) -> str:
         return ""
 
 
+def map_dir_is_complete(client: paramiko.SSHClient, map_dir: str) -> bool:
+    """맵 디렉토리가 완전한지(localization 로드 가능) 판정 — full_cloud.pcd 존재로 본다.
+
+    매핑이 완료 전 중단되면 blocks/ 만 있고 full_cloud.pcd(매핑 종료 시 생성)가 없어,
+    이 맵을 active 로 걸면 localization 이 맵을 못 불러와 로봇 pose 가 발산한다.
+    """
+    if not map_dir:
+        return False
+    try:
+        r = ssh_exec(client, f"test -f {map_dir}/full_cloud.pcd && echo OK || echo NO").strip()
+        return r.endswith("OK")
+    except Exception as e:
+        print(f"[WARN] 맵 완전성 확인 실패({map_dir}): {e}")
+        return False
+
+
 def restore_active(client: paramiko.SSHClient, target: str) -> bool:
     """active 링크를 이전 정상 맵(target)으로 복원하고 localization 재시작.
 
-    - target 이 없거나 디렉토리가 사라졌으면, 미완결 맵을 가리키지 않도록 active 링크만 제거(초기화)한다.
+    - target 이 없거나/디렉토리가 사라졌거나/미완성 맵이면, 깨진 맵을 가리키지 않도록 active 를 제거(초기화).
+    - ⚠️ active 가 (심볼릭이 아니라) 실제 디렉토리로 깨져 있을 수 있다(매핑 중단 잔재). 이때 `rm -f`는
+      디렉토리를 못 지워 교체가 먹히지 않으므로 `rm -rf`로 제거한다(후행 슬래시 없음 → 심볼릭이면 링크만 제거).
     - 복원 성공 시 True.
     """
     if not target:
         try:
-            ssh_exec(client, f"sudo rm -f {NOS_MAP_BASE_DIR}/active")
+            ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/active")
             print("[MAP] 복원 대상 없음 — active 링크 제거(초기화)")
         except Exception as e:
             print(f"[WARN] active 링크 제거 실패: {e}")
@@ -211,10 +229,14 @@ def restore_active(client: paramiko.SSHClient, target: str) -> bool:
     try:
         exists = ssh_exec(client, f"test -d {target} && echo OK || echo NO").strip()
         if not exists.endswith("OK"):
-            ssh_exec(client, f"sudo rm -f {NOS_MAP_BASE_DIR}/active")
+            ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/active")
             print(f"[MAP] 이전 active 대상 없음({target}) — active 링크 제거(초기화)")
             return False
-        ssh_exec(client, f"sudo rm -f {NOS_MAP_BASE_DIR}/active && sudo ln -s {target} {NOS_MAP_BASE_DIR}/active")
+        if not map_dir_is_complete(client, target):
+            ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/active")
+            print(f"[MAP] 복원 대상이 미완성 맵({target}, full_cloud.pcd 없음) — active 제거(초기화)")
+            return False
+        ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && sudo ln -s {target} {NOS_MAP_BASE_DIR}/active")
         ssh_exec(client, "sudo systemctl restart localization")
         print(f"[MAP] active 복원: → {target} (localization 재시작)")
         return True
@@ -344,6 +366,15 @@ def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require
     if mapping_state["is_running"]:
         raise HTTPException(status_code=409, detail="이미 매핑이 진행 중입니다.")
 
+    # 가드를 '시작 진입 즉시' 켠다. drmap 명령을 받는 순간 로봇 SLAM 이 원점으로 리셋되는데,
+    # is_running 을 SSH 성공 후에 켜면 '버튼 클릭~SSH 성공' 사이 원점 리셋이 위치 급변/재부팅으로
+    # 오인돼 '위치 재조정' 모달·경고가 샌다(_is_mapping 가드가 아직 꺼져 있어서).
+    # → 진입 시 켜고, 시작에 실패하면 except 에서 되돌린다.
+    mapping_state["is_running"] = True
+    mapping_state["map_name"] = req.MapName
+    mapping_state["business_id"] = req.BusinessId
+    mapping_state["floor_id"] = req.FloorId
+
     client = None
     try:
         # 1. drmap mapping 실행 (SSH 실패 시 재접속하여 재시도)
@@ -377,15 +408,17 @@ def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require
         # (relay 가 떠야 브라우저 매핑 캔버스에 점군/odom 이 실시간으로 그려진다.)
         start_relay_map(client)
 
-        mapping_state["is_running"] = True
-        mapping_state["map_name"] = req.MapName
-        mapping_state["business_id"] = req.BusinessId
-        mapping_state["floor_id"] = req.FloorId
-
+        # is_running/map_name/business_id/floor_id 는 진입 시 이미 설정됨(가드 조기 활성화).
         print(f"🗺️ 매핑 시작: {req.MapName}")
         return {"status": "ok", "message": "매핑이 시작되었습니다."}
 
     except Exception as e:
+        # 시작 실패 → 조기 활성화한 가드/상태를 롤백(매핑 미진행으로 복귀).
+        mapping_state["is_running"] = False
+        mapping_state["map_name"] = None
+        mapping_state["business_id"] = None
+        mapping_state["floor_id"] = None
+        mapping_state["prev_active"] = None
         print(f"[ERR] 매핑 시작 실패: {e}")
         raise HTTPException(status_code=500, detail=f"매핑 시작 실패: {str(e)}")
     finally:

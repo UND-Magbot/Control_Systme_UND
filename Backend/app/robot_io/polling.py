@@ -20,6 +20,7 @@ from app.robot_io.config import (
     RECEIVER_PORT,
     REQ_INTERVAL_POS,
     REQ_INTERVAL_HB,
+    AUTO_INIT_POSE_ORIGIN_GUARD_M,
 )
 
 
@@ -56,18 +57,41 @@ def _is_navigating() -> bool:
         return False
 
 
+def _is_mapping() -> bool:
+    """매핑(맵 작성) 진행 중인지. 매핑 중에는 SLAM 이 새 맵을 원점부터 작성하느라 위치가
+    (0,0) 부근으로 리셋되며 큰 점프가 발생한다 — 이는 localization 오인이 아니므로
+    위치 급변 가드(→'위치 재조정' 모달)에서 제외한다."""
+    try:
+        from app.map.mapping_control import mapping_state
+        return bool(mapping_state.get("is_running"))
+    except Exception:
+        return False
+
+
 def _guard_untrusted_position_jump(robot_id: int, pos: dict) -> None:
     """비주행 중 갑작스러운 큰 위치 점프는 localization 오인으로 보고 DB 저장을 보류한다."""
-    if runtime.is_initpose_pending(robot_id) or _is_navigating():
+    if runtime.is_initpose_pending(robot_id) or _is_navigating() or _is_mapping():
         return
     prev = runtime.get_position(robot_id) or {}
     prev_ts = prev.get("timestamp", 0) or 0
     if not prev_ts:
-        return
+        # 재시작 직후 등 라이브 이전 좌표가 없을 때는 마지막 신뢰 위치(DB 복원 포함)를
+        # 기준으로 비교한다. 이게 없으면(완전 신규) 비교 불가 → 통과.
+        prev = runtime.get_trusted_position(robot_id) or {}
+        prev_ts = prev.get("timestamp", 0) or 0
+        if not prev_ts:
+            return
     dx = float(pos.get("x", 0.0)) - float(prev.get("x", 0.0))
     dy = float(pos.get("y", 0.0)) - float(prev.get("y", 0.0))
     dist = math.hypot(dx, dy)
     if dist < POSITION_JUMP_GUARD_M:
+        return
+
+    # 목적지가 원점(0,0) 부근이면 운영 중 localization 드리프트가 아니라 SLAM 리셋
+    # (전원 재부팅/매핑류)일 가능성이 크다. 재부팅 경로(auto_init_pose)가 별도 처리하므로
+    # 여기서 '위치 재조정' 모달을 띄우지 않는다(리셋 상황 오판정 모달 방지 — 사용자 정책).
+    if math.hypot(float(pos.get("x", 0.0)), float(pos.get("y", 0.0))) < AUTO_INIT_POSE_ORIGIN_GUARD_M:
+        print(f"[AUTO-INITPOSE] robot {robot_id} 위치 급변이나 원점 부근 — 리셋 상황으로 보고 모달 생략")
         return
 
     detail = (

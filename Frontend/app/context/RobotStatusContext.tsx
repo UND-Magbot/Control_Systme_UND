@@ -38,6 +38,8 @@ type StatusEntry = {
   current_map_id: number | null;
   timestamp: number;
   position: { x: number; y: number; yaw: number; timestamp: number };
+  initpose_pending?: boolean;
+  trusted_position?: { x: number; y: number; yaw: number; timestamp: number } | null;
 };
 
 type RobotStatusContextType = {
@@ -153,6 +155,8 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
               currentFloorId: match.current_floor_id ?? r.currentFloorId,
               currentMapId: match.current_map_id ?? r.currentMapId,
               position: match.position ?? r.position,
+              initposePending: match.initpose_pending ?? r.initposePending,
+              trustedPosition: match.trusted_position ?? r.trustedPosition,
               isNavigating: match.is_navigating ?? r.isNavigating,
               network: match.network,
               power: match.power,
@@ -176,6 +180,8 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
             currentFloorId: match.current_floor_id ?? r.currentFloorId,
             currentMapId: match.current_map_id ?? r.currentMapId,
             position: match.position ?? r.position,
+            initposePending: match.initpose_pending ?? r.initposePending,
+            trustedPosition: match.trusted_position ?? r.trustedPosition,
             isNavigating: match.is_navigating ?? r.isNavigating,
             network: match.network,
             power: match.power,

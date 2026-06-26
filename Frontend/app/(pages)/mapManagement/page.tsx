@@ -1283,7 +1283,9 @@ export default function MapManagementPage() {
       });
 
       if (res.ok) {
-        modalAlert("맵이 저장되었습니다.");
+        modalAlert(
+          "맵이 저장되었습니다.\n로봇을 해당 층으로 이동시켜 이 맵을 활성 맵으로 지정한 뒤, 충전소를 등록해 주세요. 충전소를 등록해야 전원 재기동 시 충전소 기준으로 위치가 자동 초기화됩니다."
+        );
         setMappingState("idle");
       } else {
         modalAlert("저장 실패");

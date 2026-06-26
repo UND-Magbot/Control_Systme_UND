@@ -138,6 +138,13 @@ def check_and_init_pose(robot_id: int) -> None:
         st["prev_powered"] = powered
         st["prev_near_origin"] = near_origin
 
+        # 매핑 중에는 SLAM 이 새 맵을 원점부터 작성하느라 위치가 (0,0) 부근으로 리셋된다.
+        # 이를 재부팅(원점 리셋)으로 오인하면 매핑 중에 '위치 재조정' 모달이 뜬다.
+        # baseline 만 현재값으로 갱신(위에서 완료)하고 트리거는 건너뛴다 — 매핑 종료 직후에도
+        # prev_near_origin==near_origin 이라 잘못된 상승에지가 발생하지 않는다.
+        if _is_mapping():
+            return
+
         rising_power = powered and not prev_powered          # Sleep!=0 → 0 (전원 on 또는 네트워크 복구)
         reset_to_origin = near_origin and not prev_near_origin  # 위치 원점 점프(SLAM 리셋)
         # 전원 off→on(재부팅)과 네트워크 두절→복구(offline→online)를 구분한다.
@@ -197,6 +204,12 @@ def _inject_worker(robot_id: int) -> None:
       운영자 '위치 재조정'(현재 보고 위치로 확정) 대기.
     """
     try:
+        # 트리거~워커 사이에 매핑이 시작된 경우(레이스) — 매핑 중 위치 리셋은 재부팅이 아니므로
+        # 자동 주입/escalation 을 하지 않는다(잘못된 '위치 재조정' 모달 방지).
+        if _is_mapping():
+            print(f"[AUTO-INITPOSE] robot {robot_id} 매핑 진행 중 — init_pose 주입 보류")
+            return
+
         runtime.set_initpose_pending(robot_id, True, "전원 on 위치 초기화 진행")
 
         # 충전 감지가 전원 on 직후 1~2초 지연될 수 있어 짧게 대기하며 확인한다.
@@ -205,12 +218,19 @@ def _inject_worker(robot_id: int) -> None:
             time.sleep(min(1.0, AUTO_INIT_POSE_RETRY_INTERVAL_SEC) if AUTO_INIT_POSE_RETRY_INTERVAL_SEC else 1.0)
 
         if not runtime.is_charging(robot_id):
-            # 비충전 — 시드 주입하지 않는다(사용자 결정). 비충전 지점엔 충전소 같은 신뢰 기준점이
-            # 없고, 시드(last_status)가 틀렸을 때 로봇이 그 값을 붙잡아 '틀린 위치 자동 확정'이 되는
-            # 위험(confidently-wrong)이 있어서다. 자동 주입/확정 없이 '미확정' 유지 +
-            # 항상 운영자 확인('충전소 위치로 지정' 또는 '위치 재조정')으로 넘긴다.
-            print(f"[AUTO-INITPOSE] robot {robot_id} 비충전 — 자동 주입 없이 운영자 확인 대기")
-            _escalate_confirm(robot_id, "비충전 전원 on — 운영자 위치 확인 필요")
+            # 비충전 전원 on/재연결 분기(사용자 정책).
+            #   (1) 보고 위치가 신선·비원점이면 SLAM 이 자기 위치를 유지(=재부팅/리셋 아님,
+            #       네트워크 순단 복구 등) → 조용히 확정. 모달/알림 없음, 자율주행 허용.
+            #   (2) 원점 부근/위치 미수신(SLAM 리셋류) → 위치 신뢰불가. 모달+알림을 띄워
+            #       운영자에게 '관리자 문의'를 안내하고 nav 보류(자동·수동 확정은 하지 않음).
+            #       (매핑 중은 워커 진입부 _is_mapping() 가드로 이미 제외됨)
+            stable, why = _noncharge_position_stable(robot_id)
+            if stable:
+                runtime.set_initpose_pending(robot_id, False)
+                print(f"[AUTO-INITPOSE] robot {robot_id} 비충전 위치 안정({why}) — 조용히 확정(모달 없음)")
+                return
+            print(f"[AUTO-INITPOSE] robot {robot_id} 비충전 위치 신뢰불가({why}) — 모달+알림(관리자 문의)")
+            _escalate_confirm(robot_id, f"비충전 위치 신뢰불가({why}) — 관리자 문의 필요")
             return
 
         # ── 충전 중: 충전소(dock_anchor) 자동 주입 ──
@@ -587,6 +607,38 @@ def _is_navigating() -> bool:
     try:
         import app.navigation.send_move as nav_mod
         return bool(nav_mod.is_navigating)
+    except Exception:
+        return False
+
+
+def _noncharge_position_stable(robot_id: int) -> tuple[bool, str]:
+    """비충전 전원 on 시, 보고 위치가 '재부팅/SLAM 리셋 아님'(=안정)인지 판정.
+
+    반환 (stable, reason).
+      - 신선(_POS_FRESH_SEC 내)하고 비원점이면 SLAM 이 자기 위치를 유지한 것 → 재연결로 보고
+        조용히 확정 가능(stable=True). (네트워크 순단 복구 등)
+      - 원점 부근(리셋 의심) 또는 위치 미수신/stale 이면 stable=False
+        → 매핑류 리셋 상황으로 보고 모달 없이 보류.
+    """
+    pos = runtime.get_position(robot_id) or {}
+    ts = pos.get("timestamp", 0) or 0
+    if not ts or (time.time() - ts) >= _POS_FRESH_SEC:
+        return False, "위치 미수신/stale"
+    if math.hypot(pos.get("x", 0.0), pos.get("y", 0.0)) < AUTO_INIT_POSE_ORIGIN_GUARD_M:
+        return False, "원점 부근(SLAM 리셋 의심)"
+    return True, f"비원점 신선 위치({pos.get('x', 0.0):.2f}, {pos.get('y', 0.0):.2f})"
+
+
+def _is_mapping() -> bool:
+    """매핑(맵 작성) 진행 중인지.
+
+    매핑 중에는 로봇 SLAM 이 원점에서 새 맵을 작성하느라 보고 위치가 (0,0) 부근으로
+    리셋된다. 이는 전원 재부팅이 아니므로 init_pose 자동 트리거/주입에서 제외해야 한다
+    (원점 리셋을 재부팅으로 오인해 '위치 재조정' 모달이 뜨는 것을 방지).
+    """
+    try:
+        from app.map.mapping_control import mapping_state
+        return bool(mapping_state.get("is_running"))
     except Exception:
         return False
 

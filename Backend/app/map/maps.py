@@ -222,8 +222,18 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
                 if not map_dir:
                     raise HTTPException(status_code=404, detail=f"로봇에서 맵 디렉토리를 찾을 수 없습니다: {map_name}")
 
-                # active 심볼릭 링크 교체
-                activate_cmd = f"sudo rm -f {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
+                # 미완성 맵(매핑 중단 등 — full_cloud.pcd 없음)은 active 로 걸지 않는다(측위 발산 방지).
+                from app.map.mapping_control import map_dir_is_complete
+                if not map_dir_is_complete(client, map_dir):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"맵 데이터가 불완전합니다(full_cloud.pcd 없음): {map_name}. 매핑을 다시 완료한 뒤 활성화하세요.",
+                    )
+
+                # active 심볼릭 링크 교체.
+                # ⚠️ rm -f 는 active 가 실제 디렉토리(매핑 중단 잔재)일 때 못 지워 교체가 먹히지 않는다.
+                #    rm -rf(후행 슬래시 없음 → 심볼릭이면 링크만 제거)로 디렉토리·심볼릭 모두 안전히 교체.
+                activate_cmd = f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
                 ssh_exec(client, activate_cmd)
 
                 # localization 서비스 재시작 (새 맵 로드)
@@ -354,7 +364,12 @@ def sync_map(req: SyncMapReq, request: Request, db: Session = Depends(get_db), c
                     print(f"📦 로봇에서 압축 해제 완료: {dir_name}")
                     ssh_exec(client, f"sudo rm -f {remote_zip}")
                     map_dir = f"{NOS_MAP_BASE_DIR}/{dir_name}"
-                    activate_cmd = f"sudo rm -f {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
+                    # 미완성 맵은 active 로 걸지 않는다(측위 발산 방지).
+                    from app.map.mapping_control import map_dir_is_complete
+                    if not map_dir_is_complete(client, map_dir):
+                        raise Exception(f"동기화된 맵이 불완전합니다(full_cloud.pcd 없음): {dir_name}")
+                    # rm -rf: active 가 실제 디렉토리로 깨져 있어도 안전히 교체(심볼릭이면 링크만 제거).
+                    activate_cmd = f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
                     ssh_exec(client, activate_cmd)
                     yield _evt(event="step", step=2, total=3, msg="맵 파일 활성화 완료")
 
