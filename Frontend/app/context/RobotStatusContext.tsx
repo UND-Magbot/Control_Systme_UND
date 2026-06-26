@@ -4,9 +4,11 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import type { RobotRowData } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 import { isDualBatteryType } from "@/app/constants/robotCapabilities";
+import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 
 const STATUS_API = `/robot/status`;
 const POLL_INTERVAL = 5000;
+const POLL_INTERVAL_HIDDEN = 15000; // 백그라운드 탭에서는 5s→15s로 완화 (C-7)
 const OFFLINE_THRESHOLD = 3; // 연속 실패 횟수 — 이 횟수 이상 실패해야 Offline 처리
 
 // 충전→비충전 전환 디바운스 카운터 (로봇ID → 연속 false 횟수)
@@ -26,6 +28,7 @@ type StatusEntry = {
   motion_state: number | null;
   gait: number | null;
   is_charging: boolean;
+  at_dock: boolean;
   is_navigating: boolean;
   charge_state: number;
   charge_state_label: string;
@@ -73,6 +76,7 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
           return {
             ...d,
             isCharging: existing.isCharging,
+            atDock: existing.atDock,
             chargeState: existing.chargeState,
             chargeStateLabel: existing.chargeStateLabel,
             chargeErrorCode: existing.chargeErrorCode,
@@ -141,6 +145,7 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
               serialLeft: (bat.serialLeft as string) ?? r.serialLeft,
               serialRight: (bat.serialRight as string) ?? r.serialRight,
               isCharging: stableCharging,
+              atDock: match.at_dock ?? r.atDock,
               chargeState: match.charge_state ?? r.chargeState,
               chargeStateLabel: match.charge_state_label ?? r.chargeStateLabel,
               chargeErrorCode: match.charge_error_code ?? r.chargeErrorCode,
@@ -163,6 +168,7 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
             ...r,
             battery: soc ?? r.battery,
             isCharging: stableCharging,
+            atDock: match.at_dock ?? r.atDock,
             chargeState: match.charge_state ?? r.chargeState,
             chargeStateLabel: match.charge_state_label ?? r.chargeStateLabel,
             chargeErrorCode: match.charge_error_code ?? r.chargeErrorCode,
@@ -200,11 +206,17 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
     await loadInitial();
   }, [loadInitial]);
 
+  // 초기 1회 로드 후 첫 폴링 (목록 로드 → 상태 채움 순서 보장)
   useEffect(() => {
     loadInitial().then(() => poll());
-    const id = setInterval(poll, POLL_INTERVAL);
-    return () => clearInterval(id);
   }, [loadInitial, poll]);
+
+  // 실시간 상태 폴링 — 가시성 인지(C-7): 보일 때 5s, 가려지면 15s, 복귀 시 즉시 갱신
+  useVisibilityAwareInterval(poll, {
+    activeMs: POLL_INTERVAL,
+    hiddenMs: POLL_INTERVAL_HIDDEN,
+    immediate: false, // 위 effect가 초기 폴링을 담당
+  });
 
   const value = useMemo(() => ({ robots, loaded, refresh }), [robots, loaded, refresh]);
 

@@ -5,6 +5,8 @@ ASDU 프로토콜로 로봇에 직접 요청하지 않는다.
 """
 
 import json
+import math
+import os
 import socket
 import threading
 import time
@@ -22,15 +24,85 @@ from app.robot_io.config import (
 
 
 # ─────────────────────────────────────────────────────────
+# 관측성 · 수명주기 (C-8 / M-9)
+# ─────────────────────────────────────────────────────────
+# NAV 디버그 로깅 토글(C-8): 주행 중 매 폴링(1s)마다 출력되던 [NAV DEBUG] 로그를
+# 환경변수 NAV_DEBUG=1 일 때만 남긴다. 평상시 IO/로그 용량을 줄인다.
+NAV_DEBUG = os.environ.get("NAV_DEBUG", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _navdbg(msg: str) -> None:
+    if NAV_DEBUG:
+        print(msg)
+
+
+# 폴링 스레드 종료 신호(M-9): 서버 shutdown 시 set 되어 각 루프가 빠져나간다.
+# (데몬 스레드라 프로세스 종료 시 강제 회수되긴 하나, --reload/재구성 시
+#  좀비 루프가 남지 않도록 명시적 종료 경로를 둔다.)
+_shutdown = threading.Event()
+POSITION_JUMP_GUARD_M = 3.0
+
+
+def stop_polling_threads() -> None:
+    """폴링 데몬 스레드 3개에 종료를 요청한다(main shutdown 훅에서 호출)."""
+    _shutdown.set()
+
+
+def _is_navigating() -> bool:
+    try:
+        import app.navigation.send_move as nav_mod
+        return bool(nav_mod.is_navigating)
+    except Exception:
+        return False
+
+
+def _guard_untrusted_position_jump(robot_id: int, pos: dict) -> None:
+    """비주행 중 갑작스러운 큰 위치 점프는 localization 오인으로 보고 DB 저장을 보류한다."""
+    if runtime.is_initpose_pending(robot_id) or _is_navigating():
+        return
+    prev = runtime.get_position(robot_id) or {}
+    prev_ts = prev.get("timestamp", 0) or 0
+    if not prev_ts:
+        return
+    dx = float(pos.get("x", 0.0)) - float(prev.get("x", 0.0))
+    dy = float(pos.get("y", 0.0)) - float(prev.get("y", 0.0))
+    dist = math.hypot(dx, dy)
+    if dist < POSITION_JUMP_GUARD_M:
+        return
+
+    detail = (
+        f"비주행 중 위치가 {dist:.2f}m 급변하여 자동 위치 확정을 보류합니다. "
+        f"이전=({prev.get('x', 0.0):.2f}, {prev.get('y', 0.0):.2f}), "
+        f"보고=({pos.get('x', 0.0):.2f}, {pos.get('y', 0.0):.2f})"
+    )
+    runtime.set_initpose_pending(robot_id, True, "위치 급변 감지")
+    print(f"[AUTO-INITPOSE] robot {robot_id} 위치 급변 감지 — {detail}")
+    try:
+        log_event(
+            "error", "robot_initpose_manual_needed", "로봇 위치 확인 필요",
+            error_json=detail,
+            robot_id=get_robot_id(), robot_name=get_robot_name(),
+            business_id=get_robot_business_id(),
+        )
+    except Exception as e:
+        print(f"[AUTO-INITPOSE] 위치 급변 알림 로그 실패: {e}")
+
+
+# ─────────────────────────────────────────────────────────
 # 위치 스레드
 # ─────────────────────────────────────────────────────────
 def position_thread():
     print(f"[LISTEN] 위치 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
-    while True:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(2.0)
+    # 소켓 재사용(M-6): 매 폴링마다 UDP 소켓을 생성/파기하던 비효율을 제거한다.
+    # 타임아웃은 정상 상황이므로 소켓을 유지하고, 그 외 예외에서만 재생성한다.
+    sock = None
+    while not _shutdown.is_set():
         try:
+            if sock is None:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(2.0)
+
             msg = json.dumps({"action": "POSITION"}).encode("utf-8")
             sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
 
@@ -40,7 +112,15 @@ def position_thread():
             if pos.get("timestamp", 0) > 0:
                 rid = runtime.get_robot_id_by_ip(ROBOT_IP)
                 if rid is not None:
+                    _guard_untrusted_position_jump(rid, pos)
                     runtime.update_position(rid, pos["x"], pos["y"], pos["yaw"])
+                    # 미확정(전원 on 직후) 동안 보고 위치 추이를 JSON 캡처(조사용)
+                    try:
+                        if runtime.is_initpose_pending(rid):
+                            from app.robot_control.poweron_capture import capture_poll_if_pending
+                            capture_poll_if_pending(rid, pos)
+                    except Exception:
+                        pass
 
         except socket.timeout:
             pass
@@ -49,16 +129,28 @@ def position_thread():
             log_event("error", "position_recv_error", "로봇 위치 수신 실패",
                       error_json=str(e),
                       robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
-        finally:
-            sock.close()
+            # 소켓이 손상됐을 수 있으니 닫고 다음 루프에서 재생성한다.
+            if sock is not None:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+                sock = None
 
         time.sleep(REQ_INTERVAL_POS)
+
+    if sock is not None:
+        try:
+            sock.close()
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────────
 # 상태 스레드
 # ─────────────────────────────────────────────────────────
 _was_online: dict[int, bool] = {}  # robot_id → 이전 온라인 상태
+_status_source_stale: dict[int, bool] = {}  # robot_id → receiver STATUS source timestamp stale 상태
 
 # 시간 기반 임계값 — 마지막 성공 시각으로부터 경과한 시간으로 판정
 UNSTABLE_ALARM_AFTER_SEC = 15.0   # 15초 이상 끊김 → 불안정 알람 (1회)
@@ -69,29 +161,31 @@ OFFLINE_AFTER_SEC = 35.0          # 35초 이상 끊김 → 오프라인 확정 
 STATUS_RETRY_ATTEMPTS = 3
 STATUS_RETRY_TIMEOUT = 0.7
 
+# receiver 캐시(basic_status)가 이보다 오래되면 로봇 heartbeat 실패로 간주
+STATUS_SOURCE_STALE_AFTER_SEC = 8.0
 
-def _try_status_once() -> dict | None:
-    """STATUS 요청을 한 폴링 사이클에서 최대 STATUS_RETRY_ATTEMPTS회 시도.
 
-    첫 응답이 오면 즉시 반환하므로 정상 구간에서는 추가 비용이 없고,
-    혼잡으로 UDP가 1~2개 유실될 때만 재시도가 동작해 오프라인 오판을 줄인다.
+def _try_status_once(sock: socket.socket) -> dict | None:
+    """STATUS 요청 1회 시도(소켓 재사용, M-6). 성공 시 응답 dict, 타임아웃 시 None.
+
+    타임아웃 외 예외는 소켓 손상 가능성이 있으므로 호출자가 재생성하도록 전파한다.
     """
-    for _ in range(STATUS_RETRY_ATTEMPTS):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(STATUS_RETRY_TIMEOUT)
-        try:
-            msg = json.dumps({"action": "STATUS"}).encode("utf-8")
-            sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
-            data, addr = sock.recvfrom(8192)
-            return json.loads(data.decode("utf-8"))
-        except socket.timeout:
-            continue
-        except Exception as e:
-            print("[ERR STATUS]", e)
-            return None
-        finally:
-            sock.close()
-    return None
+    msg = json.dumps({"action": "STATUS"}).encode("utf-8")
+    sock.sendto(msg, (RECEIVER_IP, RECEIVER_PORT))
+    try:
+        data, addr = sock.recvfrom(8192)
+        return json.loads(data.decode("utf-8"))
+    except socket.timeout:
+        return None
+
+
+def _source_timestamp(payload: dict | None) -> float:
+    if not payload:
+        return 0.0
+    try:
+        return float(payload.get("timestamp") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 BOOT_GRACE_SEC = 30.0  # 백엔드 시작 후 이 시간 동안은 불안정 알람 억제
@@ -110,9 +204,24 @@ def status_thread():
     last_success_time = time.time()    # 마지막 성공 수신 시각
     unstable_alarm_fired = False       # 이 끊김 구간에서 불안정 알람 이미 발생했는가
     ever_succeeded = False             # 한 번이라도 STATUS 수신 성공했는가
+    status_sock = None                 # 재사용 소켓 (M-6)
 
-    while True:
-        resp = _try_status_once()
+    while not _shutdown.is_set():
+        try:
+            if status_sock is None:
+                status_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                status_sock.settimeout(1.0)
+            resp = _try_status_once(status_sock)
+        except Exception as e:
+            # 소켓 손상(타임아웃 외 예외) → 닫고 재생성, 이번 사이클은 실패로 처리
+            print("[ERR STATUS]", e)
+            if status_sock is not None:
+                try:
+                    status_sock.close()
+                except Exception:
+                    pass
+                status_sock = None
+            resp = None
 
         success = False
         if resp is not None:
@@ -126,6 +235,29 @@ def status_thread():
             # (battery가 아직 비어있을 수 있지만 네트워크는 살아있음).
             rid = runtime.get_robot_id_by_ip(ROBOT_IP)
             if rid is not None:
+                basic_ts = _source_timestamp(basic_status)
+                source_stale = (
+                    basic_ts > 0
+                    and (time.time() - basic_ts) >= STATUS_SOURCE_STALE_AFTER_SEC
+                )
+                if source_stale:
+                    if not _status_source_stale.get(rid, False):
+                        _status_source_stale[rid] = True
+                        print(
+                            f"[AUTO-INITPOSE] robot {rid} STATUS source stale "
+                            f"({time.time() - basic_ts:.1f}s) — 다음 fresh STATUS를 전원 on edge로 준비"
+                        )
+                        try:
+                            from app.robot_control.auto_init_pose import mark_offline
+                            mark_offline(rid)
+                        except Exception as e:
+                            print(f"[AUTO-INITPOSE] stale mark_offline 실패: {e}")
+                    resp = None
+                else:
+                    if _status_source_stale.pop(rid, False):
+                        print(f"[AUTO-INITPOSE] robot {rid} STATUS source fresh 복귀")
+
+            if resp is not None and rid is not None:
                 runtime.update_status(
                     rid, battery, time.time(),
                     charge_state=charge_state,
@@ -158,6 +290,20 @@ def status_thread():
                     check_battery_and_return(rid)
                 except Exception as e:
                     print(f"[AUTO-RETURN] check 실패: {e}")
+
+                # 전원 자동 on(부팅) 상승에지 시 init_pose 자동 주입 트리거 (ERR-07)
+                try:
+                    from app.robot_control.auto_init_pose import check_and_init_pose
+                    check_and_init_pose(rid)
+                except Exception as e:
+                    print(f"[AUTO-INITPOSE] check 실패: {e}")
+
+                # 모터/드라이버 온도 과열 감지 + 실시간 로그 (DeviceTemperature 검사)
+                try:
+                    from app.robot_control.thermal import check_and_log_thermal
+                    check_and_log_thermal(rid, device_temp)
+                except Exception as e:
+                    print(f"[THERMAL] check 실패: {e}")
 
         if not success:
             elapsed = time.time() - last_success_time
@@ -192,21 +338,36 @@ def status_thread():
                     _was_online[rid] = False
                     log_event("robot", "robot_offline", "로봇 오프라인",
                               robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
+                    # 다음 온라인 복귀를 전원 on 상승에지로 잡기 위해 powered 내림 (ERR-07)
+                    try:
+                        from app.robot_control.auto_init_pose import mark_offline
+                        mark_offline(rid)
+                    except Exception as e:
+                        print(f"[AUTO-INITPOSE] mark_offline 실패: {e}")
 
         time.sleep(REQ_INTERVAL_HB)
+
+    if status_sock is not None:
+        try:
+            status_sock.close()
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────────
 # 네비게이션 스레드
 # ─────────────────────────────────────────────────────────
 ARRIVAL_COOLDOWN = 1.5
-NAV_POLL_INTERVAL = 1.0
+NAV_POLL_INTERVAL = 1.0       # 자율주행 중 폴링 주기 (도착/hang 감지 민감도 유지)
+NAV_IDLE_POLL_INTERVAL = 5.0  # 비주행(대기) 시 폴링 주기 — 대기 로봇 상시 트래픽 완화 (C-1)
 NAV_RETRY_TIMEOUT = 30.0   # 전송 후 N초 내 이동 시작 안 하면 재전송
 NAV_HANG_TIMEOUT = 60.0    # 이동 시작 후 N초 내 도착 못 하면 hang 판정 → 현재 WP 재전송
 NAV_MAX_RETRIES = 3        # 최대 재전송 횟수 (ever_moved=False / 255 일시정지 / hang 합산)
 ARRIVAL_CONFIRM_COUNT = 3  # status==0 연속 N회 확인 후 도착 판정 (오판 방지)
 NEAR_SKIP_DISTANCE = 0.5   # 목표 웨이포인트까지 이 거리(m) 이내면 이미 도착으로 간주
 RECEIVER_UNRESPONSIVE_THRESHOLD = 30  # NAV_STATUS 연속 N회 타임아웃 시 receiver 응답 불능 로그(1회)
+RECEIVER_LOST_RESEND_SEC = 8.0   # 통신 두절 후 복구되면, 이 시간 이상 끊겼던 경우 현재 WP 자동 재전송
+RECEIVER_LOST_STOP_SEC = 60.0    # 통신 두절이 이 시간 이상 지속되면 자율주행 안전 정지 + 사용자 알림
 
 
 def nav_thread():
@@ -226,11 +387,14 @@ def nav_thread():
     last_stand_sent = 0     # 마지막 STAND 전송 시간
     retry_count = 0
     consecutive_timeouts = 0  # NAV_STATUS UDP 타임아웃 연속 횟수 (연결 끊김 감지)
+    comm_lost_since = 0.0     # 통신 두절(타임아웃/송신실패) 시작 시각 (0=정상 수신 중)
+    recv_lost_alerted = False  # 통신 두절 안전 정지 알림을 이번 두절 구간에서 이미 발생시켰는가
 
     print(f"[LISTEN] 네비 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
-    while True:
+    while not _shutdown.is_set():
         arrived = False
+        comm_failed = False   # 이번 사이클에서 NAV_STATUS 통신(송신/수신)이 실패했는가
 
         # ── 리셋 신호 감지 (새 주행 시작 / 정지 / 다음 WP 전송 시) ──
         reset, is_full = check_and_clear_reset_flag()
@@ -242,6 +406,9 @@ def nav_thread():
             last_stand_sent = 0
             if is_full:
                 retry_count = 0
+                # 새 주행/정지 시 통신 두절 추적도 초기화 (다음 두절 때 다시 알림 가능하도록)
+                comm_lost_since = 0.0
+                recv_lost_alerted = False
             print(f"[NAV] 상태 리셋 (last_status=None, full={is_full})")
 
         # ── 상태 기반 도착 감지 ──
@@ -256,12 +423,23 @@ def nav_thread():
             nav = json.loads(data.decode("utf-8"))
 
             # 연결 복구 직후: 끊김 구간의 stale 상태를 도착 판정에 쓰지 않도록 카운터 리셋
-            if consecutive_timeouts > 0 and is_nav_active():
-                print(f"[NAV] 연결 복구 — 도착 판정 상태 리셋 (타임아웃 {consecutive_timeouts}회 후)")
+            if comm_lost_since > 0 and is_nav_active():
+                lost_dur = time.time() - comm_lost_since
+                print(f"[NAV] 통신 복구 — 도착 판정 상태 리셋 (두절 {lost_dur:.0f}s 후)")
                 ever_moved = False
                 zero_count = 0
                 last_status = None
+                # 두절이 길었으면 그 사이 로봇이 명령을 잃었을 수 있으므로 현재 WP 재전송하여 주행 재개
+                if lost_dur >= RECEIVER_LOST_RESEND_SEC and retry_count < NAV_MAX_RETRIES:
+                    retry_count += 1
+                    print(f"[NAV] 통신 복구 후 현재 WP 재전송 ({retry_count}/{NAV_MAX_RETRIES})")
+                    try:
+                        navigation_resend_current()
+                    except Exception as e:
+                        print(f"[ERR] 복구 재전송 실패: {e}")
             consecutive_timeouts = 0
+            comm_lost_since = 0.0
+            recv_lost_alerted = False
 
             status = nav.get("status")
             nav_age = nav.get("age")  # receiver가 자기 monotonic 시계로 계산한 경과시간(초)
@@ -273,7 +451,7 @@ def nav_thread():
             # 구버전 receiver(age 미전송, age=None)면 잘못된 cross-clock 비교 대신 필터를 건너뛴다.
             if nav_age is not None and nav_age > 5.0:
                 if is_nav_active():
-                    print(f"[NAV DEBUG] stale 데이터 무시 (age={nav_age:.1f}s)")
+                    _navdbg(f"[NAV DEBUG] stale 데이터 무시 (age={nav_age:.1f}s)")
                 time.sleep(NAV_POLL_INTERVAL)
                 continue
 
@@ -281,7 +459,7 @@ def nav_thread():
                 sent_time = get_nav_sent_time()
                 cooldown_ok = sent_time > 0 and (time.time() - sent_time) > ARRIVAL_COOLDOWN
                 elapsed = time.time() - sent_time if sent_time > 0 else 0
-                print(f"[NAV DEBUG] status={status}, last={last_status}, cooldown={cooldown_ok}, moved={ever_moved}, zero={zero_count}/{ARRIVAL_CONFIRM_COUNT}, elapsed={elapsed:.1f}s")
+                _navdbg(f"[NAV DEBUG] status={status}, last={last_status}, cooldown={cooldown_ok}, moved={ever_moved}, zero={zero_count}/{ARRIVAL_CONFIRM_COUNT}, elapsed={elapsed:.1f}s")
 
             if status is not None:
                 if last_status != status:
@@ -430,9 +608,10 @@ def nav_thread():
                 last_status = status
 
         except socket.timeout:
+            comm_failed = True
             consecutive_timeouts += 1
             if is_nav_active():
-                print(f"[NAV DEBUG] NAV_STATUS 응답 타임아웃 ({consecutive_timeouts}회)")
+                _navdbg(f"[NAV DEBUG] NAV_STATUS 응답 타임아웃 ({consecutive_timeouts}회)")
             # NOS receiver 응답 불능 감지 — 임계값 도달 시 1회만 로그 기록 (alerts 발생 안 함)
             if consecutive_timeouts == RECEIVER_UNRESPONSIVE_THRESHOLD:
                 log_event("error", "receiver_unresponsive",
@@ -440,6 +619,7 @@ def nav_thread():
                           detail=f"NOS({RECEIVER_IP}:{RECEIVER_PORT}) receiver.py 점검 필요",
                           robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         except Exception as e:
+            comm_failed = True
             print("[ERR NAV]", e)
             from app.navigation.send_move import current_wp_index as err_wp_idx, waypoints_list as err_wp_list
             err_route = " → ".join(wp.get("name", f"WP{i+1}") for i, wp in enumerate(err_wp_list)) if err_wp_list else ""
@@ -453,6 +633,35 @@ def nav_thread():
             if sock:
                 try: sock.close()
                 except: pass
+
+        # ── 통신 두절 지속 감지 (수신 성공/실패와 무관하게 경과 시간 기반) ──
+        # 정상 수신 분기의 hang/재전송 로직은 "응답을 받아야만" 동작하므로,
+        # receiver/네트워크 두절로 응답 자체가 끊기면 도착 판정이 영원히 불가능해
+        # 자율주행이 무한 대기 상태로 멈춘다. 이를 경과 시간으로 직접 판정해 복구/정지한다.
+        if comm_failed:
+            if comm_lost_since == 0.0:
+                comm_lost_since = time.time()
+            lost_dur = time.time() - comm_lost_since
+            if (is_nav_active() and not recv_lost_alerted
+                    and lost_dur >= RECEIVER_LOST_STOP_SEC):
+                recv_lost_alerted = True
+                from app.navigation.send_move import (
+                    current_wp_index as lost_wp_idx, waypoints_list as lost_wp_list,
+                    stop_navigation_internal,
+                )
+                wp_total = len(lost_wp_list)
+                print(f"[ALARM] 로봇 통신 두절 {lost_dur:.0f}s 지속 — 자율주행 안전 정지 (WP{lost_wp_idx}/{wp_total})")
+                # 사용자 화면 알림 발생 (nav_comm_lost → ALERT_TRIGGER_RULES 등록됨)
+                log_event("error", "nav_comm_lost",
+                          "로봇 통신 두절로 자율주행이 정지되었습니다",
+                          detail=f"NOS({RECEIVER_IP}:{RECEIVER_PORT}) 무응답 {lost_dur:.0f}s 지속\n"
+                                 f"중단 지점: WP{lost_wp_idx}/{wp_total} — 통신 복구 후 작업을 다시 시작하세요.",
+                          robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
+                # 무한 대기 방지: 주행 상태를 정리하고 로봇에 정지/취소 전송
+                try:
+                    stop_navigation_internal("통신 두절 안전 정지")
+                except Exception as e:
+                    print(f"[ERR] 통신 두절 안전 정지 실패: {e}")
 
         if arrived and is_nav_active():
             rid = runtime.get_robot_id_by_ip(ROBOT_IP)
@@ -488,7 +697,10 @@ def nav_thread():
                 if get_active_schedule_id() is not None:
                     on_navigation_error(str(e))
 
-        time.sleep(NAV_POLL_INTERVAL)
+        # 적응형 폴링 주기 (C-1): 자율주행 중에는 1s로 민감하게, 대기 중에는 5s로
+        # 완화하여 대기 로봇에 대한 상시 NAV_STATUS 트래픽을 줄인다.
+        # 주행 시작 시 다음 사이클부터 즉시 1s로 복귀하므로 도착 감지에 영향 없다.
+        time.sleep(NAV_POLL_INTERVAL if is_nav_active() else NAV_IDLE_POLL_INTERVAL)
 
 
 # ─────────────────────────────────────────────────────────

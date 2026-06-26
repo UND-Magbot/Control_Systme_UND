@@ -8,6 +8,8 @@ import styles from './StatusBar.module.css';
 
 type StatusBarProps = {
   selectedRobot: RobotRowData | null;
+  /** 선택 로봇의 현재 층 이름(예: "2F"). null이면 "-" 표시. */
+  floorName?: string | null;
   onClose: () => void;
   controlledBy?: string | null;
   // recording
@@ -34,6 +36,7 @@ function formatElapsed(sec: number): string {
 
 export default function StatusBar({
   selectedRobot,
+  floorName = null,
   onClose,
   controlledBy,
   isRecording = false,
@@ -72,7 +75,7 @@ export default function StatusBar({
       <div className={styles.left}>
         <span className={styles.title}>{robot?.no ?? 'Robot'} 원격제어</span>
         <span className={styles.divider} />
-        <span className={styles.floorBadge}>1F</span>
+        <span className={styles.floorBadge}>{floorName ?? '-'}</span>
 
         {/* 전원 */}
         <span className={styles.statusBadge}>

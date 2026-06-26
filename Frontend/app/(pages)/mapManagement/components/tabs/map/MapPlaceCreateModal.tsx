@@ -15,7 +15,8 @@ const CATEGORY_OPTIONS = [
   { value: "work", label: "작업지" },
   { value: "charge", label: "충전소" },
   { value: "standby", label: "대기소" },
-  { value: "danger", label: "위험구역" },
+  // 위험구역 기능 비활성화 (요청에 의해 OFF — 에러 상황 방지)
+  // { value: "danger", label: "위험구역" },
 ];
 
 export type PlaceEditData = {
@@ -57,6 +58,8 @@ type Props = {
   floors?: { id: number; FloorName: string }[];
   onClose: () => void;
   onConfirm: (place: PendingPlace, oldName?: string) => void;
+  /** create 모드에서 카테고리 "위험구역" 선택 시 호출 — 점 등록 대신 폴리곤 그리기로 전환 */
+  onSelectDanger?: () => void;
 };
 
 export type PendingPlace = {
@@ -70,6 +73,8 @@ export type PendingPlace = {
   MapId: number | null;
   Category: string;
   Imformation: string | null;
+  /** 위험구역(Category="danger") 폴리곤 꼭짓점 [[x,y],...] (월드 좌표). 일반 장소는 생략/null. */
+  Polygon?: number[][] | null;
 };
 
 export default function MapPlaceCreateModal({
@@ -89,6 +94,7 @@ export default function MapPlaceCreateModal({
   floors = [],
   onClose,
   onConfirm,
+  onSelectDanger,
 }: Props) {
   const isEdit = mode === "edit";
   const dirWheelRef = useRef<HTMLDivElement>(null);
@@ -355,7 +361,14 @@ export default function MapPlaceCreateModal({
                   options={CATEGORY_OPTIONS}
                   getLabel={(o) => o.label}
                   getKey={(o) => o.value}
-                  onChange={(o) => setCategory(o.value)}
+                  onChange={(o) => {
+                    // 위험구역은 폴리곤(영역)이라 점 등록 대신 그리기 모드로 전환한다.
+                    if (o.value === "danger" && !isEdit && onSelectDanger) {
+                      onSelectDanger();
+                      return;
+                    }
+                    setCategory(o.value);
+                  }}
                   className={styles.modalSelect}
                 />
               </div>

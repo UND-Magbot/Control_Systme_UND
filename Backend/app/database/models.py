@@ -8,6 +8,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Text,
+    JSON,
     ForeignKey,
     UniqueConstraint,
 )
@@ -56,6 +57,9 @@ class LocationInfo(Base):
     MapId = Column(Integer)
     Category = Column(String(20), default="waypoint")
     Imformation = Column(String(100))
+    # 위험구역(Category="danger") 폴리곤 꼭짓점 [[x,y], ...] (월드 좌표).
+    # 일반 장소는 NULL. danger 는 LocationX/Y 에 centroid 를 두고 여기에 점 배열 저장.
+    Polygon = Column(JSON, nullable=True)
 
 # =========================
 # 로그 / 이벤트 정보

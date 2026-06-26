@@ -79,6 +79,7 @@ export function useCameraStream({
     clearRetryTimer();
     retryTimerRef.current = setInterval(() => {
       if (unmountedRef.current) return;
+      if (document.hidden) return; // 백그라운드 탭에서는 재시도 보류 (M-2)
       setIsCamLoading(true);
       setCamError(false);
 

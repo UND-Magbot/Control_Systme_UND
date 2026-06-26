@@ -21,7 +21,8 @@ export default function RobotMarker({
 }: RobotMarkerProps) {
   const inverseScale = 1 / scale;
 
-  // yaw(rad)→degree 변환. 화면좌표 Y축 반전으로 부호 반전 필요
+  // yaw(rad)→degree 변환. 화면좌표 Y축 반전(py=h-...)으로 부호 반전(-yaw)이면 화살촉이 전방을 향함.
+  // (ERR-05의 +180° 보정은 ERR-04 증상에 오염된 오진으로 과보정이라 원복 — 카메라=전방 대조 시 후방을 가리켰음)
   const rotationDeg = -(yaw * 180) / Math.PI;
 
   return (

@@ -59,3 +59,4 @@ Backend/recordings/
 Backend/test_recording.py
 
 .claude/
+.bkit/

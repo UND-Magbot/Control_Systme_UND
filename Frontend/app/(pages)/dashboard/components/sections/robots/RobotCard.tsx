@@ -82,7 +82,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
 
   const [placeModalOpen, setPlaceModalOpen] = useState(false);
   const [chargeConfirmOpen, setChargeConfirmOpen] = useState(false);
-  const [stopChargeConfirmOpen, setStopChargeConfirmOpen] = useState(false);
+  const [undockConfirmOpen, setUndockConfirmOpen] = useState(false);
   const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
   const [floorChangeOpen, setFloorChangeOpen] = useState(false);
   const [returnModalOpen, setReturnModalOpen] = useState(false);
@@ -126,10 +126,12 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
 
   const handleChargeMove = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (robot.isCharging) {
-      setStopChargeConfirmOpen(true);
+    if (robot.atDock) {
+      // 도킹 점유(충전 중 + 완충 후 대기) → 도킹에서 빠져나오기(언도킹)
+      setUndockConfirmOpen(true);
       return;
     }
+    // 도킹 밖 → 충전소로 이동
     setChargeConfirmOpen(true);
   };
 
@@ -140,10 +142,14 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
     setChargeConfirmOpen(false);
   };
 
-  const handleStopChargeConfirm = () => {
-    apiFetch(`/robot/stop-charge`, { method: "POST" })
-      .catch((err) => console.error("충전 해제 실패", err));
-    setStopChargeConfirmOpen(false);
+  const handleUndockConfirm = () => {
+    apiFetch(`/robot/undock`, { method: "POST" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.status === "error") modalAlert(data.msg);
+      })
+      .catch((err) => console.error("언도킹 실패", err));
+    setUndockConfirmOpen(false);
   };
 
   return (
@@ -255,7 +261,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
               {canControlRobot && (
                 <>
                   <button className={styles.actionBtn} onClick={handleScheduleReturn} disabled={!isOnline}>작업 복귀</button>
-                  <button className={styles.actionBtn} onClick={handleChargeMove} disabled={!isOnline}>{robot.isCharging ? "충전 해제" : "충전소 이동"}</button>
+                  <button className={styles.actionBtn} onClick={handleChargeMove} disabled={!isOnline}>{robot.atDock ? "충전 해제" : "충전소 이동"}</button>
                   <button className={styles.actionBtn} onClick={handlePlaceMove} disabled={!isOnline}>장소 이동</button>
                 </>
               )}
@@ -284,12 +290,14 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
         />
       )}
 
-      {stopChargeConfirmOpen && (
+      {undockConfirmOpen && (
         <BatteryPathModal
-          isOpen={stopChargeConfirmOpen}
-          message={"현재 로봇이 충전 중입니다.\n충전을 해제하시겠습니까?"}
-          onConfirm={handleStopChargeConfirm}
-          onCancel={() => setStopChargeConfirmOpen(false)}
+          isOpen={undockConfirmOpen}
+          message={robot.isCharging
+            ? "현재 로봇이 충전 중입니다.\n충전을 해제하시겠습니까?"
+            : "충전을 해제하고 도킹에서 나옵니다.\n이동하시겠습니까?"}
+          onConfirm={handleUndockConfirm}
+          onCancel={() => setUndockConfirmOpen(false)}
         />
       )}
 

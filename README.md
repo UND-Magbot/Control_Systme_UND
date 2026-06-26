@@ -12,7 +12,7 @@ Next.js Web UI + FastAPI 관제 서버 + ROS2 UDP 중계기로 구성된 다중 
 | Frontend (Web UI) | `Frontend/` | Next.js 15.5.7, React 18, TypeScript 5, Tailwind 4, Three.js | `app/` (App Router) · 3000(dev) / 3001(docker) |
 | Backend (관제 서버) | `Backend/` | FastAPI, Python 3.10.9, SQLAlchemy + PyMySQL, OpenCV, FFmpeg | `app/main.py` · 8000 |
 | robot_receiver (ROS2 중계) | `robot_receiver/` | ROS2 (rclpy), 표준 라이브러리 | `receiver.py` UDP 40000 · `relay_map.py` UDP 50000 · `relay_charge.py` UDP 50001 |
-| Docker | `docker-compose.yml` | frontend(3001) + backend(host network, volumes: data/static/recordings) | — |
+| Docker | `docker-compose.yml` | frontend(3001) + backend(8010, host network, volumes: data/static) + mediamtx(host network) | — |
 
 ### 1. Frontend (`Frontend/`)
 Next.js 15 App Router 기반 정적 사이트(`output: 'export'`).
@@ -38,7 +38,25 @@ FastAPI 관제 서버. 주요 모듈 — `auth`, `map`, `navigation`, `robot_con
 ```bash
 docker compose up -d --build
 # frontend → http://localhost:3001
-# backend  → http://localhost:8000  (host network)
+# backend  → http://localhost:8010  (host network)
+```
+
+공유기/로봇망에 관제 PC와 로봇/NOS가 함께 붙는 현장에서는 `.env`의 로봇 통신 값을 먼저 맞춘다. 이미지를 다시 빌드하지 않아도 `.env` 수정 후 backend 컨테이너 재생성만 하면 반영된다.
+
+```env
+ROBOT_IP=10.21.31.103
+ROBOT_PORT=30000
+RECEIVER_IP=
+RECEIVER_PORT=40000
+RECEIVER_TCP_PORT=40001
+NOS_HOST=10.21.31.106
+```
+
+`RECEIVER_IP`를 비워두면 backend는 `NOS_HOST`를 receiver 주소로 사용한다.
+
+```bash
+docker compose up -d backend
+curl http://localhost:8010/robot/connection
 ```
 
 ### Frontend (개별)
@@ -67,6 +85,16 @@ python3 relay_map.py       # 맵/odom 중계 → :50000
 python3 relay_charge.py    # 충전 상태 중계 → :50001
 ```
 
+로봇 IP나 포트가 현장마다 다르면 receiver 실행 환경에도 같은 변수를 export한다.
+
+```bash
+export ROBOT_IP=10.21.31.103
+export ROBOT_PORT=30000
+export RECEIVER_PORT=40000
+export RECEIVER_TCP_PORT=40001
+python3 receiver.py
+```
+
 ---
 
 ## 환경변수 (`Backend/.env`)
@@ -78,6 +106,9 @@ python3 relay_charge.py    # 충전 상태 중계 → :50001
 | `JWT_SECRET_KEY` | 인증 토큰 서명 키 |
 | `CORS_ALLOWED_ORIGINS` | 허용 오리진 (localhost:3000, 3001 등) |
 | `CORS_ALLOWED_ORIGIN_REGEX` | 사설망 IP 대역 (10.x, 192.168.x, 172.16-31.x) |
+| `ROBOT_IP`, `ROBOT_PORT` | 로봇 본체 ASDU UDP 엔드포인트 |
+| `RECEIVER_IP`, `RECEIVER_PORT`, `RECEIVER_TCP_PORT` | robot_receiver UDP/TCP 엔드포인트 |
+| `NOS_HOST`, `NOS_PORT`, `NOS_USER`, `NOS_PASSWORD` | 매핑/파일 전송용 로봇 PC SSH 접속 정보 |
 
 ---
 

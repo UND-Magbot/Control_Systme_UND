@@ -247,6 +247,25 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
             entry["_is_charging"] = now_charging
             entry["_charging_drop_count"] = 0
 
+        # 도크 점유(충전 완료 후 충전소 대기) 추적 — '충전 해제(언도킹)' 버튼 노출용.
+        #  · 충전 중/도킹 진행(state 1·2) → 도크에 물림 (set)
+        #  · 주행 시작 → 도크를 떠남 (clear)
+        #  · 그 외(완충 후 비충전·비주행) → 직전 값 유지
+        # 위치 기반 판정은 좌표 부정확 + '자율주행 후 충전소 근처 정지' 오판이 있어 쓰지 않는다.
+        cur_state = (charge_state or {}).get("state", entry.get("charge_state", {}).get("state", 0))
+        if now_charging or cur_state in (1, 2):
+            entry["_docked_idle"] = True
+        elif cur_state == 3:
+            # 부두에서 나가기(state 3) = 로봇이 도크를 떠나는 중 → 점유 해제
+            entry["_docked_idle"] = False
+        else:
+            try:
+                from app.navigation.send_move import is_nav_active
+                if is_nav_active():
+                    entry["_docked_idle"] = False
+            except Exception:
+                pass
+
         if device_temp:
             entry["device_temp"] = device_temp
 
@@ -441,6 +460,22 @@ _CHARGE_ERROR_MSG = {
 }
 
 
+def _is_at_dock(is_charging: bool, charge_st: int, is_navigating: bool, docked_idle: bool) -> bool:
+    """로봇이 충전소 도킹을 점유 중인지 판정 — '충전 해제(언도킹)' 버튼 노출 조건.
+
+    = 자율 충전 중 OR 완충 후 충전소 위치 대기. (그 외는 '충전소 이동')
+    - **주행 중이면 도크 점유가 아니다** → False.
+    - 충전 중이거나 도킹 진행/충전 상태(state 1=부두로 이동, 2=충전 중)면 점유.
+    - 완충 후 대기(비충전·비주행)는 `docked_idle`(충전 이력 추적, update_status)로 판정.
+      위치(좌표) 기반은 부정확 + '자율주행 후 충전소 근처 정지' 오판이 있어 쓰지 않는다.
+    """
+    if is_navigating:
+        return False
+    if is_charging or charge_st in (1, 2):
+        return True
+    return docked_idle
+
+
 def _build_status(entry: dict) -> dict:
     """내부 엔트리를 API 응답 형태로 변환."""
     network = _derive_network(entry["last_heartbeat"])
@@ -453,6 +488,7 @@ def _build_status(entry: dict) -> dict:
     cs = entry.get("charge_state", {})
     charge_st = cs.get("state", 0)
     charge_err = cs.get("error_code", 0)
+    is_nav = _check_navigating(entry["robot_id"])
     return {
         "robot_id": entry["robot_id"],
         "robot_name": entry["robot_name"],
@@ -468,13 +504,19 @@ def _build_status(entry: dict) -> dict:
         # 현재 보행 — Standard: 0x1001 기본/0x1002 고장애물/0x1003 계단/0xf001 자세, Agile: 0x300X
         "gait": entry.get("gait"),
         "is_charging": entry.get("_is_charging", False),
+        # 도킹 점유 여부 — 충전 중 또는 완충 후 충전소 위치 대기(비주행)일 때 True.
+        # 관제 UI가 '충전 해제(언도킹)' 버튼 노출 조건으로 사용. 주행 중이면 False.
+        "at_dock": _is_at_dock(entry.get("_is_charging", False), charge_st, is_nav,
+                               entry.get("_docked_idle", False)),
         "charge_state": charge_st,
         "charge_state_label": _CHARGE_STATE_LABEL.get(charge_st, f"알 수 없음({charge_st})"),
         "charge_error_code": charge_err,
         "charge_error_msg": _CHARGE_ERROR_MSG.get(charge_err, f"알 수 없는 오류(0x{charge_err:04X})") if charge_st == 4 else None,
-        "is_navigating": _check_navigating(entry["robot_id"]),
+        "is_navigating": is_nav,
         "current_floor_id": entry.get("current_floor_id"),
         "current_map_id": entry.get("current_map_id"),
+        # 위치 미초기화(자동 init_pose 수렴 실패) — True 면 위치 좌표 신뢰불가·자율주행 보류
+        "initpose_pending": bool(entry.get("_initpose_pending", False)),
         "timestamp": entry["last_heartbeat"],
         "position": entry["position"],
     }
@@ -555,6 +597,36 @@ def is_charging(robot_id: int) -> bool:
         return entry.get("_is_charging", False)
 
 
+def get_charge_state(robot_id: int) -> int:
+    """로봇의 현재 충전 상태머신 state 반환.
+    0=대기, 1=부두로 이동, 2=충전 중, 3=부두에서 나가기, 4=오류, 5=부두·전류없음.
+    """
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return 0
+        return (entry.get("charge_state") or {}).get("state", 0)
+
+
+def clear_charge_state(robot_id: int) -> None:
+    """충전 상태를 능동적으로 '대기(0)'로 클리어.
+
+    언도킹(도킹 이탈) 확정 시점에 호출한다. 로봇 ROS2 `/CHARGE_STATUS` 전환
+    통보가 누락돼도 `is_charging`/`charge_state` 가 stale(충전 중)로 고정되지
+    않도록 백엔드가 능동적으로 떨어뜨리는 fail-safe.
+    """
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return
+        entry["_is_charging"] = False
+        entry["_charging_drop_count"] = 0
+        entry["_docked_idle"] = False  # 언도킹 = 도크 떠남 → 도크 점유 해제
+        cs = dict(entry.get("charge_state") or {})
+        cs["state"] = 0
+        entry["charge_state"] = cs
+
+
 def update_floor(robot_id: int, floor_id: int, map_id: int = None) -> None:
     """로봇의 현재 층/맵 변경."""
     with _lock:
@@ -563,6 +635,32 @@ def update_floor(robot_id: int, floor_id: int, map_id: int = None) -> None:
             entry["current_floor_id"] = floor_id
             if map_id is not None:
                 entry["current_map_id"] = map_id
+
+
+# ── init_pose 미초기화(localization 신뢰불가) 플래그 ──────
+# 전원 on 자동 init_pose 가 끝내 수렴에 실패하면(escalation) True 로 세팅된다.
+# True 인 동안 해당 로봇의 위치 좌표는 신뢰할 수 없으므로 자율주행을 보류한다(안전 가드).
+# 수동/자동 init_pose 가 수렴 성공하면 False 로 해제된다.
+
+def set_initpose_pending(robot_id: int, pending: bool, reason: str = "") -> None:
+    """init_pose 미초기화 상태 set/clear. 자율주행 안전 가드의 기준."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return
+        entry["_initpose_pending"] = bool(pending)
+        entry["_initpose_reason"] = reason if pending else ""
+
+
+def is_initpose_pending(robot_id: int) -> bool:
+    """해당 로봇의 위치가 미초기화(신뢰불가) 상태인지."""
+    if robot_id is None:
+        return False
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return False
+        return bool(entry.get("_initpose_pending", False))
 
 
 def get_position(robot_id: int) -> dict:
@@ -574,6 +672,7 @@ def get_position(robot_id: int) -> dict:
         return {
             "robot_id": entry["robot_id"],
             "robot_name": entry["robot_name"],
+            "initpose_pending": bool(entry.get("_initpose_pending", False)),
             **entry["position"],
         }
 

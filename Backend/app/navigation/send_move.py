@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 import time
+import app.robot_io.runtime as runtime
 from app.robot_io.sender import send_nav_to_robot
 from app.database.database import SessionLocal, get_db
 from app.database.models import LocationInfo, WayInfo, UserInfo, RobotInfo
@@ -10,6 +11,19 @@ from app.auth.dependencies import get_current_user, require_permission
 
 
 move = APIRouter(prefix="/nav")
+
+# 위치 미초기화(자동 init_pose 수렴 실패) 동안 자율주행을 막을 때 쓰는 안내 메시지.
+INITPOSE_BLOCK_MSG = (
+    "로봇 위치 초기화가 필요합니다. '위치 재조정'으로 위치를 초기화한 후 다시 시도하세요."
+)
+
+
+def _initpose_blocked() -> bool:
+    """현재 로봇 위치가 미초기화(신뢰불가) 상태라 자율주행을 보류해야 하는지."""
+    try:
+        return runtime.is_initpose_pending(get_robot_id())
+    except Exception:
+        return False
 
 current_wp_index = 0
 waypoints_list = []
@@ -82,9 +96,69 @@ def _update_is_working(robot_id: int, working: bool):
     except Exception as e:
         print(f"[ERR] IsWorking 업데이트 실패: {e}")
 
-@move.post("/stopmove")
-def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
-    global is_navigating, current_wp_index, nav_loop_remaining, nav_loop_total, nav_loop_count, nav_loop_infinite, charge_on_arrival, auto_return_to_charge, sit_on_arrival, overheat_return_pending
+
+def reconcile_is_working_on_boot() -> None:
+    """부팅 시 DB IsWorking 고착 정정.
+
+    비정상 종료(통신 두절/강제 재시작)로 정상 정지 경로를 타지 못하면
+    robot_last_status.IsWorking 이 1로 남아, 재시작 후 _check_navigating 이
+    DB 값을 읽어 로봇을 영원히 '작업중'으로 오판한다(실시간 상태 갱신과 무관하게
+    UI 가 작업중에 고착). 부팅 시 이 백엔드가 제어하는 로봇에 한해 실제 로봇의
+    NAV_STATUS 를 1회 확인하여, 물리적으로 비주행(status==0)인데 DB IsWorking==1
+    이면 0 으로 정정한다.
+
+    - 자기 로봇만 대상으로 하고 실로봇 상태로 확인하므로 멀티서버 의미
+      (다른 서버가 시작한 작업 = DB IsWorking)를 깨지 않는다.
+    - receiver 무응답/타임아웃 시에는 확인 불가이므로 그대로 둔다(보수적).
+    """
+    import json as _json
+    import socket as _socket
+    from app.robot_io.config import RECEIVER_IP, RECEIVER_PORT
+    from app.database.models import RobotLastStatus
+
+    robot_id = get_robot_id()
+    if not robot_id:
+        return
+    try:
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        sock.settimeout(2.0)
+        try:
+            sock.sendto(_json.dumps({"action": "NAV_STATUS"}).encode("utf-8"),
+                        (RECEIVER_IP, RECEIVER_PORT))
+            nav = _json.loads(sock.recvfrom(4096)[0].decode("utf-8"))
+        finally:
+            sock.close()
+    except Exception as e:
+        print(f"[BOOT-RECONCILE] 실로봇 NAV_STATUS 확인 불가 — IsWorking 정정 보류: {e}")
+        return
+
+    if nav.get("status") != 0:
+        return  # 실제로 주행 중 — 정정하지 않음
+
+    db = SessionLocal()
+    try:
+        row = db.query(RobotLastStatus).filter(RobotLastStatus.RobotId == robot_id).first()
+        if row and row.IsWorking:
+            row.IsWorking = 0
+            db.commit()
+            print(f"[BOOT-RECONCILE] robot_id={robot_id} 실로봇 비주행 확인 — 고착된 IsWorking=1 → 0 정정")
+            log_event("robot", "robot_work_reconciled",
+                      "재시작 후 작업중 상태 정정 (실제 비주행 확인)",
+                      detail="비정상 종료로 남은 IsWorking=1 을 실로봇 NAV_STATUS=0 확인 후 해제",
+                      robot_id=robot_id, robot_name=get_robot_name(), business_id=get_robot_business_id())
+    except Exception as e:
+        print(f"[BOOT-RECONCILE] IsWorking 정정 실패: {e}")
+    finally:
+        db.close()
+
+def stop_navigation_internal(reason: str = "") -> bool:
+    """인증 의존성 없이 호출 가능한 내부 정지 로직.
+
+    nav_thread(폴링 스레드)의 통신 두절 자동 정지 등 서버 내부에서
+    사용자 요청 없이 주행을 안전 정지해야 할 때 사용한다.
+    반환값: 정지 시점에 실제로 주행 중이었는지 여부.
+    """
+    global is_navigating, current_wp_index, nav_loop_remaining, nav_loop_total, nav_loop_count, nav_loop_infinite, charge_on_arrival, auto_return_to_charge
     was_active = is_navigating
     is_navigating = False
     current_wp_index = 0
@@ -111,7 +185,7 @@ def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
     try:
         from app.scheduler.loop import cancel_active_schedule, get_active_schedule_id
         if get_active_schedule_id() is not None:
-            cancel_active_schedule("작업 정지")
+            cancel_active_schedule(reason or "작업 정지")
     except Exception as e:
         print(f"[WARN] 스케줄 취소 실패: {e}")
 
@@ -121,7 +195,13 @@ def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
     except Exception as e:
         print(f"[WARN] 녹화 정지 실패: {e}")
 
-    print(f"🛑 NAV STOP (was_active={was_active})")
+    print(f"🛑 NAV STOP (was_active={was_active}, reason={reason or '사용자 요청'})")
+    return was_active
+
+
+@move.post("/stopmove")
+def stop_navigation(current_user: UserInfo = Depends(get_current_user)):
+    was_active = stop_navigation_internal("사용자 정지")
     return {
         "status": "ok",
         "was_active": was_active,
@@ -331,6 +411,10 @@ def start_path_navigation(way_name: str, loop: int = 1, auto_charge: bool = True
 
     global current_wp_index, waypoints_list, is_navigating, nav_loop_remaining, nav_loop_total, nav_loop_count, nav_loop_infinite, auto_return_to_charge
 
+    # 안전 가드: 위치 미초기화 동안 자율주행 보류 (엉뚱한 원점 기준 주행 방지)
+    if _initpose_blocked():
+        return {"status": "error", "msg": INITPOSE_BLOCK_MSG}
+
     db = SessionLocal()
     try:
         path = db.query(WayInfo).filter(WayInfo.WayName == way_name).first()
@@ -407,6 +491,10 @@ def move_to_place(place_id: int, db: Session = Depends(get_db), current_user: Us
 
     global current_wp_index, waypoints_list, is_navigating, auto_return_to_charge
 
+    # 안전 가드: 위치 미초기화 동안 자율주행 보류
+    if _initpose_blocked():
+        return {"status": "error", "msg": INITPOSE_BLOCK_MSG}
+
     place = db.query(LocationInfo).filter(LocationInfo.id == place_id).first()
 
     if not place:
@@ -444,6 +532,10 @@ def move_along_path(path_id: int, db: Session = Depends(get_db), current_user: U
     from app.robot_control.charge import prepare_undock_waypoints
 
     global current_wp_index, waypoints_list, is_navigating, auto_return_to_charge
+
+    # 안전 가드: 위치 미초기화 동안 자율주행 보류
+    if _initpose_blocked():
+        return {"status": "error", "msg": INITPOSE_BLOCK_MSG}
 
     path = db.query(WayInfo).filter(WayInfo.id == path_id).first()
     if not path:

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { apiFetch } from "@/app/lib/api";
 import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
+import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 
 type Place = {
   id: number;
@@ -73,35 +74,32 @@ export function useRobotLocation(): RobotLocation {
   }, []);
 
   // 로봇 위치 폴링해서 가장 가까운 장소 매칭
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const res = await apiFetch(`/robot/position`);
-        if (!res.ok) return;
-        const pos = await res.json();
+  const poll = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/robot/position`);
+      if (!res.ok) return;
+      const pos = await res.json();
 
-        const sameFloorPlaces = places.filter((p) => p.floor === currentFloor);
-        let nearest: Place | null = null;
-        let minDist = Infinity;
+      const sameFloorPlaces = places.filter((p) => p.floor === currentFloor);
+      let nearest: Place | null = null;
+      let minDist = Infinity;
 
-        for (const p of sameFloorPlaces) {
-          const d = distance(pos.x, pos.y, p.x, p.y);
-          if (d < minDist) {
-            minDist = d;
-            nearest = p;
-          }
+      for (const p of sameFloorPlaces) {
+        const d = distance(pos.x, pos.y, p.x, p.y);
+        if (d < minDist) {
+          minDist = d;
+          nearest = p;
         }
-
-        setPlaceName(nearest && minDist <= NEARBY_THRESHOLD ? nearest.name : null);
-      } catch {
-        // ignore
       }
-    };
 
-    poll();
-    const id = setInterval(poll, 3000);
-    return () => clearInterval(id);
+      setPlaceName(nearest && minDist <= NEARBY_THRESHOLD ? nearest.name : null);
+    } catch {
+      // ignore
+    }
   }, [places, currentFloor]);
+
+  // 가시성 인지 폴링(C-7): 보일 때 3s, 백그라운드 일시정지, 복귀 시 즉시 갱신
+  useVisibilityAwareInterval(poll, { activeMs: 3000, hiddenMs: null, immediate: true });
 
   return { floor: currentFloor, placeName, places };
 }

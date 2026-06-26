@@ -48,6 +48,7 @@ export type RobotRowData = {
     serialRight?: string;           // serialRight
     return: number;
     isCharging: boolean;
+    atDock: boolean;                // 도킹 점유 여부 (충전 중 + 완충 후 대기 포함). '충전소 나오기' 버튼 노출 조건
     chargeState: number;
     chargeStateLabel: string;
     chargeErrorCode: number;

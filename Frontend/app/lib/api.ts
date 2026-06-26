@@ -107,31 +107,43 @@ export async function tryRefresh(): Promise<RefreshResult> {
   }
 }
 
+/** apiFetch 옵션. 표준 RequestInit + 호출별 타임아웃(ms). */
+export interface ApiFetchOptions extends RequestInit {
+  /** 이 요청의 타임아웃(ms). 미지정 시 기본 30초.
+   *  매핑 종료처럼 오래 걸리는 작업은 길게 지정(예: 300_000). */
+  timeoutMs?: number;
+}
+
+/** 기본 타임아웃(ms) */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 /**
  * 클라이언트 전용 인증 fetch 래퍼.
  * - 401 시 자동 refresh 후 재시도
  * - refresh token 무효(401)일 때만 세션 만료 판정
  * - 네트워크/서버 에러는 세션 만료로 취급하지 않음
+ * - `timeoutMs`로 호출별 타임아웃을 지정할 수 있음(기본 30초)
  */
 export async function apiFetch(
   path: string,
-  options: RequestInit = {}
+  options: ApiFetchOptions = {}
 ): Promise<Response> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...requestInit } = options;
   const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
 
-  const headers = new Headers(options.headers);
+  const headers = new Headers(requestInit.headers);
   if (!headers.has("X-Requested-With")) {
     headers.set("X-Requested-With", "XMLHttpRequest");
   }
 
-  // 항상 30초 타임아웃 적용 (외부 signal이 있으면 둘 다 결합)
-  const timeoutSignal = AbortSignal.timeout(30_000);
-  const signal = options.signal
-    ? AbortSignal.any([options.signal, timeoutSignal])
+  // 호출별 타임아웃 적용 (외부 signal이 있으면 둘 다 결합)
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = requestInit.signal
+    ? AbortSignal.any([requestInit.signal, timeoutSignal])
     : timeoutSignal;
 
   const fetchOptions: RequestInit = {
-    ...options,
+    ...requestInit,
     credentials: "include",
     headers,
     signal,
