@@ -25,6 +25,7 @@ def _snapshot_runtime() -> list[dict]:
             bat = entry.get("battery") or {}
             pos = entry.get("position") or {}
             robot_type = entry.get("robot_type", "")
+            persist_position = not bool(entry.get("_initpose_pending", False))
 
             if runtime._is_dual_battery(robot_type):
                 bl1 = bat.get("BatteryLevelLeft")
@@ -58,6 +59,7 @@ def _snapshot_runtime() -> list[dict]:
                 "PosX": pos.get("x"),
                 "PosY": pos.get("y"),
                 "PosYaw": pos.get("yaw"),
+                "PersistPosition": 1 if persist_position else 0,
                 "CurrentFloorId": entry.get("current_floor_id"),
                 "LastHeartbeat": datetime.fromtimestamp(entry["last_heartbeat"]),
             })
@@ -87,8 +89,47 @@ _UPSERT_SQL = text("""
         PosX           = VALUES(PosX),
         PosY           = VALUES(PosY),
         PosYaw         = VALUES(PosYaw),
-        CurrentFloorId = VALUES(CurrentFloorId),
+        CurrentFloorId = COALESCE(VALUES(CurrentFloorId), CurrentFloorId),
         LastHeartbeat  = VALUES(LastHeartbeat),
+        UpdatedAt      = NOW()
+""")
+
+_UPSERT_STATUS_ONLY_SQL = text("""
+    INSERT INTO robot_last_status
+        (RobotId, BatteryLevel1, BatteryLevel2,
+         Voltage1, Voltage2, BatteryTemp1, BatteryTemp2,
+         IsCharging1, IsCharging2,
+         CurrentFloorId, LastHeartbeat)
+    VALUES
+        (:RobotId, :BatteryLevel1, :BatteryLevel2,
+         :Voltage1, :Voltage2, :BatteryTemp1, :BatteryTemp2,
+         :IsCharging1, :IsCharging2,
+         :CurrentFloorId, :LastHeartbeat)
+    ON DUPLICATE KEY UPDATE
+        BatteryLevel1  = VALUES(BatteryLevel1),
+        BatteryLevel2  = VALUES(BatteryLevel2),
+        Voltage1       = VALUES(Voltage1),
+        Voltage2       = VALUES(Voltage2),
+        BatteryTemp1   = VALUES(BatteryTemp1),
+        BatteryTemp2   = VALUES(BatteryTemp2),
+        IsCharging1    = VALUES(IsCharging1),
+        IsCharging2    = VALUES(IsCharging2),
+        CurrentFloorId = COALESCE(VALUES(CurrentFloorId), CurrentFloorId),
+        LastHeartbeat  = VALUES(LastHeartbeat),
+        UpdatedAt      = NOW()
+""")
+
+_UPSERT_POSITION_SQL = text("""
+    INSERT INTO robot_last_status
+        (RobotId, PosX, PosY, PosYaw, CurrentFloorId, LastHeartbeat)
+    VALUES
+        (:RobotId, :PosX, :PosY, :PosYaw, :CurrentFloorId, :LastHeartbeat)
+    ON DUPLICATE KEY UPDATE
+        PosX           = VALUES(PosX),
+        PosY           = VALUES(PosY),
+        PosYaw         = VALUES(PosYaw),
+        CurrentFloorId = COALESCE(VALUES(CurrentFloorId), CurrentFloorId),
+        LastHeartbeat  = COALESCE(VALUES(LastHeartbeat), LastHeartbeat),
         UpdatedAt      = NOW()
 """)
 
@@ -101,12 +142,56 @@ def flush_all() -> None:
 
     db = SessionLocal()
     try:
-        db.execute(_UPSERT_SQL, rows)
+        total = len(rows)
+        position_rows = []
+        status_only_rows = []
+        for row in rows:
+            persist_position = bool(row.pop("PersistPosition", 1))
+            if persist_position:
+                position_rows.append(row)
+            else:
+                status_only_rows.append(row)
+        if position_rows:
+            db.execute(_UPSERT_SQL, position_rows)
+        if status_only_rows:
+            db.execute(_UPSERT_STATUS_ONLY_SQL, status_only_rows)
         db.commit()
-        print(f"[PERSISTENCE] flush 완료: {len(rows)}대")
+        print(f"[PERSISTENCE] flush 완료: {total}대")
     except Exception as e:
         db.rollback()
         print(f"[PERSISTENCE] flush 오류: {e}")
+    finally:
+        db.close()
+
+
+def flush_robot_position(robot_id: int, x: float, y: float, yaw: float) -> None:
+    """채택된 단일 로봇 위치를 robot_last_status 에 즉시 반영한다."""
+    with runtime._lock:
+        entry = runtime._runtime.get(robot_id) or {}
+        floor_id = entry.get("current_floor_id")
+        last_heartbeat = entry.get("last_heartbeat") or 0
+
+    row = {
+        "RobotId": robot_id,
+        "PosX": x,
+        "PosY": y,
+        "PosYaw": yaw,
+        "CurrentFloorId": floor_id,
+        "LastHeartbeat": datetime.fromtimestamp(last_heartbeat) if last_heartbeat else None,
+    }
+
+    db = SessionLocal()
+    try:
+        db.execute(_UPSERT_POSITION_SQL, row)
+        db.commit()
+        print(
+            f"[PERSISTENCE] robot {robot_id} 위치 즉시 갱신: "
+            f"x={x:.3f}, y={y:.3f}, yaw={yaw:.3f}"
+        )
+    except Exception as e:
+        db.rollback()
+        print(f"[PERSISTENCE] robot {robot_id} 위치 즉시 갱신 오류: {e}")
+        raise
     finally:
         db.close()
 

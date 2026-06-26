@@ -12,6 +12,13 @@ services:
     network_mode: host
     environment:
       - TZ=Asia/Seoul
+      # DB 연결 문자열은 루트 .env 의 DATABASE_URL 에서 주입한다(비밀번호 평문 노출 방지).
+      # 미설정 시 즉시 에러로 기동을 막는다. backend 는 network_mode: host 라
+      # 호스트에서 원격 DB(192.168.0.21:3306)로 직접 접속한다.
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL 이 .env 에 설정되어야 합니다}
+      # 인증 토큰(JWT) 서명 키. 값은 루트 .env 에서 주입한다(비밀 노출 방지).
+      # 미설정 시 즉시 에러로 기동을 막는다.
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY 가 .env 에 설정되어야 합니다}
       # 카메라 RTSP 전송 방식: tcp(기본, 손실 없음) | udp(저지연, 깨끗한 망 전용).
       # H.265 카메라라 불안정 망에서 udp는 화면 깨짐 발생 → tcp 권장.
       - RTSP_TRANSPORT=tcp
@@ -19,6 +26,23 @@ services:
       # 충돌 시 여기만 바꾸면 컨테이너 안의 uvicorn도 그 포트로 뜬다.
       # (network_mode: host 라 호스트 포트와 동일.)
       - PORT=8010
+      # 로봇/NOS 통신 대상. 공유기 또는 현장망에서 IP가 달라지면 .env 만 수정하고
+      # backend 컨테이너를 재생성하면 된다(이미지 재빌드 불필요).
+      - ROBOT_IP=${ROBOT_IP:-10.21.31.103}
+      - ROBOT_PORT=${ROBOT_PORT:-30000}
+      - RECEIVER_IP=${RECEIVER_IP:-}
+      - RECEIVER_PORT=${RECEIVER_PORT:-40000}
+      - RECEIVER_TCP_PORT=${RECEIVER_TCP_PORT:-40001}
+      # NOS(로봇 PC) SSH 접속 정보 — 매핑 시작/종료/취소(drmap) 및 맵 파일 SCP 에 사용.
+      # 값은 루트 .env 에서 주입한다(비밀번호 평문 노출 방지).
+      - NOS_HOST=${NOS_HOST:-10.21.31.106}
+      - NOS_PORT=${NOS_PORT:-22}
+      - NOS_USER=${NOS_USER:-}
+      - NOS_PASSWORD=${NOS_PASSWORD:-}
+      # 매핑 시작 시 로봇에서 자동 기동할 실시간 시각화 릴레이(relay_map.py) 경로.
+      - NOS_RELAY_SCRIPT=${NOS_RELAY_SCRIPT:-/home/user/Control_system/relay_map.py}
+      - NOS_ROS2_SETUP=${NOS_ROS2_SETUP:-/opt/robot/scripts/setup_ros2.sh}
+      - NOS_RELAY_LOG=${NOS_RELAY_LOG:-/tmp/relay_map.log}
     volumes:
       - ./Backend/data:/app/data
       - ./Backend/static:/app/static

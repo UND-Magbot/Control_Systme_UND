@@ -84,6 +84,7 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
     setIsLoading(false);
     setHasError(true);
     retryRef.current = setInterval(() => {
+      if (document.hidden) return; // 백그라운드 탭에서는 재시도 보류 (M-2)
       if (!unmountedRef.current && connectRef.current) connectRef.current();
     }, CAM_RETRY_MS);
   }, [clearTimers]);
@@ -143,9 +144,14 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
       lowRes && (camera.streamType ?? "rtsp") === "rtsp" ? "&w=640&q=55" : "";
     const url = base + (base.includes("?") ? "&" : "?") + "t=" + Date.now() + quality;
 
-    // 이전 img src를 해제하여 브라우저 연결을 끊고 새 URL 즉시 세팅
+    // 이전 img src를 해제하여 브라우저 연결을 끊고 새 URL 즉시 세팅 (M-5).
+    // src="" 만으로는 브라우저가 이전 MJPEG HTTP 스트림을 즉시 끊지 않을 수 있어
+    // removeAttribute까지 호출해 버려진 스트림이 누적되지 않도록 한다.
     if (mjpegImgRef.current) {
-      try { mjpegImgRef.current.src = ""; } catch {}
+      try {
+        mjpegImgRef.current.src = "";
+        mjpegImgRef.current.removeAttribute("src");
+      } catch {}
     }
     setStreamUrl(url);
 

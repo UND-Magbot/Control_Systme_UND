@@ -1919,44 +1919,61 @@ button.workPopoverItem:hover {
 .confirmBox {
 
   width: 400px;
-  min-height: 220px;
   border-radius: 14px;
 
   background: var(--surface-3);
-
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
 
   position: relative;
+
+  /* 균형 잡힌 내부 간격 — 상단 닫기버튼 영역 확보 + 본문↔버튼 일정 간격 */
+  padding: 34px 28px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
 }
 
 .confirmBox .closeBox {
   background: transparent;
   border: none;
+  cursor: pointer;
 
   position: absolute;
-  top: 26px;
-  right: 23px;
+  top: 16px;
+  right: 16px;
+  padding: 4px;          /* 클릭 영역은 유지하되 아이콘은 코너로 */
+  line-height: 0;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.confirmBox .closeBox:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .confirmBox .closeBox img {
-  width: var(--icon-md);
-  height: var(--icon-md);
+  width: 14px;           /* 기존 --icon-md(큼) → 축소하여 본문 텍스트와 겹침 방지 */
+  height: 14px;
+  display: block;
 }
 
 .confirmButtons {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
 }
 
 .confirmContents {
-  margin: 75px 0 35px 0;
-  padding: 0 24px;
+  /* flex gap 으로 버튼과 간격을 잡으므로 margin 은 닫기버튼 클리어 용 최소만 */
+  margin: 10px 0 0 0;
+  padding: 0 12px;
 
   text-align: center;
   white-space: pre-line;
   word-break: keep-all;
   font-size: var(--font-size-xl);
+  line-height: 1.6;
 }
 
 .btnItemCommon {
@@ -2003,7 +2020,16 @@ button.workPopoverItem:hover {
 .btnBgRed {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: var(--surface-5);
-  margin-right: 10px;
+}
+
+.btnItemCommon:hover {
+  transform: translateY(-1px);
+}
+.btnBgRed:hover {
+  background: var(--surface-elevated);
+}
+.btnBgBlue:hover {
+  background: var(--color-info-border);
 }
 
 

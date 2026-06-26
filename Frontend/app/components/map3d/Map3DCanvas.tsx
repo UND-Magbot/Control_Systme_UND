@@ -271,6 +271,29 @@ const Map3DCanvas = forwardRef<CanvasMapHandle, CanvasMapProps & Map3DCanvasExtr
     return () => {
       cancelAnimationFrame(ctx.animId);
       ro.disconnect();
+
+      // 전체 씬 리소스 dispose (M-4): scene.remove만으로는 GPU 버퍼/텍스처가
+      // 회수되지 않는다. floorMesh/basePlane/wall/floorTex(CanvasTexture) 등
+      // 모든 mesh의 geometry·material·map을 명시적으로 해제해 층 전환 반복 시
+      // VRAM 누적을 방지한다. (아래 pathGroup/POI 개별 dispose는 멱등이라 무해)
+      const disposeMaterial = (m: MeshStandardMaterial | null | undefined) => {
+        if (!m) return;
+        m.map?.dispose();
+        m.emissiveMap?.dispose();
+        m.dispose();
+      };
+      try {
+        scene.traverse((obj) => {
+          const mesh = obj as Mesh;
+          if (mesh.isMesh) {
+            mesh.geometry?.dispose();
+            const mat = mesh.material;
+            if (Array.isArray(mat)) mat.forEach((m) => disposeMaterial(m as MeshStandardMaterial));
+            else disposeMaterial(mat as MeshStandardMaterial);
+          }
+        });
+      } catch {}
+
       // 씬을 완전히 비우고 한 번 더 렌더 → 캔버스 버퍼가 빈 프레임으로 덮여씀.
       // React가 canvas를 DOM에서 떼어내는 타이밍이 한두 프레임 늦더라도
       // 잔상이 보이지 않도록 물리적으로 비움.

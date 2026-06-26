@@ -15,6 +15,7 @@ import { usePageReady } from "@/app/context/PageLoadingContext";
 import { useModalAlert } from "@/app/hooks/useModalAlert";
 import { useAuth } from "@/app/context/AuthContext";
 import MapAlertModal from "@/app/components/modal/AlertModal";
+import InitPoseConfirmModal from "@/app/components/modal/InitPoseConfirmModal";
 import type {
   MapTab,
   MappingState,
@@ -44,7 +45,15 @@ import MappingProgressModal from "./components/tabs/map/MappingProgressModal";
 import MappingSuccessModal from "./components/tabs/map/MappingSuccessModal";
 import PathBuildPanel from "./components/tabs/map/PathBuildPanel";
 import MapToolbar from "./components/tabs/map/MapToolbar";
+import ImportMapModal from "./components/tabs/map/ImportMapModal";
 import MapRightPanel from "./components/tabs/map/MapRightPanel";
+// 위험구역 기능 비활성화 (요청에 의해 OFF — 에러 상황 방지)
+// import DangerZoneLayer from "./components/tabs/map/DangerZoneLayer";
+// import DangerZoneSaveModal from "./components/tabs/map/DangerZoneSaveModal";
+import { useDangerZoneDraw } from "./hooks/useDangerZoneDraw";
+import { polygonCentroid } from "./dangerZone/geometry";
+import { validateDangerZone } from "./dangerZone/validation";
+import type { ZonePoint, SvgMetaLike, DangerZone } from "./dangerZone/types";
 
 export default function MapManagementPage() {
   const setPageReady = usePageReady();
@@ -156,7 +165,13 @@ export default function MapManagementPage() {
   const [showRobotModal, setShowRobotModal] = useState(false);
   const [robots, setRobots] = useState<Robot[]>([]);
   const [connectedRobots, setConnectedRobots] = useState<Robot[]>([]);
+  const [selectedInitPoseRobot, setSelectedInitPoseRobot] = useState<Robot | null>(null);
   const [selectedConnectIds, setSelectedConnectIds] = useState<number[]>([]);
+  const [robotListLoading, setRobotListLoading] = useState(false);
+
+  // ── 가져오기 (로봇 내부 맵 → 관제 등록) ──
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importRobots, setImportRobots] = useState<Robot[]>([]);
 
   // ── 동기화 (맵 적용) ──
   const [showSyncModal, setShowSyncModal] = useState(false);
@@ -172,7 +187,8 @@ export default function MapManagementPage() {
   // ── 맵 위 장소 목록 ──
   const [mapPlaces, setMapPlaces] = useState<
     { id: number; LacationName: string; LocationX: number; LocationY: number; Yaw: number;
-      RobotName?: string; Floor?: string; FloorId?: number; MapId?: number; Category?: string; Imformation?: string }[]
+      RobotName?: string; Floor?: string; FloorId?: number; MapId?: number; Category?: string; Imformation?: string;
+      Polygon?: number[][] | null }[]
   >([]);
 
   const loadMapPlaces = useCallback(async (mapId: number) => {
@@ -200,11 +216,24 @@ export default function MapManagementPage() {
   // ── 되돌리기 스택 ──
   const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
 
+  // ── 위험구역(폴리곤) 그리기 ──
+  const danger = useDangerZoneDraw();
+  const [isDangerMode, setIsDangerMode] = useState(false);
+  const [dangerCursor, setDangerCursor] = useState<ZonePoint | null>(null);
+  const [dangerSave, setDangerSave] = useState<{ points: ZonePoint[]; centroid: ZonePoint } | null>(null);
+
+  const resetDangerMode = useCallback(() => {
+    setIsDangerMode(false);
+    setDangerCursor(null);
+    danger.reset();
+  }, [danger]);
+
   const clearAllModes = () => {
     setIsPlaceMode(false);
     resetDeleteMode();
     resetRouteMode();
     resetPathBuild();
+    resetDangerMode();
   };
 
   const handleUndo = () => {
@@ -370,6 +399,9 @@ export default function MapManagementPage() {
 
   // ── 장소 생성 모드 ──
   const [isPlaceMode, setIsPlaceMode] = useState(false);
+  const [showInitPoseTargetModal, setShowInitPoseTargetModal] = useState(false);
+  const [showInitPoseManualModal, setShowInitPoseManualModal] = useState(false);
+
   const [showGrid, setShowGrid] = useState(false);
   const [showPlaceModal, setShowPlaceModal] = useState(false);
   const [placeClickCoords, setPlaceClickCoords] = useState<{
@@ -530,7 +562,7 @@ export default function MapManagementPage() {
 
   // ── ESC 키로 모드 취소 ──
   useEffect(() => {
-    if (!isPlaceMode && !isDeleteMode && !isRouteMode && !isPathBuildMode) return;
+    if (!isPlaceMode && !isDeleteMode && !isRouteMode && !isPathBuildMode && !isDangerMode) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setIsPlaceMode(false);
@@ -541,14 +573,16 @@ export default function MapManagementPage() {
         setIsPathBuildMode(false);
         setPathBuildOrder([]);
         setPathBuildWaits([]);
+        resetDangerMode();
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [isPlaceMode, isDeleteMode, isRouteMode, isPathBuildMode]);
+  }, [isPlaceMode, isDeleteMode, isRouteMode, isPathBuildMode, isDangerMode, resetDangerMode]);
 
   // ── SVG 맵 뷰 상태 ──
   const [processedImg, setProcessedImg] = useState<{ url: string; w: number; h: number; mask?: Uint8Array } | null>(null);
+
   const { zoom, setZoom, rotation, setRotation, offset, setOffset, svgRef } =
     useSvgPanZoom(processedImg !== null);
   const [isPanning, setIsPanning] = useState(false);
@@ -750,6 +784,11 @@ export default function MapManagementPage() {
       if (coords) setDragWorldPos({ x: coords.worldX, y: coords.worldY });
       return;
     }
+    // 위험구역 그리기 중 — 커서까지 미리보기 선
+    if (isDangerMode && danger.isDrawing && danger.points.length > 0) {
+      const coords = svgEventToWorld(e);
+      setDangerCursor(coords ? { x: coords.worldX, y: coords.worldY } : null);
+    }
     if (!isPanning) return;
     // 5px 이상 이동해야 팬으로 인정 (클릭과 구분)
     const dx = e.clientX - (panStart.current.x + offset.x);
@@ -873,6 +912,14 @@ export default function MapManagementPage() {
       return;
     }
 
+    // 위험구역 그리기 모드: 클릭으로 폴리곤 꼭짓점 추가
+    if (isDangerMode) {
+      const coords = svgEventToWorld(e);
+      if (!coords) { modalAlert("맵 범위를 벗어난 위치입니다."); return; }
+      danger.addPoint({ x: coords.worldX, y: coords.worldY });
+      return;
+    }
+
     // 장소 생성 모드 (최우선)
     if (isPlaceMode) {
       const coords = svgEventToWorld(e);
@@ -893,12 +940,82 @@ export default function MapManagementPage() {
     }
   };
 
+  // ── 위험구역 그리기 완료 → 이름 입력 모달 ──
+  const handleDangerFinish = () => {
+    if (!danger.canFinish) {
+      modalAlert("위험구역은 최소 3개의 점이 필요하며, 변이 서로 겹치지 않아야 합니다.");
+      return;
+    }
+    const pts = [...danger.points];
+    setDangerCursor(null);
+    setDangerSave({ points: pts, centroid: polygonCentroid(pts) });
+  };
+
+  // ── 위험구역 이름 확정 → pending 장소(Category=danger)로 추가 (저장 시 일괄 POST /places) ──
+  const handleDangerConfirm = (name: string) => {
+    if (!dangerSave) return;
+    const floorId = typeof selectedFloor === "number" ? selectedFloor : null;
+    const mapId = typeof selectedMap === "number" ? selectedMap : null;
+    const v = validateDangerZone({ name, points: dangerSave.points, floorId });
+    if (!v.valid) {
+      modalAlert(v.errors.join("\n"));
+      return;
+    }
+    const polygon = dangerSave.points.map((p) => [
+      Number(p.x.toFixed(3)),
+      Number(p.y.toFixed(3)),
+    ]);
+    const place: PendingPlace = {
+      tempId: `pending_danger_${Date.now()}`,
+      RobotName: connectedRobots[0]?.RobotName ?? "",
+      LacationName: name,
+      FloorId: floorId,
+      LocationX: Number(dangerSave.centroid.x.toFixed(3)),
+      LocationY: Number(dangerSave.centroid.y.toFixed(3)),
+      Yaw: 0,
+      MapId: mapId,
+      Category: "danger",
+      Imformation: null,
+      Polygon: polygon,
+    };
+    setPendingPlaces((prev) => [...prev, place]);
+    setUndoStack((prev) => [...prev, { type: "addPlace", tempId: place.tempId }]);
+    setDangerSave(null);
+    resetDangerMode();
+  };
+
+  // ── 장소등록 모달에서 "위험구역" 선택 → 점 등록 취소하고 폴리곤 그리기로 전환 ──
+  //    (모달이 열릴 때 클릭한 좌표를 폴리곤 1번 꼭짓점으로 시드)
+  const handleStartDangerFromPlace = () => {
+    const seed = placeClickCoords
+      ? { x: placeClickCoords.worldX, y: placeClickCoords.worldY }
+      : null;
+    // 장소 모달 닫기
+    setShowPlaceModal(false);
+    setPlaceClickCoords(null);
+    setIsFromRobotPos(false);
+    setIsChargeCreate(false);
+    setChargeDockingPlace(null);
+    // 다른 모드 해제 후 위험구역 그리기 진입
+    setIsPlaceMode(false);
+    setIsDeleteMode(false);
+    setIsRouteMode(false);
+    setRouteStartName(null);
+    setRouteEndName(null);
+    setIsDangerMode(true);
+    danger.start();
+    if (seed) danger.addPoint(seed);
+  };
+
   // ── 상단 사업장 선택 ──
   const handleBizChange = (bizId: number) => {
     setSelectedBiz(bizId);
     setSelectedFloor("");
     setSelectedMap("");
     setMaps([]);
+    // 사업장(→층) 변경 시 연결된 로봇 상태 전체 초기화
+    setConnectedRobots([]);
+    setSelectedConnectIds([]);
     loadFloors(bizId);
   };
 
@@ -906,6 +1023,10 @@ export default function MapManagementPage() {
   const handleFloorChange = async (floorId: number) => {
     setSelectedFloor(floorId);
     setSelectedMap("");
+    // 층 변경 시 이전 층에서 연결한 로봇 상태 전체 초기화
+    // (connectedRobots=[] → useRobotPolling이 robotPos/마커/폴링을 자동 정리)
+    setConnectedRobots([]);
+    setSelectedConnectIds([]);
     try {
       const res = await apiFetch(`/map/maps?floor_id=${floorId}`);
       const data = await res.json();
@@ -1074,6 +1195,10 @@ export default function MapManagementPage() {
   };
 
   // ── 맵핑 종료 → SSH 파일 가져오기 → DB 저장 → 성공 팝업 ──
+  // 종료 작업은 맵 디렉토리 대기(~60s) + zip(~120s) + SFTP + 변환 + DB 기록으로
+  // 기본 30초 타임아웃을 쉽게 초과한다. 타임아웃으로 abort되면 백엔드는 계속 저장 중인데
+  // 프론트는 실패로 오인해 경고창을 띄웠다(ERR-01). → 타임아웃을 충분히 늘려 실제 응답을
+  // 끝까지 기다리고, "타임아웃 abort"와 "진짜 백엔드 실패 응답"을 구분해 경고를 노출한다.
   const handleMappingEnd = async () => {
     if (isMappingEnding) return;
     setIsMappingEnding(true);
@@ -1081,6 +1206,7 @@ export default function MapManagementPage() {
       const res = await apiFetch(`/map/mapping/end`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: 300_000, // 종료 작업은 길게 걸리므로 실제 응답을 끝까지 대기
         body: JSON.stringify({
           BusinessId: saveBizId,
           FloorId: saveFloorId,
@@ -1090,12 +1216,24 @@ export default function MapManagementPage() {
       if (res.ok) {
         setMappingState("success");
       } else {
-        const err = await res.json();
-        modalAlert(err.detail || "맵 저장 실패");
+        // 백엔드가 실제 실패 응답(4xx/5xx)을 준 경우에만 경고
+        const err = await res.json().catch(() => null);
+        modalAlert(err?.detail || "맵 저장 실패");
       }
     } catch (e) {
-      console.error("맵핑 종료 실패:", e);
-      modalAlert("맵핑 종료 중 오류 발생");
+      // 타임아웃(TimeoutError/AbortError)은 실패로 단정하지 않는다.
+      // 백엔드는 저장을 계속 진행 중일 수 있으므로 안내만 하고, 맵 목록에서 확인하도록 한다.
+      const name = (e as Error)?.name;
+      if (name === "TimeoutError" || name === "AbortError") {
+        console.warn("맵핑 종료 응답 지연(타임아웃) — 백엔드 저장은 진행 중일 수 있음:", e);
+        modalAlert(
+          "맵 저장이 지연되고 있습니다. 잠시 후 맵 목록에서 생성 여부를 확인해주세요."
+        );
+      } else {
+        // 진짜 네트워크 오류만 오류로 경고
+        console.error("맵핑 종료 네트워크 오류:", e);
+        modalAlert("네트워크 오류로 맵핑 종료 요청에 실패했습니다.");
+      }
     } finally {
       setIsMappingEnding(false);
     }
@@ -1157,7 +1295,35 @@ export default function MapManagementPage() {
   };
 
   // ── 로봇 위치 폴링 + 현재 층 갱신 (훅으로 분리) ──
-  useRobotPolling(connectedRobots, setConnectedRobots, setRobotPos);
+  // 통신이 끊긴(Offline) 로봇은 폴링이 연결 목록에서 자동 해제한다 → 운영자에게 안내.
+  const handleCommsLost = useCallback(
+    (robotNames: string[]) => {
+      modalAlert(
+        `다음 로봇과의 통신이 끊겨 연결이 해제되었습니다:\n${robotNames.join(", ")}`
+      );
+    },
+    [modalAlert]
+  );
+  useRobotPolling(connectedRobots, setConnectedRobots, setRobotPos, handleCommsLost);
+
+  // ── 매핑 중 새로고침/탭 닫기 안전장치 ──
+  // 매핑은 "시작"하면 로봇 NOS 의 active 맵이 새(미완결) 맵으로 바뀐다.
+  // 종료(/end) 없이 새로고침·탭닫기로 이탈하면 active 가 미완결 맵에 고착되므로,
+  // 페이지 unload 직전에 /map/mapping/cancel 을 sendBeacon 으로 호출해
+  // 백엔드가 이전 정상 맵으로 active 를 복원(초기화)하도록 한다.
+  // (쿠키 인증이라 sendBeacon 이 access_token 쿠키를 함께 전송 → 인증 통과)
+  useEffect(() => {
+    if (!isMappingRunning) return;
+    const cancelOnUnload = () => {
+      try {
+        navigator.sendBeacon(`${API_BASE}/map/mapping/cancel`);
+      } catch {
+        /* best-effort */
+      }
+    };
+    window.addEventListener("beforeunload", cancelOnUnload);
+    return () => window.removeEventListener("beforeunload", cancelOnUnload);
+  }, [isMappingRunning]);
 
   // ── 저장 취소 ──
   const handleCancelSave = () => {
@@ -1165,25 +1331,121 @@ export default function MapManagementPage() {
   };
 
   // ── 로봇 연결 모달 ──
-  const handleOpenRobotModal = async () => {
-    clearAllModes();
+  // 온라인 로봇 목록 로드 (모달 오픈 / 새로고침 공용)
+  // offline 로봇은 연결될 수 없으므로 목록에서 제외한다.
+  const loadRobotList = async () => {
+    setRobotListLoading(true);
     try {
-      const res = await apiFetch(`/DB/robots`);
-      const data = await res.json();
+      const [robotsRes, statusRes] = await Promise.all([
+        apiFetch(`/DB/robots`),
+        apiFetch(`/robot/status`),
+      ]);
+      const allRobots: Robot[] = await robotsRes.json();
+      const statuses: { robot_id: number; network: string }[] = await statusRes.json();
+      const onlineIds = new Set(
+        statuses.filter((s) => s.network === "Online").map((s) => s.robot_id)
+      );
+      let list = allRobots.filter((r) => onlineIds.has(r.id)); // 오프라인 제외
       // 현재 선택된 맵을 사용 중인 로봇만 필터링
       if (selectedMap !== "") {
-        setRobots(data.filter((r: Robot) => r.CurrentMapId === selectedMap));
-      } else {
-        setRobots(data);
+        list = list.filter((r) => r.CurrentMapId === selectedMap);
       }
+      setRobots(list);
     } catch (e) {
       console.error("로봇 목록 로드 실패:", e);
+      setRobots([]);
+    } finally {
+      setRobotListLoading(false);
     }
-    setSelectedConnectIds(connectedRobots.map((r) => r.id));
+  };
+
+  const handleOpenRobotModal = async () => {
+    clearAllModes();
+    await loadRobotList();
+    // 체크박스 선택은 연결 상태와 분리된 "일괄 선택" 용도이므로 빈 상태로 시작
+    setSelectedConnectIds([]);
     setShowRobotModal(true);
   };
 
+  // 모달 내 "새로고침" — 열려 있는 동안 offline된 로봇을 실시간 반영
+  const handleRefreshRobotList = () => loadRobotList();
+
   // ── 동기화 모달 열기 ──
+  const handleOpenImportModal = async () => {
+    clearAllModes();
+    if (selectedBiz === "") {
+      modalAlert("사업장을 먼저 선택해주세요.");
+      return;
+    }
+    try {
+      // 온라인 상태(network === "Online")인 실제 로봇만 가져오기 대상으로 노출.
+      // (test123(127.0.0.1)·IP 미설정 등 더미/오프라인 로봇은 NOS 맵을 가질 수 없음)
+      const [robotsRes, statusRes] = await Promise.all([
+        apiFetch(`/DB/robots`),
+        apiFetch(`/robot/status`),
+      ]);
+      const allRobots: Robot[] = await robotsRes.json();
+      const statuses: { robot_name: string; network: string }[] = await statusRes.json();
+      const onlineNames = new Set(
+        statuses.filter((s) => s.network === "Online").map((s) => s.robot_name)
+      );
+      setImportRobots(allRobots.filter((r) => onlineNames.has(r.RobotName)));
+    } catch (e) {
+      console.error("로봇 목록 로드 실패:", e);
+      setImportRobots([]);
+    }
+    setShowImportModal(true);
+  };
+
+  const handleOpenInitPoseModal = () => {
+    clearAllModes();
+    if (connectedRobots.length === 0) {
+      modalAlert("위치 재조정할 로봇을 먼저 연결해주세요.");
+      return;
+    }
+    if (connectedRobots.length === 1) {
+      setSelectedInitPoseRobot(connectedRobots[0]);
+      setShowInitPoseManualModal(true);
+      return;
+    }
+    setShowInitPoseTargetModal(true);
+  };
+
+  const handleSelectInitPoseRobot = (robot: Robot) => {
+    setSelectedInitPoseRobot(robot);
+    setShowInitPoseTargetModal(false);
+    setShowInitPoseManualModal(true);
+  };
+
+  const handleInitPoseResolved = async () => {
+    setShowInitPoseManualModal(false);
+    try {
+      const target = selectedInitPoseRobot?.id
+        ? `/robot/position?robot_id=${selectedInitPoseRobot.id}`
+        : "/robot/position";
+      const res = await apiFetch(target);
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data?.x === "number" && typeof data?.y === "number") {
+          setRobotPos({ x: data.x, y: data.y, yaw: Number(data.yaw ?? 0) });
+        }
+      }
+    } catch (e) {
+      console.warn("위치 재조정 후 로봇 위치 재조회 실패:", e);
+    }
+    modalAlert("로봇 위치를 갱신했습니다.");
+  };
+
+  const handleImported = async ({ map_id, floor_id, map_name }: { map_id: number; floor_id: number; map_name: string }) => {
+    setShowImportModal(false);
+    modalAlert(`"${map_name}" 맵을 가져왔습니다.`);
+    // 가져온 맵이 현재 보고 있는 층이면 목록 새로고침 + 선택
+    if (floor_id === selectedFloor) {
+      await loadMaps(floor_id);
+      setSelectedMap(map_id);
+    }
+  };
+
   const handleOpenSyncModal = async () => {
     clearAllModes();
     if (selectedMap === "") {
@@ -1312,48 +1574,71 @@ export default function MapManagementPage() {
 
   const [connectChecking, setConnectChecking] = useState(false);
 
-  const handleConnectConfirm = async () => {
-    const selected = robots.filter((r) => selectedConnectIds.includes(r.id));
-    if (selected.length === 0) {
-      setConnectedRobots([]);
-      setShowRobotModal(false);
-      return;
+  // 대상 로봇들을 /robot/status 기준 online/offline으로 분류 (연결·해제 공용)
+  const partitionByOnline = async (targets: Robot[]) => {
+    const res = await apiFetch(`/robot/status`);
+    if (!res.ok) throw new Error();
+    const statuses: { robot_id: number; network: string }[] = await res.json();
+    const online: Robot[] = [];
+    const offline: string[] = [];
+    for (const r of targets) {
+      const st = statuses.find((s) => s.robot_id === r.id);
+      if (st && st.network === "Online") online.push(r);
+      else offline.push(r.RobotName);
     }
+    return { online, offline };
+  };
 
+  // 연결은 가산(merge): 이미 연결된 로봇은 제외하고 online인 로봇만 추가한다.
+  const connectRobots = async (targets: Robot[]) => {
+    const fresh = targets.filter((t) => !connectedRobots.some((c) => c.id === t.id));
+    if (fresh.length === 0) return;
     setConnectChecking(true);
     try {
-      const res = await apiFetch(`/robot/status`);
-      if (!res.ok) throw new Error();
-      const statuses: { robot_id: number; network: string }[] = await res.json();
-
-      const offline: string[] = [];
-      const online: typeof selected = [];
-      for (const r of selected) {
-        const st = statuses.find((s) => s.robot_id === r.id);
-        if (st && st.network === "Online") {
-          online.push(r);
-        } else {
-          offline.push(r.RobotName);
-        }
-      }
-
+      const { online, offline } = await partitionByOnline(fresh);
       if (offline.length > 0) {
         modalAlert(`다음 로봇이 응답하지 않습니다:\n${offline.join(", ")}\n\n온라인 상태의 로봇만 연결됩니다.`);
       }
-
       if (online.length === 0) {
         modalAlert("연결 가능한 로봇이 없습니다.");
         return;
       }
-
-      setConnectedRobots(online);
-      setShowRobotModal(false);
+      setConnectedRobots((prev) => {
+        const has = new Set(prev.map((r) => r.id));
+        return [...prev, ...online.filter((r) => !has.has(r.id))];
+      });
     } catch {
       modalAlert("로봇 상태 확인에 실패했습니다.");
     } finally {
       setConnectChecking(false);
     }
   };
+
+  // 연결해제도 연결과 동일하게 online 상태에서만 가능하다.
+  // offline 로봇은 해제하지 않고 안내만 한다.
+  const disconnectRobots = async (targets: Robot[]) => {
+    if (targets.length === 0) return;
+    setConnectChecking(true);
+    try {
+      const { online, offline } = await partitionByOnline(targets);
+      if (offline.length > 0) {
+        modalAlert(`다음 로봇이 응답하지 않아 해제할 수 없습니다:\n${offline.join(", ")}\n\n온라인 상태의 로봇만 해제됩니다.`);
+      }
+      if (online.length === 0) return; // 해제 가능한 로봇 없음
+      const removeIds = new Set(online.map((r) => r.id));
+      setConnectedRobots((prev) => prev.filter((r) => !removeIds.has(r.id)));
+    } catch {
+      modalAlert("로봇 상태 확인에 실패했습니다.");
+    } finally {
+      setConnectChecking(false);
+    }
+  };
+
+  // 모달이 넘기는 id 배열을 Robot으로 매핑해 실행 (카드/선택/전체 공용 진입점)
+  const handleConnectIds = (ids: number[]) =>
+    connectRobots(robots.filter((r) => ids.includes(r.id)));
+  const handleDisconnectIds = (ids: number[]) =>
+    disconnectRobots(connectedRobots.filter((r) => ids.includes(r.id)));
 
   // ── 맵 삭제 ──
   const handleDeleteMap = async () => {
@@ -1445,11 +1730,13 @@ export default function MapManagementPage() {
           onBizChange={handleBizChange}
           onFloorChange={handleFloorChange}
           onMapChange={setSelectedMap}
+          onClearModes={clearAllModes}
           onSaveAll={handleSaveAll}
           onOpenSyncModal={handleOpenSyncModal}
-          onClearModes={clearAllModes}
+          onOpenImportModal={handleOpenImportModal}
           onDeleteMap={handleDeleteMap}
           onOpenRobotModal={handleOpenRobotModal}
+          onOpenInitPoseModal={handleOpenInitPoseModal}
         />
 
         {/* ── 메인 영역 ── */}
@@ -1460,7 +1747,7 @@ export default function MapManagementPage() {
               <svg
                 ref={svgRef}
                 className={styles.mapSvg}
-                style={draggingPlace ? { cursor: "grabbing" } : isPlaceMode ? { cursor: "crosshair" } : (isDeleteMode || isRouteMode || isPathBuildMode) ? { cursor: "pointer" } : undefined}
+                style={draggingPlace ? { cursor: "grabbing" } : (isPlaceMode || isDangerMode) ? { cursor: "crosshair" } : (isDeleteMode || isRouteMode || isPathBuildMode) ? { cursor: "pointer" } : undefined}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -1489,6 +1776,49 @@ export default function MapManagementPage() {
                     }
                     return <g pointerEvents="none">{lines}</g>;
                   })()}
+                  {/* 위험구역(폴리곤) 레이어 비활성화 (요청에 의해 OFF — 에러 상황 방지)
+                  {mapMeta && (() => {
+                    const meta: SvgMetaLike = {
+                      originX: mapMeta.originX,
+                      originY: mapMeta.originY,
+                      resolution: mapMeta.resolution,
+                      imgWidth: processedImg.w,
+                      imgHeight: processedImg.h,
+                    };
+                    const toZone = (
+                      id: string,
+                      name: string,
+                      poly: number[][] | null | undefined
+                    ): DangerZone | null => {
+                      if (!poly || poly.length < 3) return null;
+                      return {
+                        id,
+                        name,
+                        floorId: typeof selectedFloor === "number" ? selectedFloor : null,
+                        points: poly.map(([x, y]) => ({ x, y })),
+                        status: "active",
+                      };
+                    };
+                    const zones: DangerZone[] = [
+                      ...mapPlaces
+                        .filter((p) => p.Category === "danger" && !deletedDbIds.has(p.id))
+                        .map((p) => toZone(`db_${p.id}`, p.LacationName, p.Polygon)),
+                      ...pendingPlaces
+                        .filter((p) => p.Category === "danger")
+                        .map((p) => toZone(p.tempId, p.LacationName, p.Polygon)),
+                    ].filter((z): z is DangerZone => z !== null);
+
+                    return (
+                      <DangerZoneLayer
+                        zones={zones}
+                        meta={meta}
+                        zoom={zoom}
+                        draftPoints={isDangerMode ? danger.points : []}
+                        cursorWorld={isDangerMode ? dangerCursor : null}
+                      />
+                    );
+                  })()}
+                  */}
                   {/* 경로 라인 표시 (DB + pending) */}
                   {mapMeta && (() => {
                     const allRoutes = [
@@ -1594,12 +1924,14 @@ export default function MapManagementPage() {
                     return segments;
                   })()}
 
-                  {/* 저장된 장소 + 미저장 장소 마커 표시 */}
+                  {/* 저장된 장소 + 미저장 장소 마커 표시 (위험구역은 DangerZoneLayer 가 폴리곤으로 그림) */}
                   {mapMeta && [
                     ...mapPlaces
-                      .filter((p) => !deletedDbIds.has(p.id))
+                      .filter((p) => !deletedDbIds.has(p.id) && p.Category !== "danger")
                       .map((p) => ({ key: `db_${p.id}`, dbId: p.id, tempId: null as string | null, name: p.LacationName, x: p.LocationX, y: p.LocationY, pending: false })),
-                    ...pendingPlaces.map((p) => ({ key: p.tempId, dbId: null as number | null, tempId: p.tempId, name: p.LacationName, x: p.LocationX, y: p.LocationY, pending: true })),
+                    ...pendingPlaces
+                      .filter((p) => p.Category !== "danger")
+                      .map((p) => ({ key: p.tempId, dbId: null as number | null, tempId: p.tempId, name: p.LacationName, x: p.LocationX, y: p.LocationY, pending: true })),
                   ].map((place) => {
                     // 드래그 중이면 드래그 좌표, 아니면 movedPlaces 또는 원본
                     const isDragging = draggingPlace?.name === place.name && dragWorldPos;
@@ -1728,6 +2060,7 @@ export default function MapManagementPage() {
                     const svgY = py - processedImg.h / 2;
                     return (
                       <g transform={`translate(${svgX}, ${svgY})`}>
+                        {/* 화살표 촉이 로봇 전방(yaw)을 향하도록: Y미러 보정(-yaw). +180° 보정은 ERR-05 오진 과보정이라 원복 */}
                         <g transform={`rotate(${-(robotPos.yaw * 180) / Math.PI})`}>
                           <g transform={`scale(${1 / zoom})`}>
                             <polygon
@@ -1741,6 +2074,7 @@ export default function MapManagementPage() {
                       </g>
                     );
                   })()}
+
                 </g>
               </svg>
             ) : selectedMap === "" ? (
@@ -1760,6 +2094,100 @@ export default function MapManagementPage() {
               지도를 클릭하여 장소 좌표를 선택하세요
             </div>
           )}
+
+          {showInitPoseTargetModal && (
+            <div className={styles.startOverlay} onClick={() => setShowInitPoseTargetModal(false)}>
+              <div className={styles.robotModal} onClick={(e) => e.stopPropagation()}>
+                <div className={styles.startHeader}>
+                  <div className={styles.startHeaderLeft}>
+                    <img src="/icon/robot_w.png" alt="" />
+                    <h2>위치 재조정 로봇 선택</h2>
+                  </div>
+                  <button
+                    className={styles.startCloseBtn}
+                    onClick={() => setShowInitPoseTargetModal(false)}
+                  >
+                    &times;
+                  </button>
+                </div>
+
+                <div className={styles.robotBody}>
+                  <div className={styles.robotActionBar}>
+                    <div className={styles.robotActionBarInfo}>
+                      <span className={styles.robotConnectedDot} />
+                      <span className={styles.robotConnCount}>
+                        {connectedRobots.length}대 연결
+                      </span>
+                      <span
+                        className={styles.robotConnNames}
+                        title={connectedRobots.map((r) => r.RobotName).join(", ")}
+                      >
+                        재조정할 로봇 1대를 선택하세요
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={styles.startSection}>
+                    <div className={styles.startSectionTitle}>
+                      <span>연결된 로봇</span>
+                      <div className={styles.startSectionLine} />
+                    </div>
+
+                    <div className={styles.robotList}>
+                      {connectedRobots.map((robot) => (
+                        <button
+                          key={robot.id}
+                          type="button"
+                          className={styles.robotItem}
+                          onClick={() => handleSelectInitPoseRobot(robot)}
+                        >
+                          <div className={styles.robotItemLeft}>
+                            <img
+                              src="/icon/robot_icon(1).png"
+                              alt=""
+                              className={styles.robotItemIcon}
+                            />
+                            <div>
+                              <div className={styles.robotItemName}>
+                                {robot.RobotName}
+                                <span className={styles.robotConnectedInline}>
+                                  <span className={styles.robotConnectedDot} />
+                                  연결됨
+                                </span>
+                              </div>
+                              <div className={styles.robotItemInfo}>
+                                {robot.ModelName && <span>{robot.ModelName}</span>}
+                                {robot.SerialNumber && <span>SN: {robot.SerialNumber}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.startFooter}>
+                  <button
+                    className={styles.startFooterBtn + " " + styles.startBtnCancel}
+                    onClick={() => setShowInitPoseTargetModal(false)}
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <InitPoseConfirmModal
+            open={showInitPoseManualModal}
+            robotId={selectedInitPoseRobot?.id}
+            robotName={selectedInitPoseRobot?.RobotName}
+            detectedAt={new Date().toISOString()}
+            onResolved={handleInitPoseResolved}
+            onClose={() => setShowInitPoseManualModal(false)}
+            zIndex={10000}
+          />
           {isDeleteMode && (
             <div className={styles.placeBanner} style={{ background: "rgba(183, 28, 28, 0.8)" }}>
               삭제할 장소 또는 구간을 클릭하세요
@@ -1847,6 +2275,63 @@ export default function MapManagementPage() {
               )}
             </>
           )}
+          {isDangerMode && (
+            <>
+              <div className={styles.placeBanner} style={{ background: "rgba(232, 120, 0, 0.9)" }}>
+                {danger.points.length === 0
+                  ? "지도를 클릭하여 위험구역 꼭짓점을 찍으세요 (3개 이상)"
+                  : `꼭짓점 ${danger.points.length}개 — ${danger.canFinish ? "완료를 눌러 저장하세요" : "최소 3개 이상 찍으세요"}`}
+              </div>
+              <div
+                style={{
+                  position: "absolute", top: 50, left: "50%", transform: "translateX(-50%)",
+                  zIndex: 21, display: "flex", gap: 4, alignItems: "center",
+                  background: "var(--surface-3)", borderRadius: 8, padding: "4px 6px",
+                  border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={(e) => { e.stopPropagation(); danger.undo(); setDangerCursor(null); }}
+                  disabled={danger.points.length === 0}
+                  style={{
+                    padding: "5px 12px", borderRadius: 6, border: "1px solid transparent",
+                    background: "transparent", color: "var(--text-primary)",
+                    fontSize: "var(--font-size-sm)",
+                    cursor: danger.points.length === 0 ? "default" : "pointer",
+                    opacity: danger.points.length === 0 ? 0.4 : 1,
+                  }}
+                >
+                  되돌리기
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); resetDangerMode(); }}
+                  style={{
+                    padding: "5px 12px", borderRadius: 6, border: "1px solid transparent",
+                    background: "transparent", color: "var(--text-primary)",
+                    fontSize: "var(--font-size-sm)", cursor: "pointer",
+                  }}
+                >
+                  취소
+                </button>
+                <div style={{ width: 1, height: 22, background: "rgba(255,255,255,0.15)", margin: "0 4px" }} />
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDangerFinish(); }}
+                  disabled={!danger.canFinish}
+                  style={{
+                    padding: "5px 16px", borderRadius: 6,
+                    border: "1px solid var(--color-info-border)",
+                    background: danger.canFinish ? "var(--color-info-bg)" : "transparent",
+                    color: "var(--text-primary)", fontSize: "var(--font-size-sm)",
+                    cursor: danger.canFinish ? "pointer" : "default",
+                    fontWeight: 600, opacity: danger.canFinish ? 1 : 0.4,
+                  }}
+                >
+                  완료
+                </button>
+              </div>
+            </>
+          )}
           </div>
 
           {/* 격자 버튼 (좌측 상단 모서리) */}
@@ -1884,6 +2369,7 @@ export default function MapManagementPage() {
                 }
                 // 도킹 포인트 → 충전소 간 거리 (0.866m)
                 const CHARGE_OFFSET = 0.866;
+                // 로봇 전방 = robotPos.yaw (ERR-05 +π 보정은 과보정 오진이라 원복)
                 const yaw = robotPos.yaw;
                 // 충전소 좌표: 로봇이 바라보는 방향 앞 0.866m
                 const chargeX = robotPos.x + CHARGE_OFFSET * Math.cos(yaw);
@@ -1964,6 +2450,7 @@ export default function MapManagementPage() {
                 setIsDeleteMode(false);
                 setRouteStartName(null);
                 setRouteEndName(null);
+                resetDangerMode();
               }}
             >
               <img src="/icon/path_way.png" alt="구간" className={styles.toolBtnImg} />
@@ -1981,6 +2468,7 @@ export default function MapManagementPage() {
                 setIsRouteMode(false);
                 setRouteStartName(null);
                 setRouteEndName(null);
+                resetDangerMode();
               }}
             >
               <img src="/icon/place_point.png" alt="장소" className={styles.toolBtnImg} />
@@ -1998,11 +2486,24 @@ export default function MapManagementPage() {
                 setIsRouteMode(false);
                 setRouteStartName(null);
                 setRouteEndName(null);
+                resetDangerMode();
               }}
             >
               <span className={styles.toolBtnIcon}>&#10005;</span>
               <span>삭제</span>
             </button>
+            {/* 위험구역 버튼 — 2차 개발 예정, 현재 미표시(숨김)
+            <button
+              type="button"
+              className={styles.toolBtn}
+              disabled
+              title="2차 개발 예정"
+              style={{ opacity: 0.4, cursor: "not-allowed" }}
+            >
+              <span className={styles.toolBtnIcon} style={{ color: "#e87800" }}>&#9650;</span>
+              <span>위험구역</span>
+            </button>
+            */}
           </div>
 
           {/* 좌측 하단 줌/회전 컨트롤 (오버레이) */}
@@ -2168,8 +2669,20 @@ export default function MapManagementPage() {
         setSelectedConnectIds={setSelectedConnectIds}
         selectedMap={selectedMap}
         onClose={() => setShowRobotModal(false)}
-        onConfirm={handleConnectConfirm}
+        onConnect={handleConnectIds}
+        onDisconnect={handleDisconnectIds}
+        onRefresh={handleRefreshRobotList}
         checking={connectChecking}
+        loading={robotListLoading}
+      />
+      <ImportMapModal
+        isOpen={showImportModal}
+        robots={importRobots}
+        floors={floors}
+        defaultBizId={selectedBiz}
+        defaultFloorId={selectedFloor}
+        onClose={() => setShowImportModal(false)}
+        onImported={handleImported}
       />
       <MapSyncModal
         isOpen={showSyncModal}
@@ -2453,6 +2966,7 @@ export default function MapManagementPage() {
           lockCoords={isFromRobotPos}
           defaultYaw={isFromRobotPos && robotPos ? robotPos.yaw : undefined}
           defaultCategory={isChargeCreate ? "charge" : undefined}
+          onSelectDanger={handleStartDangerFromPlace}
           onClose={() => {
             setShowPlaceModal(false);
             setPlaceClickCoords(null);
@@ -2462,6 +2976,9 @@ export default function MapManagementPage() {
           }}
           onConfirm={(place) => {
             // 충전소 생성 시 도킹 포인트도 함께 추가
+            // 도킹/충전소 좌표는 모달이 열린 시점(= 생성 버튼 클릭)에 robotPos로 확정되어
+            // 모달에 표시된 값 그대로 저장된다(보이는 값 = 저장 값). 충전소(★)는 도킹 기준
+            // +0.866m 정면(#1, 유지). 정지 충전 중 로봇 기준이므로 이 스냅샷으로 충분하다.
             if (isChargeCreate && chargeDockingPlace) {
               const dock: PendingPlace = {
                 ...chargeDockingPlace,
@@ -2490,7 +3007,20 @@ export default function MapManagementPage() {
         />
       )}
 
-
+      {/* 위험구역 이름 입력 모달 비활성화 (요청에 의해 OFF — 에러 상황 방지)
+      <DangerZoneSaveModal
+        isOpen={dangerSave !== null}
+        points={dangerSave?.points ?? []}
+        centroid={dangerSave?.centroid ?? { x: 0, y: 0 }}
+        floorName={
+          selectedFloor !== ""
+            ? floors.find((a) => a.id === selectedFloor)?.FloorName ?? ""
+            : ""
+        }
+        onClose={() => setDangerSave(null)}
+        onConfirm={handleDangerConfirm}
+      />
+      */}
 
     </div>
     <MapAlertModal

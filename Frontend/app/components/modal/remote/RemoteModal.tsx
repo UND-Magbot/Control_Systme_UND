@@ -55,6 +55,28 @@ export default function RemoteModal({
     setSelectedRobot(selectedRobots);
   }, [selectedRobots]);
 
+  // --- 층 id → 이름 매핑 (현재 층 배지용, 모달 열릴 때 1회 로드) ---
+  const [floorNameById, setFloorNameById] = useState<Record<number, string>>({});
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    apiFetch(`/map/floors`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: { id: number; FloorName: string }[]) => {
+        if (cancelled || !Array.isArray(data)) return;
+        const map: Record<number, string> = {};
+        for (const f of data) map[f.id] = f.FloorName;
+        setFloorNameById(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  const floorName =
+    selectedRobot?.currentFloorId != null
+      ? (floorNameById[selectedRobot.currentFloorId] ?? null)
+      : null;
+
   // --- 로봇별 카메라 동적 로드 ---
   const [robotCameras, setRobotCameras] = useState<Camera[]>(camera);
   const [camerasReady, setCamerasReady] = useState(false);
@@ -150,6 +172,7 @@ export default function RemoteModal({
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <StatusBar
           selectedRobot={selectedRobot}
+          floorName={floorName}
           onClose={handleClose}
           controlledBy={readOnly ? controlledBy : undefined}
           isRecording={recording.isRecording}

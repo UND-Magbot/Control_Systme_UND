@@ -44,8 +44,9 @@ class ChargeStatusRelay(Node):
             depth=10,
         )
 
-        self.latest_state = 0
-        self.latest_error_code = 0
+        # None 센티넬: 첫 콜백은 값과 무관하게 항상 전송하여 receiver 캐시를 채운다(C-4).
+        self.latest_state = None
+        self.latest_error_code = None
 
         self.create_subscription(
             StdStatus,
@@ -57,9 +58,17 @@ class ChargeStatusRelay(Node):
         self.get_logger().info("구독 시작: /CHARGE_STATUS (drdds/msg/StdStatus)")
 
     def on_charge_status(self, msg):
-        """/CHARGE_STATUS 토픽 콜백 (drdds/msg/StdStatus: int32 state, uint32 error_code)."""
+        """/CHARGE_STATUS 토픽 콜백 (drdds/msg/StdStatus: int32 state, uint32 error_code).
+
+        변화 감지(C-4): state/error_code가 직전과 동일하면 UDP 송신·로깅을 생략한다.
+        토픽이 고빈도로 publish되어도 값이 바뀔 때만 전달하여 불필요한 UDP·로그
+        스팸을 제거한다. (receiver는 마지막 값을 캐시하므로 변화분만 보내도 충분)
+        """
         state = int(msg.state)
         error_code = int(msg.error_code)
+
+        if state == self.latest_state and error_code == self.latest_error_code:
+            return  # 변화 없음 — 전송/로깅 생략
 
         self.latest_state = state
         self.latest_error_code = error_code

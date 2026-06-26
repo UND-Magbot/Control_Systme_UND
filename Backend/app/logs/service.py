@@ -33,11 +33,14 @@ ALERT_TRIGGER_RULES = {
     "robot_connection_error":  ("Robot", "error"),
     "rtsp_error":              ("Robot", "error"),
     "nav_error":               ("Schedule", "error"),
+    "nav_comm_lost":           ("Robot", "error"),  # 통신 두절로 자율주행 안전 정지 (사용자 알림)
     "remote_send_error":       ("Robot", "error"),
     "robot_error_code":        ("Robot", "error"),
     "motor_overheat_warning":  ("Robot", "error"),  # 관절 모터 과열 경고 (75°C+)
     "motor_overheat_danger":   ("Robot", "error"),  # 관절 모터 과열 위험 (85°C+) → 보호 동작
     "thermal_temp_high":       ("Robot", "event"),  # 열화상에서 고온 객체 감지 (45°C+)
+    "robot_initpose_manual_needed": ("Robot", "error"),  # 자동 위치 초기화 실패 → 수동 재조정 필요 (확인창)
+    "robot_initpose_no_chargestation": ("Robot", "error"),  # 충전 중인데 충전소 미등록 (설정 미비)
 }
 
 # 로그 Action → 알림 제목 매핑
@@ -58,11 +61,15 @@ ACTION_TITLES = {
     "nav_poll_timeout":        "네비게이션 폴링 타임아웃",
     "position_recv_error":     "위치 수신 오류",
     "db_operation_error":      "데이터베이스 오류",
+    "robot_initpose_manual_needed": "위치 초기화 필요",
+    "robot_initpose_recovered":     "위치 초기화 복구",
+    "robot_initpose_no_chargestation": "충전소 미등록",
     # Schedule
     "nav_start":               "네비게이션 시작",
     "nav_arrival":             "웨이포인트 도착",
     "nav_complete":            "네비게이션 완료",
     "nav_error":               "네비게이션 오류",
+    "nav_comm_lost":           "로봇 통신 두절 — 자율주행 정지",
     "nav_loop":                "네비게이션 반복",
     "place_move_start":        "장소 이동",
     "path_move_start":         "경로 이동",

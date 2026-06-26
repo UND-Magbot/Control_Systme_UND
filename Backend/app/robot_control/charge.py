@@ -219,6 +219,58 @@ def trigger_overheat_protection() -> None:
         except Exception as e:
             print(f"[ERR] 과열 보호 SIT 전송 실패: {e}")
         print("🌡️ 모터 과열 보호(유휴): 도킹 루트 없음 — 제자리 SIT")
+def _send_start_charge_packet() -> bool:
+    """start-charge UDP 패킷만 전송 (Charge=1, 로그 없이). 내부 헬퍼.
+
+    완충 대기(state 0)에서 도크 이탈 시퀀스(state 2→3→0)를 트리거하기 위해
+    충전을 잠깐 재개(state→2)시키는 용도. 이후 stop-charge(Charge=0)로 이탈.
+    """
+    from app.robot_io import ROBOT_IP, ROBOT_PORT, build_packet
+
+    asdu = {
+        "PatrolDevice": {
+            "Type": 2,
+            "Command": 24,
+            "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "Items": {"Charge": 1},
+        }
+    }
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        return True
+    except Exception as e:
+        print(f"[WARN] start-charge(Charge=1) 전송 실패: {e}")
+        return False
+    finally:
+        sock.close()
+
+
+def _send_charge_clear_packet() -> bool:
+    """Charge=2(충전 상태 지우기) UDP 패킷 전송. 내부 헬퍼.
+
+    언도킹(도킹 이탈) 확정 시점에 로봇 충전 상태머신을 강제 리셋하여,
+    ROS2 `/CHARGE_STATUS` 전환 통보 누락에 의한 stale(충전 중) 고정을 방지한다.
+    """
+    from app.robot_io import ROBOT_IP, ROBOT_PORT, build_packet
+
+    asdu = {
+        "PatrolDevice": {
+            "Type": 2,
+            "Command": 24,
+            "Time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "Items": {"Charge": 2},
+        }
+    }
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        return True
+    except Exception as e:
+        print(f"[WARN] charge-clear(Charge=2) 전송 실패: {e}")
+        return False
+    finally:
+        sock.close()
 
 
 def prepare_undock_waypoints(
@@ -349,6 +401,11 @@ def _return_to_charge_internal(cancel_running: bool = True) -> dict:
     from app.robot_io.sender import send_to_robot
     from app.scheduler.loop import cancel_active_schedule, get_active_schedule_id
 
+    # 주의: 위치 미초기화(initpose_pending) 여도 충전복귀는 막지 않는다.
+    #   배터리 방전 = 더 큰 사고이므로 충전소 복귀는 항상 시도해야 한다(충전소는 고정 목적지이고
+    #   로봇 자체 도킹 정렬도 있어 위치가 약간 어긋나도 도킹 가능). 위치 미확정 시 주행을 막는
+    #   안전 가드는 선택적 자율주행(장소이동·경로·스케줄)에만 적용한다.
+
     db = SessionLocal()
     try:
         # 충전소(category=charge)를 로봇 현재 층 기준으로 선택 → 도킹 포인트는 "{충전소이름}-1"
@@ -458,4 +515,108 @@ def return_to_charge():
             "dock_point": result["dock_point"],
             "charge_station": result["charge_station"],
         }
+    return {"status": "error", "msg": result["msg"]}
+
+
+def _undock_internal(
+    max_wait_seconds: float = 12.0,
+    poll_interval: float = 1.0,
+    recharge_wait_seconds: float = 6.0,
+) -> dict:
+    """충전소 도킹에서 빠져나와 SIT 자세로 대기 전환.
+
+    도크 물리 이탈은 로봇 펌웨어의 충전 상태머신(/CHARGE_STATUS) 전환으로 수행된다:
+    **state 2(충전) → 3(부두에서 나가기) → 0(대기)**. 전용 'undock' 명령이 없으므로
+    이 시퀀스를 거쳐야 로봇이 도크에서 나온다.
+
+    절차:
+      1) **완충 대기(비충전·state≠2)면 먼저 Charge=1(충전 재개)로 state 2 진입** —
+         이미 Charge=0 인 상태에서는 stop-charge 만으로는 이탈 시퀀스가 돌지 않기 때문.
+         (충전 중이면 이 단계 생략)
+      2) stop-charge(Charge=0) 송신 → state 2→3(부두에서 나가기)→0 : 도크 물리 이탈
+      3) 이탈 확인 폴링(state 0 복귀 또는 비충전, 최대 max_wait_seconds)
+      4) Charge=2(상태 클리어) + runtime 충전 상태 능동 클리어(stale 방지)
+      5) SIT 자세 명령 → 도킹 포인트에서 대기
+
+    Returns:
+        {"ok": bool, "msg": str, "dock_point": str|None}
+    """
+    from app.robot_io import runtime
+    from app.robot_io.sender import send_to_robot
+
+    rid = get_robot_id()
+    if not rid:
+        return {"ok": False, "msg": "로봇을 찾을 수 없습니다.", "dock_point": None}
+
+    def _charging() -> bool:
+        try:
+            return runtime.is_charging(rid)
+        except Exception:
+            return False
+
+    def _state() -> int:
+        try:
+            return runtime.get_charge_state(rid)
+        except Exception:
+            return 0
+
+    log_event("robot", "undock_start", "언도킹 시작: 도크 이탈 후 SIT 대기",
+              robot_id=rid, robot_name=get_robot_name(), business_id=get_robot_business_id())
+
+    # 1) 완충 대기(이미 Charge=0, state≠2)면 충전을 잠깐 재개해 state 2 로 만들어
+    #    도크 이탈 시퀀스(2→3→0)가 돌 수 있게 한다.
+    if not _charging() and _state() != 2:
+        _send_start_charge_packet()  # Charge=1
+        print("🪑 언도킹: 완충 대기 → 충전 재개(Charge=1)로 도크 상태 진입 시도")
+        elapsed = 0.0
+        while elapsed < recharge_wait_seconds:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            if _charging() or _state() == 2:
+                print(f"🔋 충전 상태(state=2) 진입 확인 ({elapsed:.1f}s)")
+                break
+
+    # 2) Charge=0 → state 2→3(부두에서 나가기)→0 : 도크 물리 이탈 트리거
+    _send_stop_charge_packet()
+    print("🪑 언도킹: 충전 해제(Charge=0) 송신 — 도크 이탈(state 2→3→0) 트리거")
+
+    # 3) 이탈 확인 폴링 — 비충전 + state 0 복귀(나가기 3 거쳐 대기 0)
+    elapsed = 0.0
+    while elapsed < max_wait_seconds:
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+        if not _charging() and _state() in (0, 3):
+            if _state() == 0:
+                print(f"🔋 도크 이탈 확인(state=0) ({elapsed:.1f}s)")
+                break
+
+    # 4) Charge=2 클리어 + runtime 능동 클리어 (stale 고정 방지)
+    _send_charge_clear_packet()
+    try:
+        runtime.clear_charge_state(rid)
+    except Exception as e:
+        print(f"[WARN] charge_state 클리어 실패: {e}")
+
+    # 5) SIT 자세로 대기 (도킹 포인트)
+    try:
+        send_to_robot("SIT")
+    except Exception as e:
+        print(f"[ERR] SIT 자세 명령 실패: {e}")
+    print("🪑 언도킹 완료 — 도킹 포인트에서 SIT 대기")
+    log_event("robot", "undock_complete", "언도킹 완료 — SIT 대기",
+              robot_id=rid, robot_name=get_robot_name(), business_id=get_robot_business_id())
+
+    return {"ok": True, "msg": "도크에서 이탈해 SIT 대기로 전환합니다.", "dock_point": None}
+
+
+@router.post("/robot/undock")
+def undock():
+    """충전소 도킹에서 빠져나와 SIT 자세로 대기.
+
+    기존 '충전 해제'(Charge=0)와 동일하게 도크를 이탈시키고 SIT 까지 수행한다.
+    충전 중·완충 후 대기 어느 상태에서도 호출 가능.
+    """
+    result = _undock_internal()
+    if result["ok"]:
+        return {"status": "ok", "msg": result["msg"], "dock_point": result["dock_point"]}
     return {"status": "error", "msg": result["msg"]}

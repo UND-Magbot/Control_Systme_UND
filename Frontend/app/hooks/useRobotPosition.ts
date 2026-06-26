@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { RobotPosition } from "@/app/components/map/types";
 import { apiFetch } from "@/app/lib/api";
+import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -57,47 +58,50 @@ export function useRobotPosition(enabled = true): UseRobotPositionReturn {
     rafRef.current = requestAnimationFrame(animate);
   }, []);
 
-  useEffect(() => {
-    if (!enabled) return;
-
-    const fetchPos = () => {
-      apiFetch(`/robot/position`)
-        .then((res) => res.json())
-        .then((data: unknown) => {
-          if (!isValidPosition(data)) {
-            // 좌표 누락·비정상 응답 → 실패로 간주 (NaN 좌표 전파 방지)
-            failCountRef.current += 1;
-            if (failCountRef.current >= ERROR_THRESHOLD) {
-              setHasError(true);
-            }
-            return;
-          }
-          targetRef.current = data;
-          failCountRef.current = 0;
-          setHasError(false);
-          if (!isReady) {
-            // 첫 응답: LERP 없이 즉시 위치 설정
-            currentRef.current = data;
-            setCurrentPos(data);
-            setIsReady(true);
-          }
-        })
-        .catch(() => {
+  const fetchPos = useCallback(() => {
+    apiFetch(`/robot/position`)
+      .then((res) => res.json())
+      .then((data: unknown) => {
+        if (!isValidPosition(data)) {
+          // 좌표 누락·비정상 응답 → 실패로 간주 (NaN 좌표 전파 방지)
           failCountRef.current += 1;
           if (failCountRef.current >= ERROR_THRESHOLD) {
             setHasError(true);
           }
-        });
-    };
+          return;
+        }
+        targetRef.current = data;
+        failCountRef.current = 0;
+        setHasError(false);
+        if (!isReady) {
+          // 첫 응답: LERP 없이 즉시 위치 설정
+          currentRef.current = data;
+          setCurrentPos(data);
+          setIsReady(true);
+        }
+      })
+      .catch(() => {
+        failCountRef.current += 1;
+        if (failCountRef.current >= ERROR_THRESHOLD) {
+          setHasError(true);
+        }
+      });
+  }, [isReady]);
 
-    fetchPos();
-    const interval = setInterval(fetchPos, POLL_INTERVAL);
+  // 위치 폴링 — 가시성 인지(C-7): 보일 때 1s, 백그라운드에서는 일시정지(hiddenMs=null).
+  // 지도를 보지 않는 동안 1초 위치 폴링이 계속되던 낭비를 제거한다.
+  useVisibilityAwareInterval(fetchPos, {
+    activeMs: POLL_INTERVAL,
+    hiddenMs: null,
+    immediate: true,
+    enabled,
+  });
+
+  // 부드러운 보간 애니메이션 (RAF) — 탭이 가려지면 브라우저가 자동으로 RAF를 멈춘다.
+  useEffect(() => {
+    if (!enabled) return;
     rafRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      clearInterval(interval);
-      cancelAnimationFrame(rafRef.current);
-    };
+    return () => cancelAnimationFrame(rafRef.current);
   }, [enabled, animate]);
 
   return { position: currentPos, hasError, isReady };
