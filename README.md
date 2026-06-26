@@ -130,6 +130,7 @@ python3 receiver.py
 | 영상 녹화 시작 실패 | FFmpeg 미설치 / PATH 누락 | `Backend/ffmpeg_bin/` 사용 또는 시스템 PATH에 ffmpeg 추가 |
 | Backend 기동 시 DB 연결 실패 | MySQL/MariaDB 미기동 또는 `.env` DB 설정 누락 | DB 서비스 확인, `Backend/.env` 채움 |
 | robot_receiver 데이터 안 들어옴 | ROS2 토픽 미수신 또는 UDP 50000/50001 방화벽 차단 | `ros2 topic echo /odom` 확인, 해당 포트 개방 |
+| receiver.py를 윈도우에서 리눅스 서버로 복사 시 `/usr/bin/env: 'python3\r'` 오류 | Windows CRLF 줄바꿈이 셸뱅에 섞임(`python3\r`) | 리눅스에서 `sed -i 's/\r$//' ~/Control_system/receiver.py` (또는 `dos2unix`) 실행 |
 
 ---
 
