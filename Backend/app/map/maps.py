@@ -230,11 +230,26 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
                         detail=f"맵 데이터가 불완전합니다(full_cloud.pcd 없음): {map_name}. 매핑을 다시 완료한 뒤 활성화하세요.",
                     )
 
-                # active 심볼릭 링크 교체.
-                # ⚠️ rm -f 는 active 가 실제 디렉토리(매핑 중단 잔재)일 때 못 지워 교체가 먹히지 않는다.
-                #    rm -rf(후행 슬래시 없음 → 심볼릭이면 링크만 제거)로 디렉토리·심볼릭 모두 안전히 교체.
-                activate_cmd = f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
+                # active 심볼릭 링크 교체 (robust).
+                #   rm -rf(후행 슬래시 없음 → 심볼릭이면 링크만, 실제 디렉토리 잔재면 통째로 제거)
+                #   + ln -sfn(-n: active 가 심볼릭→디렉토리여도 따라가 중첩 생성하지 않고 교체).
+                #   ⚠️ rm 과 ln 사이에 다른 프로세스(drmap/localization)가 active 를 실제
+                #   디렉토리로 재생성하면, ln 이 그 디렉토리 안에 중첩 링크를 만들고 성공(exit 0)해
+                #   active 가 심볼릭이 아닌 일반 디렉토리로 깨진다(층 변경 중 active 유실).
+                #   → 교체 직후 test -L 로 심볼릭 여부를 검증하고, 아니면 예외를 던져
+                #   재시도 루프로 자가복구한다.
+                activate_cmd = (
+                    f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && "
+                    f"sudo ln -sfn {map_dir} {NOS_MAP_BASE_DIR}/active"
+                )
                 ssh_exec(client, activate_cmd)
+                is_link = ssh_exec(
+                    client, f"test -L {NOS_MAP_BASE_DIR}/active && echo OK || echo NO"
+                ).strip().endswith("OK")
+                if not is_link:
+                    raise Exception(
+                        f"active 재링크 후에도 심볼릭이 아님(디렉토리로 깨짐) — 재시도: {NOS_MAP_BASE_DIR}/active"
+                    )
 
                 # localization 서비스 재시작 (새 맵 로드)
                 ssh_exec(client, "sudo systemctl restart localization")

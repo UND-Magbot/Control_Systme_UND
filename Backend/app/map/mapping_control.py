@@ -492,6 +492,31 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
         # 3~4. zip 압축 + SFTP 다운로드 + PGM→PNG (가져오기와 공용 헬퍼)
         paths = download_robot_map(client, map_dir, req.MapName)
 
+        # 4.5 active 심볼릭 링크를 방금 완성된 맵으로 명확히 고정한다.
+        #   drmap stop_mapping 이 active 를 심볼릭으로 되돌려주지 않고 실제 작업 디렉토리
+        #   (blocks 만 남은 잔재)로 남겨, active 가 심볼릭이 아닌 일반 디렉토리로 깨지는
+        #   사례가 있다 → 여기서 robust 하게 재링크한다.
+        #   rm -rf(후행 슬래시 없음): active 가 심볼릭이면 링크만, 실제 디렉토리 잔재면 통째로
+        #   제거 → ln -s 로 교체. map_dir(=완성된 {MapName}-{ts})는 위에서 존재 확인됨.
+        try:
+            ssh_exec(
+                client,
+                f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && "
+                f"sudo ln -sfn {map_dir} {NOS_MAP_BASE_DIR}/active",
+            )
+            is_link = ssh_exec(
+                client, f"test -L {NOS_MAP_BASE_DIR}/active && echo OK || echo NO"
+            ).strip().endswith("OK")
+            if is_link:
+                ssh_exec(client, "sudo systemctl restart localization")
+                print(f"🗺️ active 재링크: → {map_dir} (localization 재시작)")
+            else:
+                # 재링크 직후에도 심볼릭이 아니면(경쟁 프로세스가 다시 디렉토리로 생성 등)
+                # 자동 충전/측위가 엉뚱한 맵을 잡지 않도록 명확히 경고만 남긴다(저장은 정상).
+                print(f"[WARN] active 재링크 후에도 심볼릭이 아님 — 수동 확인 필요: {NOS_MAP_BASE_DIR}/active")
+        except Exception as e:
+            print(f"[WARN] active 재링크 실패(매핑 저장은 정상 처리됨): {e}")
+
         # 5. SSH 연결 종료
         client.close()
         client = None
@@ -510,7 +535,7 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
         db.commit()
         db.refresh(robot_map)
 
-        # 8. 상태 초기화 (정상 종료 → active 는 방금 완성된 새 맵이 맞으므로 복원하지 않음)
+        # 8. 상태 초기화 (active 는 위 4.5 에서 완성된 새 맵으로 명시적으로 재링크함)
         mapping_state["is_running"] = False
         mapping_state["map_name"] = None
         mapping_state["business_id"] = None
