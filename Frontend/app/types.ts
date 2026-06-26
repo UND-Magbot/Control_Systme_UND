@@ -56,6 +56,8 @@ export type RobotRowData = {
     currentFloorId: number | null;
     currentMapId: number | null;
     position: { x: number; y: number; yaw: number; timestamp: number };
+    initposePending?: boolean;                                                          // localization 미확정(발산/리셋) 여부
+    trustedPosition?: { x: number; y: number; yaw: number; timestamp: number } | null;  // 미확정 시 표시할 마지막 신뢰 위치
     network: 'Online' | 'Offline' | 'Error' | '-';
     power: 'On' | 'Off' | '-';                   // Sleep=0 → On, 그 외 → Off
     sleep?: number | null;                       // 원시 Sleep 값 (0=켜짐, 그 외=꺼짐)
