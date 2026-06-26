@@ -3,16 +3,40 @@
 
 import socket
 import json
+import os
 import struct
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
-ROBOT_IP = "10.21.31.103"
-ROBOT_PORT = 30000
+
+def _env_str(name, default):
+    value = os.environ.get(name, "").strip()
+    return value or default
+
+
+def _env_int(name, default):
+    value = os.environ.get(name, "").strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        print(f"[ROBOT CONFIG] {name}={value!r} 값이 정수가 아니어서 기본값 {default} 사용")
+        return default
+
+
+ROBOT_IP = _env_str("ROBOT_IP", "10.21.31.103")
+ROBOT_PORT = _env_int("ROBOT_PORT", 30000)
+# 로봇 본체 ASDU TCP 포트 (hop ② 신뢰 전송용; UDP 30000과 별도 채널).
+# NAV 명령을 WiFi 구간 유실 없이 보장 전송하기 위해 사용한다.
+ROBOT_TCP_PORT = _env_int("ROBOT_TCP_PORT", 30001)
 
 # PC가 UDP 명령 받을 포트
-SERVER_UDP_PORT = 40000
+SERVER_UDP_PORT = _env_int("RECEIVER_PORT", _env_int("SERVER_UDP_PORT", 40000))
+# PC가 보내는 신뢰성 명령(NAV) TCP 수신 포트 (hop ①).
+# Backend app/robot_io/config.py 의 RECEIVER_TCP_PORT 와 반드시 일치해야 한다.
+SERVER_TCP_PORT = _env_int("RECEIVER_TCP_PORT", _env_int("SERVER_TCP_PORT", 40001))
 
 # relay_map.py 로컬 통신 포트
 MAPPING_LOCAL_PORT = 50000
@@ -20,7 +44,12 @@ mapping_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 mapping_sock.settimeout(1.0)
 
 # relay_charge.py 로컬 통신 포트
-CHARGE_LOCAL_PORT = 50001
+CHARGE_LOCAL_PORT = _env_int("CHARGE_LOCAL_PORT", 50001)
+
+# relay_motion.py 로컬 통신 포트
+MOTION_RELAY_PORT = 50003       # receiver → relay_motion (보행/상태 전환 명령 송신)
+MOTION_INFO_LOCAL_PORT = 50002  # relay_motion → receiver (현재 gait/state 수신)
+motion_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 # 로봇이 PC에서 오는 명령 수신용 소켓
 server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -37,11 +66,13 @@ sock.bind(("", 30001))
 # 위치 폴링 (추가)
 # ============================================================
 latest_position = {"x": 0.0, "y": 0.0, "yaw": 0.0, "timestamp": 0}
-latest_nav_status = {"status": None, "timestamp": 0}
+latest_nav_status = {"status": None, "timestamp": 0, "mono": 0.0}
 latest_battery = {}
 latest_device_temp = {}
 latest_charge_state = {"state": 0, "error_code": 0, "timestamp": 0}  # /CHARGE_STATUS
 latest_basic_status = {}  # Type=1002, Command=6 (Obtain Basic Status) — Sleep 값 등 포함
+latest_motion_info = {}   # relay_motion.py(/MOTION_INFO) → {"gait":..., "state":...}
+latest_abnormal_status = []  # Type=1002, Command=3 (Abnormal Status) — 활성 에러 객체 배열(ErrorList)
 
 def nav_poll_loop():
     global latest_nav_status
@@ -83,7 +114,10 @@ def nav_poll_loop():
                 if status is not None:
                     latest_nav_status = {
                         "status": status,
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
+                        # 갱신 시점을 monotonic으로 기록 → NAV_STATUS 응답 시 age 계산에 사용.
+                        # 백엔드와 시계가 어긋나도 age는 로봇 NOS 한 머신 안에서만 계산된다.
+                        "mono": time.monotonic(),
                     }
         except socket.timeout:
             pass
@@ -97,9 +131,11 @@ def battery_poll_loop():
     """heartbeat(Type=100, Command=100) 전송 → 로봇이 push하는 패킷 중
     - Type=1002, Command=5 에서 BatteryStatus 추출
     - Type=1002, Command=6 (Obtain Basic Status)에서 Sleep / PowerManagement 추출
+    - Type=1002, Command=3 (Abnormal Status)에서 활성 에러 목록(ErrorList) 추출
     - /CHARGE_STATUS 패킷에서 충전 상태 추출
     """
     global latest_battery, latest_charge_state, latest_device_temp, latest_basic_status
+    global latest_abnormal_status
     bat_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     bat_sock.settimeout(1.0)
 
@@ -164,7 +200,16 @@ def battery_poll_loop():
                             "Sleep": basic.get("Sleep"),
                             "PowerManagement": basic.get("PowerManagement"),
                             "MotionState": basic.get("MotionState"),
+                            "timestamp": time.time(),
                         }
+
+                    elif ptype == 1002 and pcmd == 3:
+                        # Obtain Abnormal Status — 활성 에러 객체 배열.
+                        # 빈 배열/누락 = 정상(또는 해소됨). receiver는 최신값 보관·릴레이만
+                        # 담당하고, 변화 감지/로깅은 백엔드 runtime에서 처리한다.
+                        latest_abnormal_status = items.get("ErrorList", []) or []
+                        if latest_abnormal_status:
+                            print(f"⚠️ [ABNORMAL] 활성 에러 {len(latest_abnormal_status)}건: {latest_abnormal_status}")
 
                 except socket.timeout:
                     break
@@ -201,6 +246,24 @@ def charge_status_listener():
             continue
         except Exception as e:
             print(f"[CHARGE LISTEN ERR] {e}")
+
+
+def motion_info_listener():
+    """relay_motion.py → receiver: /MOTION_INFO(gait/state) 수신 → latest_motion_info 갱신."""
+    global latest_motion_info
+    mi_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    mi_sock.bind(("127.0.0.1", MOTION_INFO_LOCAL_PORT))
+    mi_sock.settimeout(2.0)
+    print(f"🦿 모션 상태 수신 대기 (127.0.0.1:{MOTION_INFO_LOCAL_PORT})")
+
+    while True:
+        try:
+            data, addr = mi_sock.recvfrom(1024)
+            latest_motion_info = json.loads(data.decode("utf-8"))
+        except socket.timeout:
+            continue
+        except Exception as e:
+            print(f"[MOTION INFO LISTEN ERR] {e}")
 
 
 def position_poll_loop():
@@ -381,8 +444,23 @@ def cancel_nav():
     send_asdu(1004, 1, {})
     print("[NAV] 네비게이션 취소 전송")
 
+def _send_packet_to_robot_tcp(packet, timeout=3.0):
+    """ASDU 패킷을 로봇 본체에 TCP(30001)로 보장 전송. 성공 True / 실패 False.
+
+    hop ②(receiver↔로봇 본체)의 신뢰 전송 경로. 명령 1건당 짧은 연결을 열고
+    닫는다(NAV는 웨이포인트당 1회로 저빈도). 실패하면 호출자가 UDP(30000)로 폴백한다.
+    """
+    try:
+        with socket.create_connection((ROBOT_IP, ROBOT_TCP_PORT), timeout=timeout) as tcp:
+            tcp.sendall(packet)
+        return True
+    except Exception as e:
+        print(f"[NAV TCP] 로봇({ROBOT_IP}:{ROBOT_TCP_PORT}) TCP 전송 실패: {e}")
+        return False
+
+
 def send_nav_command(idx, x, y, yaw):
-    # 모드 리셋 → 새 명령 전송 
+    # 모드 리셋 → 새 명령 전송
     set_control_mode(0)
     time.sleep(0.3)
 
@@ -421,9 +499,12 @@ def send_nav_command(idx, x, y, yaw):
     )
 
     packet = header + asdu_bytes
-    sock.sendto(packet, (ROBOT_IP, ROBOT_PORT))
-
-    print(f"[NAV] Send WP{idx} → X:{x}, Y:{y}, Yaw:{yaw}")
+    # hop ②: 로봇 본체에 TCP(30001) 보장 전송, 실패 시 UDP(30000) 폴백
+    if _send_packet_to_robot_tcp(packet):
+        print(f"[NAV] (TCP) Send WP{idx} → X:{x}, Y:{y}, Yaw:{yaw}")
+    else:
+        sock.sendto(packet, (ROBOT_IP, ROBOT_PORT))
+        print(f"[NAV] (UDP 폴백) Send WP{idx} → X:{x}, Y:{y}, Yaw:{yaw}")
 
 
 def get_mapping_data(action):
@@ -462,6 +543,22 @@ def set_flash(pos, status):
     _flash_state[key] = 1 if status == "on" else 0
     send_asdu(1101, 2, dict(_flash_state))
     print(f"▶ flash {_flash_state}")
+
+
+# ============================================================
+# 보행(gait) 전환 — relay_motion.py 경유 ROS2 /GAIT 발행
+# ============================================================
+# Standard 모드 보행 (수동 원격 제어). Agile(0x300X)은 네비 주행용으로 별도.
+GAIT_BASIC = 0x1001          # 기본 (서서 이동)
+GAIT_HIGH_OBSTACLE = 0x1002  # 고장애물
+GAIT_STAIR = 0x1003          # 계단
+GAIT_POSTURE = 0xF001        # 자세
+
+def send_motion_cmd(cmd, value):
+    """relay_motion.py(127.0.0.1:50003)로 보행/상태 전환 명령 전달."""
+    payload = json.dumps({"cmd": cmd, "value": int(value)}).encode("utf-8")
+    motion_sock.sendto(payload, ("127.0.0.1", MOTION_RELAY_PORT))
+    print(f"[MOTION] → relay_motion: cmd={cmd}, value=0x{int(value):04x}")
 
 
 
@@ -504,10 +601,12 @@ def robot_sniff_loop():
 # ============================================================
 
 _FAST_RESPONSE_ACTIONS = {
-    "POSITION", "STATUS", "NAV_STATUS",
+    "PING", "POSITION", "STATUS", "NAV_STATUS",
     "MAPPING_ODOM", "MAPPING_CLOUD", "MAPPING_ALIGNED",
     "STOP", "CANCEL_NAV", "SLOW", "NORMAL", "FAST", "WAKE",
     "FRONTON", "FRONTOFF", "REARON", "REAROFF",
+    "GAIT_BASIC", "GAIT_HIGH_OBSTACLE", "GAIT_STAIR", "GAIT_POSTURE",
+    "POSTURE",
 }
 
 _SLOW_CMD_ACTIONS = {
@@ -520,7 +619,21 @@ _cmd_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cmd-worker
 
 def _handle_fast(action, msg, addr):
     """메인 loop에서 직접 호출 — 모두 1ms 내 처리되어야 함."""
-    if action == "POSITION":
+    if action == "PING":
+        server_sock.sendto(json.dumps({
+            "status": "ok",
+            "receiver": {
+                "udp_port": SERVER_UDP_PORT,
+                "tcp_port": SERVER_TCP_PORT,
+            },
+            "robot": {
+                "ip": ROBOT_IP,
+                "udp_port": ROBOT_PORT,
+                "tcp_port": ROBOT_TCP_PORT,
+            },
+            "timestamp": time.time(),
+        }).encode("utf-8"), addr)
+    elif action == "POSITION":
         server_sock.sendto(json.dumps(latest_position).encode("utf-8"), addr)
     elif action == "STATUS":
         server_sock.sendto(json.dumps({
@@ -528,9 +641,16 @@ def _handle_fast(action, msg, addr):
             "ChargeStatus": latest_charge_state,
             "DeviceTemperature": latest_device_temp,
             "BasicStatus": latest_basic_status,
+            "MotionInfo": latest_motion_info,
+            "AbnormalStatus": latest_abnormal_status,
         }).encode("utf-8"), addr)
     elif action == "NAV_STATUS":
-        server_sock.sendto(json.dumps(latest_nav_status).encode("utf-8"), addr)
+        # 절대 timestamp 대신, receiver의 monotonic 시계로 계산한 경과시간(age)을 실어 보낸다.
+        # 백엔드는 이 age만 보고 stale을 판정하므로 서버-로봇 간 시계 오프셋의 영향을 받지 않는다.
+        payload = dict(latest_nav_status)
+        mono = latest_nav_status.get("mono", 0.0)
+        payload["age"] = (time.monotonic() - mono) if mono > 0 else None
+        server_sock.sendto(json.dumps(payload).encode("utf-8"), addr)
     elif action == "MAPPING_ODOM":
         server_sock.sendto(get_mapping_data("MAPPING_ODOM"), addr)
     elif action == "MAPPING_CLOUD":
@@ -547,6 +667,15 @@ def _handle_fast(action, msg, addr):
     elif action == "FRONTOFF": set_flash("front", "off")
     elif action == "REARON": set_flash("rear", "on")
     elif action == "REAROFF": set_flash("rear", "off")
+    elif action == "GAIT_BASIC": send_motion_cmd("gait", GAIT_BASIC)
+    elif action == "GAIT_HIGH_OBSTACLE": send_motion_cmd("gait", GAIT_HIGH_OBSTACLE)
+    elif action == "GAIT_STAIR": send_motion_cmd("gait", GAIT_STAIR)
+    elif action == "GAIT_POSTURE": send_motion_cmd("gait", GAIT_POSTURE)
+    elif action == "POSTURE":
+        # 자세 6축 setpoint — Type 2/21 (Regular 모드 전용). 값 [-1,1] = 최대 기울기 비율.
+        # 자세(0xf001) gait 진입 후 사용. 셋포인트라 바뀔 때만 보내면 로봇이 유지한다.
+        items = {k: float(msg.get(k, 0.0)) for k in ("X", "Y", "Z", "Roll", "Pitch", "Yaw")}
+        send_asdu(2, 21, items)
 
 
 def _handle_nav(msg, addr):
@@ -564,7 +693,9 @@ def _handle_nav(msg, addr):
 def _handle_init_pose(msg, addr):
     """INIT_POSE — 로봇 응답 대기 최대 3초."""
     init_items = msg.get("items", {"PosX": 3.635, "PosY": 0.144, "PosZ": 0.0, "Yaw": -0.042})
-    print(f"🔧 [INIT_POSE] receiver 경유 수신: {init_items}")
+    target_ip = msg.get("robot_ip") or ROBOT_IP
+    target_port = int(msg.get("robot_port") or ROBOT_PORT)
+    print(f"🔧 [INIT_POSE] receiver 경유 수신: {target_ip}:{target_port} | {init_items}")
     init_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     init_sock.settimeout(3.0)
     try:
@@ -585,7 +716,7 @@ def _handle_init_pose(msg, addr):
             *(0x00,) * 7
         )
         packet = header + asdu_bytes
-        init_sock.sendto(packet, (ROBOT_IP, ROBOT_PORT))
+        init_sock.sendto(packet, (target_ip, target_port))
         print(f"🔧 [INIT_POSE] 로봇에 전송 완료 ({len(packet)} bytes)")
         resp_data, resp_addr = init_sock.recvfrom(4096)
         try:
@@ -646,6 +777,76 @@ def udp_receiver_loop():
             print("[UDP Receiver Error]", e)
 
 
+# ============================================================
+# PC → 로봇 TCP 신뢰성 명령 수신 (hop ①)
+#
+# WiFi(PC↔NOS) 구간 패킷 유실/순단으로 NAV 명령이 사라지는 것을 막기 위한
+# 보장 전송 채널. 현재는 NAV만 처리하며, STOP·긴급정지·폴링 등 지연 민감/손실
+# 허용 트래픽은 기존 UDP 채널(udp_receiver_loop)을 그대로 사용한다.
+#
+# 프로토콜: 개행(\n)으로 구분된 JSON 한 줄을 받고, 동일하게 JSON+\n으로 ACK 응답.
+# 명령 1건당 짧은 연결(connect→전송→ACK→close)이라 재연결 상태관리가 불필요하다.
+# ============================================================
+def _handle_tcp_conn(conn, addr):
+    """수락된 TCP 연결 1건 처리 — JSON 한 줄 수신 → 명령 실행 → ACK 송신."""
+    try:
+        conn.settimeout(5.0)
+        buf = b""
+        while b"\n" not in buf:
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            buf += chunk
+            if len(buf) > 65536:  # 비정상 과대 입력 방지
+                break
+        if not buf:
+            return
+
+        line = buf.split(b"\n", 1)[0]
+        msg = json.loads(line.decode("utf-8"))
+        action = msg.get("action")
+        print(f"[TCP] 수신: {action} (from {addr})")
+
+        if action == "NAV":
+            idx = int(msg.get("idx", 1))
+            x = float(msg.get("x", 0.0))
+            y = float(msg.get("y", 0.0))
+            yaw = float(msg.get("yaw", 0.0))
+            print(f"[RECV NAV/TCP] idx={idx}, x={x}, y={y}, yaw={yaw}")
+            send_nav_command(idx, x, y, yaw)
+            ack = json.dumps({"ack": True, "idx": idx}).encode("utf-8") + b"\n"
+            conn.sendall(ack)
+        else:
+            # 신뢰 채널은 NAV 전용. 그 외 액션은 UDP 채널을 쓰도록 거부 응답.
+            nack = json.dumps(
+                {"ack": False, "error": f"unsupported action: {action}"}
+            ).encode("utf-8") + b"\n"
+            conn.sendall(nack)
+    except Exception as e:
+        print(f"[TCP CONN ERR] {addr}: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def tcp_command_loop():
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("0.0.0.0", SERVER_TCP_PORT))
+    srv.listen(8)
+    print(f"PC 신뢰성 명령 수신 대기중... (TCP:{SERVER_TCP_PORT})")
+
+    while True:
+        try:
+            conn, addr = srv.accept()
+            # 연결마다 워커 풀에 위임 — send_nav_command 내부 sleep(0.3)이
+            # accept 루프를 막지 않도록 한다.
+            _cmd_executor.submit(_handle_tcp_conn, conn, addr)
+        except Exception as e:
+            print(f"[TCP ACCEPT ERR] {e}")
+
 
 # ============================================================
 # 실행 시작
@@ -654,7 +855,9 @@ threading.Thread(target=battery_poll_loop, daemon=True).start()
 threading.Thread(target=position_poll_loop, daemon=True).start()
 threading.Thread(target=nav_poll_loop, daemon=True).start()
 threading.Thread(target=charge_status_listener, daemon=True).start()
+threading.Thread(target=motion_info_listener, daemon=True).start()
 threading.Thread(target=udp_receiver_loop, daemon=True).start()
+threading.Thread(target=tcp_command_loop, daemon=True).start()
 threading.Thread(target=robot_sniff_loop, daemon=True).start()
 
 print("✅ 로봇 제어 시스템 실행 중...")

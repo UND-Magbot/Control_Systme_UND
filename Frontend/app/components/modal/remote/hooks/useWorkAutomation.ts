@@ -95,11 +95,19 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
       return;
     }
 
+    // in-flight 가드 (M-3): 폴링 fetch가 진행 중일 때 모달이 닫히거나 언마운트되면
+    // 응답이 늦게 도착해도 setState를 호출하지 않도록 한다. AbortController로
+    // 네트워크 요청 자체도 취소한다(apiFetch가 signal을 지원하면 전달됨).
+    let cancelled = false;
+    const controller = new AbortController();
+
     const poll = async () => {
       try {
-        const res = await apiFetch('/robot/nav');
+        const res = await apiFetch('/robot/nav', { signal: controller.signal });
+        if (cancelled) return;
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        if (cancelled) return;
         consecutiveFailRef.current = 0;
 
         if (data.is_navigating) {
@@ -124,6 +132,8 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
           setLoopCurrent(0);
         }
       } catch {
+        // 취소(언마운트/모달 닫힘으로 인한 abort)는 실패로 카운트하지 않는다.
+        if (cancelled) return;
         consecutiveFailRef.current += 1;
         if (consecutiveFailRef.current >= 3 && wasWorkingRef.current) {
           onAlert?.('작업 중 연결이 끊어졌습니다.\n로봇이 계속 이동 중일 수 있습니다.');
@@ -135,7 +145,12 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
     navPollRef.current = setInterval(poll, NAV_POLL_INTERVAL);
 
     return () => {
-      if (navPollRef.current) clearInterval(navPollRef.current);
+      cancelled = true;
+      controller.abort();
+      if (navPollRef.current) {
+        clearInterval(navPollRef.current);
+        navPollRef.current = null;
+      }
     };
   }, [isOpen, onAlert]);
 

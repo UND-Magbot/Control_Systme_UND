@@ -18,6 +18,32 @@
   padding: 4px 2px 8px 0;
 }
 
+/* 제어 탭 — Posture 펼침 등으로 내용이 넘칠 때만 우측 스크롤.
+   스크롤바는 위치 저장 목록(.wpCreatePointList)과 동일한 커스텀 스타일. */
+.tabContentScroll {
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.tabContentScroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tabContentScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tabContentScroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.tabContentScroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
 /* ======================== 공통 섹션 ======================== */
 .section {
   background: var(--surface-2);

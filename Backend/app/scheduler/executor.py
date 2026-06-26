@@ -20,11 +20,18 @@ def execute_schedule(schedule: ScheduleInfo) -> bool:
     """스케줄 실행: WayName으로 경로 찾아서 pathmove 트리거. 성공 시 True."""
     from app.navigation.send_move import _signal_nav_reset, navigation_send_next
     import app.navigation.send_move as nav_mod
+    import app.robot_io.runtime as runtime
     from app.robot_control.charge import prepare_undock_waypoints
 
     # 이미 네비게이션 중이면 스킵
     if nav_mod.is_navigating:
         print(f"[SCHEDULER] 네비게이션 진행 중 — 스케줄 #{schedule.id} 실행 대기")
+        return False
+
+    # 안전 가드: 위치 미초기화(자동 init_pose 수렴 실패) 동안 스케줄 실행 보류.
+    # 위치 복구 후 다음 트리거에서 재실행되므로 False(스킵) 반환.
+    if runtime.is_initpose_pending(get_robot_id()):
+        print(f"[SCHEDULER] 로봇 위치 미초기화 — 스케줄 #{schedule.id} 실행 보류")
         return False
 
     db = SessionLocal()

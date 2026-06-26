@@ -55,6 +55,28 @@ export default function RemoteModal({
     setSelectedRobot(selectedRobots);
   }, [selectedRobots]);
 
+  // --- 층 id → 이름 매핑 (현재 층 배지용, 모달 열릴 때 1회 로드) ---
+  const [floorNameById, setFloorNameById] = useState<Record<number, string>>({});
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    apiFetch(`/map/floors`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: { id: number; FloorName: string }[]) => {
+        if (cancelled || !Array.isArray(data)) return;
+        const map: Record<number, string> = {};
+        for (const f of data) map[f.id] = f.FloorName;
+        setFloorNameById(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  const floorName =
+    selectedRobot?.currentFloorId != null
+      ? (floorNameById[selectedRobot.currentFloorId] ?? null)
+      : null;
+
   // --- 로봇별 카메라 동적 로드 ---
   const [robotCameras, setRobotCameras] = useState<Camera[]>(camera);
   const [camerasReady, setCamerasReady] = useState(false);
@@ -80,17 +102,8 @@ export default function RemoteModal({
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const showAlert = useCallback((msg: string) => setAlertMsg(msg), []);
 
-  // --- 커스텀 훅 (카메라 준비 후에만 활성화) ---
-  const cam = useCameraStream({ isOpen: isOpen && camerasReady, camera: robotCameras, initialCam, initialCamIndex });
-  const work = useWorkAutomation(isOpen, {
-    onAlert: showAlert,
-    currentFloorId: selectedRobot?.currentFloorId ?? null,
-  });
+  // --- 로봇 위치/연결 상태 (연결 끊김 감지 → 카메라 재연결 게이트에 사용) ---
   const { position: robotPos, isReady: robotConnected, hasError: positionError } = useRobotPosition(isOpen);
-  // 로봇 현재 층의 실제 맵 (없으면 null → ViewportArea가 고정 맵으로 폴백)
-  const floorMapConfig = useRemoteFloorMap(selectedRobot?.currentFloorId ?? null);
-  const moveCmd = useRemoteCommand({ debounceMs: 100, onError: showAlert });
-  const recording = useRecording(isOpen, selectedRobot?.id);
 
   // 연결 끊김 감지
   const errorCountRef = useRef(0);
@@ -105,6 +118,24 @@ export default function RemoteModal({
       setIsDisconnected(false);
     }
   }, [positionError]);
+
+  // --- 커스텀 훅 (카메라 준비 후에만 활성화) ---
+  // 로봇 통신이 끊기면(isDisconnected) 카메라 연결·재연결을 멈춘다.
+  const cam = useCameraStream({
+    isOpen: isOpen && camerasReady,
+    camera: robotCameras,
+    initialCam,
+    initialCamIndex,
+    enabled: !isDisconnected,
+  });
+  const work = useWorkAutomation(isOpen, {
+    onAlert: showAlert,
+    currentFloorId: selectedRobot?.currentFloorId ?? null,
+  });
+  // 로봇 현재 층의 실제 맵 (없으면 null → ViewportArea가 고정 맵으로 폴백)
+  const floorMapConfig = useRemoteFloorMap(selectedRobot?.currentFloorId ?? null);
+  const moveCmd = useRemoteCommand({ debounceMs: 100, onError: showAlert });
+  const recording = useRecording(isOpen, selectedRobot?.id);
 
   // --- 키보드 이동 제어 ---
   const handleMove = useCallback(
@@ -150,6 +181,7 @@ export default function RemoteModal({
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <StatusBar
           selectedRobot={selectedRobot}
+          floorName={floorName}
           onClose={handleClose}
           controlledBy={readOnly ? controlledBy : undefined}
           isRecording={recording.isRecording}
@@ -167,9 +199,11 @@ export default function RemoteModal({
             isCamLoading={cam.isCamLoading}
             camError={cam.camError}
             cameraStream={cam.cameraStream}
+            thermalUrl={cam.thermalUrl}
             retryKey={cam.retryKey}
             cameraTabActiveIndex={cam.cameraTabActiveIndex}
             camera={robotCameras}
+            camerasReady={camerasReady}
             onRetryCamera={cam.handleRetryCamera}
             onCameraTab={cam.handleCameraTab}
             onCamImgLoad={cam.handleCamImgLoad}
@@ -191,6 +225,7 @@ export default function RemoteModal({
             <ControlPanel
               robotType={selectedRobot?.type ?? ''}
               motionState={selectedRobot?.motionState ?? null}
+              gait={selectedRobot?.gait ?? null}
               isCharging={selectedRobot?.isCharging ?? false}
               isWorking={work.isWorking}
               isWorkPending={work.isPending}

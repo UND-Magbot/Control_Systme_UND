@@ -3,12 +3,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useRemoteCommand } from '../hooks/useRemoteCommand';
 import { getRobotCapabilities } from '@/app/constants/robotCapabilities';
+import PosturePanel from './PosturePanel';
 import styles from './ControlPanel.module.css';
 
 type ModeSpeedControlProps = {
   robotType: string;
   /** 로봇 자세 (1=Stand, 4=Sit). null이면 미확인 — 버튼 모두 비활성. */
   motionState?: number | null;
+  /** 현재 보행값 (0x1001 기본/0x1002 고장애물/0x1003 계단/0xf001 자세). 버튼 active 동기화용. */
+  gait?: number | null;
   /** 로봇 충전 중 여부 — true면 자세 섹션 숨기고 '충전 해제' 버튼 활성. */
   isCharging?: boolean;
   disabled?: boolean;
@@ -16,15 +19,36 @@ type ModeSpeedControlProps = {
 
 type Mode = 'stand' | 'sit';
 type Speed = 'slow' | 'normal' | 'fast';
-type Terrain = 'flat' | 'stair';
+type Gait = 'basic' | 'highObstacle' | 'stair' | 'posture';
 type RobotMode = 'regular' | 'navigation' | 'assist';
 
-export default function ModeSpeedControl({ robotType, motionState, isCharging = false, disabled = false }: ModeSpeedControlProps) {
+// Standard 모드 보행 — receiver가 relay_motion 경유로 ROS2 /GAIT 발행 (0x100X)
+const GAIT_ENDPOINTS: Record<Gait, string> = {
+  basic: '/robot/gait_basic',
+  highObstacle: '/robot/gait_high_obstacle',
+  stair: '/robot/gait_stair',
+  posture: '/robot/gait_posture',
+};
+const GAIT_LABELS: Record<Gait, string> = {
+  basic: 'Standard',
+  highObstacle: 'High Obstacles',
+  stair: 'Stair',
+  posture: 'Posture',
+};
+// 로봇이 보고하는 gait 값 → 버튼. Agile(0x300X) 등 미해당 값이면 매핑 없음(null).
+const GAIT_BY_VALUE: Record<number, Gait> = {
+  0x1001: 'basic',
+  0x1002: 'highObstacle',
+  0x1003: 'stair',
+  0xf001: 'posture',
+};
+
+export default function ModeSpeedControl({ robotType, motionState, gait, isCharging = false, disabled = false }: ModeSpeedControlProps) {
   const caps = getRobotCapabilities(robotType);
   const { execute: execMode, state: modeState } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execSpeed, state: speedState } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execLight } = useRemoteCommand({ debounceMs: 300 });
-  const { execute: execTerrain } = useRemoteCommand({ debounceMs: 300 });
+  const { execute: execGait } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execRobotMode } = useRemoteCommand({ debounceMs: 300 });
   const { execute: execCharge, state: chargeCmdState } = useRemoteCommand({ debounceMs: 300 });
 
@@ -39,7 +63,15 @@ export default function ModeSpeedControl({ robotType, motionState, isCharging = 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [derivedMode]);
   const [activeSpeed, setActiveSpeed] = useState<Speed>('normal');
-  const [activeTerrain, setActiveTerrain] = useState<Terrain>('flat');
+  // 실제 보행값(gait)으로 active 버튼 동기화 — motionState→activeMode와 동일 패턴
+  const derivedGait: Gait | null = gait != null ? (GAIT_BY_VALUE[gait] ?? null) : null;
+  const [activeGait, setActiveGait] = useState<Gait>(derivedGait ?? 'basic');
+  useEffect(() => {
+    if (derivedGait && derivedGait !== activeGait) {
+      setActiveGait(derivedGait);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [derivedGait]);
   const [activeRobotMode, setActiveRobotMode] = useState<RobotMode>('regular');
   const [frontOn, setFrontOn] = useState(false);
   const [rearOn, setRearOn] = useState(false);
@@ -57,12 +89,10 @@ export default function ModeSpeedControl({ robotType, motionState, isCharging = 
     if (ok) setActiveSpeed(speed);
   };
 
-  const handleTerrain = async (terrain: Terrain) => {
+  const handleGait = async (gait: Gait) => {
     if (disabled) return;
-    const endpoint = terrain === 'flat' ? '/robot/terrain_flat' : '/robot/terrain_stair';
-    const label = terrain === 'flat' ? '평지 모드' : '계단 모드';
-    const ok = await execTerrain(endpoint, label);
-    if (ok) setActiveTerrain(terrain);
+    const ok = await execGait(GAIT_ENDPOINTS[gait], `${GAIT_LABELS[gait]} 보행`);
+    if (ok) setActiveGait(gait);
   };
 
   const handleRobotMode = async (mode: RobotMode) => {
@@ -107,9 +137,11 @@ export default function ModeSpeedControl({ robotType, motionState, isCharging = 
   return (
     <div className={`${styles.section} ${disabled ? styles.disabled : ''}`}>
       {/* 자세: Stand/Sit
-          - motionState가 알려지지 않으면(null) 둘 다 disabled
-          - 현재 자세와 같은 쪽 버튼은 disabled (연속 동일 명령 방지)
-          - 반대 쪽 버튼만 활성화
+          - 자세 확인됨(derivedMode≠null): 현재 자세 버튼만 disabled (연속 동일 명령 방지),
+            반대 쪽만 활성화
+          - 자세 미확인(motionState null 또는 1/4/17 외 값): 드문 상황 — 둘 다 활성화하여
+            운영자가 강제로 자세를 잡을 수 있게 한다
+          - disabled prop(작업 중/연결 끊김)일 때만 둘 다 비활성
           - 충전 중에는 숨김 (도킹 상태에서 자세 전환 불필요) */}
       {caps.hasStandSit && !isCharging && (
         <div className={styles.controlGroup}>
@@ -119,7 +151,7 @@ export default function ModeSpeedControl({ robotType, motionState, isCharging = 
               type="button"
               className={`${styles.segmentBtn} ${activeMode === 'stand' ? styles.active : ''}`}
               onClick={() => handleMode('stand')}
-              disabled={disabled || derivedMode === null || activeMode === 'stand'}
+              disabled={disabled || (derivedMode !== null && activeMode === 'stand')}
             >
               Stand
             </button>
@@ -127,7 +159,7 @@ export default function ModeSpeedControl({ robotType, motionState, isCharging = 
               type="button"
               className={`${styles.segmentBtn} ${activeMode === 'sit' ? styles.active : ''}`}
               onClick={() => handleMode('sit')}
-              disabled={disabled || derivedMode === null || activeMode === 'sit'}
+              disabled={disabled || (derivedMode !== null && activeMode === 'sit')}
             >
               Sit
             </button>
@@ -147,14 +179,29 @@ export default function ModeSpeedControl({ robotType, motionState, isCharging = 
         </div>
       </div> */}
 
-      {/* 지형 — 추후 ROS2 연동 후 활성화
-      <div className={styles.controlGroup}>
-        <div className={styles.controlLabel}>지형</div>
-        <div className={styles.segmentGroup}>
-          <button type="button" className={`${styles.segmentBtn} ${activeTerrain === 'flat' ? styles.active : ''}`} onClick={() => handleTerrain('flat')} disabled={disabled}>Flat</button>
-          <button type="button" className={`${styles.segmentBtn} ${activeTerrain === 'stair' ? styles.active : ''}`} onClick={() => handleTerrain('stair')} disabled={disabled}>Stair</button>
+      {/* 보행 — Standard 모드 (기본/고장애물/계단/자세), relay_motion 경유 ROS2 /GAIT.
+          Sit 상태에선 보행 전환이 의미 없어 속도처럼 숨김. */}
+      {(derivedMode === 'stand' || derivedMode === null) && (
+        <div className={styles.controlGroup}>
+          <div className={styles.controlLabel}>보행</div>
+          <div className={styles.segmentGroup}>
+            {(['basic', 'stair', 'highObstacle', 'posture'] as Gait[]).map((g) => (
+              <button
+                key={g}
+                type="button"
+                className={`${styles.segmentBtn} ${activeGait === g ? styles.active : ''}`}
+                onClick={() => handleGait(g)}
+                disabled={disabled}
+              >
+                {GAIT_LABELS[g]}
+              </button>
+            ))}
+          </div>
+
+          {/* 자세 보행 선택 시 6축 setpoint 슬라이더 패널 인라인 펼침 */}
+          {activeGait === 'posture' && <PosturePanel disabled={disabled} />}
         </div>
-      </div> */}
+      )}
 
       {/* 속도 — Stand/RL Control 상태에서만 표시 */}
       {(derivedMode === 'stand' || derivedMode === null) && (

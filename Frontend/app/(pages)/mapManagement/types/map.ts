@@ -55,6 +55,15 @@ export type DbRoute = {
   Direction: string;
 };
 
+export type PendingDangerZone = {
+  tempId: string;
+  ZoneName: string;
+  Description: string | null;
+  points: { x: number; y: number }[];
+  /** 확정 시점에 cascade 를 수락했는지 — BE 에 force 로 전달 */
+  force: boolean;
+};
+
 export type UndoAction =
   | { type: "addPlace"; tempId: string }
   | {
@@ -80,4 +89,6 @@ export type UndoAction =
       prevDeletedRouteDbIds: Set<number>;
       prevMovedPlaces: Map<string, { x: number; y: number }>;
       prevModifiedDbIds: Set<number>;
+      prevPendingDangerZones?: PendingDangerZone[];
+      prevDeletedDangerZoneNames?: Set<string>;
     };

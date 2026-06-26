@@ -1,7 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
 import { getAlerts, markAlertRead, markAllAlertsRead } from "@/app/lib/alertData";
+import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 import type { AlertMockData } from "@/app/types";
 
 type UnreadCounts = {
@@ -38,11 +39,13 @@ const AlertContext = createContext<AlertContextType>({
 // 짧게 잡는다. 응답 크기가 작아 backend 부하는 미미하다.
 // (정말 0지연이 필요하면 SSE/WebSocket으로 전환 검토)
 const POLL_INTERVAL = 2_000;
+// 백그라운드 탭에서는 완화(2s→10s). 경보는 백그라운드에서도 완전히 끊지 않고
+// 최소 갱신을 유지한다(C-7). 탭 복귀 시 즉시 갱신된다.
+const POLL_INTERVAL_HIDDEN = 10_000;
 
 export function AlertProvider({ children }: { children: React.ReactNode }) {
   const [unreadAlerts, setUnreadAlerts] = useState<AlertMockData[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<UnreadCounts>(EMPTY_COUNTS);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -79,16 +82,18 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 폴링 + 외부 이벤트 수신
-  useEffect(() => {
-    refresh();
-    intervalRef.current = setInterval(refresh, POLL_INTERVAL);
+  // 폴링 — 가시성 인지(C-7): 보일 때 2s, 가려지면 10s, 복귀 시 즉시 갱신
+  useVisibilityAwareInterval(refresh, {
+    activeMs: POLL_INTERVAL,
+    hiddenMs: POLL_INTERVAL_HIDDEN,
+    immediate: true,
+  });
 
+  // 외부 읽음 변경 이벤트 수신
+  useEffect(() => {
     const handleExternalChange = () => refresh();
     window.addEventListener("alert-read-changed", handleExternalChange);
-
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
       window.removeEventListener("alert-read-changed", handleExternalChange);
     };
   }, [refresh]);

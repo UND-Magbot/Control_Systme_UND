@@ -45,6 +45,16 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# === CPU 스레드 캡 ===
+# YOLO 검출기 3종(face/person/hot-pack)이 각각 별도 스레드에서 torch 추론을 돌린다.
+# 기본값은 추론마다 전체 코어를 쓰므로 세 스레드가 동시에 burst 할 때 코어 경합
+# (oversubscription)이 발생해 처리량 이득 없이 CPU 점유율만 치솟는다.
+# intra-op 스레드를 캡하면 처리량은 유지되면서 점유율이 내려간다. (화질/정확도/FPS 무관)
+import torch  # ultralytics 의존성. 여기서 명시 import 해 스레드 수를 직접 제어.
+
+torch.set_num_threads(2)
+cv2.setNumThreads(2)
+
 # === 카메라 설정 ===
 CAMERA_IP = "10.21.31.108"
 CAMERA_PORT = 443
@@ -212,7 +222,7 @@ TEMP_TOP_N = 3
 OUT_W = 960
 OUT_H = 720
 # 송출 프레임 율 제한 (관제 측 렉 완화). 발열 스크리닝엔 15 FPS면 충분
-TARGET_OUTPUT_FPS = 30
+TARGET_OUTPUT_FPS = 15
 # JPEG 품질 (85 → 70: 파일 크기 ~30% 감소, 시각 품질 차이 미미)
 JPEG_QUALITY = 70
 

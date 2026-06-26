@@ -14,7 +14,14 @@ _last_logged: dict[str, float] = {}       # action → 마지막 기록 시각
 _suppressed_counts: dict[str, int] = {}   # action → 억제된 횟수
 LOG_COOLDOWN_SEC = 30                     # 같은 action 반복 억제 시간(초)
 # 쿨다운 예외: 매번 기록되어야 하는 action (알림 Detail에 누적)
-_COOLDOWN_EXEMPT = {"nav_arrival", "nav_loop", "nav_complete", "nav_error"}
+# robot_error_code/resolved는 runtime의 차집합 감지가 이미 코드별 중복을 막으므로,
+# action 단위 쿨다운으로 서로 다른 코드가 잘못 합쳐져 누락되지 않도록 제외한다(설계서 §11).
+_COOLDOWN_EXEMPT = {
+    "nav_arrival", "nav_loop", "nav_complete", "nav_error",
+    "robot_error_code", "robot_error_resolved",
+    # 모터 과열은 관절별 상태머신이 전이 시에만 발화하므로 action 쿨다운 제외(관절별 누락 방지)
+    "motor_overheat_warning", "motor_overheat_danger", "motor_overheat_resolved",
+}
 
 # ── 큐 기반 단일 Writer ──
 _log_queue: queue.Queue = queue.Queue(maxsize=500)
@@ -26,15 +33,24 @@ ALERT_TRIGGER_RULES = {
     "robot_connection_error":  ("Robot", "error"),
     "rtsp_error":              ("Robot", "error"),
     "nav_error":               ("Schedule", "error"),
+    "nav_comm_lost":           ("Robot", "error"),  # 통신 두절로 자율주행 안전 정지 (사용자 알림)
     "remote_send_error":       ("Robot", "error"),
     "robot_error_code":        ("Robot", "error"),
+    "motor_overheat_warning":  ("Robot", "error"),  # 관절 모터 과열 경고 (75°C+)
+    "motor_overheat_danger":   ("Robot", "error"),  # 관절 모터 과열 위험 (85°C+) → 보호 동작
     "thermal_temp_high":       ("Robot", "event"),  # 열화상에서 고온 객체 감지 (45°C+)
+    "robot_initpose_manual_needed": ("Robot", "error"),  # 자동 위치 초기화 실패 → 수동 재조정 필요 (확인창)
+    "robot_initpose_no_chargestation": ("Robot", "error"),  # 충전 중인데 충전소 미등록 (설정 미비)
 }
 
 # 로그 Action → 알림 제목 매핑
 ACTION_TITLES = {
     # Robot
     "robot_error_code":        "로봇 에러",
+    "robot_error_resolved":    "로봇 에러 해소",
+    "motor_overheat_warning":  "모터 과열 경고",
+    "motor_overheat_danger":   "모터 과열 위험",
+    "motor_overheat_resolved": "모터 과열 해소",
     "robot_battery_low":       "배터리 부족",
     "robot_connection_error":  "로봇 연결 오류",
     "robot_charging_start":    "충전 시작",
@@ -45,11 +61,15 @@ ACTION_TITLES = {
     "nav_poll_timeout":        "네비게이션 폴링 타임아웃",
     "position_recv_error":     "위치 수신 오류",
     "db_operation_error":      "데이터베이스 오류",
+    "robot_initpose_manual_needed": "위치 초기화 필요",
+    "robot_initpose_recovered":     "위치 초기화 복구",
+    "robot_initpose_no_chargestation": "충전소 미등록",
     # Schedule
     "nav_start":               "네비게이션 시작",
     "nav_arrival":             "웨이포인트 도착",
     "nav_complete":            "네비게이션 완료",
     "nav_error":               "네비게이션 오류",
+    "nav_comm_lost":           "로봇 통신 두절 — 자율주행 정지",
     "nav_loop":                "네비게이션 반복",
     "place_move_start":        "장소 이동",
     "path_move_start":         "경로 이동",
@@ -93,6 +113,9 @@ class LogService:
             alert_type, alert_status = rule
             # Robot 타입 알림: 대상 로봇이 현재 오프라인(네트워크 확정 Offline)
             # 이면 알림을 만들지 않는다. 로그는 그대로 남김.
+            # (오프라인 중 연결오류/재연결 노이즈를 화면에 띄우지 않기 위함 — 의도된 동작.
+            #  fault 코드(robot_error_code)는 로봇이 온라인일 때만 수신되므로 이 게이트에
+            #  걸리지 않고 항상 알림이 생성된다.)
             should_create_alert = True
             if alert_type == "Robot" and robot_id is not None:
                 try:
@@ -107,6 +130,10 @@ class LogService:
                     pass
             if should_create_alert:
                 alert_title = ACTION_TITLES.get(action, message)
+                # 로봇 fault 코드·모터 과열은 제네릭 제목 대신 구체 메시지(부위/관절+온도)를
+                # 제목으로 노출 → 토스트/드롭다운에서도 어디가 문제인지 한눈에(설계서 §10-A).
+                if action in ("robot_error_code", "motor_overheat_warning", "motor_overheat_danger"):
+                    alert_title = message
                 alert = Alert(
                     Type=alert_type,
                     Status=alert_status,

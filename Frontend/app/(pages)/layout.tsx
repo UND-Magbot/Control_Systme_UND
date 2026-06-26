@@ -7,6 +7,7 @@ import Sidebar from "@/app/components/common/Sidebar";
 import GlobalErrorAlert from "@/app/components/common/GlobalErrorAlert";
 import GlobalLoading from "@/app/components/common/GlobalLoading";
 import ThermalAlertWatcher from "@/app/components/common/ThermalAlertWatcher";
+import InitPoseAlertWatcher from "@/app/components/common/InitPoseAlertWatcher";
 import { PageLoadingProvider } from "@/app/context/PageLoadingContext";
 import { ToastProvider } from "@/app/components/common/Toast";
 import { SidebarProvider } from "@/app/context/SidebarContext";
@@ -48,6 +49,7 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
 
           <GlobalErrorAlert />
           <ThermalAlertWatcher />
+          <InitPoseAlertWatcher />
           </PageLoadingProvider>
         </ToastProvider>
       </AlertProvider>

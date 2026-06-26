@@ -14,9 +14,12 @@ type ViewportAreaProps = {
   isCamLoading: boolean;
   camError: boolean;
   cameraStream: string;
+  thermalUrl: string | null;
   retryKey: number;
   cameraTabActiveIndex: number;
   camera: Camera[];
+  /** 카메라 목록 로드 완료 여부 — false면 로딩, true+빈 목록이면 "등록해주세요" */
+  camerasReady?: boolean;
   onRetryCamera: () => void;
   onCameraTab: (idx: number, cam: Camera) => void;
   onCamImgLoad: () => void;
@@ -33,9 +36,11 @@ export default function ViewportArea({
   isCamLoading,
   camError,
   cameraStream,
+  thermalUrl,
   retryKey,
   cameraTabActiveIndex,
   camera,
+  camerasReady = true,
   onRetryCamera,
   onCameraTab,
   onCamImgLoad,
@@ -72,7 +77,10 @@ export default function ViewportArea({
   type MapViewState = 'icon' | 'pip' | 'expanded';
   const [mapState, setMapState] = useState<MapViewState>('pip');
 
-  const isOverlayReady = !isCamLoading || camError;
+  // 활성 카메라가 하나도 없음(모듈 전체 OFF/미등록) — "연결 중" 대신 등록 안내 표시.
+  // 목록 로드가 끝난 뒤에만 판단해 로딩 중 깜빡임을 막는다.
+  const noCameras = camerasReady && camera.length === 0;
+  const isOverlayReady = !isCamLoading || camError || noCameras;
 
   // --- zoom/pan ---
   const clampTranslate = useCallback(
@@ -136,6 +144,8 @@ export default function ViewportArea({
   const isPtzCapable = activeCam?.streamType === 'http';
   // RTSP 카메라는 MediaMTX WebRTC(WebRTCPlayer)로 저지연 송출
   const isWebrtcCam = !!activeCam && (activeCam.streamType ?? 'rtsp') === 'rtsp';
+  // 열화상은 WebSocket→Blob→<img> (useCameraStream의 thermalUrl)
+  const isThermalCam = activeCam?.streamType === 'ws';
 
   // --- 카메라 토글 시 WebRTCPlayer 짧은 unmount → mount ---
   // 이전 PC가 완전히 close되고 mediamtx에서 ICE 자원이 정리되기 전에 새 PC가
@@ -232,8 +242,16 @@ export default function ViewportArea({
         onMouseUp={endPan}
         onMouseLeave={endPan}
       >
+        {/* 활성 카메라 없음(모듈 전체 OFF/미등록) — 등록 안내 */}
+        {noCameras && (
+          <div className={styles.errorOverlay}>
+            <span className={styles.errorTitle}>카메라를 등록해주세요</span>
+            <span className={styles.errorDesc}>활성화된 카메라 모듈이 없습니다</span>
+          </div>
+        )}
+
         {/* 카메라 로딩 (MJPEG 경로 전용 — WebRTC는 WebRTCPlayer가 자체 표시) */}
-        {!isWebrtcCam && isCamLoading && (
+        {!noCameras && !isWebrtcCam && isCamLoading && (
           <div className={styles.loadingOverlay}>
             <div className={styles.loadingSpinner} />
             <span>카메라 연결 중...</span>
@@ -255,7 +273,24 @@ export default function ViewportArea({
         {/* 카메라 토글 시 playerOff=true로 잠시 unmount → 300ms 후 새 nonce로 mount.
             이전 PC가 close + DELETE 완료된 뒤 새 PC가 시작되어 ICE 충돌을 피한다. */}
         {isWebrtcCam && activeCam && !playerOff ? (
-          <WebRTCPlayer key={playerNonce} whepUrl={activeCam.webrtcUrl} videoStyle={camImgStyle} />
+          <WebRTCPlayer
+            key={playerNonce}
+            whepUrl={activeCam.webrtcUrl}
+            videoStyle={camImgStyle}
+            enabled={!isDisconnected}
+            disabledLabel="로봇 연결 끊김"
+          />
+        ) : isThermalCam ? (
+          // 열화상 — WS가 채우는 thermalUrl(blob). 연결/재연결은 useCameraStream이 관리(watchdog 포함).
+          thermalUrl ? (
+            <img
+              ref={cameraImgRef}
+              src={thermalUrl}
+              draggable={false}
+              style={camImgStyle}
+              alt="thermal"
+            />
+          ) : null
         ) : cameraStream ? (
           <img
             ref={cameraImgRef}
@@ -271,7 +306,7 @@ export default function ViewportArea({
       </div>
 
       {/* ── 줌 리셋 ── */}
-      {isOverlayReady && (
+      {isOverlayReady && !noCameras && (
         <button
           type="button"
           className={styles.zoomResetBtn}

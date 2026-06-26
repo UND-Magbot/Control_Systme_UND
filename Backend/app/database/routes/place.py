@@ -20,6 +20,8 @@ class RobotPlaceInsertReq(BaseModel):
     MapId: int | None = None
     Category: str = "waypoint"
     Imformation: str | None = None
+    # 위험구역(Category="danger") 폴리곤 꼭짓점 [[x,y], ...] (월드 좌표). 일반 장소는 None.
+    Polygon: list[list[float]] | None = None
 
 
 @database.post("/places")
@@ -40,6 +42,7 @@ def insert_robot_place(
         MapId=req.MapId,
         Category=req.Category,
         Imformation=req.Imformation,
+        Polygon=req.Polygon,
     )
 
     db.add(place)
@@ -88,6 +91,7 @@ def get_places(
             "MapId": p.MapId,
             "Category": p.Category,
             "Imformation": p.Imformation,
+            "Polygon": p.Polygon,
         }
         for p in places
     ]
@@ -111,6 +115,7 @@ def update_place(place_id: int, req: RobotPlaceInsertReq, request: Request, db: 
         "맵ID": ("MapId", req.MapId),
         "카테고리": ("Category", req.Category),
         "정보": ("Imformation", req.Imformation),
+        "폴리곤": ("Polygon", req.Polygon),
     }
 
     for label, (attr, new_val) in field_map.items():

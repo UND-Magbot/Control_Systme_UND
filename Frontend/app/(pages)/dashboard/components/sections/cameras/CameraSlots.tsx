@@ -70,8 +70,9 @@ export default function CameraSlots({
           ))}
         </>
       ) : robotCameras.length > 0 ? (
-        // 카메라가 있으면 오프라인이어도 슬롯을 유지한다 — 실제 스트림 끊김/재연결은
-        // 백엔드 RTSP 프록시가 투명하게 처리하므로 패널을 붕괴시키지 않는다.
+        // 카메라가 있으면 오프라인이어도 슬롯을 유지한다(패널 붕괴 방지). 단, 로봇이
+        // 오프라인이면 로봇이 MediaMTX로 발행을 멈추므로 enabled=false로 내려
+        // 발행자 없는 스트림에 무한 재연결하지 않도록 한다.
         <>
           {visibleCams.map((cam) => (
             <div key={cam.id} className={`${dashStyles.cameraPanel} ${styles.camSlotWrapper}`}>
@@ -80,6 +81,7 @@ export default function CameraSlots({
                 robotName=""
                 onExpand={(e) => openExpand(cam, e)}
                 lowRes
+                enabled={isOnline}
               />
             </div>
           ))}

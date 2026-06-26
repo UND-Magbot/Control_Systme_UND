@@ -44,6 +44,8 @@ export type RobotOnMap = {
   id: number;
   name: string;
   position: RobotPosition;
+  /** 위치 미확정(localization 발산/리셋 등) — true면 마지막 신뢰 위치에 '미확정' 스타일로 표시. */
+  uncertain?: boolean;
 };
 
 export type CanvasMapProps = {

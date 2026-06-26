@@ -21,6 +21,15 @@ export default function MappingSuccessModal({ isOpen, onConfirm }: Props) {
         <div className={styles.successText}>
           성공적으로 맵이 저장되었습니다.
         </div>
+        <div className={styles.successGuide}>
+          이 맵을 사용하려면 다음을 진행해 주세요.
+          <br />
+          1. 로봇을 <strong>해당 층으로 이동</strong>시킨 뒤 이 맵을 활성 맵으로 지정
+          <br />
+          2. 이 맵에 <strong>충전소를 등록</strong>
+          <br />
+          충전소를 등록해야 전원 재기동(off→on) 시 충전소 기준으로 위치가 자동 초기화됩니다.
+        </div>
         <button className={styles.btnConfirm} onClick={onConfirm}>
           확인
         </button>

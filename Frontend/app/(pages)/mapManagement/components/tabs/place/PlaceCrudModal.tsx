@@ -386,6 +386,22 @@ export default function PlaceCrudModal({
     setFieldErrors((prev) => ({ ...prev, coordinates: undefined }));
   };
 
+  // 현재 로봇 위치로 좌표·방향 자동 설정 (도킹·정위치 상태에서 클릭 → 수동 핀 불필요)
+  const handleUseRobotPosition = () => {
+    if (isSubmitting || !robotPosReady || !liveRobotPos) return;
+    setX(liveRobotPos.x.toFixed(3));
+    setY(liveRobotPos.y.toFixed(3));
+    // 로봇 yaw(rad) → 방향(deg, 0~360)
+    let deg = (Number(liveRobotPos.yaw) * 180) / Math.PI;
+    deg = ((deg % 360) + 360) % 360;
+    setDirection(String(Math.round(deg)));
+    setXDirty(true);
+    setYDirty(true);
+    setPinPlaced(true);
+    setIsPinMode(false);
+    setFieldErrors((prev) => ({ ...prev, coordinates: undefined, direction: undefined }));
+  };
+
   const handleDirectionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     if (val === "" || val === "-") { setDirection(val); return; }
@@ -561,6 +577,17 @@ export default function PlaceCrudModal({
               <div className={styles.sectionTitle}>
                 위치 정보
                 <span className={styles.sectionTitleLine} />
+                {robotPosReady && liveRobotPos && (
+                  <button
+                    type="button"
+                    className={styles.coordResetBtn}
+                    onClick={handleUseRobotPosition}
+                    disabled={isSubmitting}
+                    title="로봇이 충전소/해당 지점에 정위치한 상태에서 현재 로봇 좌표·방향을 가져옵니다"
+                  >
+                    현재 로봇 위치
+                  </button>
+                )}
                 {(x && y) && (
                   <button
                     type="button"

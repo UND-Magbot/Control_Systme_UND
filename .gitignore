@@ -9,6 +9,7 @@ build/
 
 # Environment variables
 .env
+.env.example
 Backend/.env
 
 # Virtual environment
@@ -59,3 +60,6 @@ Backend/recordings/
 Backend/test_recording.py
 
 .claude/
+.bkit/
+ops/
+docs/

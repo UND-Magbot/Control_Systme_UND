@@ -33,10 +33,12 @@ export function useMappingWebSocket(mappingState: MappingState) {
       return;
     }
 
+    // 백엔드는 8010(docker-compose: PORT=8010)에서 동작한다. 매핑 실시간 뷰 WS도
+    // 반드시 8010 으로 연결해야 한다(8000 은 다른 컨테이너라 빈 화면이 된다).
     const wsUrl =
       typeof window !== "undefined" && window.location.hostname !== "localhost"
-        ? `ws://${window.location.hostname}:8000/ws/mapping/view`
-        : "ws://localhost:8000/ws/mapping/view";
+        ? `ws://${window.location.hostname}:8010/ws/mapping/view`
+        : "ws://localhost:8010/ws/mapping/view";
 
     const connect = () => {
       const ws = new WebSocket(wsUrl);

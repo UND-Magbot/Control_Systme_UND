@@ -162,6 +162,14 @@ def startup_event():
     finally:
         db.close()
 
+    # 부팅 시 고착된 IsWorking(작업중) 정정 — 비정상 종료로 남은 stale 플래그가
+    # 재시작 후에도 로봇을 '작업중'으로 오판하게 하는 문제 방지.
+    try:
+        from app.navigation.send_move import reconcile_is_working_on_boot
+        reconcile_is_working_on_boot()
+    except Exception as e:
+        print(f"[BOOT-RECONCILE] 호출 실패: {e}")
+
     time.sleep(2)
     #send_init_pose()
     # FFmpeg 자동 확인/설치 + 녹화 고아 세션 정리 + 보관 정책 스레드 시작
@@ -191,6 +199,18 @@ async def _tune_threadpool():
 
 @app.on_event("shutdown")
 def shutdown_event():
+    # 폴링/매핑 백그라운드 루프에 종료 신호 (M-9) — 좀비 루프 방지
+    try:
+        from app.robot_io.polling import stop_polling_threads
+        stop_polling_threads()
+    except Exception as e:
+        print(f"[SHUTDOWN] 폴링 종료 신호 실패: {e}")
+    try:
+        from app.map.ws_mapping import stop_polling as stop_mapping_polling
+        stop_mapping_polling()
+    except Exception as e:
+        print(f"[SHUTDOWN] 매핑 폴링 종료 실패: {e}")
+
     from app.robot_io.persistence import flush_all
     flush_all()
     from app.recording.manager import stop_all

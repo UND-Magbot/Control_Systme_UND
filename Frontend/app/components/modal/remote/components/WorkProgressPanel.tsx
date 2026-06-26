@@ -88,10 +88,11 @@ export default function WorkProgressPanel({
       .catch(() => {});
   }, []);
 
-  const handleInitPose = () => {
-    if (disabled) return;
-    execInit('/robot/initpose', '위치 재조정');
-  };
+  // 수동 위치 초기화(위치 재조정) 비활성화 (요청에 의해 OFF — 에러 상황 방지)
+  // const handleInitPose = () => {
+  //   if (disabled) return;
+  //   execInit('/robot/initpose', '위치 재조정');
+  // };
 
   // 경로 이름 입력
   const [pathName, setPathName] = useState('');
@@ -276,7 +277,7 @@ export default function WorkProgressPanel({
   // 기본 모드: 경로 선택 + 실행
   return (
     <div className={`${styles.wpPanel} ${styles.wpPanelDefault}`}>
-      {/* 로봇 위치 재조정 */}
+      {/* 로봇 위치 재조정(수동 위치 초기화) 비활성화 (요청에 의해 OFF — 에러 상황 방지)
       <div className={styles.wpSection}>
         <div className={styles.controlLabel}>
           로봇 위치{initPoseCoord ? ' (충전소 좌표 기준)' : ''}
@@ -290,6 +291,7 @@ export default function WorkProgressPanel({
           {initState === 'pending' ? '처리 중...' : '위치 재조정'}
         </button>
       </div>
+      */}
 
       {/* 경로 선택 드롭다운 */}
       <div className={styles.wpSection}>

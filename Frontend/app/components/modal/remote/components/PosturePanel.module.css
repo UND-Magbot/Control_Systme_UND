@@ -1,0 +1,145 @@
+/* ======================== Posture(자세) 패널 — 인라인 펼침 ======================== */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.panel.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── 탭 (Rotate / Translation) ── */
+.tabs {
+  display: flex;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tabBtn {
+  flex: 1;
+  padding: 6px 0;
+  border: none;
+  background: var(--surface-4);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tabBtn:not(:last-child) {
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tabBtn.tabActive {
+  background: var(--color-info);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── 슬라이더 ── */
+.sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sliderRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sliderHead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.axisLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 38px;
+}
+
+.axisHint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.axisValue {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: right;
+}
+
+.slider {
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-5, rgba(255, 255, 255, 0.12));
+  outline: none;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-info);
+  border: 2px solid #fff;
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-info);
+  border: 2px solid #fff;
+  cursor: pointer;
+}
+
+.slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── 수평 복귀 ── */
+.resetBtn {
+  width: 100%;
+  padding: 8px 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: var(--surface-4);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.resetBtn:hover:not(:disabled) {
+  background: var(--surface-5, rgba(255, 255, 255, 0.1));
+}
+
+.resetBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -48,6 +48,7 @@ export type RobotRowData = {
     serialRight?: string;           // serialRight
     return: number;
     isCharging: boolean;
+    atDock: boolean;                // 도킹 점유 여부 (충전 중 + 완충 후 대기 포함). '충전소 나오기' 버튼 노출 조건
     chargeState: number;
     chargeStateLabel: string;
     chargeErrorCode: number;
@@ -60,6 +61,7 @@ export type RobotRowData = {
     sleep?: number | null;                       // 원시 Sleep 값 (0=켜짐, 그 외=꺼짐)
     powerManagement?: 0 | 1 | null;              // 0=regular(배터리 2개), 1=single battery, Sleep=0일 때만 유효
     motionState?: number | null;                 // 1=Stand, 4=Sit
+    gait?: number | null;                         // 0x1001 기본/0x1002 고장애물/0x1003 계단/0xf001 자세 (Standard), 0x300X (Agile)
     isNavigating: boolean;
     mark: 'Yes' | 'No';
     tasks: RobotStatistic[];

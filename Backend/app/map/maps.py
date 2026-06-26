@@ -39,6 +39,14 @@ class SyncMapReq(BaseModel):
     robot_id: int
 
 
+class ImportMapReq(BaseModel):
+    robot_id: int
+    dir: str           # 로봇(NOS) 맵 디렉토리명 (예: test_gumi06-20260618-130620)
+    MapName: str       # 관제에 저장될 맵 이름
+    FloorId: int
+    BusinessId: int
+
+
 # =========================
 # 맵 CRUD
 # =========================
@@ -166,7 +174,7 @@ def delete_map(map_id: int, request: Request, db: Session = Depends(get_db), cur
 def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
     """로봇의 활성 맵을 변경하고, CurrentFloorId를 업데이트."""
     from app.database.models import RobotInfo
-    from app.map.mapping_control import get_ssh_client, ssh_exec, NOS_MAP_BASE_DIR
+    from app.map.mapping_control import get_ssh_client, ssh_exec, NOS_MAP_BASE_DIR, nos_host_for_robot_ip
     import app.robot_io.runtime as runtime
 
     # 맵 조회
@@ -180,6 +188,16 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="로봇을 찾을 수 없습니다.")
 
     map_name = m.MapName
+    # 로봇 디렉토리명은 ZipFilePath(항상 로봇 dir 기반: ./static/maps/{robot_dir}.zip)에서 복원.
+    # → 사용자가 가져오기에서 MapName을 바꿔도 로봇 dir를 정확히 찾을 수 있다.
+    zip_dir = ""
+    if m.ZipFilePath:
+        zip_dir = os.path.basename(m.ZipFilePath).rsplit(".zip", 1)[0]
+    # 로봇별 NOS — 로봇 IP 기준(.106). 유효하지 않으면 env 기본 NOS 사용.
+    try:
+        nos_host = nos_host_for_robot_ip(robot.RobotIP)
+    except ValueError:
+        nos_host = None
     client = None
     try:
         # SSH 실패 시 재접속하여 재시도 (최대 3회)
@@ -187,17 +205,35 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
         map_dir = ""
         for attempt in range(3):
             try:
-                client = get_ssh_client()
+                client = get_ssh_client(host=nos_host)
 
-                # 맵 이름으로 시작하는 최신 디렉토리 찾기
-                find_cmd = f"sudo ls -dt {NOS_MAP_BASE_DIR}/{map_name}-*/ 2>/dev/null | head -1"
+                # 로봇 디렉토리 탐색 순서:
+                #   1) zip 기준 robot dir 정확 일치 (가져오기·매핑 공통, 이름 변경에도 안전)
+                #   2) MapName 정확 일치 (구버전/직접 지정)
+                #   3) {MapName}-* 글롭 (매핑 베이스 이름 호환)
+                candidates = []
+                if zip_dir:
+                    candidates.append(f"ls -d {NOS_MAP_BASE_DIR}/{zip_dir} 2>/dev/null")
+                candidates.append(f"ls -d {NOS_MAP_BASE_DIR}/{map_name} 2>/dev/null")
+                candidates.append(f"ls -dt {NOS_MAP_BASE_DIR}/{map_name}-*/ 2>/dev/null | head -1")
+                find_cmd = "sudo bash -c '" + " || ".join(candidates) + "'"
                 map_dir = ssh_exec(client, find_cmd).rstrip("/")
 
                 if not map_dir:
-                    raise HTTPException(status_code=404, detail=f"로봇에서 맵 디렉토리를 찾을 수 없습니다: {map_name}-*")
+                    raise HTTPException(status_code=404, detail=f"로봇에서 맵 디렉토리를 찾을 수 없습니다: {map_name}")
 
-                # active 심볼릭 링크 교체
-                activate_cmd = f"sudo rm -f {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
+                # 미완성 맵(매핑 중단 등 — full_cloud.pcd 없음)은 active 로 걸지 않는다(측위 발산 방지).
+                from app.map.mapping_control import map_dir_is_complete
+                if not map_dir_is_complete(client, map_dir):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"맵 데이터가 불완전합니다(full_cloud.pcd 없음): {map_name}. 매핑을 다시 완료한 뒤 활성화하세요.",
+                    )
+
+                # active 심볼릭 링크 교체.
+                # ⚠️ rm -f 는 active 가 실제 디렉토리(매핑 중단 잔재)일 때 못 지워 교체가 먹히지 않는다.
+                #    rm -rf(후행 슬래시 없음 → 심볼릭이면 링크만 제거)로 디렉토리·심볼릭 모두 안전히 교체.
+                activate_cmd = f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
                 ssh_exec(client, activate_cmd)
 
                 # localization 서비스 재시작 (새 맵 로드)
@@ -328,7 +364,12 @@ def sync_map(req: SyncMapReq, request: Request, db: Session = Depends(get_db), c
                     print(f"📦 로봇에서 압축 해제 완료: {dir_name}")
                     ssh_exec(client, f"sudo rm -f {remote_zip}")
                     map_dir = f"{NOS_MAP_BASE_DIR}/{dir_name}"
-                    activate_cmd = f"sudo rm -f {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
+                    # 미완성 맵은 active 로 걸지 않는다(측위 발산 방지).
+                    from app.map.mapping_control import map_dir_is_complete
+                    if not map_dir_is_complete(client, map_dir):
+                        raise Exception(f"동기화된 맵이 불완전합니다(full_cloud.pcd 없음): {dir_name}")
+                    # rm -rf: active 가 실제 디렉토리로 깨져 있어도 안전히 교체(심볼릭이면 링크만 제거).
+                    activate_cmd = f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && sudo ln -s {map_dir} {NOS_MAP_BASE_DIR}/active"
                     ssh_exec(client, activate_cmd)
                     yield _evt(event="step", step=2, total=3, msg="맵 파일 활성화 완료")
 
@@ -391,6 +432,144 @@ def sync_map(req: SyncMapReq, request: Request, db: Session = Depends(get_db), c
                 except: pass
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+# =========================
+# 로봇 내부 맵 가져오기 (Import) — 로봇엔 있으나 관제에 없는 맵 복구
+# =========================
+@router.get("/robot-maps")
+def list_robot_maps_api(robot_id: int, request: Request, db: Session = Depends(get_db),
+                        current_user: UserInfo = Depends(require_permission("map-edit"))):
+    """선택한 로봇(NOS)에 저장된 맵 목록을 조회한다.
+
+    각 항목에 관제 DB 기준 already_imported(동일 MapName 존재) 플래그를 덧붙인다.
+    """
+    from app.database.models import RobotInfo
+    from app.map.mapping_control import get_ssh_client, list_robot_maps, nos_host_for_robot_ip
+
+    robot = db.query(RobotInfo).filter(RobotInfo.id == robot_id).first()
+    if not robot:
+        raise HTTPException(status_code=404, detail="로봇을 찾을 수 없습니다.")
+
+    # 로봇별 NOS — 로봇 IP 기준으로 맵 서버(.106) 유도
+    try:
+        nos_host = nos_host_for_robot_ip(robot.RobotIP)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="로봇 IP가 유효하지 않아 맵 서버에 접속할 수 없습니다.")
+
+    client = None
+    try:
+        client = get_ssh_client(retries=3, host=nos_host)
+        maps = list_robot_maps(client)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"로봇 맵 목록 조회 실패({nos_host}): {str(e)}")
+    finally:
+        if client:
+            try: client.close()
+            except: pass
+
+    # 관제 DB에 이미 등록된 맵 이름 집합 (사업장 범위)
+    q = db.query(RobotMapInfo.MapName)
+    if robot.BusinessId:
+        q = q.filter(RobotMapInfo.BusinessId == robot.BusinessId)
+    existing = {row[0] for row in q.all()}
+    for m in maps:
+        # 가져오기 시 dir(날짜 포함) 이름으로 저장하므로 dir 우선, 구버전 호환 위해 name 도 확인
+        m["already_imported"] = (m["dir"] in existing) or (m["name"] in existing)
+
+    return maps
+
+
+@router.post("/maps/import")
+def import_map(req: ImportMapReq, request: Request, db: Session = Depends(get_db),
+               current_user: UserInfo = Depends(require_permission("map-edit"))):
+    """로봇(NOS)의 맵 디렉토리를 관제로 다운로드 + DB 등록한다.
+
+    동기화(active 전파)는 하지 않는다 — 별도 /maps/sync 버튼 책임.
+    """
+    from app.database.models import RobotInfo
+    from app.map.mapping_control import (
+        get_ssh_client, ssh_exec, download_robot_map, nos_host_for_robot_ip,
+        NOS_MAP_BASE_DIR, NOS_PGM_FILENAME, NOS_YAML_FILENAME,
+    )
+
+    robot = db.query(RobotInfo).filter(RobotInfo.id == req.robot_id).first()
+    if not robot:
+        raise HTTPException(status_code=404, detail="로봇을 찾을 수 없습니다.")
+
+    # 로봇별 NOS — 로봇 IP 기준으로 맵 서버(.106) 유도
+    try:
+        nos_host = nos_host_for_robot_ip(robot.RobotIP)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="로봇 IP가 유효하지 않아 맵 서버에 접속할 수 없습니다.")
+
+    # 디렉토리명 안전성 검증 (경로 주입 방지)
+    if "/" in req.dir or ".." in req.dir or not req.dir.strip():
+        raise HTTPException(status_code=400, detail="잘못된 맵 디렉토리명입니다.")
+
+    # 중복 이름 차단 (사업장 범위) — 사용자가 이름을 바꿔 재시도
+    dup = db.query(RobotMapInfo).filter(
+        RobotMapInfo.MapName == req.MapName,
+        RobotMapInfo.BusinessId == req.BusinessId,
+    ).first()
+    if dup:
+        raise HTTPException(status_code=409, detail=f"이미 '{req.MapName}' 이름의 맵이 있습니다. 다른 이름으로 가져오세요.")
+
+    map_dir = f"{NOS_MAP_BASE_DIR}/{req.dir}"
+    client = None
+    try:
+        client = get_ssh_client(retries=3, host=nos_host)
+        # 완료 맵 검증 (pgm+yaml 존재)
+        check = ssh_exec(
+            client,
+            f"sudo bash -c '[ -e \"{map_dir}/{NOS_PGM_FILENAME}\" ] && [ -e \"{map_dir}/{NOS_YAML_FILENAME}\" ] && echo OK || echo NO'",
+            exec_timeout=20,
+        )
+        if "OK" not in check:
+            raise HTTPException(status_code=404, detail="로봇에서 완료된 맵 디렉토리를 찾을 수 없습니다(미완결 맵).")
+
+        paths = download_robot_map(client, map_dir, req.MapName)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # 부분 다운로드 정리
+        _cleanup_local_map(req.MapName)
+        raise HTTPException(status_code=502, detail=f"맵 가져오기 실패: {str(e)}")
+    finally:
+        if client:
+            try: client.close()
+            except: pass
+
+    robot_map = RobotMapInfo(
+        BusinessId=req.BusinessId,
+        FloorId=req.FloorId,
+        MapName=req.MapName,
+        PgmFilePath=paths["pgm"],
+        YamlFilePath=paths["yaml"],
+        ImgFilePath=paths["img"],
+        ZipFilePath=paths["zip"],
+    )
+    db.add(robot_map)
+    db.commit()
+    db.refresh(robot_map)
+
+    write_audit(db, current_user.id, "map_imported", "map", robot_map.id,
+                detail=f"로봇 맵 가져오기: {req.MapName} (로봇: {robot.RobotName}, dir: {req.dir})",
+                ip_address=get_client_ip(request))
+
+    return {"status": "ok", "map_id": robot_map.id, "map_name": req.MapName, "floor_id": req.FloorId}
+
+
+def _cleanup_local_map(map_name: str) -> None:
+    """가져오기 실패 시 부분 다운로드된 로컬 파일을 정리한다."""
+    base = os.path.join(".", "static", "maps")
+    for ext in ("pgm", "yaml", "png"):
+        p = os.path.join(base, f"{map_name}.{ext}")
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
 
 
 # =========================

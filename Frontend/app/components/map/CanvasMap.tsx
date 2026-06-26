@@ -166,7 +166,7 @@ const Inner2D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner2D(
         {multiRobots && multiRobots.map((r) => {
           const sp = worldToPixelScreen(r.position.x, r.position.y);
           return (
-            <RobotMarker key={r.id} screenX={sp.x} screenY={sp.y} yaw={r.position.yaw} name={r.name} size={robotMarkerSize} scale={scale} />
+            <RobotMarker key={r.id} screenX={sp.x} screenY={sp.y} yaw={r.position.yaw} name={r.name} size={robotMarkerSize} scale={scale} uncertain={r.uncertain} />
           );
         })}
 
