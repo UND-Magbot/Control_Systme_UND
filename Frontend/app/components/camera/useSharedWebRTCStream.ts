@@ -19,7 +19,9 @@ import { useEffect, useState } from "react";
  *   라이브 미니 + 라이브 확대가 동시에 표시된다.
  */
 
-type Status = "connecting" | "playing" | "error";
+// idle = 구독자가 있으나 아무도 연결을 활성화(enable)하지 않은 대기 상태.
+//        (로봇 오프라인/모듈 OFF 등으로 재연결을 멈춘 경우)
+type Status = "idle" | "connecting" | "playing" | "error";
 
 type Entry = {
   whepUrl: string;
@@ -28,6 +30,10 @@ type Entry = {
   stream: MediaStream | null;
   status: Status;
   refCount: number;
+  // enable 투표 수 — 1 이상일 때만 연결/재연결을 시도한다.
+  // 로봇이 오프라인이거나 카메라 모듈이 OFF면 구독자가 enabled=false로 마운트되어
+  // enabledCount가 0이 되고, 연결과 재시도 루프가 모두 멈춘다.
+  enabledCount: number;
   listeners: Set<() => void>;
   connectTimer: ReturnType<typeof setTimeout> | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
@@ -91,14 +97,24 @@ function teardown(entry: Entry) {
 }
 
 function scheduleRetry(entry: Entry) {
+  // 아무도 연결을 활성화하지 않았으면(로봇 오프라인/모듈 OFF) 재시도하지 않고 정지.
+  if (entry.enabledCount <= 0) { stopConnection(entry); return; }
   // MTX 서버가 내려간 것으로 판정됐으면 자동 재시도를 걸지 않는다.
   if (entry.serverDown) { markServerDown(entry); return; }
   teardown(entry);
   entry.status = "error";
   notify(entry);
   entry.retryTimer = setTimeout(() => {
-    if (entry.refCount > 0) void startConnection(entry);
+    if (entry.refCount > 0 && entry.enabledCount > 0) void startConnection(entry);
   }, RETRY_DELAY_MS);
+}
+
+// enable 투표가 0이 됨 → 연결을 끊고 재시도 없이 대기(idle) 상태로.
+function stopConnection(entry: Entry) {
+  teardown(entry); // connectTimer/retryTimer 포함 모든 타이머·PC·세션 정리
+  entry.serverDown = false;
+  entry.status = "idle";
+  notify(entry);
 }
 
 // MTX 서버 도달 불가 → 재시도 타이머 없이 에러 상태로 정지.
@@ -110,6 +126,8 @@ function markServerDown(entry: Entry) {
 }
 
 async function startConnection(entry: Entry) {
+  // 비활성(로봇 오프라인/모듈 OFF) 상태면 연결을 시작하지 않는다.
+  if (entry.enabledCount <= 0) { stopConnection(entry); return; }
   teardown(entry);
   // 새 연결 시도 — 지난 server-down 판정을 해제(수동 재연결 포함).
   entry.serverDown = false;
@@ -201,8 +219,10 @@ function acquire(whepUrl: string): Entry {
       pc: null,
       resourceUrl: null,
       stream: null,
-      status: "connecting",
+      // 연결은 enable 투표(vote)가 들어와야 시작한다 — 초기엔 idle.
+      status: "idle",
       refCount: 0,
+      enabledCount: 0,
       listeners: new Set(),
       connectTimer: null,
       retryTimer: null,
@@ -211,7 +231,6 @@ function acquire(whepUrl: string): Entry {
       serverDown: false,
     };
     registry.set(whepUrl, entry);
-    void startConnection(entry);
   } else if (entry.releaseTimer) {
     // 정리 예약돼 있었으면 취소 (StrictMode 진동/빠른 재마운트 대응)
     clearTimeout(entry.releaseTimer);
@@ -219,6 +238,17 @@ function acquire(whepUrl: string): Entry {
   }
   entry.refCount++;
   return entry;
+}
+
+// enable 투표 증감. 0→1로 올라가면 연결 시작, 1→0으로 내려가면 연결 정지.
+function vote(entry: Entry, delta: number) {
+  const prev = entry.enabledCount;
+  entry.enabledCount = Math.max(0, prev + delta);
+  if (prev === 0 && entry.enabledCount > 0) {
+    void startConnection(entry);
+  } else if (prev > 0 && entry.enabledCount === 0) {
+    stopConnection(entry);
+  }
 }
 
 function release(whepUrl: string) {
@@ -241,32 +271,38 @@ export type SharedStream = {
   retry: () => void;
 };
 
-export function useSharedWebRTCStream(whepUrl: string): SharedStream {
+export function useSharedWebRTCStream(whepUrl: string, enabled: boolean = true): SharedStream {
   const [, force] = useState(0);
 
+  // enabled가 바뀌면 cleanup이 직전 enabled(캡처값)로 vote를 되돌리고, 새 effect가
+  // 새 enabled로 다시 투표한다 → 투표 수가 항상 균형을 이룬다. refCount도 동일하게
+  // 증감하지만 RELEASE_GRACE_MS 덕에 PC는 유지되고, 연결 시작/정지는 vote가 결정한다.
   useEffect(() => {
     if (!whepUrl) return;
 
     const entry = acquire(whepUrl);
+    if (enabled) vote(entry, +1);
     const listener = () => force((n) => n + 1);
     entry.listeners.add(listener);
     // 초기 상태 즉시 반영
     force((n) => n + 1);
 
     return () => {
+      if (enabled) vote(entry, -1);
       entry.listeners.delete(listener);
       release(whepUrl);
     };
-  }, [whepUrl]);
+  }, [whepUrl, enabled]);
 
   const entry = whepUrl ? registry.get(whepUrl) : undefined;
   return {
     stream: entry?.stream ?? null,
-    status: entry?.status ?? "connecting",
+    status: entry?.status ?? "idle",
     retry: () => {
       if (!whepUrl) return;
       const e = registry.get(whepUrl);
-      if (e) void startConnection(e);
+      // 비활성 상태에서는 수동 재연결도 무시(연결 시도가 다시 루프를 만들지 않도록).
+      if (e && e.enabledCount > 0) void startConnection(e);
     },
   };
 }

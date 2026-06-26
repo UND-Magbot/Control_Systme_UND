@@ -16,6 +16,8 @@ type UseCameraStreamOptions = {
   camera: Camera[];
   initialCam?: Camera | null;
   initialCamIndex?: number;
+  /** false면 연결·재연결을 멈춘다(로봇 통신 끊김 시 무한 재연결 방지). 기본 true */
+  enabled?: boolean;
 };
 
 export function useCameraStream({
@@ -23,6 +25,7 @@ export function useCameraStream({
   camera,
   initialCam,
   initialCamIndex,
+  enabled = true,
 }: UseCameraStreamOptions) {
   const [isCamLoading, setIsCamLoading] = useState(true);
   const [camError, setCamError] = useState(false);
@@ -43,6 +46,8 @@ export function useCameraStream({
   const wsWatchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFrameAtRef = useRef(0);
   const connectThermalRef = useRef<(cam: Camera, silent?: boolean) => void>(() => {});
+  // enabled를 ref로 추적 — 콜백 재생성 없이 인터벌/실패 핸들러에서 최신 값을 본다.
+  const enabledRef = useRef(enabled);
 
   // 열화상 프레임 싱크 — 최신 프레임만 ~15fps 상한으로 렌더(backlog/빨리감기 방지)
   const sinkRef = useRef<ThermalFrameSink | null>(null);
@@ -79,6 +84,7 @@ export function useCameraStream({
     clearRetryTimer();
     retryTimerRef.current = setInterval(() => {
       if (unmountedRef.current) return;
+      if (!enabledRef.current) return; // 로봇 통신 끊김 — 재시도 보류
       if (document.hidden) return; // 백그라운드 탭에서는 재시도 보류 (M-2)
       setIsCamLoading(true);
       setCamError(false);
@@ -117,6 +123,8 @@ export function useCameraStream({
   const onThermalFail = useCallback((cam: Camera) => {
     if (wsWatchdogRef.current) { clearInterval(wsWatchdogRef.current); wsWatchdogRef.current = null; }
     clearCamTimeout();
+    // 로봇 통신 끊김 — 재연결하지 않고 정지.
+    if (!enabledRef.current) { clearRetryTimer(); return; }
     errorCountRef.current += 1;
     if (errorCountRef.current <= 2) {
       if (!unmountedRef.current) connectThermalRef.current(cam, true);
@@ -126,7 +134,8 @@ export function useCameraStream({
     setIsCamLoading(false);
     setCamError(true);
     retryTimerRef.current = setInterval(() => {
-      if (!unmountedRef.current) connectThermalRef.current(cam, true);
+      if (unmountedRef.current || !enabledRef.current) return;
+      connectThermalRef.current(cam, true);
     }, CAM_RETRY_MS);
   }, [clearCamTimeout, clearRetryTimer]);
 
@@ -191,6 +200,8 @@ export function useCameraStream({
 
   const handleCamImgError = useCallback(() => {
     clearCamTimeout();
+    // 로봇 통신 끊김 — 재연결하지 않고 정지.
+    if (!enabledRef.current) { clearRetryTimer(); return; }
     errorCountRef.current += 1;
 
     if (errorCountRef.current <= 2) {
@@ -259,9 +270,20 @@ export function useCameraStream({
   const cameraIdsKey = camera.map((c) => c.id).join(',');
 
   useEffect(() => {
+    enabledRef.current = enabled;
     if (!isOpen) {
       didInitRef.current = false;
       userTouchedRef.current = false;
+      return;
+    }
+    if (!enabled) {
+      // 로봇 통신 끊김 — WS/타이머/스트림을 정리하고 재연결을 보류한다.
+      // didInit을 풀어 재연결 시 다시 초기화되도록 한다.
+      closeThermalWS();
+      clearCamTimeout();
+      clearRetryTimer();
+      setCameraStream("");
+      didInitRef.current = false;
       return;
     }
     if (camera.length === 0) return;
@@ -309,7 +331,7 @@ export function useCameraStream({
     const nextUrl = baseCam.webrtcUrl || `${CAMERA_BASE}/Video/${baseCam.id}`;
     setCameraStream(nextUrl);
     startCamTimeoutInner();
-  }, [isOpen, cameraIdsKey, initialCam?.id, initialCamIndex]);
+  }, [isOpen, enabled, cameraIdsKey, initialCam?.id, initialCamIndex]);
 
   // --- cleanup ---
   useEffect(() => {

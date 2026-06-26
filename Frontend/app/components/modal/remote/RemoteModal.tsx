@@ -102,17 +102,8 @@ export default function RemoteModal({
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const showAlert = useCallback((msg: string) => setAlertMsg(msg), []);
 
-  // --- 커스텀 훅 (카메라 준비 후에만 활성화) ---
-  const cam = useCameraStream({ isOpen: isOpen && camerasReady, camera: robotCameras, initialCam, initialCamIndex });
-  const work = useWorkAutomation(isOpen, {
-    onAlert: showAlert,
-    currentFloorId: selectedRobot?.currentFloorId ?? null,
-  });
+  // --- 로봇 위치/연결 상태 (연결 끊김 감지 → 카메라 재연결 게이트에 사용) ---
   const { position: robotPos, isReady: robotConnected, hasError: positionError } = useRobotPosition(isOpen);
-  // 로봇 현재 층의 실제 맵 (없으면 null → ViewportArea가 고정 맵으로 폴백)
-  const floorMapConfig = useRemoteFloorMap(selectedRobot?.currentFloorId ?? null);
-  const moveCmd = useRemoteCommand({ debounceMs: 100, onError: showAlert });
-  const recording = useRecording(isOpen, selectedRobot?.id);
 
   // 연결 끊김 감지
   const errorCountRef = useRef(0);
@@ -127,6 +118,24 @@ export default function RemoteModal({
       setIsDisconnected(false);
     }
   }, [positionError]);
+
+  // --- 커스텀 훅 (카메라 준비 후에만 활성화) ---
+  // 로봇 통신이 끊기면(isDisconnected) 카메라 연결·재연결을 멈춘다.
+  const cam = useCameraStream({
+    isOpen: isOpen && camerasReady,
+    camera: robotCameras,
+    initialCam,
+    initialCamIndex,
+    enabled: !isDisconnected,
+  });
+  const work = useWorkAutomation(isOpen, {
+    onAlert: showAlert,
+    currentFloorId: selectedRobot?.currentFloorId ?? null,
+  });
+  // 로봇 현재 층의 실제 맵 (없으면 null → ViewportArea가 고정 맵으로 폴백)
+  const floorMapConfig = useRemoteFloorMap(selectedRobot?.currentFloorId ?? null);
+  const moveCmd = useRemoteCommand({ debounceMs: 100, onError: showAlert });
+  const recording = useRecording(isOpen, selectedRobot?.id);
 
   // --- 키보드 이동 제어 ---
   const handleMove = useCallback(
@@ -194,6 +203,7 @@ export default function RemoteModal({
             retryKey={cam.retryKey}
             cameraTabActiveIndex={cam.cameraTabActiveIndex}
             camera={robotCameras}
+            camerasReady={camerasReady}
             onRetryCamera={cam.handleRetryCamera}
             onCameraTab={cam.handleCameraTab}
             onCamImgLoad={cam.handleCamImgLoad}

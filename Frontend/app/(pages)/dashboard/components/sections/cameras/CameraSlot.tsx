@@ -16,6 +16,11 @@ type CameraSlotProps = {
   onExpand?: (e: React.MouseEvent) => void;
   /** 작게 보이는 슬롯용 — 백엔드 프록시에서 저해상도·저품질로 받아 부하를 줄임 */
   lowRes?: boolean;
+  /**
+   * false면 스트림 연결·재연결을 멈춘다. 로봇이 오프라인이면 false로 내려
+   * 발행자 없는 스트림에 무한 재연결하는 것을 막는다. (기본 true)
+   */
+  enabled?: boolean;
 };
 
 // 첫 프레임 대기 한도 — 백엔드 RTSP 프록시는 WAKE 후 캡처 open + 재연결까지
@@ -26,7 +31,7 @@ const CAM_RETRY_MS = 5_000;
 const THERMAL_STALL_MS = 6_000;      // 이 시간 동안 새 프레임 없으면 재연결
 const THERMAL_WATCHDOG_MS = 2_000;   // watchdog 점검 주기
 
-export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes = false }: CameraSlotProps) {
+export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes = false, enabled = true }: CameraSlotProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
@@ -175,6 +180,15 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
 
   const connect = useCallback(() => {
     clearTimers();
+    // 비활성(로봇 오프라인 등) — WS/타이머를 모두 정리하고 연결을 시도하지 않는다.
+    if (!enabled) {
+      if (wsRef.current) { try { wsRef.current.close(); } catch {} wsRef.current = null; }
+      if (wsWatchdogRef.current) { clearInterval(wsWatchdogRef.current); wsWatchdogRef.current = null; }
+      setStreamUrl("");
+      setIsLoading(false);
+      setHasError(false);
+      return;
+    }
     if (isWebrtc) {
       // RTSP 카메라는 WebRTCPlayer가 연결·재시도를 자체 처리 — MJPEG 타이머 불필요
       setIsLoading(false);
@@ -183,7 +197,7 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
     }
     if (isThermal) connectThermal();
     else connectMjpeg();
-  }, [isWebrtc, isThermal, connectThermal, connectMjpeg, clearTimers]);
+  }, [enabled, isWebrtc, isThermal, connectThermal, connectMjpeg, clearTimers]);
 
   // connectRef에 최신 connect 주입
   useEffect(() => {
@@ -209,7 +223,7 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
       setStreamUrl("");
       setThermalUrl(null);
     };
-  }, [camera.id]);
+  }, [camera.id, enabled]);
 
   const handleRetry = () => {
     connect();
@@ -217,8 +231,15 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
 
   return (
     <div className={styles.slotContainer}>
+      {/* 비활성(로봇 오프라인 등) — WebRTC는 WebRTCPlayer가 자체 표시하므로 그 외 타입만 */}
+      {!enabled && !isWebrtc && (
+        <div className={styles.errorOverlay}>
+          <span>로봇 연결 끊김</span>
+        </div>
+      )}
+
       {/* 로딩 */}
-      {isLoading && !hasError && (
+      {enabled && isLoading && !hasError && (
         <div className={styles.loadingOverlay}>
           <div className={styles.spinner} />
           <span>연결 중...</span>
@@ -226,7 +247,7 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
       )}
 
       {/* 에러 */}
-      {hasError && (
+      {enabled && hasError && (
         <div className={styles.errorOverlay}>
           <span>연결 실패</span>
           <button className={styles.retryBtn} onClick={handleRetry}>
@@ -237,7 +258,12 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
 
       {/* 스트림 */}
       {isWebrtc ? (
-        <WebRTCPlayer whepUrl={camera.webrtcUrl} videoClassName={styles.cameraImg} />
+        <WebRTCPlayer
+          whepUrl={camera.webrtcUrl}
+          videoClassName={styles.cameraImg}
+          enabled={enabled}
+          disabledLabel="로봇 연결 끊김"
+        />
       ) : isThermal && thermalUrl ? (
         <img
           src={thermalUrl}
@@ -255,7 +281,7 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
           onLoad={onSuccess}
           onError={onFail}
         />
-      ) : !isLoading && !hasError ? (
+      ) : enabled && !isLoading && !hasError ? (
         <div className={styles.loadingOverlay}>
           <div className={styles.spinner} />
           <span>연결 중...</span>

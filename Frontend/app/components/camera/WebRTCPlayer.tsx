@@ -13,6 +13,13 @@ type WebRTCPlayerProps = {
   videoStyle?: React.CSSProperties;
   /** 음소거 — 자동재생 정책상 기본 true */
   muted?: boolean;
+  /**
+   * false면 연결·재연결을 멈추고 대기 오버레이를 표시한다.
+   * 로봇이 오프라인이거나 카메라 모듈이 OFF인 경우 false로 내려 무한 재연결을 막는다.
+   */
+  enabled?: boolean;
+  /** 비활성(enabled=false) 시 오버레이에 표시할 문구 (기본 "연결 대기") */
+  disabledLabel?: string;
 };
 
 /**
@@ -29,9 +36,11 @@ export default function WebRTCPlayer({
   videoClassName,
   videoStyle,
   muted = true,
+  enabled = true,
+  disabledLabel = "연결 대기",
 }: WebRTCPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const { stream, status, retry } = useSharedWebRTCStream(whepUrl);
+  const { stream, status, retry } = useSharedWebRTCStream(whepUrl, enabled);
 
   // 공유 스트림을 <video>에 attach. stream 교체/언마운트 시 명시적 해제로
   // track ref가 남는 것을 막는다.
@@ -57,13 +66,11 @@ export default function WebRTCPlayer({
         muted={muted}
         playsInline
       />
-      {status === "connecting" && (
+      {!enabled ? (
         <div className={styles.overlay}>
-          <div className={styles.spinner} />
-          <span>연결 중...</span>
+          <span>{disabledLabel}</span>
         </div>
-      )}
-      {status === "error" && (
+      ) : status === "error" ? (
         <div className={styles.overlay}>
           <span>연결 실패</span>
           <button
@@ -74,7 +81,12 @@ export default function WebRTCPlayer({
             재연결
           </button>
         </div>
-      )}
+      ) : status === "connecting" || status === "idle" ? (
+        <div className={styles.overlay}>
+          <div className={styles.spinner} />
+          <span>연결 중...</span>
+        </div>
+      ) : null}
     </div>
   );
 }
