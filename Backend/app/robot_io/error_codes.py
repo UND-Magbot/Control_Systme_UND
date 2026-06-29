@@ -74,6 +74,19 @@ ROBOT_ERROR_CODES = {
 }
 
 
+# 정보성(안내) 코드 — 실제 장애가 아니라 정상 동작 중 펌웨어가 함께 실어 보내는 안내 코드.
+# abnormal_status 목록에 등장해도 'error' 등급 알림(확인창)으로 띄우지 않고 추적 로그만 남긴다.
+#  · 0x8506: 자율 충전(도킹 정렬) 중에는 도크에 전류가 인가되지 않는 것이 정상 → 오탐 방지.
+INFORMATIONAL_CODES = frozenset({
+    0x8506,
+})
+
+
+def is_informational(code: int) -> bool:
+    """정상 동작 중 나오는 안내성 코드인지 여부 (error 알림 대상에서 제외)."""
+    return code in INFORMATIONAL_CODES
+
+
 # 에러 코드 → 발생 부위/영역 분류.
 # 운영자가 알림만 보고 "어디서 난 오류인지" 즉시 파악할 수 있도록,
 # ROBOT_ERROR_CODES 테이블의 그룹(코드 대역)과 동일하게 분류한다.

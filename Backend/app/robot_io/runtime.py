@@ -324,7 +324,9 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
     # 코드를 error_codes 테이블·부위 분류와 매칭해 "어디서 난 오류인지"를 메시지에 담는다.
     if abnormal_payloads:
         try:
-            from app.robot_io.error_codes import ROBOT_ERROR_CODES, get_error_category
+            from app.robot_io.error_codes import (
+                ROBOT_ERROR_CODES, get_error_category, is_informational,
+            )
             from app.logs.service import log_event
             from app.user_cache import get_robot_name, get_robot_business_id
             rname = get_robot_name()
@@ -345,6 +347,22 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
                             continue
                     else:
                         msg = f"미등록 코드({err_hex})"
+                    # 정보성(안내) 코드는 정상 동작 중 함께 오는 코드이므로 error 알림(확인창)으로
+                    # 띄우지 않고 추적용 로그만 남긴다. (예: 0x8506 자율 충전 중 도크 무전류 — 오탐 방지)
+                    if is_informational(code):
+                        try:
+                            log_event(
+                                "robot", "robot_error_info",
+                                f"[{category}] {msg}{comp_suffix}",
+                                detail=f"부위: {comp}" if comp else None,
+                                error_json=json.dumps(
+                                    {"error_code": err_hex, "category": category, "component": comp},
+                                    ensure_ascii=False),
+                                robot_id=robot_id, robot_name=rname, business_id=rbiz,
+                            )
+                        except Exception as e:
+                            print(f"[WARN] robot_error_info 로그 실패: {e}")
+                        continue
                     try:
                         log_event(
                             "error", "robot_error_code",

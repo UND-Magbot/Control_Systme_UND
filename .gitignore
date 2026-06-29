@@ -58,6 +58,7 @@ Backend/recordings/
 
 # Test scripts
 Backend/test_recording.py
+robot_receiver/logs/
 
 .claude/
 .bkit/
