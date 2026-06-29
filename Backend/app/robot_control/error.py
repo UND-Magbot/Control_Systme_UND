@@ -6,7 +6,7 @@ from fastapi import APIRouter
 
 from app.user_cache import get_robot_id, get_robot_name, get_robot_business_id
 from app.logs.service import log_event
-from app.robot_io.error_codes import ROBOT_ERROR_CODES, get_error_category
+from app.robot_io.error_codes import ROBOT_ERROR_CODES, get_error_category, is_informational
 
 router = APIRouter()
 
@@ -25,6 +25,10 @@ def test_robot_error(error_code: str):
 
     if error_msg is None:
         return {"status": "skip", "msg": "정상 코드 (0x0000)"}
+
+    # 정보성(안내) 코드는 운영 경로(runtime.update_status)와 동일하게 error 알림 대상에서 제외
+    if is_informational(code):
+        return {"status": "skip", "msg": f"정보성 코드 ({error_hex}) — 알림 미발생", "message": error_msg}
 
     _last_logged_error_code = code
     category = get_error_category(code)
