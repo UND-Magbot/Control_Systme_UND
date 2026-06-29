@@ -7,6 +7,7 @@ import type { Floor, RobotRowData, Video, Camera } from "@/app/types";
 import type { MapConfig, POIItem, RobotOnMap, NavPath, NavPathSegment, MapView } from "@/app/components/map/types";
 import type { CanvasMapHandle } from "@/app/components/map/CanvasMap";
 import CanvasMap from "@/app/components/map/CanvasMap";
+import { toPoiCategory } from "@/app/components/map/poiStyle";
 import { apiFetch } from "@/app/lib/api";
 import { getApiBase } from "@/app/config";
 import { useModalAlert } from "@/app/hooks/useModalAlert";
@@ -241,7 +242,8 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           y: p.LocationY ?? 0,
           floor: p.Floor ?? "",
           floorId: p.FloorId ?? null,
-          category: p.Category === "charge" ? "charge" as const : "work" as const,
+          // 맵관리와 동일한 카테고리 아이콘·색을 쓰도록 실제 Category 전달(미등록은 work).
+          category: toPoiCategory(p.Category),
         }));
         _cache.places = mapped;
         setPlaces(mapped);

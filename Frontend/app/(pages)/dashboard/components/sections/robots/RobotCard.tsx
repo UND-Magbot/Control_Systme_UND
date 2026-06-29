@@ -75,6 +75,9 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
     if (robot.chargeState === 2) return { label: "충전 중", className: styles.taskCharging, tooltip: "" };
     if (robot.chargeState === 3) return { label: "부두에서 나가기", className: styles.taskDocking, tooltip: "" };
     if (robot.isCharging) return { label: "충전 중", className: styles.taskCharging, tooltip: "" };
+    // 완충(100%)이면 전류가 멈춰 isCharging=false 가 되지만, 도크에 물려 있으면(atDock)
+    // '충전 중(완충 유지)'로 표시한다. (컨트롤러의 Auto Charging Error 는 완충 표기일 뿐)
+    if (robot.atDock) return { label: "충전 중", className: styles.taskCharging, tooltip: "완충 — 충전소 도킹 유지 중" };
     if (robot.dockingTime > 0) return { label: "도킹 중", className: styles.taskDocking, tooltip: "" };
     if (hasActiveSchedule || robot.tasks.length > 0 || robot.isNavigating) return { label: "작업 중", className: styles.taskWorking, tooltip: "" };
     return { label: "대기 중", className: styles.taskIdle, tooltip: "" };

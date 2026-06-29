@@ -8,6 +8,7 @@ import PlaceList from "./components/tabs/place/PlaceManageTab";
 import PathList from "./components/tabs/path/PathManageTab";
 import MapPlaceCreateModal from "./components/tabs/map/MapPlaceCreateModal";
 import type { PendingPlace } from "./components/tabs/map/MapPlaceCreateModal";
+import { getCategoryStyle, ROBOT_MARKER_FILL, ROBOT_MARKER_STROKE } from "@/app/components/map/poiStyle";
 import type { RobotRowData, Floor } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 import { API_BASE } from "@/app/config";
@@ -409,7 +410,11 @@ export default function MapManagementPage() {
   } | null>(null);
   const [isFromRobotPos, setIsFromRobotPos] = useState(false);
   const [isChargeCreate, setIsChargeCreate] = useState(false);
-  const [chargeDockingPlace, setChargeDockingPlace] = useState<PendingPlace | null>(null);
+  // 충전소 생성(A안) → 도킹 포인트 설정 단계 상태.
+  // 충전소 저장 후 세팅되면 도킹 포인트 안내 모달이 뜨고, 로봇을 도킹 포인트로
+  // 이동(충전 해제)시킨 뒤 그 위치 좌표로 "<충전소>-1" 도킹 포인트를 생성한다.
+  const [chargeDockSetup, setChargeDockSetup] = useState<{ chargeName: string } | null>(null);
+  const [dockSetupCharging, setDockSetupCharging] = useState<boolean | null>(null);
 
   // ── 장소 인라인 수정 ──
   const [editingPlace, setEditingPlace] = useState<{
@@ -995,7 +1000,7 @@ export default function MapManagementPage() {
     setPlaceClickCoords(null);
     setIsFromRobotPos(false);
     setIsChargeCreate(false);
-    setChargeDockingPlace(null);
+    setChargeDockSetup(null);
     // 다른 모드 해제 후 위험구역 그리기 진입
     setIsPlaceMode(false);
     setIsDeleteMode(false);
@@ -1005,6 +1010,50 @@ export default function MapManagementPage() {
     setIsDangerMode(true);
     danger.start();
     if (seed) danger.addPoint(seed);
+  };
+
+  // ── 충전소 생성(A안) 도킹 포인트 단계: 로봇 충전 해제(언도킹) 여부 실시간 표시 ──
+  //    충전소 저장 후 모달이 떠 있는 동안 /robot/status 의 is_charging 을 폴링한다.
+  useEffect(() => {
+    if (!chargeDockSetup) { setDockSetupCharging(null); return; }
+    const rid = connectedRobots[0]?.id;
+    if (!rid) { setDockSetupCharging(null); return; }
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await apiFetch(`/robot/status`);
+        const list = await res.json();
+        const me = Array.isArray(list) ? list.find((s: { robot_id: number; is_charging?: boolean }) => s.robot_id === rid) : null;
+        if (!cancelled) setDockSetupCharging(me ? !!me.is_charging : null);
+      } catch {
+        /* 폴링 실패는 무시 — 상태 '확인 중'으로 표시 */
+      }
+    };
+    check();
+    const t = setInterval(check, 2000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [chargeDockSetup, connectedRobots]);
+
+  // 도킹 포인트(<충전소>-1) 생성: 로봇을 도킹 포인트로 보낸(충전 해제) 뒤 현재 좌표로 캡처.
+  const handleCreateDockPoint = () => {
+    if (!chargeDockSetup) return;
+    if (!robotPos) { modalAlert("로봇 위치 정보를 가져올 수 없습니다."); return; }
+    const dock: PendingPlace = {
+      tempId: `pending_dock_${Date.now()}`,
+      RobotName: connectedRobots[0]?.RobotName ?? "",
+      LacationName: `${chargeDockSetup.chargeName}-1`,
+      FloorId: selectedFloor !== "" ? (selectedFloor as number) : null,
+      LocationX: Number(robotPos.x.toFixed(3)),
+      LocationY: Number(robotPos.y.toFixed(3)),
+      Yaw: Number(robotPos.yaw.toFixed(4)),
+      MapId: selectedMap !== "" ? (selectedMap as number) : null,
+      Category: "waypoint",
+      Imformation: `${chargeDockSetup.chargeName} 충전 도킹 포인트`,
+    };
+    setPendingPlaces((prev) => [...prev, dock]);
+    setUndoStack((prev) => [...prev, { type: "addPlace", tempId: dock.tempId }]);
+    setChargeDockSetup(null);
+    modalAlert(`도킹 포인트 "${dock.LacationName}"가 추가되었습니다.\n상단 저장 버튼을 눌러 DB에 반영하세요.`);
   };
 
   // ── 상단 사업장 선택 ──
@@ -1930,10 +1979,10 @@ export default function MapManagementPage() {
                   {mapMeta && [
                     ...mapPlaces
                       .filter((p) => !deletedDbIds.has(p.id) && p.Category !== "danger")
-                      .map((p) => ({ key: `db_${p.id}`, dbId: p.id, tempId: null as string | null, name: p.LacationName, x: p.LocationX, y: p.LocationY, pending: false })),
+                      .map((p) => ({ key: `db_${p.id}`, dbId: p.id, tempId: null as string | null, name: p.LacationName, x: p.LocationX, y: p.LocationY, pending: false, category: p.Category as string | undefined })),
                     ...pendingPlaces
                       .filter((p) => p.Category !== "danger")
-                      .map((p) => ({ key: p.tempId, dbId: null as number | null, tempId: p.tempId, name: p.LacationName, x: p.LocationX, y: p.LocationY, pending: true })),
+                      .map((p) => ({ key: p.tempId, dbId: null as number | null, tempId: p.tempId, name: p.LacationName, x: p.LocationX, y: p.LocationY, pending: true, category: p.Category as string | undefined })),
                   ].map((place) => {
                     // 드래그 중이면 드래그 좌표, 아니면 movedPlaces 또는 원본
                     const isDragging = draggingPlace?.name === place.name && dragWorldPos;
@@ -2027,17 +2076,22 @@ export default function MapManagementPage() {
                           {(() => {
                             const isModified = place.pending || (place.dbId != null && modifiedDbIds.has(place.dbId)) || movedPlaces.has(place.name);
                             const isUnreachable = isPathBuildMode && pathBuildOrder.length > 0 && pathReachable && !pathReachable.has(place.name) && pathBuildOrder[pathBuildOrder.length - 1] !== place.name;
+                            // 대시보드(POIOverlay)와 동일한 카테고리 아이콘·색 + 중앙 앵커(좌표=아이콘 중앙).
+                            const { icon: Icon, color } = getCategoryStyle(place.category);
                             return (<>
-                          <image
-                            href="/icon/place_point.png"
+                          <Icon
                             x={-10}
-                            y={-20}
+                            y={-10}
                             width={20}
                             height={20}
+                            fill={color}
+                            color="#fff"
+                            strokeWidth={1.5}
                             opacity={isUnreachable ? 0.25 : isModified ? 0.7 : 1}
+                            style={{ filter: "drop-shadow(0 1px 1.5px rgba(0,0,0,0.55))" }}
                           />
                           <text
-                            y={-26}
+                            y={-14}
                             textAnchor="middle"
                             fill={isModified ? "#FFD700" : "#fff"}
                             fontSize="11"
@@ -2067,8 +2121,8 @@ export default function MapManagementPage() {
                           <g transform={`scale(${1 / zoom})`}>
                             <polygon
                               points="-10,-8 10,0 -10,8 -6,0"
-                              fill="#E53E3E"
-                              stroke="#C53030"
+                              fill={ROBOT_MARKER_FILL}
+                              stroke={ROBOT_MARKER_STROKE}
                               strokeWidth="1"
                             />
                           </g>
@@ -2369,35 +2423,14 @@ export default function MapManagementPage() {
                   modalAlert("로봇 위치 정보를 가져올 수 없습니다.");
                   return;
                 }
-                // 도킹 포인트 → 충전소 간 거리 (0.866m)
-                const CHARGE_OFFSET = 0.866;
-                // 로봇 전방 = robotPos.yaw (ERR-05 +π 보정은 과보정 오진이라 원복)
-                const yaw = robotPos.yaw;
-                // 충전소 좌표: 로봇이 바라보는 방향 앞 0.866m
-                const chargeX = robotPos.x + CHARGE_OFFSET * Math.cos(yaw);
-                const chargeY = robotPos.y + CHARGE_OFFSET * Math.sin(yaw);
-                const chargePx = (chargeX - mapMeta.originX) / mapMeta.resolution;
-                const chargePy = processedImg.h - (chargeY - mapMeta.originY) / mapMeta.resolution;
-
-                // 도킹 포인트 기본 정보 저장 (이름은 confirm 시 결정)
-                const dockingPlace: PendingPlace = {
-                  tempId: `pending_dock_${Date.now()}`,
-                  RobotName: connectedRobots[0]?.RobotName ?? "",
-                  LacationName: "", // confirm 시 충전소 이름 기반으로 결정
-                  FloorId: selectedFloor !== "" ? (selectedFloor as number) : null,
-                  LocationX: Number(robotPos.x.toFixed(3)),
-                  LocationY: Number(robotPos.y.toFixed(3)),
-                  Yaw: Number(robotPos.yaw.toFixed(4)),
-                  MapId: selectedMap !== "" ? (selectedMap as number) : null,
-                  Category: "waypoint",
-                  Imformation: "",
-                };
-                setChargeDockingPlace(dockingPlace);
-
-                // 충전소 좌표로 모달 열기
+                // A안: 충전소 = 로봇이 실제 충전 중인 '현재 위치' 그대로 캡처.
+                // (기존 0.866m 정면 오프셋 추정 제거 — 실제 충전 위치와 어긋나는 원인이었음)
+                // 도킹 포인트는 충전소 저장 후 로봇을 도킹 포인트로 보낸 뒤 별도 캡처한다.
+                const chargePx = (robotPos.x - mapMeta.originX) / mapMeta.resolution;
+                const chargePy = processedImg.h - (robotPos.y - mapMeta.originY) / mapMeta.resolution;
                 setPlaceClickCoords({
-                  worldX: Number(chargeX.toFixed(3)),
-                  worldY: Number(chargeY.toFixed(3)),
+                  worldX: Number(robotPos.x.toFixed(3)),
+                  worldY: Number(robotPos.y.toFixed(3)),
                   pixelX: chargePx,
                   pixelY: chargePy,
                 });
@@ -2974,39 +3007,101 @@ export default function MapManagementPage() {
             setPlaceClickCoords(null);
             setIsFromRobotPos(false);
             setIsChargeCreate(false);
-            setChargeDockingPlace(null);
           }}
           onConfirm={(place) => {
-            // 충전소 생성 시 도킹 포인트도 함께 추가
-            // 도킹/충전소 좌표는 모달이 열린 시점(= 생성 버튼 클릭)에 robotPos로 확정되어
-            // 모달에 표시된 값 그대로 저장된다(보이는 값 = 저장 값). 충전소(★)는 도킹 기준
-            // +0.866m 정면(#1, 유지). 정지 충전 중 로봇 기준이므로 이 스냅샷으로 충분하다.
-            if (isChargeCreate && chargeDockingPlace) {
-              const dock: PendingPlace = {
-                ...chargeDockingPlace,
-                LacationName: `${place.LacationName}-1`,
-                Imformation: `${place.LacationName} 충전 도킹 포인트`,
-              };
-              setPendingPlaces((prev) => [...prev, dock, place]);
-              setUndoStack((prev) => [
-                ...prev,
-                { type: "addPlace", tempId: dock.tempId },
-                { type: "addPlace", tempId: place.tempId },
-              ]);
-            } else {
-              setPendingPlaces((prev) => [...prev, place]);
-              setUndoStack((prev) => [...prev, { type: "addPlace", tempId: place.tempId }]);
-            }
+            // 충전소/장소를 pending 으로 추가 (상단 저장 버튼에서 일괄 DB 반영).
+            // A안: 충전소는 로봇 실제 충전 위치로 저장되며, 도킹 포인트는 따로 만들지 않고
+            // 저장 직후 '도킹 포인트 설정' 단계로 넘어가 로봇 실제 도킹 위치로 캡처한다.
+            setPendingPlaces((prev) => [...prev, place]);
+            setUndoStack((prev) => [...prev, { type: "addPlace", tempId: place.tempId }]);
             if (isRouteMode && routeStartName) {
               setRouteEndName(place.LacationName);
             }
+            const wasCharge = isChargeCreate;
+            const chargeName = place.LacationName;
             setShowPlaceModal(false);
             setPlaceClickCoords(null);
             setIsFromRobotPos(false);
             setIsChargeCreate(false);
-            setChargeDockingPlace(null);
+            if (wasCharge) {
+              setChargeDockSetup({ chargeName });
+            }
           }}
         />
+      )}
+
+      {/* 충전소 생성(A안) → 도킹 포인트 설정 안내 모달 */}
+      {chargeDockSetup && (
+        <div className={styles.startOverlay}>
+          <div className={styles.robotModal} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <div className={styles.startHeader}>
+              <div className={styles.startHeaderLeft}>
+                <img src="/icon/robot_w.png" alt="" />
+                <h2>도킹 포인트 설정</h2>
+              </div>
+              <button className={styles.startCloseBtn} onClick={() => setChargeDockSetup(null)}>
+                &times;
+              </button>
+            </div>
+
+            <div className={styles.robotBody}>
+              <p style={{ lineHeight: 1.7, fontSize: "var(--font-size-sm)", margin: "4px 0 16px" }}>
+                충전소 <b>{chargeDockSetup.chargeName}</b> 가 추가되었습니다.<br />
+                이제 <b>도킹 포인트</b>를 설정합니다.
+              </p>
+              <ol style={{ margin: "0 0 16px", paddingLeft: 18, lineHeight: 1.8, fontSize: "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+                <li>컨트롤러로 <b>충전을 해제</b>하고 로봇을 <b>도킹 포인트</b>(충전 해제 후 서는 위치)에 정위치시키세요.</li>
+                <li>아래 충전 상태가 <b>해제됨</b>으로 바뀌면 <b>[도킹 포인트 생성]</b>을 누르세요.</li>
+              </ol>
+
+              {/* 충전 상태(언도킹) 실시간 표시 */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "10px 14px", borderRadius: 8, marginBottom: 10,
+                background: "var(--surface-3)", fontSize: "var(--font-size-sm)",
+              }}>
+                <span style={{ color: "var(--text-secondary)" }}>현재 충전 상태:</span>
+                {dockSetupCharging === null ? (
+                  <b style={{ color: "var(--text-tertiary)" }}>확인 중...</b>
+                ) : dockSetupCharging ? (
+                  <b style={{ color: "#FF9800" }}>충전 중 (도크에 있음 — 해제 필요)</b>
+                ) : (
+                  <b style={{ color: "#4CAF50" }}>해제됨 (도킹 포인트 캡처 가능)</b>
+                )}
+              </div>
+
+              {/* 현재 로봇 좌표 미리보기 */}
+              <div style={{ fontSize: "var(--font-size-xs)", color: "var(--text-tertiary)" }}>
+                {robotPos
+                  ? `현재 로봇 좌표: (${robotPos.x.toFixed(3)}, ${robotPos.y.toFixed(3)})`
+                  : "로봇 위치 수신 대기 중..."}
+              </div>
+            </div>
+
+            <div className={styles.startFooter}>
+              <button
+                className={styles.startFooterBtn + " " + styles.startBtnCancel}
+                onClick={() => setChargeDockSetup(null)}
+              >
+                나중에
+              </button>
+              <button
+                className={styles.startFooterBtn}
+                disabled={dockSetupCharging === true || !robotPos}
+                style={{
+                  background: dockSetupCharging === true || !robotPos ? "var(--surface-4)" : "var(--color-info-bg)",
+                  color: "var(--text-primary)",
+                  opacity: dockSetupCharging === true || !robotPos ? 0.5 : 1,
+                  cursor: dockSetupCharging === true || !robotPos ? "not-allowed" : "pointer",
+                }}
+                onClick={handleCreateDockPoint}
+                title={dockSetupCharging === true ? "충전을 먼저 해제하세요" : ""}
+              >
+                도킹 포인트 생성
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 위험구역 이름 입력 모달 비활성화 (요청에 의해 OFF — 에러 상황 방지)

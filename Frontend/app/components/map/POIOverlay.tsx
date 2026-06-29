@@ -1,19 +1,8 @@
 "use client";
 
-import { MapPin, BatteryCharging, Home, Navigation, AlertTriangle } from "lucide-react";
-import type { POIItem, POICategory } from "./types";
+import type { POIItem } from "./types";
+import { CATEGORY_CONFIG, DEFAULT_CATEGORY_STYLE as DEFAULT_CONFIG } from "./poiStyle";
 import styles from "./POIOverlay.module.css";
-
-/* ── 카테고리별 설정 ── */
-const CATEGORY_CONFIG: Record<POICategory, { icon: typeof MapPin; color: string }> = {
-  work:    { icon: MapPin,           color: "#ff6b6b" },
-  charge:  { icon: BatteryCharging,  color: "#4caf50" },
-  standby: { icon: Home,             color: "#9c7cfa" },
-  waypoint:{ icon: Navigation,       color: "#64b4ff" },
-  danger:  { icon: AlertTriangle,    color: "#ff9800" },
-};
-
-const DEFAULT_CONFIG = CATEGORY_CONFIG.work;
 
 type POIOverlayProps = {
   items: { poi: POIItem; screenX: number; screenY: number }[];

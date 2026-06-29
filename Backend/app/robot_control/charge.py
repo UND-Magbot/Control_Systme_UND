@@ -225,6 +225,8 @@ def trigger_overheat_protection() -> None:
         except Exception as e:
             print(f"[ERR] 과열 보호 SIT 전송 실패: {e}")
         print("🌡️ 모터 과열 보호(유휴): 도킹 루트 없음 — 제자리 SIT")
+
+
 def _send_start_charge_packet() -> bool:
     """start-charge UDP 패킷만 전송 (Charge=1, 로그 없이). 내부 헬퍼.
 
@@ -502,6 +504,18 @@ def _return_to_charge_internal(cancel_running: bool = True) -> dict:
             }
             for _, row in route_numbered
         ]
+        # 도킹 포인트 도착 후 '제자리 정렬' 웨이포인트 1개 추가.
+        #   ch-N→ch-1 은 이동+회전이 합쳐진 단일 NAV 라, 로봇이 위치만 도달하고 최종
+        #   yaw(충전소 정면) 정렬을 생략한 채 접근 방향 그대로 멈춰 대각선으로 서는 문제가 있다.
+        #   같은 (x,y)에 dock yaw 만 다시 주면 로봇은 '이동 없이 제자리 회전'을 수행한다
+        #   (prepare_undock_waypoints 의 검증된 동작과 동일). 도착 후 자동 충전(start_charge)은
+        #   navigation_send_next 가 '마지막' 웨이포인트에서 호출하므로, 정렬 완료 후 충전된다.
+        nav.waypoints_list.append({
+            "x": dock_point.LocationX,
+            "y": dock_point.LocationY,
+            "yaw": dock_point.Yaw or 0.0,
+            "name": f"{dock_name} (정렬)",
+        })
         route_label = " → ".join(row.LacationName for _, row in route_numbered)
         nav.current_wp_index = 0
         nav.is_navigating = True

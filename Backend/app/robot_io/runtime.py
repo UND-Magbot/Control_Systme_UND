@@ -121,8 +121,12 @@ def init_runtime(robots, last_statuses: Optional[dict] = None) -> None:
                         "yaw": ls.PosYaw or 0.0,
                         "timestamp": ls.LastHeartbeat.timestamp(),
                     }
-                if ls.CurrentFloorId is not None:
-                    entry["current_floor_id"] = ls.CurrentFloorId
+                # 현재 층은 robot_info.CurrentFloorId(line 74)가 유일한 권위 소스다.
+                # '현재 층 변경'(activate_map)·로봇 정보 수정이 robot_info 에 즉시 기록하므로
+                # 재시작 시에도 그대로 살아난다. robot_last_status.CurrentFloorId 는
+                # '저장된 위치(PosX/PosY)가 어느 층 것인지' 표시용(auto_init_pose 층 정합 가드)일
+                # 뿐이라 여기서 현재 층으로 덮어쓰면 안 된다. (덮어쓰면 stale 한 층 캐시가
+                # robot_info 를 이기고, 재시작마다 그 값이 다시 기록되는 자기강화 루프에 빠진다.)
                 entry["last_heartbeat"] = ls.LastHeartbeat.timestamp()
                 # 배터리 오독 필터를 DB 복원값으로 미리 무장한다.
                 # 이걸 안 하면 재시작 후 첫 heartbeat가 콜드스타트로 취급돼
