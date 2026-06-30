@@ -535,6 +535,13 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
         db.commit()
         db.refresh(robot_map)
 
+        # 7.5 맵 실물 파일을 공유 DB 로 업로드 (다른 관제 PC 가 파일 없이도 사용 가능)
+        try:
+            from app.map.map_file_store import store_map_files
+            store_map_files(db, robot_map)
+        except Exception as e:
+            print(f"[MAPFILE] 매핑 완료 후 DB 업로드 실패(맵 저장은 정상): {e}")
+
         # 8. 상태 초기화 (active 는 위 4.5 에서 완성된 새 맵으로 명시적으로 재링크함)
         mapping_state["is_running"] = False
         mapping_state["map_name"] = None

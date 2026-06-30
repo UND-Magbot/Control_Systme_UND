@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.database import Base
@@ -289,6 +290,31 @@ class MapInitPose(Base):
 
     __table_args__ = (
         UniqueConstraint("MapId", "RobotId", name="uq_map_robot"),
+    )
+
+
+# =========================
+# 맵 실물 파일 중앙 저장소 (공유 MySQL BLOB)
+# =========================
+class RobotMapFile(Base):
+    """관제 PC 여러 대가 공유 DB만으로 맵 파일을 주고받기 위한 청크 BLOB 저장소.
+
+    pgm/yaml/png/zip 을 4MB 청크(Seq)로 나눠 저장한다. 청크 분할은
+    MySQL max_allowed_packet(기본 16MB) 한도를 넘지 않기 위함이며,
+    덕분에 서버 설정 변경 없이 28MB 급 zip 도 안전하게 저장된다.
+    로컬 static/maps 는 이 테이블의 read-through 캐시로 동작한다.
+    """
+    __tablename__ = "robot_map_file"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    MapId = Column(Integer, nullable=False, index=True)
+    Kind = Column(String(8), nullable=False)        # pgm / yaml / png / zip
+    Seq = Column(Integer, nullable=False, default=0)  # 청크 순번 (소형 파일은 0)
+    Data = Column(LONGBLOB, nullable=False)         # 청크 바이트 (≤ 4MB)
+    Sha256 = Column(String(64))                      # 파일 전체 해시 (무결성 검증)
+    UpdatedAt = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("MapId", "Kind", "Seq", name="uq_map_kind_seq"),
     )
 
 

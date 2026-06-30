@@ -183,6 +183,32 @@ def startup_event():
     from app.robot_io.persistence import start_persistence_thread
     start_persistence_thread()
 
+    # 공유 DB 맵 목록 ↔ 로컬 static/maps 비교 동기화.
+    #   예) 로컬 5개 맵 + DB 메타 6개 → 빠진 1개를 DB BLOB 에서 복원해 6개로 맞춘다.
+    #   모든 맵 파일이 이미 있으면 그냥 통과(복원 0).
+    # 시작을 막지 않도록 백그라운드 스레드로 수행.
+    def _sync_maps_from_db():
+        from app.database.database import SessionLocal as _SL
+        from app.map.map_file_store import sync_all_from_db
+        _db = _SL()
+        try:
+            s = sync_all_from_db(_db)
+            if s["restored_maps"] == 0 and not s["incomplete"]:
+                print(f"[MAPFILE] 시작 동기화: DB {s['db_maps']}개 맵 전부 로컬 보유 → 통과")
+            else:
+                print(
+                    f"[MAPFILE] 시작 동기화: DB {s['db_maps']}개 / 기보유 "
+                    f"{s['already_complete']} / 복원 {s['restored_maps']}개 맵"
+                    f"({s['restored_files']}파일)"
+                )
+            for mid, name, kinds in s["incomplete"]:
+                print(f"[MAPFILE]   ⚠ 복구 불가(원본 매핑/가져오기 필요): [{mid}] {name} {kinds}")
+        except Exception as e:
+            print(f"[MAPFILE] 시작 시 맵 파일 동기화 실패: {e}")
+        finally:
+            _db.close()
+    threading.Thread(target=_sync_maps_from_db, daemon=True).start()
+
     log_event("system", "system_startup", "서버 시작")
 
 

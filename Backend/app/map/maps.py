@@ -103,6 +103,14 @@ def get_map_meta(
     if not yaml_path:
         raise HTTPException(status_code=404, detail="No yaml file")
 
+    # 다른 관제 PC 라 로컬에 파일이 없으면 공유 DB 에서 복원(yaml+png+pgm).
+    # png/pgm 까지 함께 복원해두면 이어지는 정적 이미지 요청도 곧바로 성공한다.
+    try:
+        from app.map.map_file_store import ensure_local
+        ensure_local(db, m)
+    except Exception as e:
+        print(f"[MAPFILE] 메타 조회 중 복원 실패 map={map_id}: {e}")
+
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     full_path = os.path.join(base_dir, yaml_path.replace("./", ""))
 
@@ -131,6 +139,36 @@ def get_map_meta(
     }
 
 
+@router.get("/maps/{map_id}/files")
+def get_map_file_status(
+    map_id: int,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """맵 파일이 로컬·공유 DB 에 있는지, 해시가 일치하는지 검증 정보를 반환한다."""
+    m = db.query(RobotMapInfo).filter(RobotMapInfo.id == map_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Map not found")
+    from app.map.map_file_store import file_status
+    return {"map_id": map_id, "map_name": m.MapName, "files": file_status(db, m)}
+
+
+@router.post("/maps/{map_id}/files/upload")
+def upload_map_files_to_db(
+    map_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_permission("map-edit")),
+):
+    """현재 PC 로컬의 맵 파일을 공유 DB 로 올린다(백필·복구용)."""
+    m = db.query(RobotMapInfo).filter(RobotMapInfo.id == map_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Map not found")
+    from app.map.map_file_store import store_map_files
+    result = store_map_files(db, m)
+    return {"map_id": map_id, "stored": result}
+
+
 @router.delete("/maps/{map_id}")
 def delete_map(map_id: int, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
     m = db.query(RobotMapInfo).filter(RobotMapInfo.id == map_id).first()
@@ -150,6 +188,10 @@ def delete_map(map_id: int, request: Request, db: Session = Depends(get_db), cur
 
     db.query(RouteInfo).filter(RouteInfo.MapId == map_id).delete()
     db.query(LocationInfo).filter(LocationInfo.MapId == map_id).delete()
+
+    # 공유 DB 에 저장된 맵 실물 파일 BLOB 정리
+    from app.database.models import RobotMapFile
+    db.query(RobotMapFile).filter(RobotMapFile.MapId == map_id).delete(synchronize_session=False)
 
     for path in [m.PgmFilePath, m.YamlFilePath, m.ImgFilePath]:
         if path:
@@ -338,6 +380,13 @@ def sync_map(req: SyncMapReq, request: Request, db: Session = Depends(get_db), c
         raise HTTPException(status_code=400, detail="이 맵에는 동기화용 zip 파일이 없습니다.")
 
     local_zip = os.path.join(BASE_DIR, m.ZipFilePath.replace("./", ""))
+    if not os.path.exists(local_zip):
+        # 다른 관제 PC 라 로컬에 zip 이 없으면 공유 DB 에서 복원.
+        try:
+            from app.map.map_file_store import restore_file
+            restore_file(db, m, "zip")
+        except Exception as e:
+            print(f"[MAPFILE] 동기화용 zip 복원 실패 map={m.id}: {e}")
     if not os.path.exists(local_zip):
         raise HTTPException(status_code=404, detail=f"zip 파일을 찾을 수 없습니다: {m.ZipFilePath}")
 
@@ -567,6 +616,13 @@ def import_map(req: ImportMapReq, request: Request, db: Session = Depends(get_db
     db.add(robot_map)
     db.commit()
     db.refresh(robot_map)
+
+    # 맵 실물 파일을 공유 DB 로 업로드 (다른 관제 PC 가 파일 없이도 사용 가능)
+    try:
+        from app.map.map_file_store import store_map_files
+        store_map_files(db, robot_map)
+    except Exception as e:
+        print(f"[MAPFILE] 가져오기 후 DB 업로드 실패(맵 등록은 정상): {e}")
 
     write_audit(db, current_user.id, "map_imported", "map", robot_map.id,
                 detail=f"로봇 맵 가져오기: {req.MapName} (로봇: {robot.RobotName}, dir: {req.dir})",
