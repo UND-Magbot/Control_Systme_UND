@@ -72,6 +72,9 @@ def _guard_untrusted_position_jump(robot_id: int, pos: dict) -> None:
     """비주행 중 갑작스러운 큰 위치 점프는 localization 오인으로 보고 DB 저장을 보류한다."""
     if runtime.is_initpose_pending(robot_id) or _is_navigating() or _is_mapping():
         return
+    # 수동 확정 직후 유예 구간엔 급변 가드를 쉰다(재조정 수렴 중 좌표 튐을 미확정 재설정으로 오인 방지).
+    if runtime.in_manual_confirm_grace(robot_id):
+        return
     prev = runtime.get_position(robot_id) or {}
     prev_ts = prev.get("timestamp", 0) or 0
     if not prev_ts:
@@ -321,6 +324,14 @@ def status_thread():
                     check_and_init_pose(rid)
                 except Exception as e:
                     print(f"[AUTO-INITPOSE] check 실패: {e}")
+
+                # 미확정 자동 복구: 충전 중 보고 위치가 충전소(dock) 좌표로 안정 수렴하면
+                # 미확정 해제(rviz 등 외부 교정 후 자동 반영). 비충전은 운영자 버튼으로 해제.
+                try:
+                    from app.robot_control.auto_init_pose import check_and_recover_pending
+                    check_and_recover_pending(rid)
+                except Exception as e:
+                    print(f"[AUTO-INITPOSE] recover check 실패: {e}")
 
                 # 모터/드라이버 온도 과열 감지 + 실시간 로그 (DeviceTemperature 검사)
                 try:

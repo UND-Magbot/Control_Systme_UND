@@ -18,7 +18,7 @@ export function useRemoteCommand(options: UseRemoteCommandOptions = {}) {
   const lastCallRef = useRef<Record<string, number>>({});
 
   const execute = useCallback(
-    async (path: string, label?: string): Promise<boolean> => {
+    async (path: string, label?: string, timeoutMs = 5000): Promise<boolean> => {
       const now = Date.now();
       const lastCall = lastCallRef.current[path] ?? 0;
       if (now - lastCall < debounceMs) return false;
@@ -30,7 +30,8 @@ export function useRemoteCommand(options: UseRemoteCommandOptions = {}) {
 
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        // 명령별 타임아웃(기본 5s). 언도킹처럼 로봇 동작 시퀀스가 긴 명령은 길게 넘긴다.
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
         const res = await apiFetch(path, {
           method: 'POST',

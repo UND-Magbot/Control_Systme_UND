@@ -87,7 +87,7 @@ export default function StatusBar({
         <span className={styles.statusBadge}>
           <span className={styles.badgeLabel}>상태</span>
           <span>
-            {robot?.isCharging ? (
+            {(robot?.chargeState === 2 || robot?.chargeState === 5) ? (
               <><ChargingIcon size={12} style={{ marginLeft: 0, marginRight: 3 }} />충전 중</>
             ) : robot?.isNavigating ? '작업 중'
             : network}

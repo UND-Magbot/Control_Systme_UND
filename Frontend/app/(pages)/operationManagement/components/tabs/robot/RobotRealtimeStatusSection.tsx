@@ -7,6 +7,9 @@ import { getBatteryColor } from '@/app/constants/robotIcons';
 
 import { isDualBatteryType } from '@/app/constants/robotCapabilities';
 
+// 완충 판정 임계(%) — charge_state 5(도크·전류없음)를 트리클 off 정상(충전 중)으로 볼 기준. (백엔드 CHARGE_FULL_PCT 와 동일)
+const CHARGE_FULL_PCT = 90;
+
 type Props = {
   robot: RobotRowData;
   hasActiveSchedule: boolean;
@@ -34,20 +37,27 @@ export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule
     statusLabel = '충전 오류';
     statusClass = styles.detailBadgeOffline;
   } else if (r.chargeState === 5) {
-    statusLabel = '전류 없음';
-    statusClass = styles.detailBadgeOffline;
+    // 완충이면 트리클 off 정상(도크 유지) → '충전 중', 아니면 진짜 도킹 에러('전류 없음').
+    const battPct = isDualBatteryType(r.type)
+      ? Math.min(r.batteryLeft ?? 0, r.batteryRight ?? 0)
+      : (r.battery ?? 0);
+    if (battPct >= CHARGE_FULL_PCT) {
+      statusLabel = '충전 중';
+      statusClass = styles.detailBadgeCharging;
+    } else {
+      statusLabel = '전류 없음';
+      statusClass = styles.detailBadgeOffline;
+    }
   } else if (r.chargeState === 1) {
-    statusLabel = '부두로 이동';
+    statusLabel = '도크로 이동';
     statusClass = styles.detailBadgeCharging;
   } else if (r.chargeState === 2) {
     statusLabel = '충전 중';
     statusClass = styles.detailBadgeCharging;
   } else if (r.chargeState === 3) {
-    statusLabel = '부두에서 나가기';
+    statusLabel = '도크에서 나가기';
     statusClass = styles.detailBadgeCharging;
-  } else if (r.isCharging) {
-    statusLabel = '충전 중';
-    statusClass = styles.detailBadgeCharging;
+  // is_charging 폴백 제거 — charge_state(2·5)로 충전/완충 표시(언도킹 직후 sticky 잔상 방지).
   } else if (r.dockingTime > 0) {
     statusLabel = '도킹 중';
     statusClass = styles.detailBadgeCharging;

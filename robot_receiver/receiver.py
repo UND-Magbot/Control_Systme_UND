@@ -602,7 +602,7 @@ def robot_sniff_loop():
 
 _FAST_RESPONSE_ACTIONS = {
     "PING", "POSITION", "STATUS", "NAV_STATUS",
-    "MAPPING_ODOM", "MAPPING_CLOUD", "MAPPING_ALIGNED",
+    "MAPPING_ODOM", "MAPPING_CLOUD", "MAPPING_ALIGNED", "LIO_ALIGNED", "LOC_BODY",
     "STOP", "CANCEL_NAV", "SLOW", "NORMAL", "FAST", "WAKE",
     "FRONTON", "FRONTOFF", "REARON", "REAROFF",
     "GAIT_BASIC", "GAIT_HIGH_OBSTACLE", "GAIT_STAIR", "GAIT_POSTURE",
@@ -657,6 +657,10 @@ def _handle_fast(action, msg, addr):
         server_sock.sendto(get_mapping_data("MAPPING_CLOUD"), addr)
     elif action == "MAPPING_ALIGNED":
         server_sock.sendto(get_mapping_data("MAPPING_ALIGNED"), addr)
+    elif action == "LIO_ALIGNED":
+        server_sock.sendto(get_mapping_data("LIO_ALIGNED"), addr)
+    elif action == "LOC_BODY":
+        server_sock.sendto(get_mapping_data("LOC_BODY"), addr)
     elif action == "STOP": stop_robot()
     elif action == "CANCEL_NAV": cancel_nav()
     elif action == "SLOW": set_slow()

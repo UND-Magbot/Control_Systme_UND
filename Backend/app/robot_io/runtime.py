@@ -42,6 +42,10 @@ def battery_percent(battery: dict, robot_type: str) -> Optional[int]:
 BATTERY_MAX_DRAIN_PCT_PER_SEC = 0.2   # 사실상 상한(실제 4족 부하 방전 ~1~2%/분보다 큼)
 BATTERY_DRAIN_MARGIN_PCT = 5          # 측정 양자화/지터 여유
 
+# 완충 판정 임계(%) — 이 이상이면 '완충'으로 보고 charge_state 5(도크·전류없음)를
+# 트리클 off 정상상태로 취급(이상 로그·에러 표시 제외). 완충 아닌데 state 5면 진짜 도킹 에러.
+CHARGE_FULL_PCT = 90
+
 # 콜드스타트 디바운스 — 신뢰할 직전 정상값이 전혀 없는 상태(DB 이력 없는 신규 로봇,
 # 첫 heartbeat)에서 임계치 이하(특히 0%) reading은 통신 오독일 수 있으므로
 # N회 연속 확인된 뒤에야 채택한다. 진짜 저전력이면 N회 연속 관측되어 통과된다.
@@ -206,7 +210,11 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
             new_state = charge_state.get("state")
             new_err = charge_state.get("error_code")
             if prev_state != new_state or prev_err != new_err:
-                charge_log_payload = (prev_state, new_state, prev_err, new_err)
+                # 완충 여부를 함께 실어 보낸다: state 5(전류 없음)·err 4103 은 완충 트리클 off 시
+                # 정상이므로 이상 로그에서 제외하기 위함(락 밖 처리에서 판정).
+                _bpct = battery_percent(entry.get("battery") or {}, entry.get("robot_type", ""))
+                _batt_full = _bpct is not None and _bpct >= CHARGE_FULL_PCT
+                charge_log_payload = (prev_state, new_state, prev_err, new_err, _batt_full)
             entry["charge_state"] = charge_state
         if basic_status is not None:
             # None이 들어올 수 있으므로 기존 값 유지 방식으로 병합
@@ -260,15 +268,17 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
             entry["_charging_drop_count"] = 0
 
         # 도크 점유(충전 완료 후 충전소 대기) 추적 — '충전 해제(언도킹)' 버튼 노출용.
-        #  · 충전 중/도킹 진행(state 1·2) → 도크에 물림 (set)
+        #  · 충전 중/도킹 진행/완충 도크(state 1·2·5) → 도크에 물림 (set)
+        #    (state 5 = 도크에 있지만 전류 없음 = 완충 트리클 off 상태로도 물리적으론 도크에 있음)
+        #  · 대기(0)·도크에서 나가기(3) → 도크 미점유/떠남 (clear)
         #  · 주행 시작 → 도크를 떠남 (clear)
-        #  · 그 외(완충 후 비충전·비주행) → 직전 값 유지
         # 위치 기반 판정은 좌표 부정확 + '자율주행 후 충전소 근처 정지' 오판이 있어 쓰지 않는다.
         cur_state = (charge_state or {}).get("state", entry.get("charge_state", {}).get("state", 0))
-        if now_charging or cur_state in (1, 2):
+        if now_charging or cur_state in (1, 2, 5):
             entry["_docked_idle"] = True
-        elif cur_state == 3:
-            # 부두에서 나가기(state 3) = 로봇이 도크를 떠나는 중 → 점유 해제
+        elif cur_state in (0, 3):
+            # 대기(0)·도크에서 나가기(3) = 도크 미점유/떠남 → 점유 해제.
+            # 특히 도킹 실패로 state 1→0 이 되면 여기서 해제돼 '충전 해제' 버튼 오노출을 막는다.
             entry["_docked_idle"] = False
         else:
             try:
@@ -298,7 +308,7 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
 
     # 락 밖에서 charge_state 변화 로그 처리 (락 보유 시간 최소화)
     if charge_log_payload is not None:
-        prev_state, new_state, prev_err, new_err = charge_log_payload
+        prev_state, new_state, prev_err, new_err, batt_full = charge_log_payload
         state_label = _CHARGE_STATE_LABEL.get(new_state, f"unknown({new_state})")
         err_code = new_err if new_err is not None else 0
         err_label = _CHARGE_ERROR_MSG.get(new_err, f"unknown(0x{err_code:04X})")
@@ -306,9 +316,12 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
             f"[CHARGE] state {prev_state}→{new_state} ({state_label}), "
             f"error_code={new_err} ({err_label})"
         )
-        # 비정상 상태(4=로봇 오류, 5=도크에 있지만 전류 없음)나 신규 실에러 코드는 DB에도 기록
-        is_abnormal_state = new_state in (4, 5)
-        is_real_error = new_err not in (None, 0, 1) and prev_err != new_err
+        # 비정상 상태(4=로봇 오류, 5=도크에 있지만 전류 없음)나 신규 실에러 코드는 DB에도 기록.
+        # 단 state 5 + err 4103(전류 없음)은 완충(배터리 CHARGE_FULL_PCT 이상)이면 트리클 off
+        # 정상상태이므로 이상 로그에서 제외한다(완충 트리클 오실레이션 시 로그 스팸 방지).
+        normal_full_dock = new_state == 5 and batt_full
+        is_abnormal_state = new_state == 4 or (new_state == 5 and not batt_full)
+        is_real_error = (not normal_full_dock) and new_err not in (None, 0, 1) and prev_err != new_err
         if is_abnormal_state or is_real_error:
             try:
                 from app.logs.service import log_event
@@ -329,7 +342,7 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
     if abnormal_payloads:
         try:
             from app.robot_io.error_codes import (
-                ROBOT_ERROR_CODES, get_error_category, is_informational,
+                ROBOT_ERROR_CODES, get_error_category, is_informational, is_warning,
             )
             from app.logs.service import log_event
             from app.user_cache import get_robot_name, get_robot_business_id
@@ -366,6 +379,22 @@ def update_status(robot_id: int, battery: dict, timestamp: float,
                             )
                         except Exception as e:
                             print(f"[WARN] robot_error_info 로그 실패: {e}")
+                        continue
+                    # 경고성 코드는 실제 문제이나 확인창(error 알림)은 억제하고 경고/추적 로그만 남긴다.
+                    # (예: 0x8503 자율 충전 중 비정상 위치 — 측위/도킹 개선 전까지 확인창 스팸 방지)
+                    if is_warning(code):
+                        try:
+                            log_event(
+                                "robot", "robot_error_warning",
+                                f"[{category}] {msg}{comp_suffix}",
+                                detail=f"부위: {comp}" if comp else None,
+                                error_json=json.dumps(
+                                    {"error_code": err_hex, "category": category, "component": comp},
+                                    ensure_ascii=False),
+                                robot_id=robot_id, robot_name=rname, business_id=rbiz,
+                            )
+                        except Exception as e:
+                            print(f"[WARN] robot_error_warning 로그 실패: {e}")
                         continue
                     try:
                         log_event(
@@ -441,12 +470,18 @@ def update_nav(robot_id: int, arrived: bool, last_state, timestamp: float) -> No
 
 # ── 조회 ──────────────────────────────────────────────
 
-def _derive_network(last_heartbeat: float) -> str:
+def _derive_network(last_heartbeat: float, last_sleep=None) -> str:
     """last_heartbeat 기준 네트워크 상태 판정 (임계는 ONLINE_MAX_AGE/ERROR_MAX_AGE).
     - 한 번도 heartbeat 없으면 → "-" (미확인)
     - ONLINE_MAX_AGE 이내 → "Online"
-    - ONLINE_MAX_AGE ~ ERROR_MAX_AGE → "Error" (불안정 과도기, 직전 상태 유지)
+    - ONLINE_MAX_AGE ~ ERROR_MAX_AGE(전환 구간) → 마지막 Sleep 으로 구별:
+        · Sleep != 0 (전원 내려감/절전) → "Online" 유지 → 이후 Offline (Error 표시 없음)
+        · Sleep == 0 (켜져 있었는데 끊김) → "Error" (=통신 끊김)
     - ERROR_MAX_AGE 초과 → "Offline"
+
+    ⚠️ 전원 off vs 통신 끊김 구별은 로봇이 끊기기 직전 보낸 Sleep 값에 의존한다.
+       정상 전원 off(버튼 → 절전 Sleep!=0 보고 → 종료)면 마지막 Sleep!=0 이라 구별되지만,
+       Sleep=0 상태에서 급작스런 전원 차단/네트워크 두절은 둘 다 Sleep==0 이라 '끊김'으로 보인다.
     """
     if last_heartbeat == 0:
         return "-"
@@ -454,6 +489,9 @@ def _derive_network(last_heartbeat: float) -> str:
     if age <= ONLINE_MAX_AGE:
         return "Online"
     if age <= ERROR_MAX_AGE:
+        # 전환 구간: 전원 내려감(Sleep!=0)이면 '끊김(Error)' 대신 직전 상태(Online) 유지
+        if last_sleep is not None and last_sleep != 0:
+            return "Online"
         return "Error"
     return "Offline"
 
@@ -488,11 +526,11 @@ def get_all_statuses() -> list[dict]:
 
 _CHARGE_STATE_LABEL = {
     0: "대기",
-    1: "부두로 이동",
+    1: "도크로 이동",
     2: "충전 중",
-    3: "부두에서 나가기",
+    3: "도크에서 나가기",
     4: "로봇 오류",
-    5: "부두에 있지만 전류가 흐르지 않음",
+    5: "도크에 있지만 전류가 흐르지 않음",
 }
 
 _CHARGE_ERROR_MSG = {
@@ -513,24 +551,25 @@ def _is_at_dock(is_charging: bool, charge_st: int, is_navigating: bool, docked_i
 
     = 자율 충전 중 OR 완충 후 충전소 위치 대기. (그 외는 '충전소 이동')
     - **주행 중이면 도크 점유가 아니다** → False.
-    - 충전 중이거나 도킹 진행/충전 상태(state 1=부두로 이동, 2=충전 중)면 점유.
+    - 충전 중이거나 도킹 진행/도크 물림(state 1=도크로 이동, 2=충전 중, 5=도크·전류없음=완충 트리클)면 점유.
     - 완충 후 대기(비충전·비주행)는 `docked_idle`(충전 이력 추적, update_status)로 판정.
       위치(좌표) 기반은 부정확 + '자율주행 후 충전소 근처 정지' 오판이 있어 쓰지 않는다.
     """
     if is_navigating:
         return False
-    if is_charging or charge_st in (1, 2):
+    if is_charging or charge_st in (1, 2, 5):
         return True
     return docked_idle
 
 
 def _build_status(entry: dict) -> dict:
     """내부 엔트리를 API 응답 형태로 변환."""
-    network = _derive_network(entry["last_heartbeat"])
     basic_status = entry.get("basic_status") or {}
+    sleep_val = basic_status.get("Sleep")
+    # 마지막 Sleep 을 함께 넘겨 전환 구간에서 전원off(Sleep!=0) vs 통신끊김(Sleep==0) 구별
+    network = _derive_network(entry["last_heartbeat"], sleep_val)
     battery = entry["battery"]
     power = _derive_power(basic_status, battery, network)
-    sleep_val = basic_status.get("Sleep")
     power_mgmt = basic_status.get("PowerManagement")
     motion_state = basic_status.get("MotionState")
     cs = entry.get("charge_state", {})
@@ -647,15 +686,41 @@ def is_charging(robot_id: int) -> bool:
         return entry.get("_is_charging", False)
 
 
+def is_docked(robot_id: int) -> bool:
+    """로봇이 충전소 도킹을 점유 중인지 (충전 중 또는 도크 물림).
+
+    is_charging(배터리 충전 플래그) 또는 charge_state ∈ {1=도크로 이동, 2=충전 중,
+    5=도크에 있지만 전류 없음(완충 트리클 off)}. state 5 도 물리적으론 도크에 있는 상태다.
+    ⚠️ charge_state 는 로봇 측 relay_charge.py 가 실행돼야 들어온다(미실행 시 0 고정).
+       따라서 이 판정이 완충(state 5)까지 잡으려면 로봇에서 relay_charge.py 가 상시 실행돼야 한다.
+    """
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return False
+        if entry.get("_is_charging", False):
+            return True
+        return (entry.get("charge_state") or {}).get("state", 0) in (1, 2, 5)
+
+
 def get_charge_state(robot_id: int) -> int:
     """로봇의 현재 충전 상태머신 state 반환.
-    0=대기, 1=부두로 이동, 2=충전 중, 3=부두에서 나가기, 4=오류, 5=부두·전류없음.
+    0=대기, 1=도크로 이동, 2=충전 중, 3=도크에서 나가기, 4=오류, 5=도크·전류없음.
     """
     with _lock:
         entry = _runtime.get(robot_id)
         if not entry:
             return 0
         return (entry.get("charge_state") or {}).get("state", 0)
+
+
+def get_motion_state(robot_id: int):
+    """로봇 자세(MotionState) 반환. 1=Stand(서 있음), 4=Sit(앉음). 미수신이면 None."""
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return None
+        return (entry.get("basic_status") or {}).get("MotionState")
 
 
 def clear_charge_state(robot_id: int) -> None:
@@ -711,6 +776,30 @@ def is_initpose_pending(robot_id: int) -> bool:
         if not entry:
             return False
         return bool(entry.get("_initpose_pending", False))
+
+
+def mark_manual_confirm(robot_id: int) -> None:
+    """운영자 수동 확정 시점을 기록 — 직후 위치 급변 가드의 재-미확정 트리거를 유예한다.
+
+    재조정 직후 로봇 localization 이 시드에서 실제 위치로 수렴하며 좌표가 크게 튈 수 있는데,
+    이를 위치 급변(→미확정 재설정)으로 오인하지 않도록 잠깐 가드를 쉬게 한다.
+    """
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if entry:
+            entry["_manual_confirm_ts"] = time.time()
+
+
+def in_manual_confirm_grace(robot_id: int, grace_sec: float = 12.0) -> bool:
+    """수동 확정 직후 유예 구간(위치 급변 가드 억제)인지."""
+    if robot_id is None:
+        return False
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return False
+        ts = entry.get("_manual_confirm_ts", 0) or 0
+        return ts > 0 and (time.time() - ts) < grace_sec
 
 
 def get_position(robot_id: int) -> dict:

@@ -26,6 +26,9 @@ import { usePageReady } from "@/app/context/PageLoadingContext";
 
 const ROBOT_PAGE_SIZE = 6;
 
+// 완충 판정 임계(%) — charge_state 5(도크·전류없음)를 트리클 off 정상(충전 중)으로 볼 기준. (백엔드 CHARGE_FULL_PCT 와 동일)
+const CHARGE_FULL_PCT = 90;
+
 const STATUS_FILTER_ITEMS = [
   { id: 0, label: "작업 중" },
   { id: 1, label: "대기 중" },
@@ -65,13 +68,20 @@ function getRobotStatus(r: RobotRowData, hasActiveSchedule = false): { label: st
   if (r.power === "-") return { label: "오프라인", className: styles.statusOffline, tooltip: "" };
   if (r.network === "Offline" || r.power === "Off") return { label: "오프라인", className: styles.statusOffline, tooltip: "" };
   if (r.network === "Error") return { label: "오류", className: styles.statusError, tooltip: "" };
-  // 충전 관련 상태 (chargeState: 1=부두 이동, 2=충전 중, 3=나가기, 4=오류, 5=전류 없음)
+  // 충전 관련 상태 (chargeState: 1=도크 이동, 2=충전 중, 3=나가기, 4=오류, 5=전류 없음)
   if (r.chargeState === 4) return { label: "충전 오류", className: styles.statusError, tooltip: r.chargeErrorMsg ?? "" };
-  if (r.chargeState === 5) return { label: "전류 없음", className: styles.statusError, tooltip: "부두에 있지만 전류가 흐르지 않음" };
-  if (r.chargeState === 1) return { label: "부두로 이동", className: styles.statusDocking, tooltip: "" };
+  if (r.chargeState === 5) {
+    // state 5(도크·전류없음): 완충이면 트리클 off 정상(도크 유지) → '충전 중', 아니면 진짜 도킹 에러.
+    const battPct = isDualBatteryType(r.type)
+      ? Math.min(r.batteryLeft ?? 0, r.batteryRight ?? 0)
+      : (r.battery ?? 0);
+    if (battPct >= CHARGE_FULL_PCT) return { label: "충전 중", className: styles.statusCharging, tooltip: "완충 — 충전소 도킹 유지 중" };
+    return { label: "전류 없음", className: styles.statusError, tooltip: "도크에 있지만 전류가 흐르지 않음" };
+  }
+  if (r.chargeState === 1) return { label: "도크로 이동", className: styles.statusDocking, tooltip: "" };
   if (r.chargeState === 2) return { label: "충전 중", className: styles.statusCharging, tooltip: "" };
-  if (r.chargeState === 3) return { label: "부두에서 나가기", className: styles.statusDocking, tooltip: "" };
-  if (r.isCharging) return { label: "충전 중", className: styles.statusCharging, tooltip: "" };
+  if (r.chargeState === 3) return { label: "도크에서 나가기", className: styles.statusDocking, tooltip: "" };
+  // charge_state(relay 수신)가 충전/완충 상태(2·5)를 이미 표시하므로 is_charging 폴백은 제거(언도킹 직후 sticky 잔상 방지).
   if (r.dockingTime > 0) return { label: "도킹 중", className: styles.statusDocking, tooltip: "" };
   if (hasActiveSchedule || r.tasks.length > 0 || r.isNavigating) return { label: "작업 중", className: styles.statusOperating, tooltip: "" };
   return { label: "대기 중", className: styles.statusStandby, tooltip: "" };

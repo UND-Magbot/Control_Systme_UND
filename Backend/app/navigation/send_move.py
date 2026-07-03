@@ -353,8 +353,13 @@ def navigation_send_next():
                 log_event("schedule", "dock_arrival", arrival_msg,
                           robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
                 try:
-                    from app.robot_control.charge import start_charge
-                    start_charge()
+                    import threading
+                    from app.robot_control.charge import start_charge_with_retry
+                    # 별도 스레드: Charge=1 송신 후 충전(state 2/5) 확인, 실패 시 재시도.
+                    # (nav 스레드 블로킹 방지)
+                    threading.Thread(
+                        target=start_charge_with_retry, daemon=True, name="charge_retry"
+                    ).start()
                 except Exception as e:
                     print(f"[ERR] 자동 충전 명령 실패: {e}")
             elif sit_on_arrival:

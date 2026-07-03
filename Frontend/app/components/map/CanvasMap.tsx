@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, forwardRef, useImperativeHandle } from "react";
+import { useCallback, useMemo, useState, useRef, forwardRef, useImperativeHandle } from "react";
 import dynamic from "next/dynamic";
 import type { CanvasMapProps, POIItem } from "./types";
 import { useMapCanvas } from "@/app/hooks/useMapCanvas";
@@ -52,6 +52,12 @@ const Inner2D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner2D(
     onPoiNavigate,
     onMapClick,
     onMapMouseMove,
+    scanPoints,
+    poseArrow,
+    poseDrawMode = false,
+    onPoseDragStart,
+    onPoseDrag,
+    onPoseDragEnd,
     interactive = true,
     className,
     style,
@@ -62,6 +68,7 @@ const Inner2D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner2D(
   const { debugEnabled, testCoordinates } = useDebugMap();
   const [hoverCoord, setHoverCoord] = useState<{ x: number; y: number } | null>(null);
   const [detailPoi, setDetailPoi] = useState<POIItem | null>(null);
+  const draggingPoseRef = useRef(false);
 
   const {
     canvasRef,
@@ -75,7 +82,7 @@ const Inner2D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner2D(
     handleZoom,
     worldToPixelScreen,
     pixelToWorldScreen,
-  } = useMapCanvas(config, showPath ? navPath : null, interactive);
+  } = useMapCanvas(config, showPath ? navPath : null, interactive, scanPoints, poseArrow);
 
   useImperativeHandle(ref, () => ({
     handleZoom,
@@ -118,6 +125,62 @@ const Inner2D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner2D(
     [onMouseMove, onMapMouseMove, debugEnabled, scale, translate, pixelToWorldScreen, wrapperRef]
   );
 
+  // 마우스 이벤트 → 월드 좌표 (CSS transform: scale/translate 반영). handleClick 과 동일 수식.
+  const eventToWorld = useCallback(
+    (e: React.MouseEvent) => {
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return null;
+      const rect = wrapper.getBoundingClientRect();
+      const cx = wrapper.clientWidth / 2;
+      const cy = wrapper.clientHeight / 2;
+      const rawX = (e.clientX - rect.left - cx - translate.x) / scale + cx;
+      const rawY = (e.clientY - rect.top - cy - translate.y) / scale + cy;
+      return pixelToWorldScreen(rawX, rawY);
+    },
+    [translate, scale, pixelToWorldScreen, wrapperRef]
+  );
+
+  // rviz식 pose 드래그: 누른 지점=위치, 끌기=방향, 뗌=확정. poseDrawMode 에서 팬 대신 동작.
+  const handleWrapperDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (poseDrawMode) {
+        const w = eventToWorld(e);
+        if (w) {
+          draggingPoseRef.current = true;
+          onPoseDragStart?.(w);
+        }
+        return; // 팬 비활성
+      }
+      onMouseDown(e);
+    },
+    [poseDrawMode, eventToWorld, onPoseDragStart, onMouseDown]
+  );
+
+  const handleWrapperMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (poseDrawMode) {
+        if (draggingPoseRef.current) {
+          const w = eventToWorld(e);
+          if (w) onPoseDrag?.(w);
+        }
+        return;
+      }
+      handleMouseMove(e);
+    },
+    [poseDrawMode, eventToWorld, onPoseDrag, handleMouseMove]
+  );
+
+  const handleWrapperUp = useCallback(() => {
+    if (poseDrawMode) {
+      if (draggingPoseRef.current) {
+        draggingPoseRef.current = false;
+        onPoseDragEnd?.();
+      }
+      return;
+    }
+    endPan();
+  }, [poseDrawMode, onPoseDragEnd, endPan]);
+
   const robotScreen = robotPos ? worldToPixelScreen(robotPos.x, robotPos.y) : null;
 
   const poiScreenItems = pois?.map((poi) => {
@@ -141,10 +204,10 @@ const Inner2D = forwardRef<CanvasMapHandle, CanvasMapProps>(function Inner2D(
         ...style,
         cursor: style?.cursor || cursorStyle,
       }}
-      onMouseDown={onMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={endPan}
-      onMouseLeave={endPan}
+      onMouseDown={handleWrapperDown}
+      onMouseMove={handleWrapperMove}
+      onMouseUp={handleWrapperUp}
+      onMouseLeave={handleWrapperUp}
       onClick={handleClick}
     >
       <div

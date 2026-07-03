@@ -67,7 +67,9 @@ export type UseMapCanvasReturn = {
 export function useMapCanvas(
   config: MapConfig,
   navPath?: NavPath | null,
-  interactive = true
+  interactive = true,
+  scanPoints?: number[][],
+  poseArrow?: { x: number; y: number; yaw: number; toX?: number; toY?: number } | null
 ): UseMapCanvasReturn {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -193,7 +195,61 @@ export function useMapCanvas(
         }
       }
     }
-  }, [mapSize, processedImg, navPath, config]);
+
+    // 4. 위치 재조정 — 정합 스캔 점군 오버레이(주황-빨강점). 벽과 어긋나면 측위 오차 = 재조정 대상.
+    //    맵/로봇 마커가 파랑 계열이라, 스캔은 대비되는 주황-빨강으로 그려 구분한다.
+    if (scanPoints && scanPoints.length > 0) {
+      const renderSize = { w: rect.w, h: rect.h };
+      ctx.save();
+      ctx.fillStyle = "rgba(255, 94, 20, 0.92)";
+      for (const pt of scanPoints) {
+        const sp = worldToPixel(pt[0], pt[1], config, renderSize);
+        ctx.fillRect(sp.x + rect.x - 1, sp.y + rect.y - 1, 2, 2);
+      }
+      ctx.restore();
+    }
+
+    // 5. 위치 재조정 — 운영자가 지정 중인 pose 화살표(위치 + 방향).
+    if (poseArrow) {
+      const renderSize = { w: rect.w, h: rect.h };
+      const sp = worldToPixel(poseArrow.x, poseArrow.y, config, renderSize);
+      const bx = sp.x + rect.x;
+      const by = sp.y + rect.y;
+      // 드래그 끝점(toX,toY)이 있으면 시작→끝으로 늘어나는 화살표(rviz식). 없으면 yaw+고정 길이.
+      let tipX: number;
+      let tipY: number;
+      if (poseArrow.toX != null && poseArrow.toY != null) {
+        const ep = worldToPixel(poseArrow.toX, poseArrow.toY, config, renderSize);
+        tipX = ep.x + rect.x;
+        tipY = ep.y + rect.y;
+        // 너무 짧으면 방향이 안 보이므로 최소 길이 보장(yaw 방향으로)
+        if (Math.hypot(tipX - bx, tipY - by) < 14) {
+          const ang = -poseArrow.yaw;
+          tipX = bx + Math.cos(ang) * 24;
+          tipY = by + Math.sin(ang) * 24;
+        }
+      } else {
+        // 화면 Y축 반전(RobotMarker 와 동일 규약): rotationDeg = -yaw
+        const ang = -poseArrow.yaw;
+        const len = 34;
+        tipX = bx + Math.cos(ang) * len;
+        tipY = by + Math.sin(ang) * len;
+      }
+      ctx.save();
+      ctx.strokeStyle = "rgba(34, 197, 94, 0.95)";   // 초록(위치 재조정 드래그 화살표)
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(tipX, tipY);
+      ctx.stroke();
+      drawArrowhead(ctx, bx, by, tipX, tipY, 8, 1.0, "rgba(34, 197, 94, 0.98)");
+      ctx.fillStyle = "rgba(34, 197, 94, 0.98)";
+      ctx.beginPath();
+      ctx.arc(bx, by, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }, [mapSize, processedImg, navPath, config, scanPoints, poseArrow]);
 
   // contain-fit 기준 좌표 변환
   const worldToPixelScreen = useCallback(

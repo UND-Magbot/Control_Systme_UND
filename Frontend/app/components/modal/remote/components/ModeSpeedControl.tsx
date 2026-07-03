@@ -128,9 +128,14 @@ export default function ModeSpeedControl({ robotType, motionState, gait, isCharg
   const handleCharge = useCallback(async () => {
     if (disabled || chargeCmdState === 'pending') return;
     if (isCharging) {
-      await execCharge('/robot/stop-charge', '충전 해제');
+      // 대시보드/상세와 통일: 전체 언도킹(도크 이탈 → 도킹 포인트 재정렬 → SIT).
+      // 언도킹은 state2 대기+이탈폴링+STAND 대기로 수십 초 걸릴 수 있어 타임아웃을 길게(60s) 준다.
+      await execCharge('/robot/undock', '충전 해제', 60000);
     } else {
-      await execCharge('/robot/charge', '충전 시작');
+      // 대시보드 '충전소 이동'과 통일: 도킹 포인트로 NAV 정렬 후 충전(+실패 시 재시도).
+      // raw Charge=1(/robot/charge)은 로봇이 비뚤어져 있으면 도킹이 안 먹히는 경우가 있어,
+      // NAV로 정렬 후 충전하는 return-to-charge 가 더 견고하다. (nav 셋업까지 잠깐 걸려 타임아웃 15s)
+      await execCharge('/robot/return-to-charge', '충전소 이동', 15000);
     }
   }, [disabled, chargeCmdState, isCharging, execCharge]);
 
@@ -217,19 +222,22 @@ export default function ModeSpeedControl({ robotType, motionState, gait, isCharg
         </div>
       )}
 
-      {/* 충전 — 토글 버튼 하나
-          충전 중: '충전 해제' (Charge=0) / 비충전: '충전 시작' (Charge=1) */}
-      <div className={styles.controlGroup}>
-        <div className={styles.controlLabel}>충전</div>
-        <button
-          type="button"
-          className={`${styles.chargeBtn} ${isCharging ? styles.chargeBtnActive : ''}`}
-          onClick={handleCharge}
-          disabled={disabled || chargeCmdState === 'pending'}
-        >
-          {isCharging ? '충전 해제' : '충전 시작'}
-        </button>
-      </div>
+      {/* 충전 — 토글 버튼 하나 (충전 중: '충전 해제'=undock / 비충전: '충전소 이동'=return-to-charge).
+          대시보드 토글과 동일. SIT(자세=4) 상태에서는 충전 카테고리 숨김(앉은 채로는 충전/도킹 불가).
+          단, 충전 중이면 SIT여도 '충전 해제'는 유지(언도킹이 막히지 않도록). */}
+      {(motionState !== 4 || isCharging) && (
+        <div className={styles.controlGroup}>
+          <div className={styles.controlLabel}>충전</div>
+          <button
+            type="button"
+            className={`${styles.chargeBtn} ${isCharging ? styles.chargeBtnActive : ''}`}
+            onClick={handleCharge}
+            disabled={disabled || chargeCmdState === 'pending'}
+          >
+            {isCharging ? '충전 해제' : '충전소 이동'}
+          </button>
+        </div>
+      )}
 
       {/* 조명 (타이틀 + 토글 한 줄) */}
       <div className={styles.controlGroup}>

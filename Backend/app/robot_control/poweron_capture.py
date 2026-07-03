@@ -4,9 +4,11 @@
      보고하는지 실측한다. last_status 와 비교해 '부팅 보고 위치를 자동 주입(밀어넣기)'
      가능 여부를 판단하기 위한 데이터 수집.
 
-출력: /backend_logs/poweron_position.jsonl (호스트 마운트). 1줄 = 1 스냅샷(JSON).
+출력: <프로젝트 루트>/backend_logs/poweron_position.jsonl (run_*.log 와 동일 폴더).
+  1줄 = 1 스냅샷(JSON).
   - kind="trigger": 전원 on 감지 순간 1회(보고 위치 + last_status + delta).
   - kind="poll":    미확정(initpose_pending) 동안 보고 위치 추이(약 1초 간격 스로틀).
+경로는 환경변수 POWERON_CAPTURE_PATH 로 재정의 가능(예: 컨테이너 호스트 마운트).
 """
 from __future__ import annotations
 
@@ -17,7 +19,14 @@ import threading
 import time
 from datetime import datetime
 
-_CAPTURE_PATH = os.environ.get("POWERON_CAPTURE_PATH", "/backend_logs/poweron_position.jsonl")
+# 기본 캡처 경로 = 프로젝트 루트의 backend_logs/ (run_*.log 와 동일 폴더).
+#   .../Backend/app/robot_control/poweron_capture.py → robot_control → app → Backend → <root>
+# (기존 기본값 "/backend_logs/..." 는 루트 절대경로라 Windows/비컨테이너에서 쓰기 실패했음)
+_ROOT_DIR = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+_DEFAULT_CAPTURE_PATH = os.path.join(_ROOT_DIR, "backend_logs", "poweron_position.jsonl")
+_CAPTURE_PATH = os.environ.get("POWERON_CAPTURE_PATH", _DEFAULT_CAPTURE_PATH)
 _write_lock = threading.Lock()
 _throttle_lock = threading.Lock()
 _last_poll_ts: dict[int, float] = {}
@@ -44,6 +53,9 @@ def capture(robot_id: int, kind: str, reported: dict | None = None,
     try:
         line = json.dumps(rec, ensure_ascii=False, default=str)
         with _write_lock:
+            parent = os.path.dirname(_CAPTURE_PATH)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
             with open(_CAPTURE_PATH, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
     except Exception as e:

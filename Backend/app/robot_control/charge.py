@@ -15,8 +15,8 @@ router = APIRouter()
 # 충전 복귀 시 "이미 도킹 포인트에 있음"으로 판정하는 거리 임계값(m).
 # 현재 위치가 도킹 포인트(ch-1)로부터 이 거리 안쪽이면 접근 경유지(ch-2, ch-3...)를
 # 건너뛰고 도킹 포인트로 직행한다. 경유지는 벽/꺾인 길목 회피용이라, 실제로 도킹
-# 영역에 있을 때만 생략해야 안전하므로 보수적으로 작게 잡는다.
-AT_DOCK_THRESHOLD_M = 1.2
+# 영역에 있을 때만 생략해야 안전하므로 보수적으로 잡는다. (운영 조정: 1.2 → 2.0)
+AT_DOCK_THRESHOLD_M = 2.0
 
 
 @router.post("/robot/charge")
@@ -281,6 +281,69 @@ def _send_charge_clear_packet() -> bool:
         sock.close()
 
 
+def start_charge_with_retry(
+    max_retries: int = 2,
+    verify_timeout: float = 15.0,
+    poll_interval: float = 1.0,
+) -> None:
+    """도킹 포인트 도착 후 자동 충전 + 실패 시 재시도. **별도 스레드에서 실행**(내부 sleep 루프).
+
+    Charge=1(충전소 이동) 송신 후 charge_state 가 2(충전 중)/5(완충 도크)에 도달하는지
+    `verify_timeout` 초 확인한다. 도달 못 하면(도킹 실패: state 1→0, 또는 미반응) 최대
+    `max_retries` 회 Charge=1 을 재송신한다. state 2/5 도달 시 성공으로 보고 종료.
+
+    ⚠️ charge_state 는 로봇 relay_charge.py 실행 시에만 유효(미실행 시 항상 0 → 매번 타임아웃·재시도).
+    """
+    from app.robot_io import runtime
+    try:
+        from app.navigation.send_move import is_nav_active
+    except Exception:
+        def is_nav_active() -> bool:
+            return False
+
+    rid = get_robot_id()
+    total = max_retries + 1
+    for attempt in range(1, total + 1):
+        # 재시도 직전 로봇이 다시 주행을 시작했으면(도크 이탈 등) 재충전 시도 중단
+        if attempt > 1 and is_nav_active():
+            print("🔋 자동 충전 재시도 중단 — 로봇이 주행 중")
+            return
+
+        _send_start_charge_packet()  # Charge=1
+        print(f"🔋 자동 충전 시도 {attempt}/{total} — Charge=1 송신, 충전 확인 대기({verify_timeout:.0f}s)")
+
+        elapsed = 0.0
+        saw_progress = False
+        docked_state = 0
+        while elapsed < verify_timeout:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            try:
+                st = runtime.get_charge_state(rid) if rid else 0
+            except Exception:
+                st = 0
+            if st in (2, 5):          # 충전 중 / 완충 도크 = 도킹 성공
+                docked_state = st
+                break
+            if st == 1:               # 부두로 이동(도킹 진행) 관측
+                saw_progress = True
+            elif saw_progress and st == 0:  # state 1→0 = 도킹 실패 → 즉시 재시도
+                print(f"[WARN] 도킹 실패 감지(state 1→0, 시도 {attempt}) — 재시도")
+                break
+
+        if docked_state in (2, 5):
+            print(f"🔋 자동 충전 시작 확인 (state={docked_state}, 시도 {attempt})")
+            log_event("robot", "robot_charging_start", "도킹 포인트 도착 — 자동 충전 시작",
+                      robot_id=rid, robot_name=get_robot_name(), business_id=get_robot_business_id())
+            return
+        print(f"[WARN] 충전 미시작 (시도 {attempt}/{total}) — charge_state 2/5 미도달")
+
+    print(f"[ERR] 자동 충전 {total}회 시도 모두 실패 — 충전 시작 안 됨(도킹 미완료)")
+    log_event("error", "robot_charge_failed",
+              f"자동 충전 실패 — {total}회 시도 후에도 충전 미시작(도킹 미완료)",
+              robot_id=rid, robot_name=get_robot_name(), business_id=get_robot_business_id())
+
+
 def prepare_undock_waypoints(
     max_wait_seconds: float = 20.0,
     poll_interval: float = 1.0,
@@ -504,18 +567,12 @@ def _return_to_charge_internal(cancel_running: bool = True) -> dict:
             }
             for _, row in route_numbered
         ]
-        # 도킹 포인트 도착 후 '제자리 정렬' 웨이포인트 1개 추가.
-        #   ch-N→ch-1 은 이동+회전이 합쳐진 단일 NAV 라, 로봇이 위치만 도달하고 최종
-        #   yaw(충전소 정면) 정렬을 생략한 채 접근 방향 그대로 멈춰 대각선으로 서는 문제가 있다.
-        #   같은 (x,y)에 dock yaw 만 다시 주면 로봇은 '이동 없이 제자리 회전'을 수행한다
-        #   (prepare_undock_waypoints 의 검증된 동작과 동일). 도착 후 자동 충전(start_charge)은
-        #   navigation_send_next 가 '마지막' 웨이포인트에서 호출하므로, 정렬 완료 후 충전된다.
-        nav.waypoints_list.append({
-            "x": dock_point.LocationX,
-            "y": dock_point.LocationY,
-            "yaw": dock_point.Yaw or 0.0,
-            "name": f"{dock_name} (정렬)",
-        })
+        # [충전 복귀 전용] 도킹 포인트(ch-1) 도착 WP 의 yaw 를 등록된 충전소 정면 yaw 로 지정해,
+        #   도착과 동시에 충전소를 바라보게 한다 → 별도 '제자리 정렬' 네비게이션을 생략(2회 → 1회).
+        #   (언도킹으로 나갈 때는 prepare_undock_waypoints 의 회전 WP 를 그대로 유지한다.)
+        if nav.waypoints_list:
+            nav.waypoints_list[-1]["yaw"] = dock_point.Yaw or 0.0
+            nav.waypoints_list[-1]["name"] = dock_name
         route_label = " → ".join(row.LacationName for _, row in route_numbered)
         nav.current_wp_index = 0
         nav.is_navigating = True
@@ -559,25 +616,52 @@ def return_to_charge():
     return {"status": "error", "msg": result["msg"]}
 
 
+def _get_dock_point_waypoint() -> dict | None:
+    """현재 층 충전소의 도킹 포인트 '{충전소}-1'(예: ch03-1) 웨이포인트 {x,y,yaw,name}. 없으면 None.
+
+    언도킹 후 이 지점으로 NAV 재정렬해 매번 고정된 위치/자세로 SIT 하기 위한 목표점.
+    (충전 앵커 ch 가 아니라 그 앞 접근점 ch-1 — 대기·재도킹 준비 위치)
+    """
+    db = SessionLocal()
+    try:
+        floor_id = _get_robot_floor_id(db)
+        station = _find_charge_station(db, floor_id)
+        if not station:
+            return None
+        dock_name = f"{station.LacationName}-1"
+        q = db.query(LocationInfo).filter(LocationInfo.LacationName == dock_name)
+        if floor_id is not None:
+            q = q.filter(LocationInfo.FloorId == floor_id)
+        dock = q.first()
+        if not dock or dock.LocationX is None or dock.LocationY is None:
+            return None
+        return {"x": dock.LocationX, "y": dock.LocationY,
+                "yaw": float(dock.Yaw or 0.0), "name": dock_name}
+    finally:
+        db.close()
+
+
 def _undock_internal(
     max_wait_seconds: float = 12.0,
     poll_interval: float = 1.0,
-    recharge_wait_seconds: float = 6.0,
+    recharge_wait_seconds: float = 30.0,
+    stand_wait_seconds: float = 8.0,
 ) -> dict:
     """충전소 도킹에서 빠져나와 SIT 자세로 대기 전환.
 
     도크 물리 이탈은 로봇 펌웨어의 충전 상태머신(/CHARGE_STATUS) 전환으로 수행된다:
-    **state 2(충전) → 3(부두에서 나가기) → 0(대기)**. 전용 'undock' 명령이 없으므로
+    **state 2(충전) → 3(도크에서 나가기) → 0(대기)**. 전용 'undock' 명령이 없으므로
     이 시퀀스를 거쳐야 로봇이 도크에서 나온다.
 
     절차:
       1) **완충 대기(비충전·state≠2)면 먼저 Charge=1(충전 재개)로 state 2 진입** —
          이미 Charge=0 인 상태에서는 stop-charge 만으로는 이탈 시퀀스가 돌지 않기 때문.
          (충전 중이면 이 단계 생략)
-      2) stop-charge(Charge=0) 송신 → state 2→3(부두에서 나가기)→0 : 도크 물리 이탈
+      2) stop-charge(Charge=0) 송신 → state 2→3(도크에서 나가기)→0 : 도크 물리 이탈
       3) 이탈 확인 폴링(state 0 복귀 또는 비충전, 최대 max_wait_seconds)
       4) Charge=2(상태 클리어) + runtime 충전 상태 능동 클리어(stale 방지)
-      5) SIT 자세 명령 → 도킹 포인트에서 대기
+      5) 도킹 포인트(ch-1)로 NAV 재정렬 → 도착 시 SIT (매번 고정된 위치/자세로 앉음).
+         도킹 포인트 미등록 시 폴백: STAND(자세=1) 대기 후 제자리 SIT.
 
     Returns:
         {"ok": bool, "msg": str, "dock_point": str|None}
@@ -589,12 +673,6 @@ def _undock_internal(
     if not rid:
         return {"ok": False, "msg": "로봇을 찾을 수 없습니다.", "dock_point": None}
 
-    def _charging() -> bool:
-        try:
-            return runtime.is_charging(rid)
-        except Exception:
-            return False
-
     def _state() -> int:
         try:
             return runtime.get_charge_state(rid)
@@ -604,32 +682,31 @@ def _undock_internal(
     log_event("robot", "undock_start", "언도킹 시작: 도크 이탈 후 SIT 대기",
               robot_id=rid, robot_name=get_robot_name(), business_id=get_robot_business_id())
 
-    # 1) 완충 대기(이미 Charge=0, state≠2)면 충전을 잠깐 재개해 state 2 로 만들어
-    #    도크 이탈 시퀀스(2→3→0)가 돌 수 있게 한다.
-    if not _charging() and _state() != 2:
-        _send_start_charge_packet()  # Charge=1
-        print("🪑 언도킹: 완충 대기 → 충전 재개(Charge=1)로 도크 상태 진입 시도")
+    # 1) 도크 이탈(2→3→0)은 state 2(충전 중)에서 Charge=0 을 받아야 돈다. 완충 트리클이면 state 가
+    #    2↔5 를 오가므로 state==2 인 '초록 구간'을 기다렸다가 그 순간 Charge=0 을 보낸다.
+    #    (Charge=1 로 충전을 유도해 보되, 완충이면 로봇이 자체 트리클 주기로만 state 2 에 들어가므로
+    #     한 주기를 덮을 만큼 충분히 기다린다. is_charging 은 sticky 라 판정에 안 쓰고 실시간 state 로 판정.)
+    if _state() != 2:
+        _send_start_charge_packet()  # Charge=1 (충전 유도 nudge)
+        print("🪑 언도킹: state≠2 → Charge=1 로 충전 유도, 초록 구간(state 2) 대기")
         elapsed = 0.0
-        while elapsed < recharge_wait_seconds:
+        while elapsed < recharge_wait_seconds and _state() != 2:
             time.sleep(poll_interval)
             elapsed += poll_interval
-            if _charging() or _state() == 2:
-                print(f"🔋 충전 상태(state=2) 진입 확인 ({elapsed:.1f}s)")
-                break
 
-    # 2) Charge=0 → state 2→3(부두에서 나가기)→0 : 도크 물리 이탈 트리거
+    # 2) Charge=0 → state 2→3(도크에서 나가기)→0 : 도크 물리 이탈 트리거.
+    #    반드시 state==2 인 순간에 보내야 이탈이 돈다(위에서 초록 구간까지 대기 후 즉시 송신).
     _send_stop_charge_packet()
     print("🪑 언도킹: 충전 해제(Charge=0) 송신 — 도크 이탈(state 2→3→0) 트리거")
 
-    # 3) 이탈 확인 폴링 — 비충전 + state 0 복귀(나가기 3 거쳐 대기 0)
+    # 3) 이탈 확인 폴링 — state 0(대기) 복귀(나가기 3 거쳐 대기 0). is_charging 은 sticky 라 게이트에 안 쓴다.
     elapsed = 0.0
     while elapsed < max_wait_seconds:
         time.sleep(poll_interval)
         elapsed += poll_interval
-        if not _charging() and _state() in (0, 3):
-            if _state() == 0:
-                print(f"🔋 도크 이탈 확인(state=0) ({elapsed:.1f}s)")
-                break
+        if _state() == 0:
+            print(f"🔋 도크 이탈 확인(state=0) ({elapsed:.1f}s)")
+            break
 
     # 4) Charge=2 클리어 + runtime 능동 클리어 (stale 고정 방지)
     _send_charge_clear_packet()
@@ -638,13 +715,53 @@ def _undock_internal(
     except Exception as e:
         print(f"[WARN] charge_state 클리어 실패: {e}")
 
-    # 5) SIT 자세로 대기 (도킹 포인트)
+    # 4.5) 이탈 동작이 끝나 STAND(자세=1)로 설 때까지 대기 — 움직이는 중 NAV 재정렬/SIT 이
+    #      나가는 것을 방지(재정렬·폴백 둘 다 이 대기 후 진행).
+    stand_elapsed = 0.0
+    stood = False
+    while stand_elapsed < stand_wait_seconds:
+        try:
+            if runtime.get_motion_state(rid) == 1:  # 1 = STAND
+                stood = True
+                break
+        except Exception:
+            break
+        time.sleep(poll_interval)
+        stand_elapsed += poll_interval
+    print(f"🪑 언도킹: {'STAND 확인' if stood else 'STAND 미확인(타임아웃)'} ({stand_elapsed:.0f}s)")
+
+    # 5) 도킹 포인트(ch-1)로 NAV 재정렬 후 도착 시 SIT — 매번 고정된 위치/자세로 앉게 한다.
+    #    (이탈 동작이 끝난 임의 지점에 앉지 않도록, 등록된 도킹 포인트로 이동 후 SIT.)
+    dock_wp = _get_dock_point_waypoint()
+    if dock_wp is not None:
+        import app.navigation.send_move as nav
+        from app.navigation.send_move import navigation_send_next, _signal_nav_reset
+        nav.waypoints_list = [dock_wp]
+        nav.current_wp_index = 0
+        nav.is_navigating = True
+        nav.nav_loop_remaining = 0
+        nav.nav_loop_total = 0
+        nav.nav_loop_infinite = False
+        nav.charge_on_arrival = False
+        nav.sit_on_arrival = True          # 도착 시 SIT (navigation_send_next 가 처리)
+        nav.auto_return_to_charge = False
+        _signal_nav_reset(full=True)
+        print(f"🪑 언도킹: STAND 후 도킹 포인트({dock_wp['name']})로 재정렬 → 도착 시 SIT")
+        navigation_send_next()
+        log_event("robot", "undock_complete",
+                  f"언도킹 — STAND 후 도킹 포인트({dock_wp['name']}) 재정렬 후 SIT",
+                  robot_id=rid, robot_name=get_robot_name(), business_id=get_robot_business_id())
+        return {"ok": True,
+                "msg": f"도크 이탈 후 도킹 포인트({dock_wp['name']})로 재정렬해 SIT 합니다.",
+                "dock_point": dock_wp["name"]}
+
+    # 폴백(도킹 포인트 미등록): 제자리 SIT (위에서 STAND 대기 완료)
     try:
         send_to_robot("SIT")
     except Exception as e:
         print(f"[ERR] SIT 자세 명령 실패: {e}")
-    print("🪑 언도킹 완료 — 도킹 포인트에서 SIT 대기")
-    log_event("robot", "undock_complete", "언도킹 완료 — SIT 대기",
+    print("🪑 언도킹 완료 — 제자리 SIT 대기")
+    log_event("robot", "undock_complete", "언도킹 완료 — 제자리 SIT 대기",
               robot_id=rid, robot_name=get_robot_name(), business_id=get_robot_business_id())
 
     return {"ok": True, "msg": "도크에서 이탈해 SIT 대기로 전환합니다.", "dock_point": None}

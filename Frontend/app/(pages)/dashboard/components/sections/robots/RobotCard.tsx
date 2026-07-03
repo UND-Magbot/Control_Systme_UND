@@ -24,6 +24,10 @@ const FloorChangeModal = dynamic(() => import("./FloorChangeModal"), { ssr: fals
 const ReturnToWorkModal = dynamic(() => import("./ReturnToWorkModal"), { ssr: false });
 const RemoteModal = dynamic(() => import("@/app/components/modal/remote/RemoteModal"), { ssr: false });
 
+// 완충 판정 임계(%) — 이 이상이면 charge_state 5(도크·전류없음)를 트리클 off 정상(도크 유지)으로
+// 보고 '충전 중'으로 표시한다. 완충 아닌데 state 5면 진짜 도킹 에러('전류 없음'). (백엔드 CHARGE_FULL_PCT 와 동일)
+const CHARGE_FULL_PCT = 90;
+
 type RobotLocation = {
   floor: string;
   placeName: string | null;
@@ -67,17 +71,24 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
   const taskStatus = (() => {
     if (robot.power === "-") return { label: "미확인", className: styles.taskIdle, tooltip: "" };
     if (robot.network === "Offline") return { label: "-", className: styles.taskIdle, tooltip: "" };
-    if (robot.network === "Error") return { label: "오류", className: styles.taskError, tooltip: "" };
-    // 충전 관련 상태 (chargeState: 1=부두 이동, 2=충전 중, 3=나가기, 4=오류, 5=전류 없음)
+    // 전환 구간의 Error 는 '통신 끊김'을 뜻한다(전원 off 는 백엔드에서 Online 유지 → 여기 안 옴).
+    if (robot.network === "Error") return { label: "끊김", className: styles.taskError, tooltip: "통신 연결이 끊겼습니다." };
+    // 충전 관련 상태 (chargeState: 1=도크 이동, 2=충전 중, 3=나가기, 4=오류, 5=전류 없음)
     if (robot.chargeState === 4) return { label: "충전 오류", className: styles.taskError, tooltip: robot.chargeErrorMsg ?? "" };
-    if (robot.chargeState === 5) return { label: "전류 없음", className: styles.taskError, tooltip: "부두에 있지만 전류가 흐르지 않음" };
-    if (robot.chargeState === 1) return { label: "부두로 이동", className: styles.taskDocking, tooltip: "" };
+    if (robot.chargeState === 5) {
+      // state 5(도크·전류없음): 완충이면 트리클 off 정상(도크 유지) → '충전 중', 아니면 진짜 도킹 에러.
+      const battPct = isDualBatteryType(robot.type)
+        ? Math.min(robot.batteryLeft ?? 0, robot.batteryRight ?? 0)
+        : (robot.battery ?? 0);
+      if (battPct >= CHARGE_FULL_PCT) return { label: "충전 중", className: styles.taskCharging, tooltip: "완충 — 충전소 도킹 유지 중" };
+      return { label: "전류 없음", className: styles.taskError, tooltip: "도크에 있지만 전류가 흐르지 않음" };
+    }
+    if (robot.chargeState === 1) return { label: "도크로 이동", className: styles.taskDocking, tooltip: "" };
     if (robot.chargeState === 2) return { label: "충전 중", className: styles.taskCharging, tooltip: "" };
-    if (robot.chargeState === 3) return { label: "부두에서 나가기", className: styles.taskDocking, tooltip: "" };
-    if (robot.isCharging) return { label: "충전 중", className: styles.taskCharging, tooltip: "" };
-    // 완충(100%)이면 전류가 멈춰 isCharging=false 가 되지만, 도크에 물려 있으면(atDock)
-    // '충전 중(완충 유지)'로 표시한다. (컨트롤러의 Auto Charging Error 는 완충 표기일 뿐)
-    if (robot.atDock) return { label: "충전 중", className: styles.taskCharging, tooltip: "완충 — 충전소 도킹 유지 중" };
+    if (robot.chargeState === 3) return { label: "도크에서 나가기", className: styles.taskDocking, tooltip: "" };
+    // charge_state(relay 수신)가 충전/완충/도킹 상태(2·5·1·3)를 이미 표시하므로, is_charging/atDock
+    // 폴백은 제거한다. (이전엔 언도킹 직후 charge_state=0(대기)인데 is_charging 이 sticky 로 남아
+    //  '충전 중'이 잠깐 잘못 표시되는 잔상이 있었다.)
     if (robot.dockingTime > 0) return { label: "도킹 중", className: styles.taskDocking, tooltip: "" };
     if (hasActiveSchedule || robot.tasks.length > 0 || robot.isNavigating) return { label: "작업 중", className: styles.taskWorking, tooltip: "" };
     return { label: "대기 중", className: styles.taskIdle, tooltip: "" };
@@ -187,7 +198,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
             )}
             <span className={`${styles.networkBadge} ${badgeClass}`}>
               <span className={`${styles.dot} ${dotClass}`} />
-              {isUnregistered ? "Offline" : robot.network}
+              {isUnregistered ? "Offline" : robot.network === "Error" ? "끊김" : robot.network}
             </span>
           </div>
 
@@ -252,7 +263,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
             </span>
             {(!isPowerOff && !isUnregistered) && (
               <span className={`${styles.taskBadge} ${taskStatus.className}`} title={taskStatus.tooltip || undefined}>
-                {robot.isCharging && isOnline && <ChargingIcon size={12} style={{ marginLeft: 0, marginRight: 3 }} />}
+                {taskStatus.label === "충전 중" && isOnline && <ChargingIcon size={12} style={{ marginLeft: 0, marginRight: 3 }} />}
                 {taskStatus.label}
               </span>
             )}

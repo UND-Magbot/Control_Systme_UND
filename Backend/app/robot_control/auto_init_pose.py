@@ -46,6 +46,8 @@ from app.robot_io.config import (
     AUTO_INIT_POSE_STABILITY_EPS_M,
     AUTO_INIT_POSE_ORIGIN_GUARD_M,
     AUTO_INIT_POSE_CHARGE_GRACE_SEC,
+    AUTO_INIT_POSE_RECOVER_SAMPLES,
+    AUTO_INIT_POSE_DOCK_CHECK_TICKS,
 )
 from app.database.database import SessionLocal
 from app.database.models import MapInitPose, RobotLastStatus, LocationInfo
@@ -114,6 +116,8 @@ def check_and_init_pose(robot_id: int) -> None:
         basic = entry.get("basic_status") or {}
         sleep_val = basic.get("Sleep")
         pos = entry.get("position") or {}
+        charge_st = (entry.get("charge_state") or {}).get("state", 0)
+        is_chg_now = entry.get("_is_charging", False)
 
     powered = (sleep_val == 0)  # Sleep=0 == 로봇 켜짐. heartbeat 성공 = 네트워크 online.
     now = time.time()
@@ -130,6 +134,7 @@ def check_and_init_pose(robot_id: int) -> None:
                 "prev_near_origin": near_origin,
                 "last_trigger_ts": 0.0,
                 "in_progress": False,
+                "dock_check_remaining": 0,  # 재접속 후 도크 점유 관측 창(tick)
             }
             return
 
@@ -147,15 +152,33 @@ def check_and_init_pose(robot_id: int) -> None:
 
         rising_power = powered and not prev_powered          # Sleep!=0 → 0 (전원 on 또는 네트워크 복구)
         reset_to_origin = near_origin and not prev_near_origin  # 위치 원점 점프(SLAM 리셋)
+
         # 전원 off→on(재부팅)과 네트워크 두절→복구(offline→online)를 구분한다.
         #   - 전원 off→on: 로봇이 부팅하며 SLAM 위치를 (0,0,0) 부근으로 리셋 → near_origin.
         #   - 네트워크 두절→복구: 로봇이 계속 켜져 있어 위치가 유지됨(원점 아님).
         # mark_offline 이 offline 시 prev_powered 를 내리므로 네트워크 복구만으로도
         # rising_power 가 뜬다. 따라서 rising_power 는 위치가 원점으로 리셋됐을 때만
         # 재부팅으로 인정하여, 네트워크 복구 시 불필요한 위치 초기화를 막는다.
-        reboot_detected = reset_to_origin or (rising_power and near_origin)
+        # 도크 점유(is_charging 또는 charge_state∈{1,2,5}) 상태로 재접속/전원on 하면,
+        # near_origin(원점 리셋) 여부와 무관하게 재조정을 트리거한다 — 로봇이 도크에 있으면
+        # 위치가 충전소로 확정이라 안전. (state 5=완충 트리클도 도크로 인정)
+        # ⚠️ charge_state 는 로봇 relay_charge.py 실행 시에만 유효(미실행 시 0 → 이 경로 미동작,
+        #    기존 near_origin 경로만 동작).
+        # 재접속 순간엔 charge_state 가 아직 안 들어와 docked=False 일 수 있으므로, 재접속(rising_power)
+        # 후 DOCK_CHECK_TICKS 틱 동안 관측해 한 번이라도 도크로 잡히면 '도크 재접속'으로 인정한다.
+        docked = is_chg_now or charge_st in (1, 2, 5)
+        if rising_power:
+            st["dock_check_remaining"] = AUTO_INIT_POSE_DOCK_CHECK_TICKS
+        dock_reconnect = False
+        if st.get("dock_check_remaining", 0) > 0:
+            if docked:
+                dock_reconnect = True
+                st["dock_check_remaining"] = 0   # 도크 확인됨 → 관측 창 닫기
+            else:
+                st["dock_check_remaining"] -= 1
+        reboot_detected = reset_to_origin or (rising_power and near_origin) or dock_reconnect
         if not reboot_detected:
-            return  # 전원 off→on 아님(네트워크 두절 복구 등) — init_pose 트리거 안 함
+            return  # 전원on/도크 재접속 아님(네트워크 두절 복구 등) — init_pose 트리거 안 함
 
         # 쿨다운·중복 가드
         if st["in_progress"]:
@@ -164,7 +187,9 @@ def check_and_init_pose(robot_id: int) -> None:
             return
         st["last_trigger_ts"] = now
         st["in_progress"] = True
-        trigger_reason = "위치 원점 리셋(SLAM 재부팅)" if reset_to_origin else "Sleep 상승에지+위치 원점"
+        trigger_reason = ("위치 원점 리셋(SLAM 재부팅)" if reset_to_origin
+                          else "도크 재접속(충전소 점유)" if dock_reconnect
+                          else "Sleep 상승에지+위치 원점")
 
     # 주행 중이면 보류(움직이는 중 좌표 리셋 금지)
     if _is_navigating():
@@ -212,12 +237,13 @@ def _inject_worker(robot_id: int) -> None:
 
         runtime.set_initpose_pending(robot_id, True, "전원 on 위치 초기화 진행")
 
-        # 충전 감지가 전원 on 직후 1~2초 지연될 수 있어 짧게 대기하며 확인한다.
+        # 도크 감지(충전/완충 트리클)가 전원 on 직후 지연될 수 있어 grace 동안 대기하며 확인한다.
+        # is_docked = is_charging OR charge_state∈{1,2,5} — 완충 트리클(state 5)도 도크로 인정.
         grace = time.time() + AUTO_INIT_POSE_CHARGE_GRACE_SEC
-        while time.time() < grace and not runtime.is_charging(robot_id):
+        while time.time() < grace and not runtime.is_docked(robot_id):
             time.sleep(min(1.0, AUTO_INIT_POSE_RETRY_INTERVAL_SEC) if AUTO_INIT_POSE_RETRY_INTERVAL_SEC else 1.0)
 
-        if not runtime.is_charging(robot_id):
+        if not runtime.is_docked(robot_id):
             # 비충전 전원 on/재연결 분기(사용자 정책).
             #   (1) 보고 위치가 신선·비원점이면 SLAM 이 자기 위치를 유지(=재부팅/리셋 아님,
             #       네트워크 순단 복구 등) → 조용히 확정. 모달/알림 없음, 자율주행 허용.
@@ -312,9 +338,9 @@ def resolve_init_pose(robot_id: int):
 
     db = SessionLocal()
     try:
-        # ── 분기: 현재 충전 상태로 1순위 소스를 가른다 ──
-        if runtime.is_charging(robot_id):
-            # [충전 중] 현재 맵/층의 충전소(물리 확정) 우선
+        # ── 분기: 도크 점유(충전 중/완충 트리클 state 5 포함)면 충전소 앵커 우선 ──
+        if runtime.is_docked(robot_id):
+            # [도크 점유] 현재 맵/층의 충전소(물리 확정) 우선
             dock = _resolve_dock_pose(db, cur_floor, cur_map)
             if dock is not None:
                 return dock, "dock_anchor"
@@ -422,10 +448,11 @@ def _last_status_pose(db, robot_id, cur_floor):
 
 
 def _resolve_dock_pose(db, cur_floor, cur_map):
-    """충전 중 로봇의 물리 위치 = '현재 맵/층' 충전소의 도킹포인트 '{충전소}-1' 좌표. 없으면 None.
+    """충전 중 로봇의 물리 위치 = '현재 맵/층' 충전 앵커(충전소 본체 '{충전소}') 좌표. 없으면 None.
 
-    ⚠️ 충전 시 로봇은 **도킹포인트(ch-1)** 에 있고, 충전소(ch)는 그 0.866m '앞' 이다(운영 확인).
-       따라서 시드는 도킹포인트 좌표를 써야 한다(충전소 ch 좌표가 아님).
+    ⚠️ 실제 충전(전류)은 충전소 본체(ch, 예: ch03)에서 이뤄지고 로봇이 물리적으로 앉는 자리다.
+       도킹포인트 '{충전소}-1'(ch03-1)은 그 앞 접근점이므로, init_pose 시드는 충전소(ch) 좌표를 쓴다.
+       (실측: ch03=(0.744,1.003), ch03-1=(1.868,0.901) — 충전 중 로봇은 ch03 에 위치.)
     ⚠️ 멀티층: 층마다 충전소가 따로 등록되므로 현재 맵(우선)·현재 층으로 필터해 그 층 충전소를 집는다
        (.first() 로 임의 충전소를 집으면 다른 층 것을 잡는 버그).
     """
@@ -443,19 +470,14 @@ def _resolve_dock_pose(db, cur_floor, cur_map):
         return None
     if cur_floor is not None and getattr(station, "FloorId", None) is not None and station.FloorId != cur_floor:
         return None
-    # 충전 도킹 시 로봇 실제 위치 = 도킹포인트 '{충전소}-1'
-    dock = (
-        db.query(LocationInfo)
-        .filter(LocationInfo.LacationName == f"{station.LacationName}-1")
-        .first()
-    )
-    if not dock or dock.LocationX is None or dock.LocationY is None:
+    # 충전 중 로봇 실제 위치 = 충전 앵커 = 충전소 본체(ch) 좌표. (도킹포인트 ch-1 은 그 앞 접근점)
+    if station.LocationX is None or station.LocationY is None:
         return None
     return {
-        "PosX": dock.LocationX,
-        "PosY": dock.LocationY,
+        "PosX": station.LocationX,
+        "PosY": station.LocationY,
         "PosZ": 0.0,
-        "Yaw": float(dock.Yaw or 0.0),
+        "Yaw": float(station.Yaw or 0.0),
     }
 
 
@@ -729,6 +751,143 @@ def _escalate_manual(robot_id: int, pose: dict | None, detail: str) -> None:
         )
     except Exception as e:
         print(f"[AUTO-INITPOSE] 알림 로그 실패: {e}")
+
+
+# ── 미확정 자동 복구(충전 중) / 운영자 수동 확정(비충전) ──────────────
+
+_recover_state: dict[int, int] = {}  # robot_id → 연속 dock 수렴 관측 횟수
+
+
+def _confirm_current_position(robot_id: int, pos: dict, detail: str) -> None:
+    """현재 보고 위치를 신뢰 위치로 확정 — DB 갱신 + 미확정 해제 + 복구 로그.
+
+    rviz 등 외부 교정으로 localization 이 이미 회복된 상태에서 호출한다.
+    로봇에 INIT_POSE 를 다시 주입하지 않고(교정을 흔들지 않음), 현재 보고 좌표를 채택만 한다.
+    """
+    was_pending = runtime.is_initpose_pending(robot_id)
+    try:
+        from app.robot_io import persistence
+        persistence.flush_robot_position(
+            robot_id,
+            float(pos.get("x", 0.0)),
+            float(pos.get("y", 0.0)),
+            float(pos.get("yaw", 0.0)),
+        )
+    except Exception as e:
+        print(f"[AUTO-INITPOSE] 복구 위치 DB 갱신 실패(주기 저장으로 대체): {e}")
+    runtime.set_initpose_pending(robot_id, False)
+    # pending 해제 후 현재 좌표를 신뢰 위치로 즉시 반영(맵 마커가 라이브로 곧장 전환되도록).
+    runtime.update_position(
+        robot_id, float(pos.get("x", 0.0)), float(pos.get("y", 0.0)), float(pos.get("yaw", 0.0))
+    )
+    # 확정 직후 위치 급변 가드가 다시 미확정으로 되돌리지 않도록 유예 구간을 건다.
+    runtime.mark_manual_confirm(robot_id)
+    print(f"[AUTO-INITPOSE] robot {robot_id} 위치 확정·nav 허용 — {detail}")
+    # 미확정이었을 때만 '복구' 로그(미확정 아닌데 확정 버튼을 눌러도 잘못된 복구 로그를 남기지 않음).
+    if not was_pending:
+        return
+    try:
+        log_event(
+            "robot", "robot_initpose_recovered", "로봇 위치 초기화 복구",
+            error_json=detail,
+            robot_id=get_robot_id(), robot_name=get_robot_name(),
+            business_id=get_robot_business_id(),
+        )
+    except Exception as e:
+        print(f"[AUTO-INITPOSE] 복구 로그 실패: {e}")
+
+
+def check_and_recover_pending(robot_id: int) -> None:
+    """status heartbeat 마다 호출 — 충전 중 미확정 자동 복구.
+
+    미확정 상태에서 로봇이 충전 중이고 보고 위치가 충전소(dock_anchor) 좌표로
+    연속 AUTO_INIT_POSE_RECOVER_SAMPLES 회 안정 수렴하면 미확정을 자동 해제한다.
+    (dock 은 접지 진실 — 물리적으로 도킹 위치에 있으므로 '안정적으로 틀림' 위험이 없다.
+     rviz 등 외부 교정으로 로봇이 실제 dock 좌표를 보고하기 시작하면 이 경로로 자동 회복된다.)
+
+    ⚠️ 비충전 미확정은 접지 진실이 없어 자동 복구 대상이 아니다 —
+       운영자 '현재 위치로 확정' 버튼(POST /robot/initpose/confirm-current)으로 해제한다.
+    """
+    if robot_id is None:
+        return
+    if not runtime.is_initpose_pending(robot_id):
+        _recover_state.pop(robot_id, None)
+        return
+    # 충전 중이 아니거나 주행/매핑 중이면 자동 복구 판단 보류
+    if not runtime.is_charging(robot_id) or _is_navigating() or _is_mapping():
+        _recover_state.pop(robot_id, None)
+        return
+
+    with runtime._lock:
+        entry = runtime._runtime.get(robot_id)
+        cur_floor = (entry or {}).get("current_floor_id")
+        cur_map = (entry or {}).get("current_map_id")
+
+    db = SessionLocal()
+    try:
+        dock = _resolve_dock_pose(db, cur_floor, cur_map)
+    finally:
+        db.close()
+    if dock is None:
+        _recover_state.pop(robot_id, None)
+        return
+
+    pos = runtime.get_position(robot_id) or {}
+    ts = pos.get("timestamp", 0) or 0
+    if not ts or (time.time() - ts) > 5.0:
+        _recover_state[robot_id] = 0  # 위치 미수신/stale → 카운트 리셋
+        return
+    dist = math.hypot(pos.get("x", 0.0) - dock["PosX"], pos.get("y", 0.0) - dock["PosY"])
+    if dist > AUTO_INIT_POSE_VERIFY_TOLERANCE_M:
+        _recover_state[robot_id] = 0  # 아직 dock 로 수렴 전 → 카운트 리셋
+        return
+
+    cnt = _recover_state.get(robot_id, 0) + 1
+    _recover_state[robot_id] = cnt
+    if cnt < AUTO_INIT_POSE_RECOVER_SAMPLES:
+        return
+
+    _recover_state.pop(robot_id, None)
+    _confirm_current_position(
+        robot_id, pos,
+        f"충전 중 위치가 충전소 좌표로 안정 수렴({dist:.2f}m, {cnt}회) — 미확정 자동 해제 "
+        f"pos=({pos.get('x', 0.0):.2f}, {pos.get('y', 0.0):.2f})",
+    )
+
+
+def confirm_current_position_manual(robot_id: int) -> tuple[bool, str]:
+    """운영자 '완료(위치 확정)' — 미확정 플래그를 무조건 해제한다(운영자 권한).
+
+    운영자가 스캔 정합을 눈으로 확인하고 확정한 것이므로, 자동 수렴/신선도 검사로 막지 않는다.
+    위치가 신선하면 그 좌표를 신뢰 위치로 채택하고, 미수신이어도 플래그만 해제한다.
+    (로봇에 INIT_POSE 재주입은 하지 않음 — '적용'에서 이미 주입됨.) 반환 (성공, 사유).
+    """
+    if robot_id is None:
+        return False, "로봇을 찾을 수 없습니다."
+    _recover_state.pop(robot_id, None)
+    pos = runtime.get_position(robot_id) or {}
+    ts = pos.get("timestamp", 0) or 0
+    fresh = bool(ts) and (time.time() - ts) <= 5.0
+    if fresh:
+        _confirm_current_position(
+            robot_id, pos,
+            f"운영자 확정(완료) — pos=({pos.get('x', 0.0):.2f}, {pos.get('y', 0.0):.2f})",
+        )
+    else:
+        # 위치 미수신이어도 운영자 확정은 존중 — 플래그만 해제(유예 마킹 포함).
+        runtime.set_initpose_pending(robot_id, False)
+        runtime.mark_manual_confirm(robot_id)
+        print(f"[AUTO-INITPOSE] robot {robot_id} 운영자 확정(완료) — 위치 미수신, 플래그만 해제")
+        try:
+            log_event(
+                "robot", "robot_initpose_recovered", "로봇 위치 초기화 복구",
+                error_json="운영자 확정(완료) — 위치 미수신 상태에서 수동 해제",
+                robot_id=get_robot_id(), robot_name=get_robot_name(),
+                business_id=get_robot_business_id(),
+            )
+        except Exception as e:
+            print(f"[AUTO-INITPOSE] 확정 로그 실패: {e}")
+    return True, "위치를 확정했습니다."
 
 
 def verify_and_clear(robot_id: int, pose: dict) -> tuple[bool, str]:

@@ -74,6 +74,16 @@ AUTO_INIT_POSE_ORIGIN_GUARD_M = 0.3       # 이 거리 안(원점 부근)이면 
 # 전원 on 직후 충전 감지가 1~2초 지연될 수 있어, 이 시간 동안 충전 여부를 기다린다.
 # 끝까지 비충전이면 자동으로 위치를 못 잡으므로 '미확정 + 운영자 맵 클릭 지정' 으로 넘긴다.
 AUTO_INIT_POSE_CHARGE_GRACE_SEC = 15.0
+# 미확정 자동 복구: 미확정 상태에서 충전 중이고 보고 위치가 충전소(dock) 좌표로
+# 연속 이 횟수만큼(status heartbeat 단위, ≈REQ_INTERVAL_HB 초 간격) 안정 수렴하면
+# 미확정을 자동 해제한다. rviz 등 외부 위치 교정 후 자동 반영을 위함.
+# (dock 은 접지 진실이라 '안정적으로 틀림' 위험이 없다 — 물리적으로 도킹 위치에 있음.)
+AUTO_INIT_POSE_RECOVER_SAMPLES = 5
+# 재접속(offline→online) 후 도크 점유(charge_state∈{1,2,5} 또는 is_charging)를 관측하는
+# 창(heartbeat tick 수, ≈REQ_INTERVAL_HB 초 간격). 재접속 순간엔 charge_state 가 아직 안
+# 들어와 있을 수 있어, 이 창 안에 한 번이라도 도크로 잡히면 '도크 재접속'으로 인정해
+# 자동 위치 재조정을 트리거한다.
+AUTO_INIT_POSE_DOCK_CHECK_TICKS = 15
 
 # ── 모터/드라이버 온도 모니터링 (STATUS 응답의 DeviceTemperature 검사) ──
 # 운영 환경의 실제 모터 온도 특성에 맞게 조정한다. 단위는 로봇이 내려주는 값

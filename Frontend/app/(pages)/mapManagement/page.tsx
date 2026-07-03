@@ -17,6 +17,8 @@ import { useModalAlert } from "@/app/hooks/useModalAlert";
 import { useAuth } from "@/app/context/AuthContext";
 import MapAlertModal from "@/app/components/modal/AlertModal";
 import InitPoseConfirmModal from "@/app/components/modal/InitPoseConfirmModal";
+import RelocalizeModal from "@/app/components/modal/RelocalizeModal";
+import { useFloorMapConfig, type FloorMapRow } from "@/app/(pages)/mapManagement/hooks/useFloorMapConfig";
 import type {
   MapTab,
   MappingState,
@@ -184,6 +186,11 @@ export default function MapManagementPage() {
 
   // ── 맵 메타 (origin, resolution) — 훅으로 분리 ──
   const mapMeta = useMapMeta(selectedMap);
+  // 위치 재조정(스캔 정합) 모달용 CanvasMap 설정 — 현재 선택 맵 기준.
+  const relocalizeMapConfig = useFloorMapConfig(
+    typeof selectedMap === "number" ? selectedMap : null,
+    maps as unknown as FloorMapRow[],
+  );
 
   // ── 맵 위 장소 목록 ──
   const [mapPlaces, setMapPlaces] = useState<
@@ -402,6 +409,8 @@ export default function MapManagementPage() {
   const [isPlaceMode, setIsPlaceMode] = useState(false);
   const [showInitPoseTargetModal, setShowInitPoseTargetModal] = useState(false);
   const [showInitPoseManualModal, setShowInitPoseManualModal] = useState(false);
+  // rviz식 위치 재조정(스캔 정합) 모달
+  const [showRelocalize, setShowRelocalize] = useState(false);
 
   const [showGrid, setShowGrid] = useState(false);
   const [showPlaceModal, setShowPlaceModal] = useState(false);
@@ -1454,9 +1463,13 @@ export default function MapManagementPage() {
       modalAlert("위치 재조정할 로봇을 먼저 연결해주세요.");
       return;
     }
+    if (selectedMap === "") {
+      modalAlert("위치 재조정할 맵을 먼저 선택해주세요.");
+      return;
+    }
     if (connectedRobots.length === 1) {
       setSelectedInitPoseRobot(connectedRobots[0]);
-      setShowInitPoseManualModal(true);
+      setShowRelocalize(true);
       return;
     }
     setShowInitPoseTargetModal(true);
@@ -1465,7 +1478,7 @@ export default function MapManagementPage() {
   const handleSelectInitPoseRobot = (robot: Robot) => {
     setSelectedInitPoseRobot(robot);
     setShowInitPoseTargetModal(false);
-    setShowInitPoseManualModal(true);
+    setShowRelocalize(true);
   };
 
   const handleInitPoseResolved = async () => {
@@ -2243,6 +2256,15 @@ export default function MapManagementPage() {
             onResolved={handleInitPoseResolved}
             onClose={() => setShowInitPoseManualModal(false)}
             zIndex={10000}
+          />
+
+          <RelocalizeModal
+            open={showRelocalize}
+            mapConfig={relocalizeMapConfig}
+            robotId={selectedInitPoseRobot?.id}
+            robotName={selectedInitPoseRobot?.RobotName}
+            onClose={() => setShowRelocalize(false)}
+            onConfirmed={handleInitPoseResolved}
           />
           {isDeleteMode && (
             <div className={styles.placeBanner} style={{ background: "rgba(183, 28, 28, 0.8)" }}>

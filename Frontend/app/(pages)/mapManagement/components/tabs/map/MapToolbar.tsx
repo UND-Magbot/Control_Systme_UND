@@ -117,21 +117,19 @@ export default function MapToolbar({
         <button className={styles.toolbarBtn} onClick={onDeleteMap}>
           삭제
         </button>
-        {/* 위치 재조정 버튼 — 우선 미표시(요청). 위치 교정은 '관리자 문의'로 일원화.
-            재활성화하려면 아래 블록 주석 해제(props/wiring 유지됨).
+        {/* 위치 재조정 — rviz식 스캔 정합 도구(RelocalizeModal)를 연다. */}
         <button
           className={styles.toolbarBtn}
           onClick={onOpenInitPoseModal}
           disabled={!hasConnectedRobot}
           title={
             hasConnectedRobot
-              ? "위치 재조정할 로봇을 선택합니다."
+              ? "맵의 벽과 로봇 스캔을 맞춰 위치를 재조정합니다."
               : "로봇을 먼저 연결해주세요."
           }
         >
           위치 재조정
         </button>
-        */}
       </div>
 
       <div className={styles.toolbarRight}>

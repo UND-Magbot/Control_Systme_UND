@@ -71,6 +71,19 @@ export type CanvasMapProps = {
   onTrackedPoiScreen?: (screen: { x: number; y: number; behind: boolean } | null) => void;
   onMapClick?: (worldCoords: { x: number; y: number }) => void;
   onMapMouseMove?: (worldCoords: { x: number; y: number }) => void;
+  /** 위치 재조정용 — 정합 스캔 점군(월드 좌표 [x,y][]) 을 맵 위에 오버레이 */
+  scanPoints?: number[][];
+  /** 위치 재조정용 — 운영자가 지정 중인 pose 화살표. (x,y)=시작(위치), yaw=방향.
+   *  toX/toY 가 있으면 시작→(toX,toY)로 늘어나는 rviz식 드래그 화살표로 그린다(없으면 고정 길이). */
+  poseArrow?: { x: number; y: number; yaw: number; toX?: number; toY?: number } | null;
+  /** 위치 재조정용 — rviz식 pose 드래그 모드. true면 드래그 팬을 끄고 누른 지점=위치, 끌기=방향. */
+  poseDrawMode?: boolean;
+  /** poseDrawMode — 드래그 시작(누른 지점, 월드 좌표) */
+  onPoseDragStart?: (worldCoords: { x: number; y: number }) => void;
+  /** poseDrawMode — 드래그 중(현재 커서, 월드 좌표) */
+  onPoseDrag?: (worldCoords: { x: number; y: number }) => void;
+  /** poseDrawMode — 드래그 종료(뗌) */
+  onPoseDragEnd?: () => void;
   interactive?: boolean;
   className?: string;
   style?: React.CSSProperties;

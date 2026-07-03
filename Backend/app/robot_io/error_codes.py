@@ -87,6 +87,20 @@ def is_informational(code: int) -> bool:
     return code in INFORMATIONAL_CODES
 
 
+# 경고성 코드 — 실제 문제 신호이긴 하나 확인창(error 알림)까지는 띄우지 않고
+# 경고/추적 로그만 남긴다. (정보성 0x8506 과 달리 '정상'은 아니지만, 확인창 스팸 방지)
+#  · 0x8503: 자율 충전 중 비정상적인 위치 정보 — 도킹 접근 시 로봇 측위가 어긋날 때 보고.
+#    측위/도킹이 안정될 때까지 확인창은 억제하되, 추적 로그는 남겨 원인 파악에 쓴다.
+WARNING_CODES = frozenset({
+    0x8503,
+})
+
+
+def is_warning(code: int) -> bool:
+    """실제 문제이나 확인창(error 알림)은 띄우지 않는 경고성 코드인지 여부."""
+    return code in WARNING_CODES
+
+
 # 에러 코드 → 발생 부위/영역 분류.
 # 운영자가 알림만 보고 "어디서 난 오류인지" 즉시 파악할 수 있도록,
 # ROBOT_ERROR_CODES 테이블의 그룹(코드 대역)과 동일하게 분류한다.

@@ -150,18 +150,22 @@ def initpose_compare(robot_id: int | None = None):
 def init_pose(body: InitPoseBody | None = Body(default=None)):
     """초기 위치 주입.
 
-    - 본문에 {x, y} 가 오면 = 운영자 맵 클릭 위치 지정. yaw 미지정 시 last_status.PosYaw 사용.
-    - 본문 없으면(기존 '위치 재조정' 버튼) = map_init_pose/config 좌표 사용.
+    - 본문에 {x, y(, yaw)} 가 오면 = 운영자 맵 지정 위치(위치 재조정 도구의 rviz식 pose estimate).
+      yaw 미지정 시 last_status.PosYaw 사용.
+    - target="charge" = 충전소 도킹 좌표(접지 진실)로 주입.
     수렴 성공 시 미초기화(자율주행 보류) 플래그를 해제한다.
     """
-    # ── 수동 위치 초기화: 현재는 '충전소 위치로 지정'(target=charge)만 지원 ──
-    # 비충전 위치(현재위치/운영자 좌표)의 자동·수동 초기화는 2차 개발 예정이라 막는다.
-    # 자동 init_pose(auto_init_pose.py)는 별도 경로(_send_init_pose_via_receiver)라 무관.
-    if body is None or body.target != "charge":
+    # ── 허용 경로: (1) target=charge  (2) 운영자 지정 좌표 {x,y} ──
+    # '위치 재조정(스캔 정합)' 도구가 맵에서 찍은 pose 를 {x,y,yaw} 로 보낸다. 로봇이 이 시드로
+    # scan-match 수렴 → verify_and_clear 로 검증 후 미확정 해제(잘못 찍으면 수렴 실패로 거부).
+    # 본문 없음/좌표 없음(모호) 은 오확정 방지를 위해 막는다.
+    has_xy = body is not None and body.x is not None and body.y is not None
+    is_charge = body is not None and body.target == "charge"
+    if not (is_charge or has_xy):
         return {
             "status": "disabled",
             "converged": False,
-            "msg": "충전소 위치가 아닐 경우 관리자에게 문의하세요. (비충전 위치 초기화는 추후 지원 예정)",
+            "msg": "맵에서 로봇 위치를 지정하거나 '충전소 위치로 지정'을 사용하세요.",
         }
 
     rid = _select_robot_id(body.robot_id if body is not None else None)
@@ -254,6 +258,26 @@ def init_pose(body: InitPoseBody | None = Body(default=None)):
         "after": after,
         "msg": f"초기 위치 설정 완료: {pose}" if converged
                else f"초기 위치 명령 전송됨(수렴 미확인: {reason}): {pose}",
+    }
+
+
+@router.post("/robot/initpose/confirm-current")
+def confirm_current_position(robot_id: int | None = None):
+    """운영자 '현재 위치로 확정' — 로봇이 지금 보고하는 위치로 미확정을 해제한다.
+
+    rviz 등 외부 도구로 위치 교정을 끝낸 뒤 사용한다. 로봇에 INIT_POSE 를 재주입하지
+    않고(이미 교정됨) 현재 보고 좌표를 신뢰 위치로 채택한다. 충전/비충전 모두 사용 가능.
+    (충전 중 자동 복구가 있으나, 즉시 확정하거나 비충전 상황에서 쓰기 위한 수동 경로.)
+    """
+    rid = _select_robot_id(robot_id)
+    if rid is None:
+        return {"status": "error", "confirmed": False, "msg": "로봇을 찾을 수 없습니다."}
+    from app.robot_control.auto_init_pose import confirm_current_position_manual
+    ok, reason = confirm_current_position_manual(rid)
+    return {
+        "status": "ok" if ok else "error",
+        "confirmed": ok,
+        "msg": reason,
     }
 
 

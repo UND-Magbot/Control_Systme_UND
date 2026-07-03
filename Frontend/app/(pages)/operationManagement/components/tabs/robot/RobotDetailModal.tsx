@@ -495,7 +495,13 @@ export default function RobotDetailModal({
     };
 
     const handleStopChargeConfirm = () => {
-      apiFetch(`/robot/stop-charge`, { method: "POST" })
+      // 대시보드 '충전 해제'와 동일하게 전체 언도킹(/robot/undock): 도크 이탈 → 도킹 포인트 재정렬 → SIT.
+      // (기존 /robot/stop-charge 단순 Charge=0 은 이탈/재정렬을 안 해서 동작이 달랐음)
+      apiFetch(`/robot/undock`, { method: "POST" })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.status === "error") apiAlert.show(data.msg ?? "충전 해제에 실패했습니다.");
+        })
         .catch((err) => console.error("충전 해제 실패", err));
       setStopChargeConfirmOpen(false);
     };
@@ -699,7 +705,7 @@ export default function RobotDetailModal({
         {stopChargeConfirmOpen && (
           <BatteryPathModal
             isOpen={stopChargeConfirmOpen}
-            message={"현재 로봇이 충전 중입니다.\n충전을 해제하시겠습니까?"}
+            message={"충전을 해제하고 도킹에서 나와 도킹 포인트로 재정렬합니다.\n진행하시겠습니까?"}
             onConfirm={handleStopChargeConfirm}
             onCancel={() => setStopChargeConfirmOpen(false)}
           />
