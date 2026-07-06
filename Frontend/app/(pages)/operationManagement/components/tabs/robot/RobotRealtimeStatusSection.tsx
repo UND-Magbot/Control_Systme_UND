@@ -37,7 +37,9 @@ export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule
     statusLabel = '충전 오류';
     statusClass = styles.detailBadgeOffline;
   } else if (r.chargeState === 5) {
-    // 완충이면 트리클 off 정상(도크 유지) → '충전 중', 아니면 진짜 도킹 에러('전류 없음').
+    // 완충이면 트리클 off 정상(도크 유지) → '충전 중'. 미완충이면 '전류 없음'이나,
+    // 완충 트리클 오실레이션(정상)과 색으로 구분되면 오류로 오인되므로 색은 '충전 중'과
+    // 동일하게 두고 라벨로만 구분한다.
     const battPct = isDualBatteryType(r.type)
       ? Math.min(r.batteryLeft ?? 0, r.batteryRight ?? 0)
       : (r.battery ?? 0);
@@ -46,7 +48,7 @@ export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule
       statusClass = styles.detailBadgeCharging;
     } else {
       statusLabel = '전류 없음';
-      statusClass = styles.detailBadgeOffline;
+      statusClass = styles.detailBadgeCharging;
     }
   } else if (r.chargeState === 1) {
     statusLabel = '도크로 이동';

@@ -71,12 +71,14 @@ function getRobotStatus(r: RobotRowData, hasActiveSchedule = false): { label: st
   // 충전 관련 상태 (chargeState: 1=도크 이동, 2=충전 중, 3=나가기, 4=오류, 5=전류 없음)
   if (r.chargeState === 4) return { label: "충전 오류", className: styles.statusError, tooltip: r.chargeErrorMsg ?? "" };
   if (r.chargeState === 5) {
-    // state 5(도크·전류없음): 완충이면 트리클 off 정상(도크 유지) → '충전 중', 아니면 진짜 도킹 에러.
+    // state 5(도크·전류없음): 완충이면 트리클 off 정상(도크 유지) → '충전 중'.
+    // 미완충이면 '전류 없음'이나, 완충 트리클 오실레이션(정상)과 색으로 구분되면 오류로
+    // 오인되므로 색은 '충전 중'과 동일(초록)로 두고 라벨/툴팁으로만 구분한다.
     const battPct = isDualBatteryType(r.type)
       ? Math.min(r.batteryLeft ?? 0, r.batteryRight ?? 0)
       : (r.battery ?? 0);
     if (battPct >= CHARGE_FULL_PCT) return { label: "충전 중", className: styles.statusCharging, tooltip: "완충 — 충전소 도킹 유지 중" };
-    return { label: "전류 없음", className: styles.statusError, tooltip: "도크에 있지만 전류가 흐르지 않음" };
+    return { label: "전류 없음", className: styles.statusCharging, tooltip: "도크에 있지만 전류가 흐르지 않음" };
   }
   if (r.chargeState === 1) return { label: "도크로 이동", className: styles.statusDocking, tooltip: "" };
   if (r.chargeState === 2) return { label: "충전 중", className: styles.statusCharging, tooltip: "" };

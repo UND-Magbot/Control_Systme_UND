@@ -46,7 +46,6 @@ from app.robot_io.config import (
     AUTO_INIT_POSE_STABILITY_EPS_M,
     AUTO_INIT_POSE_ORIGIN_GUARD_M,
     AUTO_INIT_POSE_CHARGE_GRACE_SEC,
-    AUTO_INIT_POSE_RECOVER_SAMPLES,
     AUTO_INIT_POSE_DOCK_CHECK_TICKS,
 )
 from app.database.database import SessionLocal
@@ -93,6 +92,9 @@ def force_power_on_edge(robot_id: int) -> None:
 
 
 _POS_FRESH_SEC = 10.0  # 이 시간 내 수신된 위치만 '신선'으로 간주(재부팅 판정용)
+# 주입 후 수렴 판정 전, 위치 보고가 신선해질 때까지 최대 이만큼 대기(초). 초기 폴링 지연으로
+# stale 이 떠도 재주입/재시도 카운트 없이 신선 좌표를 기다린다(초기 1회 주입을 낭비하지 않음).
+_POS_FRESH_WAIT_SEC = 8.0
 
 
 def check_and_init_pose(robot_id: int) -> None:
@@ -259,57 +261,78 @@ def _inject_worker(robot_id: int) -> None:
             _escalate_confirm(robot_id, f"비충전 위치 신뢰불가({why}) — 관리자 문의 필요")
             return
 
-        # ── 충전 중: 충전소(dock_anchor) 자동 주입 ──
+        # ── 도크 점유: 충전소(dock_anchor) 재주입 후 '위치 수렴'만으로 확정 ──
+        # 확정 기준은 오직 '보고 위치가 dock 좌표 유효범위(tolerance) 안인가'다.
+        #   · init_pose ACK 의 ErrorCode 는 신뢰하지 않는다 — 벤더 노트상 리턴코드는 명령 접수
+        #     여부일 뿐 측위 결과가 아니고(측위는 5초 뒤 별도 확인 권장), 실측도 성공 시 1,
+        #     실패 시 57354 로 명세(0=성공)와 어긋나 판정 근거로 못 쓴다.
+        #   · 그래서 주입 후 relocalization 시간(SETTLE)을 기다린 뒤, 로봇이 충전소 좌표
+        #     tolerance 안으로 잡히면 성공으로 보고 확정한다. 아니면 충전소와 동일하게 재시도.
         if not _has_charge_station():
             _alert_no_charge_station(robot_id)
 
-        before = runtime.get_position(robot_id) or {}
         deadline = time.time() + AUTO_INIT_POSE_READY_TIMEOUT_SEC
-        converge_fail = 0
-        got_ok = False
+        fail_count = 0
         prev_source = None
 
         while time.time() < deadline:
-            pose, source = resolve_init_pose(robot_id)   # 충전 중 → dock_anchor(없으면 폴백)
+            pose, source = resolve_init_pose(robot_id)   # 도크 점유 → dock_anchor(없으면 폴백)
             if pose is None:
                 _escalate_confirm(robot_id, f"자동 산정 불가({source})")
                 return
             if source != prev_source:
-                print(f"[AUTO-INITPOSE] robot {robot_id} source={source} pose={pose} (before={before})")
+                print(f"[AUTO-INITPOSE] robot {robot_id} source={source} pose={pose}")
                 prev_source = source
 
             send_status = _send_init_pose_via_receiver(pose)
             if send_status != "ok":
+                # timeout/error/no_ack — 부팅 중/통신 순단(receiver 미전달). 카운트 없이 재시도.
                 print(
-                    f"[AUTO-INITPOSE] robot {robot_id} 미준비(status={send_status}) — "
+                    f"[AUTO-INITPOSE] robot {robot_id} 미전달(status={send_status}) — "
                     f"{AUTO_INIT_POSE_RETRY_INTERVAL_SEC:.0f}s 후 재시도"
                 )
                 time.sleep(AUTO_INIT_POSE_RETRY_INTERVAL_SEC)
                 continue
 
-            got_ok = True
+            # 주입 전달됨 → relocalization 대기(SETTLE).
             time.sleep(AUTO_INIT_POSE_SETTLE_SEC)
-            after = runtime.get_position(robot_id) or {}
+            # 위치가 신선해질 때까지 잠깐 더 대기한다 — 초기 폴링 지연으로 좌표는 맞는데 timestamp 만
+            # stale 인 경우 재주입/재시도 카운트를 낭비하지 않기 위함(관측: after=(0.73,1.00)인데 stale).
+            after = _await_fresh_position(robot_id, _POS_FRESH_WAIT_SEC)
+            if after is None:
+                # 끝내 신선한 위치 미수신(폴링 두절 등) → 판정 불가로 재시도 카운트.
+                fail_count += 1
+                print(
+                    f"[AUTO-INITPOSE] robot {robot_id} 위치 미수신(신선 좌표 대기 실패) "
+                    f"{fail_count}/{AUTO_INIT_POSE_MAX_CONVERGE_FAIL}"
+                )
+                if fail_count >= AUTO_INIT_POSE_MAX_CONVERGE_FAIL:
+                    _escalate_confirm(robot_id, f"충전소 위치 수렴 실패 {fail_count}회(위치 미수신)")
+                    return
+                time.sleep(AUTO_INIT_POSE_RETRY_INTERVAL_SEC)
+                continue
             converged, creason = _verify_converged(pose, after)
             if converged:
-                _confirm_position(robot_id, source, f"수렴(충전소 확정), pose={pose}")
+                _confirm_position(
+                    robot_id, source,
+                    f"위치 수렴(충전소 확정), pose={pose}, "
+                    f"after=({after.get('x', 0.0):.2f}, {after.get('y', 0.0):.2f})",
+                )
                 return
-
-            converge_fail += 1
+            fail_count += 1
             print(
-                f"[AUTO-INITPOSE] robot {robot_id} 충전소 위치 미확정 "
-                f"{converge_fail}/{AUTO_INIT_POSE_MAX_CONVERGE_FAIL}: {creason} (after={after})"
+                f"[AUTO-INITPOSE] robot {robot_id} 위치 미수렴 "
+                f"{fail_count}/{AUTO_INIT_POSE_MAX_CONVERGE_FAIL}: {creason} (after={after})"
             )
-            if converge_fail >= AUTO_INIT_POSE_MAX_CONVERGE_FAIL:
-                _escalate_confirm(robot_id, f"충전소 위치 수렴 실패 {converge_fail}회({creason})")
+            if fail_count >= AUTO_INIT_POSE_MAX_CONVERGE_FAIL:
+                _escalate_confirm(robot_id, f"충전소 위치 수렴 실패 {fail_count}회({creason})")
                 return
             time.sleep(AUTO_INIT_POSE_RETRY_INTERVAL_SEC)
 
-        # 시간 상한 도달
+        # 시간 상한 도달 — 끝내 충전소 좌표로 수렴하지 않음
         _escalate_confirm(
             robot_id,
-            "충전소 위치 수렴 실패(시간 초과)" if got_ok
-            else f"로봇이 INIT_POSE 를 {AUTO_INIT_POSE_READY_TIMEOUT_SEC:.0f}s 내 미수락",
+            f"충전소 위치가 {AUTO_INIT_POSE_READY_TIMEOUT_SEC:.0f}s 내 미수렴",
         )
     except Exception as e:
         print(f"[AUTO-INITPOSE] robot {robot_id} 처리 오류: {e}")
@@ -484,16 +507,18 @@ def _resolve_dock_pose(db, cur_floor, cur_map):
 # ── 송신(receiver 경유, POST /robot/initpose 와 동일 경로) ──
 
 def _send_init_pose_via_receiver(pose: dict) -> str:
-    """receiver.py(NOS)에 INIT_POSE action 전송하고 결과 상태를 반환한다.
+    """receiver.py(NOS)에 INIT_POSE action 전송하고 '전달 여부'를 반환한다.
 
     receiver 응답 형식:
-      {"status": "ok", "response": ...}  → 로봇이 실제로 수락(ACK)함
-      {"status": "timeout"}              → 로봇이 3초 내 무응답(미수락) — 보통 부팅 중
+      {"status": "ok", "response": ...}  → receiver 가 로봇에 전달하고 ACK 를 받음
+      {"status": "timeout"}              → 로봇이 3초 내 무응답 — 보통 부팅 중
       {"status": "error", "msg": ...}    → 송신 예외
 
     반환: "ok" | "timeout" | "error" | "no_ack"
-      ⚠️ 과거 버그: receiver 가 'timeout' 을 돌려줘도 "응답만 오면 성공"으로 보고
-         재시도하지 않아, 시드가 실제로 안 먹혔는데 종료됐다. 이제 status 를 그대로 판정한다.
+      ⚠️ 응답 안 ErrorCode 는 판정에 쓰지 않는다 — 벤더 노트상 리턴코드는 명령 접수 여부일 뿐
+         측위 결과가 아니고, 실측도 명세(0=성공)와 어긋난다(성공 시 1, 실패 시 57354 관측).
+         따라서 '전달 성공(status ok)'까지만 보고, 실제 성공/실패는 호출측이 위치 수렴으로 판정한다.
+         (ACK 전문은 진단용으로 로그에 남긴다.)
     """
     msg = json.dumps({"action": "INIT_POSE", "items": pose}).encode("utf-8")
     # 응답 자체가 드롭될 수 있으니 '응답 무수신(no_ack)' 일 때만 1회 재전송한다.
@@ -509,7 +534,7 @@ def _send_init_pose_via_receiver(pose: dict) -> str:
                 print(f"[AUTO-INITPOSE] receiver ACK(시도 {attempt}): {ack}")
                 if status == "ok":
                     return "ok"
-                # timeout/error 는 로봇 미수락 — 재전송해도 같으므로 그대로 반환
+                # timeout/error 는 재전송해도 같으므로 그대로 반환
                 return status if status in ("timeout", "error") else "error"
             except socket.timeout:
                 print(f"[AUTO-INITPOSE] receiver 무응답(시도 {attempt})")
@@ -519,6 +544,25 @@ def _send_init_pose_via_receiver(pose: dict) -> str:
 
 
 # ── 수렴 검증 ─────────────────────────────────────────
+
+def _await_fresh_position(robot_id: int, max_wait_sec: float, fresh_sec: float = 3.0) -> dict | None:
+    """위치 보고가 신선(fresh_sec 이내)해질 때까지 최대 max_wait_sec 대기 후 그 위치를 반환.
+
+    못 얻으면 None. 주입 직후 위치 폴링(REQ_INTERVAL_POS≈2s)이 아직 갱신 안 돼 timestamp 가
+    stale 일 때, 재주입/재시도 카운트 없이 '신선한 좌표'만 확보하려는 용도.
+    fresh_sec 은 _verify_converged 의 신선도 기준(5s)보다 여유 있게 잡아, 반환 직후 판정에서
+    다시 stale 로 걸리지 않게 한다.
+    """
+    deadline = time.time() + max_wait_sec
+    while True:
+        pos = runtime.get_position(robot_id) or {}
+        ts = pos.get("timestamp", 0) or 0
+        if ts and (time.time() - ts) <= fresh_sec:
+            return pos
+        if time.time() >= deadline:
+            return None
+        time.sleep(0.5)
+
 
 def _verify_converged(pose: dict, after: dict):
     """주입 후 위치가 신선하고 주입 좌표 근처로 수렴했는지. 반환 (ok, reason)."""
@@ -755,8 +799,6 @@ def _escalate_manual(robot_id: int, pose: dict | None, detail: str) -> None:
 
 # ── 미확정 자동 복구(충전 중) / 운영자 수동 확정(비충전) ──────────────
 
-_recover_state: dict[int, int] = {}  # robot_id → 연속 dock 수렴 관측 횟수
-
 
 def _confirm_current_position(robot_id: int, pos: dict, detail: str) -> None:
     """현재 보고 위치를 신뢰 위치로 확정 — DB 갱신 + 미확정 해제 + 복구 로그.
@@ -798,61 +840,52 @@ def _confirm_current_position(robot_id: int, pos: dict, detail: str) -> None:
 
 
 def check_and_recover_pending(robot_id: int) -> None:
-    """status heartbeat 마다 호출 — 충전 중 미확정 자동 복구.
+    """status heartbeat 마다 호출 — 도크 점유 중 미확정이면 능동 재조정(dock_anchor 재주입)을 트리거한다.
 
-    미확정 상태에서 로봇이 충전 중이고 보고 위치가 충전소(dock_anchor) 좌표로
-    연속 AUTO_INIT_POSE_RECOVER_SAMPLES 회 안정 수렴하면 미확정을 자동 해제한다.
-    (dock 은 접지 진실 — 물리적으로 도킹 위치에 있으므로 '안정적으로 틀림' 위험이 없다.
-     rviz 등 외부 교정으로 로봇이 실제 dock 좌표를 보고하기 시작하면 이 경로로 자동 회복된다.)
+    도크는 접지 진실이므로, 보고 위치가 맞아 보이든 아니든 미확정이면 무조건 충전소 좌표를 다시
+    주입해 복구한다(사용자 정책: is_docked 면 무조건 자동 재조정, 위치가 맞더라도).
+    실제 재주입·수락 판정·재시도(거부 시 최대 N회)는 _inject_worker 가 담당하고, 여기서는
+    중복 실행·스팸을 막는 가드(in_progress / 쿨다운)만 둔다.
+      · 과거의 '보고 위치가 dock 로 수렴했는지 관찰 후 확정' 방식은 폐기했다 — 충전소가 원점
+        근처면 로봇이 부팅 리셋값(SLAM 원점)에 고착해도 tolerance 안이라 '수렴'으로 오판돼
+        엉뚱한 좌표(예: 0,0)를 확정·저장하는 버그가 있었다(SLAM 리셋값이 항상 0,0,0 도 아님).
 
-    ⚠️ 비충전 미확정은 접지 진실이 없어 자동 복구 대상이 아니다 —
+    ⚠️ 도크 점유 판정은 is_docked(= is_charging 또는 charge_state∈{1,2,5})를 쓴다.
+       완충 트리클(state 5)도 물리적으론 도크에 있으므로 자동 복구 대상이다.
+
+    ⚠️ 비도크 미확정은 접지 진실이 없어 자동 복구 대상이 아니다 —
        운영자 '현재 위치로 확정' 버튼(POST /robot/initpose/confirm-current)으로 해제한다.
     """
     if robot_id is None:
         return
     if not runtime.is_initpose_pending(robot_id):
-        _recover_state.pop(robot_id, None)
         return
-    # 충전 중이 아니거나 주행/매핑 중이면 자동 복구 판단 보류
-    if not runtime.is_charging(robot_id) or _is_navigating() or _is_mapping():
-        _recover_state.pop(robot_id, None)
+    # 도크 점유가 아니거나 주행/매핑 중이면 자동 재조정 보류
+    if not runtime.is_docked(robot_id) or _is_navigating() or _is_mapping():
         return
 
-    with runtime._lock:
-        entry = runtime._runtime.get(robot_id)
-        cur_floor = (entry or {}).get("current_floor_id")
-        cur_map = (entry or {}).get("current_map_id")
+    # 도크 점유 + 미확정 → dock_anchor 재주입 워커를 트리거. 진행 중이거나 쿨다운 중이면 대기
+    # (한 워커가 이미 최대 N회 재시도/escalation 을 수행하므로 매 heartbeat 마다 새로 띄우지 않는다).
+    now = time.time()
+    with _lock:
+        st = _state.setdefault(
+            robot_id,
+            {"prev_powered": True, "prev_near_origin": False,
+             "last_trigger_ts": 0.0, "in_progress": False, "dock_check_remaining": 0},
+        )
+        if st.get("in_progress"):
+            return
+        if now - st.get("last_trigger_ts", 0.0) < AUTO_INIT_POSE_COOLDOWN_SEC:
+            return
+        st["last_trigger_ts"] = now
+        st["in_progress"] = True
 
-    db = SessionLocal()
-    try:
-        dock = _resolve_dock_pose(db, cur_floor, cur_map)
-    finally:
-        db.close()
-    if dock is None:
-        _recover_state.pop(robot_id, None)
-        return
-
-    pos = runtime.get_position(robot_id) or {}
-    ts = pos.get("timestamp", 0) or 0
-    if not ts or (time.time() - ts) > 5.0:
-        _recover_state[robot_id] = 0  # 위치 미수신/stale → 카운트 리셋
-        return
-    dist = math.hypot(pos.get("x", 0.0) - dock["PosX"], pos.get("y", 0.0) - dock["PosY"])
-    if dist > AUTO_INIT_POSE_VERIFY_TOLERANCE_M:
-        _recover_state[robot_id] = 0  # 아직 dock 로 수렴 전 → 카운트 리셋
-        return
-
-    cnt = _recover_state.get(robot_id, 0) + 1
-    _recover_state[robot_id] = cnt
-    if cnt < AUTO_INIT_POSE_RECOVER_SAMPLES:
-        return
-
-    _recover_state.pop(robot_id, None)
-    _confirm_current_position(
-        robot_id, pos,
-        f"충전 중 위치가 충전소 좌표로 안정 수렴({dist:.2f}m, {cnt}회) — 미확정 자동 해제 "
-        f"pos=({pos.get('x', 0.0):.2f}, {pos.get('y', 0.0):.2f})",
+    print(f"[AUTO-INITPOSE] robot {robot_id} 도크 점유·미확정 → dock_anchor 재주입 트리거")
+    t = threading.Thread(
+        target=_inject_worker, args=(robot_id,), daemon=True,
+        name=f"auto_initpose_recover_{robot_id}",
     )
+    t.start()
 
 
 def confirm_current_position_manual(robot_id: int) -> tuple[bool, str]:
@@ -864,7 +897,6 @@ def confirm_current_position_manual(robot_id: int) -> tuple[bool, str]:
     """
     if robot_id is None:
         return False, "로봇을 찾을 수 없습니다."
-    _recover_state.pop(robot_id, None)
     pos = runtime.get_position(robot_id) or {}
     ts = pos.get("timestamp", 0) or 0
     fresh = bool(ts) and (time.time() - ts) <= 5.0
