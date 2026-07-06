@@ -346,8 +346,22 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
     if (!selectedFloor) return [];
     const base = places.filter((p) => p.floorId === selectedFloor.id);
     if (!taskFilterSets) return base;
-    // 충전소(dock/charger)는 작업유형 필터와 무관하게 항상 표시
-    return base.filter((p) => p.category === "charge" || taskFilterSets.placeNames.has(p.name));
+    // 충전소(category=charge)와 그 파생 지점은 작업유형 필터와 무관하게 항상 표시한다.
+    // 파생 지점 명명 규칙(백엔드 charge.py): '<충전소>-<숫자>' — '-1'=도킹포인트, '-2,3…'=접근 경유지.
+    // 파생 지점의 category 는 charge 가 아닐 수 있어(예: work/waypoint) 이름 패턴으로 매칭한다.
+    const chargeNames = base.filter((p) => p.category === "charge").map((p) => p.name);
+    const isChargeRelated = (name: string) =>
+      chargeNames.some((cn) => {
+        if (!cn || !name.startsWith(`${cn}-`)) return false;
+        const suffix = name.slice(cn.length + 1);
+        return suffix.length > 0 && /^\d+$/.test(suffix);
+      });
+    return base.filter(
+      (p) =>
+        p.category === "charge" ||
+        isChargeRelated(p.name) ||
+        taskFilterSets.placeNames.has(p.name)
+    );
   }, [places, selectedFloor?.id, taskFilterSets]);
 
   // 작업유형 필터 적용된 NavPath. 필터된 인접 쌍에 속한 segment만 통과.
