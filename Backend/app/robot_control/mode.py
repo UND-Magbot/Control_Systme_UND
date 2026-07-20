@@ -1,9 +1,18 @@
+"""자세·보행·조명 등 로봇 모드 조작 — 로봇별로 대상을 지정해 명령을 보낸다.
+
+pad.py 와 같은 규약이다: `/robot/{robot_id}/sit` 이 정식이고, `/robot/sit` 은
+단일 로봇 시절 레거시 경로로 캐시된 로봇에 폴백한다.
+"""
+import logging
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from app.robot_io.sender import send_to_robot, send_posture_to_robot
+
 from app.database.models import UserInfo
-from app.auth.dependencies import require_permission
-from app.robot_control.control_deps import require_control
+from app.robot_control.control_deps import require_control, resolve_target_robot_id
+from app.robot_io.sender import send_posture_to_robot, send_to_robot
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/robot")
 
@@ -21,104 +30,85 @@ class PostureRequest(BaseModel):
 def _clamp(v: float) -> float:
     return max(-1.0, min(1.0, float(v)))
 
-@router.post("/stand")
-def robot_up(current_user: UserInfo = Depends(require_control())):
-    print("stand 명령 받음")
-    send_to_robot("STAND")
-    return {"status": "ok"}
 
-@router.post("/sit")
-def robot_down(current_user: UserInfo = Depends(require_control())):
-    print("sit 명령 받음")
-    send_to_robot("SIT")
-    return {"status": "ok"}
-
-@router.post("/slow")
-def robot_left(current_user: UserInfo = Depends(require_control())):
-    print("slow 명령 받음")
-    send_to_robot("SLOW")
-    return {"status": "ok"}
-
-@router.post("/normal")
-def robot_right(current_user: UserInfo = Depends(require_control())):
-    print("normal 명령 받음")
-    send_to_robot("NORMAL")
-    return {"status": "ok"}
-
-@router.post("/fast")
-def robot_stop(current_user: UserInfo = Depends(require_control())):
-    print("fast 명령 받음")
-    send_to_robot("FAST")
-    return {"status": "ok"}
-
-@router.post("/shutdown")
-def robot_stop(current_user: UserInfo = Depends(require_control())):
-    print("fast 명령 받음")
-    send_to_robot("SHUTDOWN")
-    return {"status": "ok"}
-
-@router.post("/front_on")
-def robot_stop(current_user: UserInfo = Depends(require_control())):
-    print("front_on 명령 받음")
-    send_to_robot("FRONTON")
-    return {"status": "ok"}
-
-@router.post("/front_off")
-def robot_stop(current_user: UserInfo = Depends(require_control())):
-    print("front_off 명령 받음")
-    send_to_robot("FRONTOFF")
-    return {"status": "ok"}
-
-@router.post("/rear_on")
-def robot_stop(current_user: UserInfo = Depends(require_control())):
-    print("rear_on 명령 받음")
-    send_to_robot("REARON")
-    return {"status": "ok"}
-
-@router.post("/rear_off")
-def robot_stop(current_user: UserInfo = Depends(require_control())):
-    print("rear_off 명령 받음")
-    send_to_robot("REAROFF")
-    return {"status": "ok"}
-
-
-# 보행(gait) 전환 — Standard 모드(수동 원격). receiver → relay_motion → ROS2 /GAIT
+# 경로 조각 → receiver 액션
+# 보행(gait) 전환은 Standard 모드(수동 원격) 전용. receiver → relay_motion → ROS2 /GAIT
 # (Agile 0x300X는 네비 주행용으로 별도 처리)
-@router.post("/gait_basic")
-def robot_gait_basic(current_user: UserInfo = Depends(require_control())):
-    print("gait_basic(기본 보행) 명령 받음")
-    send_to_robot("GAIT_BASIC")
-    return {"status": "ok"}
+MODE_ACTIONS = {
+    "stand": "STAND",
+    "sit": "SIT",
+    "slow": "SLOW",
+    "normal": "NORMAL",
+    "fast": "FAST",
+    "shutdown": "SHUTDOWN",
+    "front_on": "FRONTON",
+    "front_off": "FRONTOFF",
+    "rear_on": "REARON",
+    "rear_off": "REAROFF",
+    "gait_basic": "GAIT_BASIC",
+    "gait_high_obstacle": "GAIT_HIGH_OBSTACLE",
+    "gait_stair": "GAIT_STAIR",
+    "gait_posture": "GAIT_POSTURE",
+}
 
 
-@router.post("/gait_high_obstacle")
-def robot_gait_high_obstacle(current_user: UserInfo = Depends(require_control())):
-    print("gait_high_obstacle(고장애물 보행) 명령 받음")
-    send_to_robot("GAIT_HIGH_OBSTACLE")
-    return {"status": "ok"}
+def _make_legacy(action: str):
+    def handler(current_user: UserInfo = Depends(require_control())):
+        robot_id = resolve_target_robot_id()
+        logger.debug("레거시 경로 %s → robot=%s", action, robot_id)
+        send_to_robot(action, robot_id=robot_id)
+        return {"status": "ok", "robotId": robot_id}
+
+    return handler
 
 
-@router.post("/gait_stair")
-def robot_gait_stair(current_user: UserInfo = Depends(require_control())):
-    print("gait_stair(계단 보행) 명령 받음")
-    send_to_robot("GAIT_STAIR")
-    return {"status": "ok"}
+def _make_scoped(action: str):
+    def handler(robot_id: int, current_user: UserInfo = Depends(require_control())):
+        send_to_robot(action, robot_id=robot_id)
+        return {"status": "ok", "robotId": robot_id}
+
+    return handler
 
 
-@router.post("/gait_posture")
-def robot_gait_posture(current_user: UserInfo = Depends(require_control())):
-    print("gait_posture(자세 보행) 명령 받음")
-    send_to_robot("GAIT_POSTURE")
-    return {"status": "ok"}
+# 리터럴 경로를 먼저 등록해야 `/robot/sit` 이 `{robot_id}` 자리로 잡히지 않는다.
+for _seg, _action in MODE_ACTIONS.items():
+    router.add_api_route(
+        f"/{_seg}", _make_legacy(_action), methods=["POST"], name=f"mode_legacy_{_seg}"
+    )
 
 
 # 자세 6축 setpoint — Posture(0xf001) gait 진입 후, Type 2/21로 기울기/이동 조정
 @router.post("/posture")
-def robot_posture(req: PostureRequest,
-                  current_user: UserInfo = Depends(require_control())):
+def robot_posture_legacy(
+    req: PostureRequest, current_user: UserInfo = Depends(require_control())
+):
+    robot_id = resolve_target_robot_id()
     send_posture_to_robot(
         _clamp(req.X), _clamp(req.Y), _clamp(req.Z),
         _clamp(req.Roll), _clamp(req.Pitch), _clamp(req.Yaw),
+        robot_id=robot_id,
     )
-    return {"status": "ok"}
+    return {"status": "ok", "robotId": robot_id}
 
+
+@router.post("/{robot_id}/posture")
+def robot_posture(
+    robot_id: int,
+    req: PostureRequest,
+    current_user: UserInfo = Depends(require_control()),
+):
+    send_posture_to_robot(
+        _clamp(req.X), _clamp(req.Y), _clamp(req.Z),
+        _clamp(req.Roll), _clamp(req.Pitch), _clamp(req.Yaw),
+        robot_id=robot_id,
+    )
+    return {"status": "ok", "robotId": robot_id}
+
+
+for _seg, _action in MODE_ACTIONS.items():
+    router.add_api_route(
+        f"/{{robot_id}}/{_seg}",
+        _make_scoped(_action),
+        methods=["POST"],
+        name=f"mode_{_seg}",
+    )

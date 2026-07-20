@@ -20,6 +20,7 @@ import { useRemoteFloorMap } from './hooks/useRemoteFloorMap';
 import MovementPad from './components/MovementPad';
 import ControlPanel from './components/ControlPanel';
 import AlertDialog from './components/AlertDialog';
+import { RemoteSessionProvider } from './RemoteSessionContext';
 import styles from './RemoteModal.module.css';
 
 export type RemoteModalProps = {
@@ -143,6 +144,7 @@ export default function RemoteModal({
   });
 
   const moveCmd = useRemoteCommand({
+    robotId: selectedRobot?.id ?? null,
     debounceMs: 100,
     onError: showAlert,
     headers: control.controlHeaders,
@@ -157,8 +159,11 @@ export default function RemoteModal({
   );
 
   const handleStop = useCallback(() => {
-    apiFetch('/robot/stop', { method: 'POST' }).catch(() => {});
-  }, []);
+    const id = selectedRobot?.id;
+    apiFetch(id != null ? `/robot/${id}/stop` : '/robot/stop', { method: 'POST' }).catch(
+      () => {},
+    );
+  }, [selectedRobot?.id]);
 
   const keyboardEnabled =
     isOpen && control.isControlling && !readOnly && !work.isWorking && !isDisconnected;
@@ -179,12 +184,15 @@ export default function RemoteModal({
   useEffect(() => {
     if (!isOpen) return;
     const handleSessionExpired = () => {
-      apiFetch('/robot/stop', { method: 'POST' }).catch(() => {});
+      const id = selectedRobot?.id;
+      apiFetch(id != null ? `/robot/${id}/stop` : '/robot/stop', { method: 'POST' }).catch(
+        () => {},
+      );
       handleClose();
     };
     window.addEventListener('auth:session-expired', handleSessionExpired);
     return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
-  }, [isOpen, handleClose]);
+  }, [isOpen, handleClose, selectedRobot?.id]);
 
   if (!isOpen) return null;
 
@@ -192,6 +200,10 @@ export default function RemoteModal({
   const controlsDisabled = readOnly || isDisconnected || !control.isControlling;
 
   return (
+    <RemoteSessionProvider
+      robotId={selectedRobot?.id ?? null}
+      controlHeaders={control.controlHeaders}
+    >
     <div className={styles.overlay} onClick={handleClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <StatusBar
@@ -284,5 +296,6 @@ export default function RemoteModal({
 
       </div>
     </div>
+    </RemoteSessionProvider>
   );
 }

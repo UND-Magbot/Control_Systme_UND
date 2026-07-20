@@ -2,10 +2,13 @@
 
 import { useRef, useState, useCallback } from 'react';
 import { apiFetch } from '@/app/lib/api';
+import { scopeRobotPath, useRemoteSession } from '../RemoteSessionContext';
 
 export type CommandState = 'idle' | 'pending' | 'success' | 'error';
 
 type UseRemoteCommandOptions = {
+  /** 명령을 보낼 대상 로봇. 주면 `/robot/up` → `/robot/{id}/up` 로 바꿔 보낸다. */
+  robotId?: number | null;
   debounceMs?: number;
   onError?: (message: string) => void;
   /** 명령마다 실어 보낼 헤더 (제어권 토큰). 호출 시점에 평가한다. */
@@ -15,7 +18,20 @@ type UseRemoteCommandOptions = {
 };
 
 export function useRemoteCommand(options: UseRemoteCommandOptions = {}) {
-  const { debounceMs = 300, onError, headers, onDenied } = options;
+  const session = useRemoteSession();
+  const {
+    robotId = session.robotId,
+    debounceMs = 300,
+    onError,
+    headers = session.controlHeaders,
+    onDenied,
+  } = options;
+
+  /**
+   * 호출부는 `/robot/up` 같은 경로를 그대로 쓰고, 여기서 대상 로봇을 끼워 넣는다.
+   * 대상이 없으면 레거시 경로로 나가고 서버가 캐시된 로봇으로 폴백한다.
+   */
+  const scoped = useCallback((path: string) => scopeRobotPath(path, robotId ?? null), [robotId]);
 
   const [state, setState] = useState<CommandState>('idle');
   const pendingRef = useRef<Set<string>>(new Set());
@@ -37,7 +53,7 @@ export function useRemoteCommand(options: UseRemoteCommandOptions = {}) {
         // 명령별 타임아웃(기본 5s). 언도킹처럼 로봇 동작 시퀀스가 긴 명령은 길게 넘긴다.
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-        const res = await apiFetch(path, {
+        const res = await apiFetch(scoped(path), {
           method: 'POST',
           signal: controller.signal,
           headers: headers?.() ?? undefined,
@@ -78,7 +94,7 @@ export function useRemoteCommand(options: UseRemoteCommandOptions = {}) {
         pendingRef.current.delete(path);
       }
     },
-    [debounceMs, onError, headers, onDenied],
+    [scoped, debounceMs, onError, headers, onDenied],
   );
 
   return { execute, state };

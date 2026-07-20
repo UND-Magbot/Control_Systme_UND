@@ -11,16 +11,36 @@ import json
 import socket
 
 from app.robot_io.config import RECEIVER_IP, RECEIVER_PORT, RECEIVER_TCP_PORT
+from app.robot_io import endpoints as ep
 
 
-def _udp_send(msg: dict, *, wait_ack_idx: int | None = None, timeout: float = 2.0) -> dict | None:
-    """RECEIVER로 JSON 메시지 UDP 송신. wait_ack_idx가 주어지면 해당 idx의 ack를 대기."""
+def _receiver_addr(robot_id: int | None) -> tuple[str, int]:
+    """대상 로봇의 receiver 주소. 미등록이면 env 전역값으로 폴백한다.
+
+    robot_id 를 넘기지 않으면 기존과 동일하게 전역값을 쓴다 — 호출부를 한 번에
+    다 고치지 않아도 되도록 한 것이고, 새 호출은 robot_id 를 넘겨야 한다.
+    """
+    if robot_id is None:
+        return (RECEIVER_IP, RECEIVER_PORT)
+    e = ep.resolve(robot_id, ep.ROLE_RECEIVER)
+    addr = e.udp_addr()
+    return addr if addr else (RECEIVER_IP, RECEIVER_PORT)
+
+
+def _udp_send(
+    msg: dict,
+    *,
+    wait_ack_idx: int | None = None,
+    timeout: float = 2.0,
+    robot_id: int | None = None,
+) -> dict | None:
+    """대상 로봇의 receiver로 JSON 메시지 UDP 송신. wait_ack_idx가 있으면 ack 대기."""
     data = json.dumps(msg).encode("utf-8")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         if wait_ack_idx is not None:
             sock.settimeout(timeout)
-        sock.sendto(data, (RECEIVER_IP, RECEIVER_PORT))
+        sock.sendto(data, _receiver_addr(robot_id))
         if wait_ack_idx is None:
             return None
         try:
@@ -32,23 +52,25 @@ def _udp_send(msg: dict, *, wait_ack_idx: int | None = None, timeout: float = 2.
         sock.close()
 
 
-def send_to_robot(action: str) -> None:
-    """액션 문자열을 receiver로 fire-and-forget 송신.
+def send_to_robot(action: str, robot_id: int | None = None) -> None:
+    """액션 문자열을 대상 로봇의 receiver로 fire-and-forget 송신.
     action 예: "UP", "DOWN", "LEFT", "RIGHT", "STOP", "STAND", "SIT" 등.
+    robot_id 미지정 시 env 전역 receiver 로 나간다(레거시 호출부 호환).
     """
     msg = {"action": action}
-    _udp_send(msg)
-    print(f"서버 → 로봇 UDP 송신 완료: {msg}")
+    _udp_send(msg, robot_id=robot_id)
+    print(f"서버 → 로봇[{robot_id or 'env'}] UDP 송신 완료: {msg}")
 
 
 def send_posture_to_robot(x: float, y: float, z: float,
-                          roll: float, pitch: float, yaw: float) -> None:
+                          roll: float, pitch: float, yaw: float,
+                          robot_id: int | None = None) -> None:
     """자세(Posture) 제어 — Type 2/21 6축 setpoint를 receiver로 fire-and-forget 송신.
     각 값 [-1,1] = 최대 기울기/이동 비율. (Regular/Standard 모드 전용)
     """
     msg = {"action": "POSTURE", "X": x, "Y": y, "Z": z,
            "Roll": roll, "Pitch": pitch, "Yaw": yaw}
-    _udp_send(msg)
+    _udp_send(msg, robot_id=robot_id)
 def _tcp_send_nav(
     msg: dict, connect_timeout: float = 5.0, recv_timeout: float = 6.0
 ) -> dict | None:

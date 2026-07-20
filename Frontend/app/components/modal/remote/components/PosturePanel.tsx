@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/app/lib/api';
+import { scopeRobotPath, useRemoteSession } from '../RemoteSessionContext';
 import styles from './PosturePanel.module.css';
 
 /**
@@ -40,6 +41,8 @@ type PosturePanelProps = {
 };
 
 export default function PosturePanel({ disabled = false }: PosturePanelProps) {
+  // 자세도 물리 조작이라 대상 로봇과 제어권 토큰이 필요하다
+  const { robotId, controlHeaders } = useRemoteSession();
   const [tab, setTab] = useState<Tab>('rotate');
   const [values, setValues] = useState<PostureValues>(ZERO);
 
@@ -51,14 +54,14 @@ export default function PosturePanel({ disabled = false }: PosturePanelProps) {
   }>({ timer: null, last: 0, pending: null });
 
   const post = useCallback((v: PostureValues) => {
-    apiFetch('/robot/posture', {
+    apiFetch(scopeRobotPath('/robot/posture', robotId), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...controlHeaders() },
       body: JSON.stringify(v),
     }).catch(() => {
       /* 전송 실패 무시 — 다음 슬라이더 값으로 곧 갱신된다 */
     });
-  }, []);
+  }, [robotId, controlHeaders]);
 
   const send = useCallback(
     (v: PostureValues) => {

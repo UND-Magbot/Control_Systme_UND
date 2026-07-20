@@ -2,15 +2,15 @@
 
 프론트 비활성화는 UX 일 뿐 방어가 아니다 — 서버가 판정한다(IMP-SEC-03).
 
-주의: 현재 이동·자세 API 에는 대상 robot_id 가 없다(ARCH §1.3 R1).
-그래서 여기서는 `get_robot_id()` 폴백으로 대상을 정한다. M1(명령에 robot_id 싣기)이
-끝나면 `robot_id` 를 인자로 받는 형태로 바꾸면 되고, 이 모듈 밖은 손대지 않아도 된다.
+대상 로봇은 경로의 `{robot_id}` 로 정한다. 레거시 경로(`/robot/up` 등)에는 그 자리가
+없으므로 캐시된 로봇으로 폴백한다 — 단일 로봇 시절 호출부가 깨지지 않게 한 것이고,
+새 호출은 전부 robot_id 를 실은 경로를 쓴다.
 """
 from __future__ import annotations
 
 import logging
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 
 from app.auth.dependencies import require_permission
 from app.database.models import UserInfo
@@ -38,10 +38,14 @@ def require_control(menu_key: str = "robot-list"):
     """
 
     def _checker(
+        request: Request,
         x_control_token: str | None = Header(default=None, alias="X-Control-Token"),
         current_user: UserInfo = Depends(require_permission(menu_key)),
     ) -> UserInfo:
-        robot_id = resolve_target_robot_id()
+        # 경로에 robot_id 가 있으면 그것이 대상이고, 없으면(레거시 경로) 캐시로 폴백한다.
+        path_robot_id = request.path_params.get("robot_id")
+        explicit = int(path_robot_id) if path_robot_id is not None else None
+        robot_id = resolve_target_robot_id(explicit)
         if robot_id is None:
             raise HTTPException(status_code=409, detail={"message": "제어 대상 로봇이 없습니다"})
 
