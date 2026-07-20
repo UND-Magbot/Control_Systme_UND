@@ -8,10 +8,14 @@ export type CommandState = 'idle' | 'pending' | 'success' | 'error';
 type UseRemoteCommandOptions = {
   debounceMs?: number;
   onError?: (message: string) => void;
+  /** 명령마다 실어 보낼 헤더 (제어권 토큰). 호출 시점에 평가한다. */
+  headers?: () => Record<string, string>;
+  /** 제어권이 없어 서버가 409로 막았을 때 */
+  onDenied?: (message: string) => void;
 };
 
 export function useRemoteCommand(options: UseRemoteCommandOptions = {}) {
-  const { debounceMs = 300, onError } = options;
+  const { debounceMs = 300, onError, headers, onDenied } = options;
 
   const [state, setState] = useState<CommandState>('idle');
   const pendingRef = useRef<Set<string>>(new Set());
@@ -36,9 +40,20 @@ export function useRemoteCommand(options: UseRemoteCommandOptions = {}) {
         const res = await apiFetch(path, {
           method: 'POST',
           signal: controller.signal,
+          headers: headers?.() ?? undefined,
         });
 
         clearTimeout(timeoutId);
+
+        // 409 = 제어권 없음/뺏김. 통신 오류와 구분해서 알린다.
+        if (res.status === 409) {
+          const body = await res.json().catch(() => null);
+          const message = body?.detail?.message ?? '제어권이 없습니다';
+          setState('error');
+          setTimeout(() => setState('idle'), 1000);
+          onDenied?.(message);
+          return false;
+        }
 
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
@@ -63,7 +78,7 @@ export function useRemoteCommand(options: UseRemoteCommandOptions = {}) {
         pendingRef.current.delete(path);
       }
     },
-    [debounceMs, onError],
+    [debounceMs, onError, headers, onDenied],
   );
 
   return { execute, state };

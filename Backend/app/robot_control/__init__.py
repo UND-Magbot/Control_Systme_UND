@@ -14,6 +14,7 @@ from app.robot_control.error import router as error_router
 from app.robot_control.pad import router as pad_router
 from app.robot_control.mode import router as mode_router
 from app.robot_control.relocalize import router as relocalize_router
+from app.robot_control.control_lock_routes import router as control_lock_router
 
 router = APIRouter()
 router.include_router(camera_router)
@@ -24,6 +25,7 @@ router.include_router(error_router)
 router.include_router(pad_router)
 router.include_router(mode_router)
 router.include_router(relocalize_router)
+router.include_router(control_lock_router)
 
 # start_charge 는 navigation/send_move.py 에서 직접 호출하므로 re-export
 from app.robot_control.charge import start_charge  # noqa: F401

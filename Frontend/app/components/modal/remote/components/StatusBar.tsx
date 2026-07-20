@@ -18,6 +18,11 @@ type StatusBarProps = {
   isNavigating?: boolean;
   onToggleRecording?: () => void;
   recordingDisabled?: boolean;
+  // 제어권
+  controlPhase?: 'observing' | 'starting' | 'controlling' | 'lost';
+  onStartControl?: () => void;
+  onStopControl?: () => void;
+  canStartControl?: boolean;
 };
 
 /** 배터리 값 → 색상 (로봇 목록과 동일 기준) */
@@ -44,6 +49,10 @@ export default function StatusBar({
   isNavigating = false,
   onToggleRecording,
   recordingDisabled = false,
+  controlPhase = 'observing',
+  onStartControl,
+  onStopControl,
+  canStartControl = true,
 }: StatusBarProps) {
   const robot = selectedRobot;
   const power = robot?.power ?? '-';
@@ -156,11 +165,31 @@ export default function StatusBar({
         )}
       </div>
 
-      {controlledBy && (
-        <div className={styles.observerBanner}>
-          현재 {controlledBy}님이 제어 중 (관찰 모드)
-        </div>
-      )}
+      <div className={styles.controlBar}>
+        {controlPhase === 'controlling' ? (
+          <>
+            <span className={styles.controlOn}>● 제어 중</span>
+            <button type="button" className={styles.controlBtn} onClick={onStopControl}>
+              제어 종료
+            </button>
+          </>
+        ) : (
+          <>
+            <span className={styles.controlOff}>
+              {controlledBy ? `${controlledBy}님이 제어 중` : '관찰 모드'}
+            </span>
+            <button
+              type="button"
+              className={`${styles.controlBtn} ${styles.controlStart}`}
+              onClick={onStartControl}
+              disabled={!canStartControl || controlPhase === 'starting'}
+              title={canStartControl ? '' : '다른 세션이 제어 중입니다'}
+            >
+              {controlPhase === 'starting' ? '시작 중…' : '제어 시작'}
+            </button>
+          </>
+        )}
+      </div>
 
       <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="닫기">
         ✕

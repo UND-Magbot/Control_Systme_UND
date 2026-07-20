@@ -10,6 +10,7 @@ import { apiFetch } from '@/app/lib/api';
 import { useCameraStream } from './hooks/useCameraStream';
 import { useWorkAutomation } from './hooks/useWorkAutomation';
 import { useRemoteCommand } from './hooks/useRemoteCommand';
+import { useControlLock } from './hooks/useControlLock';
 import { useKeyboardControls } from './hooks/useKeyboardControls';
 import { useRecording } from './hooks/useRecording';
 
@@ -134,7 +135,19 @@ export default function RemoteModal({
   });
   // 로봇 현재 층의 실제 맵 (없으면 null → ViewportArea가 고정 맵으로 폴백)
   const floorMapConfig = useRemoteFloorMap(selectedRobot?.currentFloorId ?? null);
-  const moveCmd = useRemoteCommand({ debounceMs: 100, onError: showAlert });
+  // --- 제어권 (기본은 관찰, 조작하려면 명시적으로 시작) ---
+  const control = useControlLock({
+    robotId: selectedRobot?.id ?? null,
+    enabled: isOpen,
+    onLost: showAlert,
+  });
+
+  const moveCmd = useRemoteCommand({
+    debounceMs: 100,
+    onError: showAlert,
+    headers: control.controlHeaders,
+    onDenied: showAlert,
+  });
   const recording = useRecording(isOpen, selectedRobot?.id);
 
   // --- 키보드 이동 제어 ---
@@ -147,7 +160,8 @@ export default function RemoteModal({
     apiFetch('/robot/stop', { method: 'POST' }).catch(() => {});
   }, []);
 
-  const keyboardEnabled = isOpen && !readOnly && !work.isWorking && !isDisconnected;
+  const keyboardEnabled =
+    isOpen && control.isControlling && !readOnly && !work.isWorking && !isDisconnected;
   const { activeKey: activeKeyRef } = useKeyboardControls({
     enabled: keyboardEnabled,
     onMove: handleMove,
@@ -174,7 +188,8 @@ export default function RemoteModal({
 
   if (!isOpen) return null;
 
-  const controlsDisabled = readOnly || isDisconnected;
+  // 제어권이 없으면 조작할 수 없다 — 관찰은 가능하다
+  const controlsDisabled = readOnly || isDisconnected || !control.isControlling;
 
   return (
     <div className={styles.overlay} onClick={handleClose}>
@@ -183,7 +198,15 @@ export default function RemoteModal({
           selectedRobot={selectedRobot}
           floorName={floorName}
           onClose={handleClose}
-          controlledBy={readOnly ? controlledBy : undefined}
+          controlledBy={
+            control.isControlling
+              ? undefined
+              : (control.owner?.ownerLabel ?? (readOnly ? controlledBy : undefined))
+          }
+          controlPhase={control.phase}
+          onStartControl={control.start}
+          onStopControl={control.stop}
+          canStartControl={!control.heldByOther && !isDisconnected}
           isRecording={recording.isRecording}
           recordType={recording.recordType}
           isNavigating={recording.isNavigating}
