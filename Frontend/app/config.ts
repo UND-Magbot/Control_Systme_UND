@@ -29,13 +29,16 @@ export const API_BASE =
  * 로봇 RTSP를 WebRTC(WHEP)로 저지연 변환해 송출한다.
  */
 const MEDIAMTX_PORT = 8889;
+// MediaMTX가 프론트와 다른 머신(관제 PC)에 있을 때 host를 고정한다(빌드타임 주입).
+// 미설정 시 기존대로 접속 host(window.location.hostname) 사용.
+const MEDIAMTX_HOST = process.env.NEXT_PUBLIC_MEDIAMTX_HOST?.trim();
 
 /**
  * MediaMTX WebRTC(WHEP) 베이스 주소.
- * API_BASE와 동일하게 런타임 hostname을 사용 — localhost·원격 IP 접속 모두
- * 관제 PC의 MediaMTX로 동일 경로로 도달한다.
+ * NEXT_PUBLIC_MEDIAMTX_HOST가 있으면 그 host를, 없으면 접속 hostname을 사용한다.
  */
 export function getWebrtcBase(): string {
+  if (MEDIAMTX_HOST) return `http://${MEDIAMTX_HOST}:${MEDIAMTX_PORT}`;
   if (typeof window !== "undefined") {
     return `http://${window.location.hostname}:${MEDIAMTX_PORT}`;
   }
