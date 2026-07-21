@@ -333,12 +333,8 @@ def status_thread():
                 except Exception as e:
                     print(f"[AUTO-INITPOSE] recover check 실패: {e}")
 
-                # 모터/드라이버 온도 과열 감지 + 실시간 로그 (DeviceTemperature 검사)
-                try:
-                    from app.robot_control.thermal import check_and_log_thermal
-                    check_and_log_thermal(rid, device_temp)
-                except Exception as e:
-                    print(f"[THERMAL] check 실패: {e}")
+                # 모터 과열 감지는 motor_thermal(check_motor_overheat) 단일 경로 사용.
+                # 구 thermal.check_and_log_thermal 은 임계 충돌로 배선 제거.
 
         if not success:
             elapsed = time.time() - last_success_time
