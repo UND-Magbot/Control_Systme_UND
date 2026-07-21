@@ -66,13 +66,24 @@ export default function WebRTCPlayer({
         muted={muted}
         playsInline
       />
+      {/* LIVE 배지 */}
+      {enabled && status === "playing" && (
+        <span className={`${styles.badge} ${styles.badgeLive}`}>
+          <span className={`${styles.badgeDot} ${styles.badgeLiveDot}`} />
+          LIVE
+        </span>
+      )}
       {!enabled ? (
         <div className={styles.overlay}>
           <span>{disabledLabel}</span>
         </div>
       ) : status === "error" ? (
+        // 신호 없음(앰버) — 로봇 장애(빨강)와 구분
         <div className={styles.overlay}>
-          <span>연결 실패</span>
+          <svg className={styles.noSignalIcon} width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /><line x1="2" y1="2" x2="22" y2="22" />
+          </svg>
+          <span className={styles.msgAmber}>신호 없음</span>
           <button
             type="button"
             className={styles.retryBtn}

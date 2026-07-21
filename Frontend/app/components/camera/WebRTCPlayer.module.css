@@ -84,3 +84,33 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.25; }
 }
+
+/* LIVE 배지(녹색) — 좌측 상단 */
+.badgeLive {
+  left: 6px;
+  right: auto;
+  color: var(--color-success);
+  border: 1px solid rgba(146, 208, 80, 0.45);
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.badgeLiveDot {
+  background: var(--color-success);
+  box-shadow: 0 0 6px rgba(146, 208, 80, 0.55);
+}
+
+/* 신호 없음(앰버) */
+.noSignalIcon {
+  color: var(--color-warning);
+  opacity: 0.85;
+}
+
+.msgAmber {
+  color: var(--color-warning);
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badgeDot { animation: none; }
+}

@@ -6,8 +6,6 @@ import type { Camera, RobotRowData } from "@/app/types";
 import { CAMERA_BASE } from "@/app/config";
 import WebRTCPlayer from "@/app/components/camera/WebRTCPlayer";
 import { createThermalFrameSink, type ThermalFrameSink } from "@/app/components/camera/thermalFrameSink";
-import { getBatteryColor, isSingleBatteryMode } from "@/app/constants/robotIcons";
-import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 
 type CameraSlotProps = {
   camera: Camera;
@@ -36,6 +34,8 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
   const [hasError, setHasError] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
   const [thermalUrl, setThermalUrl] = useState<string | null>(null);
+  // '연결 중'(최초)과 '재연결 중'(끊긴 뒤) 구분용.
+  const [hadFrame, setHadFrame] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,6 +69,7 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
     errorCountRef.current = 0;
     setIsLoading(false);
     setHasError(false);
+    setHadFrame(true);
   }, [clearTimers]);
 
   const onFail = useCallback(() => {
@@ -229,31 +230,42 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
     connect();
   };
 
+  // mjpeg/열화상 스트림 표시 여부(WebRTC는 WebRTCPlayer가 자체 처리).
+  const mjpegStreaming = (isThermal ? !!thermalUrl : !!streamUrl) && !isLoading && !hasError;
+
   return (
     <div className={styles.slotContainer}>
-      {/* 비활성(로봇 오프라인 등) — WebRTC는 WebRTCPlayer가 자체 표시하므로 그 외 타입만 */}
-      {!enabled && !isWebrtc && (
+      {/* 스트림 상태(화면 축) */}
+      {!isWebrtc && enabled && hasError && (
+        // 신호 없음(앰버) — 로봇 장애(빨강)와 구분
         <div className={styles.errorOverlay}>
-          <span>로봇 연결 끊김</span>
-        </div>
-      )}
-
-      {/* 로딩 */}
-      {enabled && isLoading && !hasError && (
-        <div className={styles.loadingOverlay}>
-          <div className={styles.spinner} />
-          <span>연결 중...</span>
-        </div>
-      )}
-
-      {/* 에러 */}
-      {enabled && hasError && (
-        <div className={styles.errorOverlay}>
-          <span>연결 실패</span>
+          <svg className={styles.noSignalIcon} width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /><line x1="2" y1="2" x2="22" y2="22" />
+          </svg>
+          <span className={styles.msgAmber}>신호 없음</span>
           <button className={styles.retryBtn} onClick={handleRetry}>
             재연결
           </button>
         </div>
+      )}
+      {!isWebrtc && enabled && !hasError && isLoading && (
+        hadFrame ? (
+          // 재연결 중(직전 프레임 유지)
+          <div className={styles.reconnectOverlay}>
+            <div className={`${styles.spinner} ${styles.spinnerWarn}`} />
+            <span className={styles.msgAmber}>재연결 중...</span>
+          </div>
+        ) : (
+          // 연결 중(최초)
+          <div className={styles.loadingOverlay}>
+            <div className={styles.spinner} />
+            <span>연결 중...</span>
+          </div>
+        )
+      )}
+      {/* LIVE 배지(mjpeg/열화상) */}
+      {!isWebrtc && enabled && mjpegStreaming && (
+        <span className={styles.liveBadge}><span className={styles.liveDot} />LIVE</span>
       )}
 
       {/* 스트림 */}
@@ -281,11 +293,6 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
           onLoad={onSuccess}
           onError={onFail}
         />
-      ) : enabled && !isLoading && !hasError ? (
-        <div className={styles.loadingOverlay}>
-          <div className={styles.spinner} />
-          <span>연결 중...</span>
-        </div>
       ) : null}
 
       {/* 확장 아이콘 */}
@@ -300,36 +307,8 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
         </button>
       )}
 
-      {/* 레이블 */}
-      {robotName && !isLoading && !hasError && (
-        <div className={styles.robotLabel}>
-          {robotName}
-          {robot && (
-            <span className={styles.robotLabelStatus}>
-              <span className={`${styles.robotLabelDot} ${robot.network === "Online" ? styles.robotLabelDotOnline : styles.robotLabelDotOffline}`} />
-              {robot.network}
-              <span className={styles.robotLabelDivider}>|</span>
-              {isDualBatteryType(robot.type) ? (
-                isSingleBatteryMode(robot) ? (
-                  <span style={{ color: getBatteryColor(robot.batteryLeft ?? robot.batteryRight ?? 0, robot.return) }}>
-                    {robot.batteryLeft ?? robot.batteryRight ?? "-"}%
-                  </span>
-                ) : (
-                  <>
-                    L <span style={{ color: getBatteryColor(robot.batteryLeft ?? 0, robot.return) }}>{robot.batteryLeft ?? "-"}%</span>
-                    {" / "}
-                    R <span style={{ color: getBatteryColor(robot.batteryRight ?? 0, robot.return) }}>{robot.batteryRight ?? "-"}%</span>
-                  </>
-                )
-              ) : (
-                <span style={{ color: getBatteryColor(robot.battery, robot.return) }}>{robot.battery}%</span>
-              )}
-              <span className={styles.robotLabelDivider}>|</span>
-              {robot.power}
-            </span>
-          )}
-        </div>
-      )}
+      {/* 카메라 이름(로봇 이름이 넘어오면 접두 표시) */}
+      {robotName && <div className={styles.robotLabel}>{robotName}</div>}
       <div className={styles.slotLabel}>{camera.label}</div>
     </div>
   );
