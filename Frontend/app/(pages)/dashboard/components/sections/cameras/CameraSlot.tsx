@@ -24,7 +24,6 @@ type CameraSlotProps = {
 // 첫 프레임 대기 한도 — 백엔드 RTSP 프록시는 WAKE 후 캡처 open + 재연결까지
 // 수 초가 걸릴 수 있어 넉넉히 둔다(짧게 잡으면 정상인데도 "연결 실패"로 오인).
 const CAM_TIMEOUT_MS = 20_000;
-const CAM_RETRY_MS = 5_000;
 // 열화상(WS) 스트림 watchdog — 새 프레임이 끊겨도(half-open/서버 정지) 자동 복구.
 const THERMAL_STALL_MS = 6_000;      // 이 시간 동안 새 프레임 없으면 재연결
 const THERMAL_WATCHDOG_MS = 2_000;   // watchdog 점검 주기
@@ -84,15 +83,12 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
       return;
     }
 
-    // 3회 이상 연속 실패 → 에러 UI + 주기적 재시도
+    // 3회 이상 연속 실패 → '연결 실패' 고정(자동 주기 재시도 없음).
+    // 재시도는 '재연결' 버튼 또는 새로고침(재마운트)으로만.
     clearTimers();
     setStreamUrl("");
     setIsLoading(false);
     setHasError(true);
-    retryRef.current = setInterval(() => {
-      if (document.hidden) return; // 백그라운드 탭에서는 재시도 보류 (M-2)
-      if (!unmountedRef.current && connectRef.current) connectRef.current();
-    }, CAM_RETRY_MS);
   }, [clearTimers]);
 
   const connectThermal = useCallback(() => {
@@ -173,9 +169,6 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
       setStreamUrl("");
       setIsLoading(false);
       setHasError(true);
-      retryRef.current = setInterval(() => {
-        if (!unmountedRef.current && connectRef.current) connectRef.current();
-      }, CAM_RETRY_MS);
     }, CAM_TIMEOUT_MS);
   }, [camera, clearTimers, lowRes]);
 

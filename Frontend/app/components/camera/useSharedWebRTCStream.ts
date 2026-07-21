@@ -48,7 +48,6 @@ const registry = new Map<string, Entry>();
 
 const ICE_GATHER_TIMEOUT_MS = 2000;
 const CONNECT_TIMEOUT_MS = 12000;
-const RETRY_DELAY_MS = 3000;
 // refCount=0 직후 즉시 정리하지 않고 지연시켜, StrictMode 진동·빠른 라우트 전환·
 // 사용자가 카메라 탭을 빠르게 왕복하는 경우 같은 entry(PC)를 재사용하게 한다.
 // ViewportArea의 토글 race fix(300ms unmount/mount)와 조합되면 같은 카메라로
@@ -99,14 +98,11 @@ function teardown(entry: Entry) {
 function scheduleRetry(entry: Entry) {
   // 아무도 연결을 활성화하지 않았으면(로봇 오프라인/모듈 OFF) 재시도하지 않고 정지.
   if (entry.enabledCount <= 0) { stopConnection(entry); return; }
-  // MTX 서버가 내려간 것으로 판정됐으면 자동 재시도를 걸지 않는다.
-  if (entry.serverDown) { markServerDown(entry); return; }
+  // 자동 주기 재시도 없음 — 1회 실패로 확정해 "연결 실패"를 고정한다.
+  // 재시도는 사용자의 '재연결' 버튼 또는 새로고침(재마운트)으로만 일어난다.
   teardown(entry);
   entry.status = "error";
   notify(entry);
-  entry.retryTimer = setTimeout(() => {
-    if (entry.refCount > 0 && entry.enabledCount > 0) void startConnection(entry);
-  }, RETRY_DELAY_MS);
 }
 
 // enable 투표가 0이 됨 → 연결을 끊고 재시도 없이 대기(idle) 상태로.
