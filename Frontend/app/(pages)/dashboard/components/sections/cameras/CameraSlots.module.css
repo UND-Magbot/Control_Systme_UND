@@ -148,6 +148,75 @@
   font-size: var(--font-size-sm);
 }
 
+/* ── 스트림 상태 표시 ── */
+/* LIVE 배지(녹색) */
+.liveBadge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(146, 208, 80, 0.45);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-success);
+  pointer-events: none;
+}
+
+.liveDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 6px rgba(146, 208, 80, 0.55);
+  animation: livePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.8); }
+}
+
+/* 재연결 중(직전 프레임 유지) */
+.reconnectOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(13, 17, 23, 0.35);
+  font-size: var(--font-size-sm);
+}
+
+/* 신호 없음 — 앰버 */
+.noSignalIcon {
+  color: var(--color-warning);
+  opacity: 0.85;
+}
+
+.msgAmber {
+  color: var(--color-warning);
+  font-weight: 500;
+}
+
+.spinnerWarn {
+  border-top-color: var(--color-warning);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveDot { animation: none; }
+}
+
 /* ── 카메라 슬롯 래퍼 ── */
 .camSlotWrapper {
   position: relative;

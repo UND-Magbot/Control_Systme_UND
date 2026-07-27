@@ -41,8 +41,7 @@ export default function CameraModal({
 
   if (!isOpen) return null;
 
-  // 로봇이 오프라인이면 스트림 연결·재연결을 멈춘다(발행자 없는 스트림 무한 재연결 방지).
-  const isOnline = robot?.network === "Online";
+  // 카메라는 NOS 폴링과 독립 채널 — offline이어도 항상 연결.
   const count = robotCameras.length;
   const cols = count <= 2 ? 2 : count <= 4 ? 2 : 3;
   const rows = Math.ceil(count / cols);
@@ -144,7 +143,7 @@ export default function CameraModal({
                 className={styles.camPanel}
                 onClick={() => handleCamClick(cam)}
               >
-                <CameraSlot camera={cam} robotName="" enabled={isOnline} />
+                <CameraSlot camera={cam} robotName="" robot={robot} enabled={true} />
               </div>
             ))}
           </div>
@@ -153,7 +152,7 @@ export default function CameraModal({
         {/* 확대 모드 */}
         {mode === "single" && activeCam && (
           <div className={styles.singleView}>
-            <CameraSlot camera={activeCam} robotName="" enabled={isOnline} />
+            <CameraSlot camera={activeCam} robotName="" robot={robot} enabled={true} />
           </div>
         )}
       </div>
