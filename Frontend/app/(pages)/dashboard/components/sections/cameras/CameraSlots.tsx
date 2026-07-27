@@ -70,18 +70,17 @@ export default function CameraSlots({
           ))}
         </>
       ) : robotCameras.length > 0 ? (
-        // 카메라가 있으면 오프라인이어도 슬롯을 유지한다(패널 붕괴 방지). 단, 로봇이
-        // 오프라인이면 로봇이 MediaMTX로 발행을 멈추므로 enabled=false로 내려
-        // 발행자 없는 스트림에 무한 재연결하지 않도록 한다.
+        // 카메라는 NOS 폴링과 독립 채널 — offline이어도 항상 연결(enabled=true).
         <>
           {visibleCams.map((cam) => (
             <div key={cam.id} className={`${dashStyles.cameraPanel} ${styles.camSlotWrapper}`}>
               <CameraSlot
                 camera={cam}
                 robotName=""
+                robot={selectedRobot}
                 onExpand={(e) => openExpand(cam, e)}
                 lowRes
-                enabled={isOnline}
+                enabled={true}
               />
             </div>
           ))}
