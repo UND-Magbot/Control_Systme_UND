@@ -1,0 +1,6 @@
+image: /var/opt/robot/data/maps//gumi_map_B1_01-20260707-132741/occ_grid.pgm
+resolution: 0.1
+origin: [-19.1, -11.6, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
