@@ -1,0 +1,301 @@
+/* 실행 이력 탭 — 색은 전부 globals.css 토큰을 쓴다 (AGENT.md 디자인 시스템 준수) */
+
+.container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ── 상단 바 ── */
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.topBar h2 {
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-accent);
+  font-size: var(--font-size-xl);
+  white-space: nowrap;
+}
+
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.periodGroup {
+  display: flex;
+  width: 200px;
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+}
+
+.periodItem {
+  flex: 1;
+  text-align: center;
+  height: 33px;
+  line-height: 31px;
+  cursor: pointer;
+  border: 1px solid var(--border-default);
+  border-right: none;
+  transition: background 0.15s ease;
+}
+
+.periodItem:first-child { border-radius: 6px 0 0 6px; }
+
+.periodItem:last-child {
+  border-radius: 0 6px 6px 0;
+  border-right: 1px solid var(--border-default);
+}
+
+.periodItem:hover,
+.periodActive {
+  background: var(--color-info-selected);
+}
+
+.rateBox {
+  font-size: var(--font-size-base);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.rateValue {
+  color: var(--color-info);
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.rateSub {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  margin-left: 4px;
+}
+
+/* ── 자동 일시정지 배너 (L3 에스컬레이션) ── */
+.pausedBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: rgba(255, 0, 0, 0.08);
+  border: 1px solid var(--color-error-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.pausedIcon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-error-soft);
+  flex-shrink: 0;
+}
+
+.pausedText b { color: var(--text-primary); }
+
+.pausedList {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.resumeBtn {
+  height: 29px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--color-info-selected);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.resumeBtn:hover { background: var(--color-info-bg); }
+
+/* ── 실패 요약 ── */
+.failNote {
+  background: rgba(255, 198, 53, 0.09);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 0 8px 8px 0;
+  padding: 9px 13px;
+  margin-bottom: 12px;
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.failNote b { color: var(--color-warning); font-weight: 600; }
+
+/* ── 테이블 ── */
+/* 페이지 자체는 스크롤되지 않는다(globals: body overflow-y hidden, 100vh).
+   창이 한 페이지를 다 못 담으면 여기서 스크롤하지 않는 한 행에 닿을 방법이 없다. */
+.tableArea {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.tableWrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;
+  padding-right: 10px;      /* 커스텀 스크롤바가 마지막 열을 덮지 않게 */
+
+  /* 네이티브 스크롤바는 숨긴다 — 응대 세션 탭과 같은 커스텀 스크롤바를 쓴다 */
+  scrollbar-width: none;              /* Firefox */
+}
+.tableWrapper::-webkit-scrollbar {
+  display: none;                      /* Chrome/Edge */
+}
+
+.scrollTrack {
+  position: absolute;
+  top: 46px;                /* sticky 헤더(44px) 아래부터 */
+  bottom: 4px;
+  right: 2px;
+  width: 4px;
+  border-radius: 50px;
+  background: transparent;
+}
+
+.scrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;              /* JS 가 동적으로 조절 */
+  border-radius: 50px;
+  background: var(--text-tertiary);
+}
+
+.runTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.runTable thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.runTable thead th {
+  background: var(--surface-tab-inactive);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  height: 44px;
+  padding: 0 14px;
+  text-align: center;
+  border-bottom: 1px solid var(--surface-5);
+}
+
+.runTable thead th:nth-child(1) { width: 70px; }
+.runTable thead th:nth-child(2) { width: auto; }
+.runTable thead th:nth-child(3) { width: 110px; }
+.runTable thead th:nth-child(4) { width: 70px; }
+.runTable thead th:nth-child(5) { width: 90px; }
+.runTable thead th:nth-child(6) { width: 70px; }
+.runTable thead th:nth-child(7) { width: 110px; }
+.runTable thead th:nth-child(8) { width: 34%; }
+
+.thLeft { text-align: left !important; }
+
+/* 행에 클릭 동작이 없다 — hover 강조는 누를 수 있다는 거짓 신호라 두지 않는다.
+   실제로 누르는 것(기간 탭·해제 버튼)에만 hover 를 남긴다. */
+.runTable tbody tr:nth-child(odd) { background: var(--surface-3); }
+.runTable tbody tr:nth-child(even) { background: var(--surface-4); }
+
+.runTable tbody td {
+  padding: 0 14px;
+  height: 46px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-align: center;
+  border-bottom: 1px solid var(--surface-2);
+}
+
+.tdLeft { text-align: left !important; }
+
+.nameCell {
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reasonCell {
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.delayCell { color: var(--color-warning); }
+
+/* ── 결과 배지 ── */
+.badge {
+  display: inline-block;
+  padding: 3px 11px;
+  border-radius: 4px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badgeOk { background: var(--color-success-bg); color: var(--text-primary); }
+.badgeWarn { background: var(--color-warning-badge); color: var(--text-primary); }
+.badgeErr { background: var(--color-error-badge); color: var(--text-primary); }
+.badgeRunning { background: var(--color-info-badge); color: var(--text-primary); }
+.badgeNone { background: var(--surface-button); color: var(--text-tertiary); }
+
+/* ── 빈 상태 / 페이지네이션 ── */
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+}
+
+.paginationArea {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding-top: 10px;
+  flex-shrink: 0;
+}
+
+.totalCount {
+  position: absolute;
+  right: 0;
+  font-size: var(--font-size-base);
+  color: var(--text-tertiary);
+}
+
+.totalCount span {
+  color: var(--text-accent);
+  font-weight: 600;
+}
