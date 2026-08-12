@@ -1,0 +1,172 @@
+/* RM 6축 팔 패널 (Phase 1 · additive). 관측 · 안전정지 · 프리셋. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: var(--font-size-sm);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+}
+.bar .name {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.bar .sp {
+  flex: 1;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dotOn {
+  background: var(--color-success);
+}
+.dotOff {
+  background: var(--text-muted);
+}
+.conn {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+/* 안전 정지 */
+.stopRow {
+  display: flex;
+  gap: 8px;
+}
+.stopBtn {
+  flex: 1;
+  height: 40px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  border: 1px solid;
+}
+.stopBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pause {
+  background: #6f5518;
+  border-color: rgba(255, 198, 53, 0.5);
+  color: #ffeec2;
+  font-weight: 600;
+}
+.estop {
+  background: var(--color-error-bg);
+  border-color: var(--color-error-border);
+  color: #fff;
+}
+
+/* 관절 그리드 */
+.label {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 2px 0;
+}
+.joints {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.joint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  font-family: ui-monospace, "D2Coding", monospace;
+  font-size: var(--font-size-xs);
+}
+.joint .jn {
+  color: var(--text-muted);
+  width: 20px;
+}
+.joint .jv {
+  margin-left: auto;
+  color: var(--text-primary);
+}
+.telem {
+  display: flex;
+  gap: 8px;
+}
+.tm {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+}
+.tm .k {
+  font-size: var(--font-size-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tm .v {
+  font-family: ui-monospace, "D2Coding", monospace;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  margin-top: 2px;
+}
+.tm .warn {
+  color: var(--color-warning);
+}
+
+/* 프리셋 */
+.presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.preset {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: var(--surface-5);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+.preset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.preset .unv {
+  font-size: var(--font-size-2xs);
+  color: var(--color-warning);
+  margin-left: 5px;
+}
+
+.msg {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  min-height: 16px;
+}
+.msgErr {
+  color: var(--color-error-soft);
+}
+.disabledNote {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 10px;
+  text-align: center;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 8px;
+}
