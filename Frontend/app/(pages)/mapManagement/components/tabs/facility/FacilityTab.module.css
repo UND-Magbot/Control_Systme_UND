@@ -1,0 +1,385 @@
+/* 시설 장치 탭 껍데기 — 엘리베이터/자동문 공용.
+   컨테이너 규격은 다른 탭(ElevatorTab/PlacePathList)과 동일하게 맞춘다. */
+.container {
+    width: 100%;
+    flex: 1;
+    min-height: var(--page-body-min-height);
+    background: var(--surface-3);
+    border-radius: 10px 0 10px 10px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+}
+.topBar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    min-height: 40px;
+    flex-wrap: wrap;
+}
+.topBar h2 {
+    font-weight: 600;
+    font-size: var(--font-size-xl);
+    margin: 0;
+    color: var(--text-accent);
+    letter-spacing: -0.02em;
+}
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.toolSep {
+    width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0 2px;
+}
+
+/* 유형 칩(세그먼트) — 이 탭의 유일한 신규 컨트롤 */
+.kindSeg {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    border-radius: 9px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-input);
+}
+.kindBtn {
+    height: 27px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.kindBtn:hover {
+    color: var(--text-secondary);
+}
+.kindBtnOn {
+    background: var(--surface-elevated, #465376);
+    color: var(--text-primary);
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 24px;
+    align-items: start;
+    flex: 1;
+    min-height: 0;
+}
+.stackCol {
+    min-width: 0;
+}
+.detailCol {
+    min-width: 0;
+}
+.colHead {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.shared {
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    color: var(--surface-0, #1a1d2e);
+    background: var(--color-success, #92d050);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-weight: 700;
+}
+
+/* 층 스택 */
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.flr {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 11px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+}
+.flrStop {
+    border-color: rgba(146, 208, 80, 0.45);
+    background: rgba(50, 127, 71, 0.18);
+}
+.flrFocus {
+    border-color: rgba(146, 212, 244, 0.5);
+    background: rgba(0, 176, 238, 0.09);
+}
+.flrLabel {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    width: 34px;
+}
+.flrBadges {
+    margin-left: auto;
+    display: flex;
+    gap: 5px;
+}
+.badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 20px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+.badgeRobot {
+    background: rgba(146, 208, 80, 0.16);
+    border-color: rgba(146, 208, 80, 0.4);
+    color: #c9e9a2;
+}
+.badgeOk {
+    background: rgba(0, 176, 238, 0.14);
+    border-color: rgba(0, 176, 238, 0.4);
+    color: #9edcf5;
+}
+.badgeWarn {
+    background: rgba(169, 110, 58, 0.22);
+    border-color: rgba(255, 198, 53, 0.4);
+    color: #f3d999;
+}
+.badgeDoor {
+    background: rgba(146, 212, 244, 0.12);
+    border-color: rgba(146, 212, 244, 0.42);
+    color: #bfe6fb;
+}
+
+.legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.legendRow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+.frow .hint {
+    margin-top: 8px;
+}
+.hint {
+    font-size: 11.5px;
+    color: var(--text-muted, #656f87);
+    line-height: 1.6;
+    margin-top: 12px;
+}
+.hint b {
+    color: var(--text-tertiary);
+}
+.empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 12.5px;
+}
+
+/* ── 자동문 상세 카드 ── */
+.doorCard {
+    background: var(--surface-2);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 16px 18px;
+}
+.dcHead {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.dcHead h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-primary);
+}
+.dcHead .loc {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    color: var(--text-muted, #656f87);
+}
+.dcHeadRight {
+    margin-left: auto;
+}
+
+.fgrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 18px;
+}
+.frow {
+    min-width: 0;
+}
+.frowFull {
+    grid-column: 1 / -1;
+}
+.frow label {
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 7px;
+}
+.req {
+    color: var(--color-error-soft, #ff4b4b);
+}
+.pair {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+/* 각 칸을 블록 래퍼로 감싼다 — CustomSelect 래퍼가 flex 아이템이 되면
+   인라인 flex-basis:100% 때문에 두 칸이 행 밖으로 밀려난다. */
+.pairItem {
+    flex: 1 1 0;
+    min-width: 0;
+}
+.pairTag {
+    display: block;
+    margin-top: 5px;
+    font-size: 10.5px;
+    color: var(--text-muted, #656f87);
+    letter-spacing: 0.02em;
+}
+.pairArrow {
+    color: var(--text-muted, #656f87);
+    font-size: 13px;
+    flex-shrink: 0;
+    margin-top: 9px;
+}
+.numRow {
+    display: flex;
+    gap: 10px;
+}
+.numField {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 11px;
+    border-radius: 7px;
+    background: var(--surface-input);
+    border: 1px solid var(--border-input);
+}
+.numField span {
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+.numField input {
+    width: 100%;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 13px;
+    text-align: right;
+}
+/* 인라인 상하 스피너 제거 — 숫자는 직접 입력한다 */
+.numField input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.numField input[type="number"]::-webkit-outer-spin-button,
+.numField input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* 인라인 알림 — 아이콘 자리는 색 점(이모지 없음) */
+.inline {
+    display: flex;
+    gap: 9px;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.65;
+    margin-top: 14px;
+}
+.inlineIco {
+    flex-shrink: 0;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    margin-top: 7px;
+    opacity: 0.9;
+}
+.inlineWarn {
+    background: rgba(255, 198, 53, 0.08);
+    border: 1px solid rgba(255, 198, 53, 0.35);
+    color: #f3d68a;
+}
+.inlineWarn b {
+    color: var(--color-warning, #ffc635);
+}
+.inlineErr {
+    background: rgba(255, 75, 75, 0.08);
+    border: 1px solid var(--color-error-border, #bf0e14);
+    color: #ffc9c9;
+}
+.inlineErr b {
+    color: var(--color-error-soft, #ff4b4b);
+}
+
+.btn {
+    height: 31px;
+    padding: 0 12px;
+    border-radius: 7px;
+    background: var(--surface-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+}
+.btn:hover {
+    color: var(--text-primary);
+}
+.btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.btnPri {
+    background: var(--color-info, #00b0ee);
+    border-color: var(--color-info, #00b0ee);
+    color: #08131a;
+    font-weight: 600;
+}
+.btnDanger {
+    background: rgba(148, 22, 33, 0.5);
+    border-color: rgba(255, 75, 75, 0.4);
+    color: #ffb4b4;
+}
