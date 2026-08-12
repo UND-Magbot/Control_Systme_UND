@@ -1,0 +1,313 @@
+/* 상시 대기 응대 탭 — 색은 globals.css 토큰만 쓴다 (AGENT.md 디자인 시스템 준수) */
+
+.container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 4px;
+}
+
+/* ── 오늘 요약 ── */
+.statLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 16px 0 8px 2px;
+}
+
+.statNote {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.statRow {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 9px;
+}
+
+.stat {
+  background: var(--surface-3);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+  padding: 10px 12px;
+}
+
+.statValue {
+  font-size: var(--font-size-2xl);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.statName {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-top: 5px;
+}
+
+.statOk .statValue { color: var(--color-success); }
+.statWarn .statValue { color: var(--color-warning); }
+.statErr .statValue { color: var(--color-error-soft); }
+
+/* ── 이력 상단 바 ── */
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.topBar h2 {
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-accent);
+  font-size: var(--font-size-xl);
+  white-space: nowrap;
+}
+
+
+
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.periodGroup {
+  display: flex;
+  width: 180px;
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+}
+
+.periodItem {
+  flex: 1;
+  text-align: center;
+  height: 33px;
+  line-height: 31px;
+  cursor: pointer;
+  border: 1px solid var(--border-default);
+  border-right: none;
+  transition: background 0.15s ease;
+}
+
+.periodItem:first-child { border-radius: 6px 0 0 6px; }
+
+.periodItem:last-child {
+  border-radius: 0 6px 6px 0;
+  border-right: 1px solid var(--border-default);
+}
+
+.periodItem:hover,
+.periodActive { background: var(--color-info-selected); }
+
+.searchInput {
+  width: 200px;
+  height: 33px;
+  background: var(--surface-select);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  outline: none;
+}
+
+.searchInput::placeholder { color: var(--text-muted); }
+.searchInput:focus { border-color: var(--color-info-border); }
+
+.rateBox {
+  font-size: var(--font-size-base);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.rateBox b { color: var(--color-info); font-weight: 600; margin-left: 4px; }
+
+.rateSub {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  margin-left: 6px;
+}
+
+/* ── 테이블 ── */
+/* 표 영역 = 스크롤 박스 + 커스텀 스크롤바(트랙·썸)를 겹쳐 놓는 자리 */
+.tableArea {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.tableWrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;
+  padding-right: 10px;      /* 커스텀 스크롤바가 마지막 열을 덮지 않게 */
+
+  /* 네이티브 스크롤바는 숨긴다 — 다른 화면과 같은 커스텀 스크롤바를 쓴다 */
+  scrollbar-width: none;              /* Firefox */
+}
+.tableWrapper::-webkit-scrollbar {
+  display: none;                      /* Chrome/Edge */
+}
+
+.scrollTrack {
+  position: absolute;
+  top: 46px;                /* sticky 헤더(44px) 아래부터 */
+  bottom: 4px;
+  right: 2px;
+  width: 4px;
+  border-radius: 50px;
+  background: transparent;
+}
+
+.scrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;              /* JS 가 동적으로 조절 */
+  border-radius: 50px;
+  background: var(--text-tertiary);
+}
+
+.sessionTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.sessionTable thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.sessionTable thead th {
+  background: var(--surface-tab-inactive);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  height: 44px;
+  padding: 0 14px;
+  text-align: center;
+  border-bottom: 1px solid var(--surface-5);
+}
+
+/* 8열: 시각·로봇·요청 내용·판정 목적지·신뢰도·결과·소요·조치.
+   table-layout:fixed 라 열을 추가하면 이 목록도 같이 옮겨야 폭이 밀리지 않는다.
+   남는 폭은 '요청 내용'(auto)이 가져간다 — 길이가 제각각인 유일한 열이다. */
+.sessionTable thead th:nth-child(1) { width: 78px; }
+.sessionTable thead th:nth-child(2) { width: 110px; }
+.sessionTable thead th:nth-child(3) { width: auto; }
+.sessionTable thead th:nth-child(4) { width: 140px; }
+.sessionTable thead th:nth-child(5) { width: 80px; }
+/* 결과: 가장 긴 배지가 "안내 완료(지연)"(8자) + 배지 좌우 22px + 셀 좌우 28px ≈ 146px */
+.sessionTable thead th:nth-child(6) { width: 155px; }
+.sessionTable thead th:nth-child(7) { width: 80px; }
+.sessionTable thead th:nth-child(8) { width: 110px; }
+
+.thLeft { text-align: left !important; }
+.tdLeft { text-align: left !important; }
+
+/* 행에 클릭 동작이 없다 — hover 강조는 누를 수 있다는 거짓 신호라 두지 않는다.
+   실제로 누르는 것(기간 탭·조치 버튼)에만 hover 를 남긴다. */
+.sessionTable tbody tr:nth-child(odd) { background: var(--surface-3); }
+.sessionTable tbody tr:nth-child(even) { background: var(--surface-4); }
+
+.sessionTable tbody td {
+  padding: 0 14px;
+  height: 46px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-align: center;
+  border-bottom: 1px solid var(--surface-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quote { color: var(--text-secondary); }
+.quote::before { content: "“"; }
+.quote::after { content: "”"; }
+
+.retryTag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: var(--font-size-xs);
+  background: rgba(255, 198, 53, 0.13);
+  border: 1px solid rgba(255, 198, 53, 0.35);
+  color: var(--color-warning);
+  vertical-align: middle;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 11px;
+  border-radius: 4px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badgeOk { background: var(--color-success-bg); color: var(--text-primary); }
+.badgeWarn { background: var(--color-warning-badge); color: var(--text-primary); }
+.badgeErr { background: var(--color-error-badge); color: var(--text-primary); }
+.badgeRunning { background: var(--color-info-badge); color: var(--text-primary); }
+.badgeNone { background: var(--surface-button); color: var(--text-tertiary); }
+
+.actionBtn {
+  display: inline-block;
+  height: 26px;
+  line-height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 176, 238, 0.5);
+  background: var(--color-info-selected);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actionBtn:hover { background: var(--color-info-bg); }
+
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+}
+
+.paginationArea {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding-top: 10px;
+  flex-shrink: 0;
+}
+
+.totalCount {
+  position: absolute;
+  right: 0;
+  font-size: var(--font-size-base);
+  color: var(--text-tertiary);
+}
+
+.totalCount span { color: var(--text-accent); font-weight: 600; }
+
+@media (max-width: 1400px) {
+  .statRow { grid-template-columns: repeat(3, 1fr); }
+}

@@ -1,0 +1,1743 @@
+/* 음성 관리 — 데이터관리 탭.
+   디자인 가이드 확정 사항 반영: 필터바 컨트롤 36px 통일 · 테이블 행 hover ·
+   커스텀 스크롤바(내부 4px) · 버튼 라벨에 가변 숫자 금지. */
+
+/* ── 상단바 ── */
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.topBar h2 {
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-accent);
+  white-space: nowrap;
+}
+
+.filterBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/* 셀렉트 안의 텍스트가 폭을 넘으면 레이아웃이 밀린다.
+   폭만 키우면 더 긴 값(로봇명·목적지명·동작 설명)에서 또 깨지므로 말줄임을 건다. */
+/* 기본 .selectWrapper 는 flex: 1 (basis 0%) 이라 flex 컨테이너 안에서 제멋대로 늘거나 줄어든다.
+   툴바처럼 flex 로 배치되는 자리에서는 폭을 직접 못박는다. */
+.robotSelect {
+  flex: 0 0 190px;
+  width: 190px;
+}
+
+.robotSelect span,
+.destSelect span,
+.actionSelect span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.searchInput {
+  width: 170px;
+  height: 36px;
+  background: #34384d;
+  border: 1px solid #4c586e;
+  border-radius: 6px;
+  padding: 0 14px;
+  color: #edf3fd;
+  font-size: 13px;
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: #6b7a96;
+}
+
+.searchInput:focus {
+  border-color: #5ba8d9;
+}
+
+.toolSep {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.grow {
+  flex: 1;
+}
+
+/* ── 버튼 ── */
+.workBtn {
+  height: 36px;
+  border-radius: 6px;
+  padding: 0 14px;
+  background: var(--surface-button);
+  border: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: background 0.2s ease;
+}
+
+.workBtn:hover {
+  background: var(--surface-elevated);
+}
+
+.workBtn.danger {
+  background: transparent;
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+}
+
+.workBtn.ghost {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.primaryBtn {
+  position: relative;
+  min-width: 110px;
+  height: 36px;
+  border-radius: 8px;
+  padding: 0 14px;
+  background: var(--color-info-selected);
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.primaryBtn:hover {
+  background: var(--color-info-bg);
+}
+
+/* 미적용 변경이 있으면 배지 */
+.pendingDot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  box-shadow: 0 0 0 2px var(--surface-3);
+}
+
+/* 모달·상세 버튼 — 라벨 고정, 개수는 푸터 문구에 */
+.btn {
+  min-width: 90px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 9px;
+  border: none;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.btnPrimary {
+  background: var(--color-info);
+  font-weight: 600;
+}
+
+.btnPrimary:hover {
+  background: var(--color-info-border);
+}
+
+.btnSecondary {
+  background: var(--surface-5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.btnSecondary:hover {
+  background: var(--surface-elevated);
+}
+
+.btnNeutral {
+  background: #626a81;
+}
+
+.btnDanger {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+}
+
+.btnDanger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.btnDisabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── 선택 액션 바 (선택 0건이면 렌더하지 않는다) ── */
+.selBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  background: var(--color-info-selected);
+  border-radius: 8px;
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.selBar > span:first-child {
+  margin-right: auto;
+}
+
+.selBar b {
+  color: var(--text-primary);
+}
+
+.selBar .workBtn {
+  height: 30px;
+}
+
+/* ── 테이블 ── */
+.listArea {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.table thead th {
+  background: #1f2232;
+  color: #9cacca;
+  font-size: 13px;
+  font-weight: 600;
+  height: 44px;
+  padding: 0 16px;
+  text-align: center;
+  border-bottom: 1px solid #3a3f55;
+}
+
+.thLeft {
+  text-align: left !important;
+}
+
+.table tbody tr:nth-child(odd) {
+  background: #282d43;
+}
+
+.table tbody tr:nth-child(even) {
+  background: #2e3350;
+}
+
+/* 행이 클릭 가능한 목록이므로 hover 를 넣는다.
+   반대로, 클릭할 수 없는 행에는 hover 를 넣지 않는다 — "누를 수 있다"는 거짓 신호가 된다. */
+.rowClickable {
+  cursor: pointer;
+}
+
+.table tbody tr.rowClickable:hover {
+  background: #353a58;
+}
+
+.table tbody td {
+  padding: 0 16px;
+  height: 48px;
+  font-size: 12px;
+  color: #d0d8e8;
+  text-align: center;
+  border-bottom: 1px solid #2a2f45;
+}
+
+.tdLeft {
+  text-align: left !important;
+}
+
+.nameCell {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-info);
+  cursor: pointer;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badgeNav {
+  background: #2568a8;
+  color: #dceeff;
+}
+
+.badgeStop {
+  background: #b83a3a;
+  color: #ffe0e0;
+}
+
+.badgeNone {
+  background: #3f4256;
+  color: #9dadcb;
+}
+
+.badgeOn {
+  background: #1d8c6b;
+  color: #d4fff0;
+}
+
+.badgeOff {
+  background: #3a3f55;
+  color: #8b95ab;
+}
+
+.applied {
+  color: #9cacca;
+}
+
+/* 편집했지만 로봇엔 아직 안 들어간 상태 */
+.notApplied {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+/* 편집 버튼 셀 — 좁은 컬럼이라 좌우 패딩을 줄여 버튼이 셀 안에 온전히 들어오게 한다 */
+.tdAction {
+  padding: 0 8px !important;
+}
+
+.detailButton {
+  padding: 5px 14px;
+  background: #204766;
+  border: none;
+  border-radius: 4px;
+  color: #f0f2f5;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.detailButton:hover {
+  background: #285a80;
+}
+
+.emptyState {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 160px;
+  color: #6b7a96;
+  font-size: 14px;
+}
+
+.paginationArea {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: 10px;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.totalCount {
+  font-size: 13px;
+  color: #9cacca;
+}
+
+.totalCount span {
+  color: #5ba8d9;
+  font-weight: 600;
+}
+
+/* ── 상세(탭 안에서 목록을 대체하는 풀뷰) ── */
+.detail {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.detailHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.detailHead h2 {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  margin: 0;
+}
+
+.backBtn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.backBtn:hover {
+  background: var(--surface-4);
+  color: var(--text-primary);
+}
+
+.crumb {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+/* ── 폼 ── */
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+  margin-bottom: 20px;
+}
+
+.formGridFull {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.formTwo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+}
+
+.formRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.formRow > label {
+  display: flex;
+  align-items: center;
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.req {
+  color: var(--color-info);
+  margin-left: 2px;
+}
+
+.counter {
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.formRow input[type="text"],
+.formRow input:not([type]),
+.formRow input[type="number"],
+.formRow textarea {
+  font-size: var(--font-size-md);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+/* 드래그로 박스 크기가 늘어나 레이아웃이 깨지는 것을 막는다 (rows 로 높이 고정).
+   넘칠 때 나타나는 내부 스크롤바는 목록과 같은 커스텀 스타일로 통일한다. */
+.formRow textarea {
+  resize: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.formRow textarea::-webkit-scrollbar {
+  width: 4px;
+}
+
+.formRow textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.formRow textarea::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+.formRow input:focus,
+.formRow textarea:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+.formRow input:disabled,
+.formRow textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* number 입력의 상하 스피너 제거 — 0.05 단위 미세 조정이라 스피너가 오히려 방해된다 */
+.noSpin::-webkit-outer-spin-button,
+.noSpin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.noSpin {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.formRow > div {
+  width: 100% !important;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.checkRow input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-info);
+}
+
+/* ── 질문/답변 컬럼 ── */
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  min-height: 0;
+}
+
+.colHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.colHead h4 {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.cnt {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  padding: 1px 7px;
+}
+
+.rule {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+/* 항목이 늘어나면 페이지가 아니라 여기서 스크롤한다 —
+   안 그러면 [저장] 버튼이 화면 밖으로 밀려난다. */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 264px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.rows::-webkit-scrollbar {
+  width: 4px;
+}
+
+.rows::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rows::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+.rows::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.itemRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-input);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 6px 10px;
+  flex-shrink: 0;
+}
+
+.itemRowWarn {
+  border-color: rgba(255, 198, 53, 0.5);
+  background: rgba(255, 198, 53, 0.06);
+}
+
+.idx {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.itemRow input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+  padding: 4px 0;
+}
+
+.itemRow input::placeholder {
+  color: var(--text-muted);
+}
+
+.len {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.kwToggle {
+  font-size: var(--font-size-sm);
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.kwOn {
+  background: var(--color-warning-badge);
+  border-color: transparent;
+  color: #ffe9c0;
+  font-weight: 600;
+}
+
+.iconBtn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.iconBtn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.iconBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.spin {
+  animation: voiceSpin 0.8s linear infinite;
+}
+
+@keyframes voiceSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.addRow {
+  display: flex;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.addCard {
+  flex: 1;
+  border: 1.5px dashed var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.addCard:hover:not(:disabled) {
+  border-color: var(--text-accent);
+  color: var(--text-accent);
+}
+
+.addCard:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 자유 입력을 막는 장치가 아니라, 오타를 막는 편의 버튼이다 */
+.insertTok {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px dashed rgba(146, 212, 244, 0.45);
+  background: transparent;
+  color: var(--text-accent);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.insertTok:hover {
+  background: rgba(146, 212, 244, 0.07);
+}
+
+.hint {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 8px 0 0;
+}
+
+.hint b {
+  color: var(--text-tertiary);
+}
+
+/* 폼 안에서는 flex gap(6px)이 이미 간격을 주므로 hint 의 위쪽 여백을 없앤다 (input 과 붙여 읽히게) */
+.formRow > .hint {
+  margin-top: 0;
+}
+
+/* 참고 설명 툴팁 — 제목 옆 (?) 원형. hover 시 즉시 뜨는 CSS 말풍선(native title 은 지연·미표시 이슈). */
+.help {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: help;
+  flex-shrink: 0;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.help:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: var(--text-secondary);
+}
+
+.helpTip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: max-content;
+  max-width: 340px;
+  white-space: pre-line; /* QUESTION_HELP 의 \n 을 줄바꿈으로 */
+  text-align: left;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  line-height: 1.6;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.help:hover .helpTip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 저장 거부(중복 등) 인라인 에러 — 토스트가 지나가도 남아 있어야 놓치지 않는다 */
+.fieldError {
+  margin-top: 5px;
+  font-size: var(--font-size-sm);
+  color: var(--color-error-soft);
+  line-height: 1.5;
+}
+
+.inputError,
+.inputError:focus {
+  border-color: var(--color-error-soft) !important;
+}
+
+/* ── 미리듣기 ── */
+.preview {
+  border: 1px solid rgba(146, 212, 244, 0.25);
+  background: rgba(146, 212, 244, 0.05);
+  border-radius: 8px;
+  padding: 12px 13px;
+  margin-top: 12px;
+}
+
+.previewHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-accent);
+  min-width: 0;
+}
+
+/* 제목이 셀렉트를 밀어내지 않게 — 좁아지면 제목이 먼저 줄어든다 */
+.previewTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* CustomSelect 의 compact 모드는 wrapper 를 flex: 0 0 72px 로 고정한다 —
+   목적지명이 들어갈 수 없으므로 쓰지 않고, flex 기준을 직접 못박는다.
+   (인라인 width 만으로는 flex-basis 를 이기지 못한다) */
+.destSelect {
+  flex: 0 0 170px;
+  width: 170px;
+}
+
+.playAll {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: none;
+  background: var(--color-info-selected);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.playAll:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── 인라인 알림 ── */
+.inline {
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: var(--font-size-base);
+  line-height: 1.65;
+  margin-top: 10px;
+}
+
+.inlineWarn {
+  background: rgba(255, 198, 53, 0.08);
+  border: 1px solid rgba(255, 198, 53, 0.35);
+  color: #f3d68a;
+}
+
+.inlineErr {
+  background: rgba(255, 75, 75, 0.08);
+  border: 1px solid var(--color-error-border);
+  color: #ffc9c9;
+}
+
+.inlineOk {
+  background: rgba(146, 208, 80, 0.08);
+  border: 1px solid rgba(146, 208, 80, 0.3);
+  color: #cfe9a6;
+}
+
+.inlineInfo {
+  background: var(--surface-2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-tertiary);
+}
+
+.inlineActs {
+  display: flex;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.inlineActs .workBtn {
+  height: 30px;
+}
+
+/* ── 이탈 가드 / 삭제 확인 ── */
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 120;
+}
+
+.confirmBox {
+  width: 420px;
+  border-radius: 14px;
+  background: var(--surface-3);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  padding: 30px 28px 24px;
+  text-align: center;
+}
+
+.confirmText {
+  font-size: var(--font-size-xl);
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.confirmSub {
+  font-size: var(--font-size-base);
+  color: var(--text-tertiary);
+  line-height: 1.6;
+  margin: 12px 0 0;
+}
+
+.confirmBtns {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+/* ── 모달 공용 ── */
+.syncModal {
+  width: min(560px, 95vw);
+  background: var(--surface-3);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.footSplit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footRight {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* 개수는 버튼 라벨이 아니라 여기에 둔다 — 라벨이 길어지면 버튼이 깨진다 */
+.footNote {
+  font-size: var(--font-size-base);
+  color: var(--text-tertiary);
+}
+
+.footNote b {
+  color: var(--text-primary);
+}
+
+/* ── 목적지 사전 ── */
+.slotBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.slotScroll {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.slotScroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.slotScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.slotScroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+/* ── 로봇 적용 ── */
+.pickCount {
+  display: flex;
+  align-items: center;
+  font-size: var(--font-size-base);
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.pickCount b {
+  color: var(--text-accent);
+  margin: 0 3px;
+}
+
+.pickList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.pickList::-webkit-scrollbar {
+  width: 4px;
+}
+
+.pickList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pickList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+.pickItem {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-3);
+  cursor: pointer;
+}
+
+.pickItem input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-info);
+}
+
+.pickOn {
+  border-color: var(--text-accent);
+  background: var(--surface-4);
+}
+
+.pickOff {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pickInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.pickName {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pickMeta {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.pickTag {
+  font-size: var(--font-size-sm);
+  padding: 3px 9px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* 진행 — 맵 동기화 모달과 같은 패턴 */
+.syncList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.syncItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: var(--surface-input);
+}
+
+.syncName {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.syncStatus {
+  font-size: var(--font-size-base);
+  text-align: right;
+}
+
+.syncWait {
+  color: var(--text-muted);
+}
+
+.syncMsg {
+  color: var(--color-info);
+}
+
+.syncOk {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.syncFail {
+  color: var(--color-error-soft);
+  font-weight: 600;
+}
+
+/* ── CSV 업로드 ── */
+.drop {
+  border: 1.5px dashed var(--border-subtle);
+  border-radius: 10px;
+  padding: 26px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+}
+
+.drop:hover {
+  border-color: var(--text-accent);
+}
+
+.drop b {
+  color: var(--text-accent);
+}
+
+.dropSub {
+  font-size: var(--font-size-sm);
+  margin-top: 6px;
+}
+
+/* ── 양식 작성법 ── */
+.guide {
+  margin: 10px 0 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(146, 212, 244, 0.04);
+}
+
+.guide > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 9px 13px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-accent);
+  user-select: none;
+}
+
+.guide > summary::-webkit-details-marker {
+  display: none;
+}
+
+.guide > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+
+.guide[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.guideBody {
+  padding: 2px 14px 12px;
+}
+
+.guideList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.guideList > div {
+  display: flex;
+  gap: 10px;
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+}
+
+.guideList dt {
+  flex: 0 0 64px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.guideList dd {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.guideList dd b {
+  color: var(--text-tertiary);
+}
+
+.guide code {
+  background: rgba(146, 212, 244, 0.14);
+  color: var(--text-accent);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.92em;
+  white-space: nowrap;
+}
+
+/* 라벨을 고정 폭 컬럼으로 두어, 텍스트가 감싸질 때 라벨 밑이 아니라 텍스트 밑으로 정렬되게 한다 */
+.guideExample {
+  margin-top: 10px;
+  padding: 8px 11px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.6;
+  display: flex;
+  gap: 8px;
+}
+
+.guideExampleLabel {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+/* ── 음성 모듈 등록 (관리자 전용) ──
+   RobotType 으로 추정하지 않는다 — 같은 기종이라도 음성 하드웨어가 있을 수도 없을 수도 있다. */
+.moduleBox {
+  border: 1px solid rgba(146, 212, 244, 0.2);
+  background: rgba(146, 212, 244, 0.04);
+  border-radius: 10px;
+  padding: 13px 14px;
+  margin-bottom: 16px;
+}
+
+.moduleHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+}
+
+.moduleState {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+/* 미등록 안내 — 체크박스가 '등록 시 적용될 값'임을 알려 오해를 없앤다 */
+.moduleIntro {
+  margin: -2px 0 10px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.moduleIntro b {
+  color: var(--text-tertiary);
+}
+
+.moduleRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.moduleInput {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+}
+
+.moduleInput:focus {
+  outline: none;
+  border-color: var(--color-info);
+}
+
+/* 내장 모듈의 실제 접속 주소 (편집 불가 — 로봇 IP 를 그대로 쓴다) */
+.moduleAddr {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+.moduleAddr b {
+  color: var(--text-primary);
+}
+.moduleAddrNote {
+  color: var(--text-muted);
+}
+
+/* 리허설 — 로봇에서 실제로 말하고 이동 (위험 동작이라 강조색) */
+.rehearseRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.rehearseBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-success-bg);
+  background: rgba(50, 127, 71, 0.18);
+  color: #cdeeb0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rehearseBtn:hover:not(:disabled) {
+  background: rgba(50, 127, 71, 0.3);
+}
+.rehearseBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.rehearseNote {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+/* 동작 테스트 — 시나리오와 무관, 관제→로봇 통로 검증용 */
+.motionRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.motionLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+.motionBtn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-button);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.motionBtn:hover:not(:disabled) {
+  background: var(--surface-elevated);
+}
+.motionBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 정지는 위험 상황의 탈출구 — 눈에 띄게, 항상 활성 */
+.motionStop {
+  border-color: var(--color-error-border);
+  color: #ffb0b0;
+  font-weight: 600;
+}
+.motionStop:hover {
+  background: rgba(191, 14, 20, 0.15);
+}
+
+/* 인라인 안내에서 바로 다른 화면을 여는 링크형 버튼.
+   시나리오를 쓰다 말고 탭을 옮기지 않도록 그 자리에서 사전을 연다. */
+.linkBtn {
+  margin-left: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-accent);
+  font-size: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.linkBtn:hover { opacity: 0.8; }
+
+/* ── 도착 확인 인식어 관리 ── */
+.confirmWordModal {
+  width: 620px;
+  max-width: 92vw;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+
+.cwHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cwTitle {
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
+  font-weight: 500;
+}
+
+.cwClose {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.cwClose:hover { color: var(--text-secondary); }
+
+.cwBody {
+  padding: 18px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.cwBanner {
+  border-radius: 8px;
+  padding: 11px 13px;
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.cwBannerInfo {
+  background: var(--color-info-selected);
+  border: 1px solid var(--color-info-border);
+}
+
+.cwBannerOk {
+  background: rgba(146, 208, 80, 0.12);
+  border: 1px solid rgba(146, 208, 80, 0.45);
+}
+
+.cwLabel {
+  font-size: var(--font-size-base);
+  color: var(--text-tertiary);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.cwChips { display: flex; flex-wrap: wrap; gap: 7px; }
+
+.cwChip {
+  background: var(--surface-4);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  opacity: 0.62;      /* 아직 읽기 전용 — 등록하면 표로 바뀐다 */
+}
+
+/* 표 영역 = 스크롤 박스 + 커스텀 스크롤바(트랙·썸)를 겹쳐 놓는 자리.
+   기본만 14개라 그대로 두면 모달이 화면 밖까지 길어진다. */
+.cwTableArea {
+  position: relative;
+  display: flex;
+}
+
+.cwTableWrap {
+  flex: 1;
+  min-width: 0;
+  /* 헤더(29px) + 8행(약 34px) — 그 이상은 스크롤한다 */
+  max-height: 322px;
+  overflow-y: scroll;
+  overflow-x: auto;
+  padding-right: 10px;              /* 스크롤바가 '관리' 열을 덮지 않게 */
+  scrollbar-width: none;            /* Firefox — 네이티브 숨김 */
+}
+
+.cwTableWrap::-webkit-scrollbar { display: none; }
+
+.cwScrollTrack {
+  position: absolute;
+  top: 33px;                        /* sticky 헤더 아래부터 */
+  bottom: 2px;
+  right: 2px;
+  width: 4px;
+  border-radius: 50px;
+  background: transparent;
+}
+
+.cwScrollThumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;                      /* JS 가 동적으로 조절 */
+  border-radius: 50px;
+  background: var(--text-tertiary);
+}
+
+.cwTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-base);
+}
+
+.cwTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  padding: 7px 10px;
+  background: var(--surface-3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cwTable tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+.cwTable tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
+
+.cwWord { color: var(--text-primary); font-weight: 600; }
+.cwOrigin { font-size: var(--font-size-sm); color: var(--text-muted); }
+.cwOriginCustom { font-size: var(--font-size-sm); color: var(--text-accent); }
+
+.cwToggle {
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  border: none;
+  background: var(--color-success);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cwToggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.cwToggleOff { background: var(--surface-5); }
+.cwToggleOff::after { right: auto; left: 2px; background: var(--text-muted); }
+.cwToggle:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cwRowAct { white-space: nowrap; }
+
+.cwRowAct button {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  padding: 0;
+}
+
+.cwRowAct button + button { margin-left: 10px; }
+.cwRowAct button:hover:not(:disabled) { color: var(--text-secondary); }
+.cwRowAct button:disabled { opacity: 0.5; cursor: not-allowed; }
+.cwDel { color: var(--color-error-soft) !important; }
+.cwDel:hover:not(:disabled) { color: var(--color-error) !important; }
+
+.cwAddRow { display: flex; gap: 8px; }
+
+.cwInput {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-input);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 7px 12px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  outline: none;
+}
+
+.cwInput::placeholder { color: var(--text-muted); }
+.cwInput:focus { border-color: var(--color-info-border); }
+
+.cwHelp {
+  margin-top: 7px;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.cwHelp b { color: var(--text-tertiary); font-weight: 600; }
+
+.cwEmpty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.cwFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cwCount { font-size: var(--font-size-xs); color: var(--text-muted); }
+
+.cwBtnPrimary,
+.cwBtnGhost,
+.cwBtnQuiet {
+  border-radius: 6px;
+  padding: 7px 16px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cwBtnPrimary {
+  background: var(--color-info-selected);
+  border: 1px solid var(--color-info-border);
+  color: var(--text-primary);
+}
+
+.cwBtnGhost {
+  margin-left: auto;
+  background: var(--surface-button);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-secondary);
+}
+
+.cwBtnQuiet {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--text-tertiary);
+}
+
+.cwBtnPrimary:hover:not(:disabled) { background: var(--color-info-bg); }
+.cwBtnGhost:hover { background: var(--surface-5); }
+.cwBtnQuiet:hover:not(:disabled) { color: var(--text-secondary); }
+
+.cwBtnPrimary:disabled,
+.cwBtnQuiet:disabled { opacity: 0.45; cursor: not-allowed; }
