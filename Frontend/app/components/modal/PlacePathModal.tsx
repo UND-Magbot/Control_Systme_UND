@@ -7,15 +7,18 @@ import type { RobotRowData } from '@/app/types';
 import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { apiFetch } from "@/app/lib/api";
+import { isMovablePlace } from "@/app/lib/placeFilter";
 
 
 type WorkModalProps = {
     isOpen: boolean;
     onClose: () => void;
     selectedRobotIds: number[];
+    /** 로봇 현재 층. 이 층의 장소만 후보로 둔다(D-01 · Q8) */
+    robotFloorId?: number | null;
     // selectedRobotId: number | null;
     // selectedRobot: RobotRowData | null;
-    // robots: RobotRowData[];   
+    // robots: RobotRowData[];
 }
 
 type Place = {
@@ -29,6 +32,8 @@ type DBPlace = {
   id: number;
   LacationName: string;
   Floor: string;
+  FloorId: number | null;
+  Category: string | null;
   LocationX: number;
   LocationY: number;
   Yaw: number;
@@ -38,6 +43,7 @@ type DBPlace = {
 export default function RobotDetailModal({
     isOpen,
     onClose,
+    robotFloorId,
 }:WorkModalProps ){
 
 
@@ -92,13 +98,16 @@ export default function RobotDetailModal({
         apiFetch(`/DB/places`)
           .then((res) => res.json())
           .then((data: DBPlace[]) => {
+            // 위험구역(폴리곤 centroid)·충전소·다른 층을 후보에서 뺀다 — 공용 규칙 1곳에서 판정한다
             setPlaces(
-              data.map((p) => ({
-                id: p.id,
-                name: p.LacationName,
-                x: p.LocationX,
-                y: p.LocationY,
-              }))
+              data
+                .filter((p) => isMovablePlace(p, robotFloorId))
+                .map((p) => ({
+                  id: p.id,
+                  name: p.LacationName,
+                  x: p.LocationX,
+                  y: p.LocationY,
+                }))
             );
           })
           .catch((err) => {
@@ -137,7 +146,11 @@ export default function RobotDetailModal({
                     {loading ? (
                         <div className={styles.placeEmpty}>불러오는 중...</div>
                     ) : places.length === 0 ? (
-                        <div className={styles.placeEmpty}>등록된 장소가 없습니다.</div>
+                        <div className={styles.placeEmpty}>
+                            {robotFloorId == null
+                                ? "로봇의 현재 층을 알 수 없어 이동 후보를 정할 수 없습니다."
+                                : "이 층에 이동 가능한 장소가 없습니다."}
+                        </div>
                     ) : (
                         <>
                             <div ref={scrollRef} className={styles.placeInner} role="listbox">

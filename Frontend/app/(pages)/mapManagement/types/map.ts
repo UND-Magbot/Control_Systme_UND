@@ -1,6 +1,7 @@
 import type { PendingPlace } from "../components/tabs/map/MapPlaceCreateModal";
 
-export type MapTab = "map" | "place" | "path";
+// facility = 시설 장치(엘리베이터 + 자동문). 기존 딥링크 ?tab=elevator 는 facility 로 해석한다.
+export type MapTab = "map" | "place" | "path" | "facility";
 
 export type MappingState =
   | "idle"

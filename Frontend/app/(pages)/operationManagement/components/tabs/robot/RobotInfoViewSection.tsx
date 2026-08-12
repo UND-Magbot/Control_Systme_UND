@@ -13,13 +13,18 @@ type Props = {
   onPathMoveOpen: () => void;
   onChargeMoveOpen: () => void;
   onStopCharge: () => void;
+  /** 로봇 IP 표시 여부(관리자 1·2). 서버도 같은 기준으로 응답에서 뺀다. */
+  canSeeIp?: boolean;
 };
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+/** 값이 비면(null·undefined·빈 문자열·공백) '-' 로 보여준다.
+ *  `?? '-'` 만으로는 빈 문자열이 그대로 통과해 빈칸으로 보인다. */
+function InfoRow({ label, value }: { label: string; value?: string | null }) {
+  const shown = value?.trim() ? value : '-';
   return (
     <div className={styles.detailInfoRow}>
       <span className={styles.detailInfoLabel}>{label}</span>
-      <span className={styles.detailInfoValue}>{value}</span>
+      <span className={styles.detailInfoValue}>{shown}</span>
     </div>
   );
 }
@@ -32,6 +37,7 @@ export default function RobotInfoViewSection({
   onPathMoveOpen,
   onChargeMoveOpen,
   onStopCharge,
+  canSeeIp = false,
 }: Props) {
   const isRobotOffline = r.power !== 'On';
 
@@ -39,13 +45,15 @@ export default function RobotInfoViewSection({
     <div className={styles.detailInfoSection}>
       <h3 className={styles.detailSectionTitle}>기본 정보</h3>
       <div className={styles.detailInfoGrid}>
-        <InfoRow label="로봇명" value={r.no ?? '-'} />
-        <InfoRow label="모델" value={r.model ?? '-'} />
-        <InfoRow label="시리얼 번호" value={r.serialNumber ?? '-'} />
-        <InfoRow label="운영사" value={r.operator ?? '-'} />
-        <InfoRow label="로봇 타입" value={r.type ?? '-'} />
-        <InfoRow label="사이트" value={r.site ?? '-'} />
-        <InfoRow label="S/W 버전" value={r.softwareVersion ?? '-'} />
+        <InfoRow label="로봇명" value={r.no} />
+        <InfoRow label="모델" value={r.model} />
+        <InfoRow label="시리얼 번호" value={r.serialNumber} />
+        <InfoRow label="운영사" value={r.operator} />
+        <InfoRow label="로봇 타입" value={r.type} />
+        <InfoRow label="사이트" value={r.site} />
+        <InfoRow label="S/W 버전" value={r.softwareVersion} />
+        {/* 로봇 IP 는 관리자(1·2)에게만. 서버도 비관리자 응답에서 RobotIP 를 뺀다. */}
+        {canSeeIp && <InfoRow label="로봇 IP" value={(r as any).robotIp} />}
 
         {/* 복귀 배터리 (좌) / 등록일시 (우) */}
         <div className={styles.detailInfoRow}>
@@ -62,7 +70,7 @@ export default function RobotInfoViewSection({
             </div>
           </span>
         </div>
-        <InfoRow label="등록일시" value={r.registrationDateTime?.replace('T', ' ') ?? '-'} />
+        <InfoRow label="등록일시" value={r.registrationDateTime?.replace('T', ' ')} />
       </div>
 
       {/* 액션 버튼 */}

@@ -9,7 +9,7 @@ import CameraSlots from "./sections/cameras/CameraSlots";
 import NoticeList from "./sections/notices/NoticeList";
 import SectionHeader from "./SectionHeader";
 import Link from "next/link";
-import { useRobotLocation } from "@/app/hooks/useRobotLocation";
+import { useRobotLocations } from "@/app/hooks/useRobotLocations";
 import type { POIItem } from "@/app/components/map/types";
 import RobotStats from "./sections/robots/RobotStats";
 import ScheduleTimeline from "./sections/schedule/ScheduleTimeline";
@@ -36,11 +36,12 @@ export default function DashboardClient({
   const [robotCameras, setRobotCameras] = useState<Camera[]>([]);
   const [camerasLoading, setCamerasLoading] = useState(true);
   const [robotStats, setRobotStats] = useState<PerRobotStats | null>(null);
-  const robotLocation = useRobotLocation();
+  // 위치는 로봇마다 다르다 — 대표 하나로 목록 전체를 칠하지 않는다
+  const { places: poiPlaces, byRobotId: robotLocations } = useRobotLocations(liveRobots);
 
-  // useRobotLocation에서 가져온 places를 MapSection용 POIItem으로 변환
+  // 장소 마스터는 로봇과 무관하다 — 한 번 받아 지도 POI 로 쓴다
   const mapPlaces = useMemo<POIItem[]>(
-    () => robotLocation.places.map((p) => ({
+    () => poiPlaces.map((p) => ({
       id: p.id,
       name: p.name,
       x: p.x,
@@ -48,7 +49,7 @@ export default function DashboardClient({
       floor: p.floor,
       category: "work" as const,
     })),
-    [robotLocation.places]
+    [poiPlaces]
   );
   const setPageReady = usePageReady();
 
@@ -124,7 +125,7 @@ export default function DashboardClient({
             onSelectRobot={setSelectedRobotId}
             cameras={robotCameras}
             videoStatus={videoStatus}
-            robotLocation={robotLocation}
+            robotLocations={robotLocations}
             canLinkRobots={isAdmin}
           />
         </div>

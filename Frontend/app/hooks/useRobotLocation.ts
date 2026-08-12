@@ -14,13 +14,14 @@ type Place = {
 };
 
 export type RobotLocation = {
-  floor: string;
+  /** 층 이름. 층 목록 조회 실패·미매칭이면 null(= 표시는 "-"). 임의 기본값으로 채우지 않는다. */
+  floor: string | null;
   placeName: string | null;
   places: Place[];
 };
 
 const NEARBY_THRESHOLD = 1.5; // 미터 단위, 이 거리 이내면 해당 장소에 있다고 판단
-const DEFAULT_FLOOR = "1F";
+const PLACE_FALLBACK_FLOOR = "1F"; // 장소 마스터에 Floor 가 비어있을 때만 쓰는 파싱 기본값
 
 function distance(x1: number, y1: number, x2: number, y2: number) {
   return Math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2);
@@ -38,10 +39,10 @@ export function useRobotLocation(): RobotLocation {
     return (onRobot ?? robots[0])?.currentFloorId ?? null;
   }, [robots]);
 
+  // 층 id → 이름 매핑에 실패하면(층 목록 조회 실패, 미등록 id, 층 미확정) null 이다.
+  // 예전엔 "1F" 로 채웠는데, 장애 시 화면이 실제 데이터인 것처럼 1F 를 보여줘 오판을 불렀다.
   const currentFloor =
-    currentFloorId != null && floorNameById[currentFloorId]
-      ? floorNameById[currentFloorId]
-      : DEFAULT_FLOOR;
+    currentFloorId != null ? (floorNameById[currentFloorId] ?? null) : null;
 
   // 층 목록 1회 로드 (id → 이름 매핑)
   useEffect(() => {
@@ -66,7 +67,7 @@ export function useRobotLocation(): RobotLocation {
             name: p.LacationName ?? "",
             x: p.LocationX ?? 0,
             y: p.LocationY ?? 0,
-            floor: p.Floor ?? DEFAULT_FLOOR,
+            floor: p.Floor ?? PLACE_FALLBACK_FLOOR,
           }))
         );
       })
@@ -75,6 +76,11 @@ export function useRobotLocation(): RobotLocation {
 
   // 로봇 위치 폴링해서 가장 가까운 장소 매칭
   const poll = useCallback(async () => {
+    // 층을 모르면 같은 층 장소를 고를 수 없다 → 장소명도 미확정.
+    if (currentFloor == null) {
+      setPlaceName(null);
+      return;
+    }
     try {
       const res = await apiFetch(`/robot/position`);
       if (!res.ok) return;

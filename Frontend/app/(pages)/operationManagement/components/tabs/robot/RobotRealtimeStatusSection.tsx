@@ -13,9 +13,11 @@ const CHARGE_FULL_PCT = 90;
 type Props = {
   robot: RobotRowData;
   hasActiveSchedule: boolean;
+  /** 배터리 맥락의 액션(충전소 이동/충전 해제)이 여기 붙는다 */
+  children?: React.ReactNode;
 };
 
-export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule }: Props) {
+export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule, children }: Props) {
   const isUnknown = r.power === '-';
   const isOffline = r.power === 'Off';
   const isNetworkDown = r.network === 'Offline' && !isOffline;
@@ -80,7 +82,8 @@ export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule
       )}
       <div className={styles.detailStatusGrid}>
         <div className={styles.detailStatusItem}>
-          <span className={styles.detailStatusLabel}>상태</span>
+          {/* '현재 작업'의 작업 상태(대기/진행중/오류)와 층위가 다르다 — 이름으로 구분한다 */}
+          <span className={styles.detailStatusLabel}>로봇 상태</span>
           <span className={`${styles.detailStatusValue} ${statusClass}`}>{statusLabel}</span>
         </div>
         <div className={styles.detailStatusItem}>
@@ -119,6 +122,7 @@ export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule
           </span>
         </div>
       </div>
+      {children}
     </div>
   );
 }

@@ -2,12 +2,14 @@
 
 import React from "react";
 import styles from "../../../mapManagement.module.css";
+import { useModalBehavior } from "@/app/hooks/useModalBehavior";
 
 type Props = {
   isOpen: boolean;
   isMappingRunning: boolean;
   isMappingStarting: boolean;
   isMappingEnding: boolean;
+  isMappingCanceling: boolean;
   saveMapName: string;
   mappingCanvasRef: React.RefObject<HTMLCanvasElement>;
   onStart: () => void;
@@ -24,23 +26,38 @@ export default function MappingProgressModal({
   isMappingRunning,
   isMappingStarting,
   isMappingEnding,
+  isMappingCanceling,
   saveMapName,
   mappingCanvasRef,
   onStart,
   onEnd,
   onCancel,
 }: Props) {
+  // ESC 로는 닫지 않는다(취소는 맵 데이터 삭제) — body 스크롤 잠금만 사용.
+  useModalBehavior({ isOpen, onClose: onCancel, disabled: true });
+
+  const busy = isMappingStarting || isMappingEnding || isMappingCanceling;
+
   if (!isOpen) return null;
 
   return (
     <div className={styles.modalOverlay}>
-      <div className={styles.mappingModal}>
+      <div
+        className={styles.mappingModal}
+        role="dialog"
+        aria-modal="true"
+        aria-label="맵핑 진행"
+      >
         {/* 로딩 오버레이 */}
-        {(isMappingStarting || isMappingEnding) && (
+        {busy && (
           <div className={styles.mappingLoadingOverlay}>
             <div className={styles.mappingLoadingSpinner} />
             <span className={styles.mappingLoadingText}>
-              {isMappingStarting ? "맵핑 준비 중..." : "맵 생성 중..."}
+              {isMappingStarting
+                ? "맵핑 준비 중..."
+                : isMappingEnding
+                  ? "맵 생성 중..."
+                  : "맵핑 취소 중..."}
             </span>
           </div>
         )}
@@ -54,7 +71,7 @@ export default function MappingProgressModal({
 
         {/* 우측: 정보 + 컨트롤 */}
         <div className={styles.mappingModalRight}>
-          <div className={styles.mappingModalTitle}>맵핑</div>
+          <h2 className={styles.mappingModalTitle}>맵핑</h2>
 
           {/* 상태 표시 */}
           <div className={styles.mappingStatusSection}>
@@ -70,7 +87,9 @@ export default function MappingProgressModal({
             </div>
             <div className={styles.mappingStatusRow}>
               <span className={styles.mappingStatusLabel}>영역</span>
-              <span className={styles.mappingStatusValue}>{saveMapName}</span>
+              <span className={styles.mappingStatusValue} title={saveMapName}>
+                {saveMapName}
+              </span>
             </div>
           </div>
 
@@ -82,25 +101,32 @@ export default function MappingProgressModal({
             </div>
           )}
 
-          {/* 컨트롤 버튼 */}
+          {/* 컨트롤 버튼 — 진행 중이 아니면 시작만, 진행 중이면 종료만 누를 수 있다 */}
           <div className={styles.mappingControls}>
             <button
               className={`${styles.mappingCtrlBtn} ${styles.mappingCtrlStart}`}
               onClick={onStart}
-              disabled={isMappingRunning}
+              disabled={isMappingRunning || busy}
+              title={isMappingRunning ? "이미 맵핑이 진행 중입니다" : undefined}
             >
               시작
             </button>
             <button
               className={`${styles.mappingCtrlBtn} ${styles.mappingCtrlEnd}`}
               onClick={onEnd}
-              disabled={isMappingEnding}
+              disabled={!isMappingRunning || busy}
+              title={!isMappingRunning ? "맵핑을 시작한 뒤 사용할 수 있습니다" : undefined}
             >
               종료
             </button>
           </div>
 
-          <button className={styles.mappingCancelBtn} onClick={onCancel}>
+          <button
+            className={styles.mappingCancelBtn}
+            onClick={onCancel}
+            disabled={busy}
+            title={isMappingRunning ? "수집한 맵 데이터를 삭제하고 종료합니다" : undefined}
+          >
             취소
           </button>
         </div>

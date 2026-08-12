@@ -26,6 +26,14 @@ type FormData = {
   cameraIP: string;
   port: string;
   path: string;
+  // 팔(arm) 전용
+  vendor: string;
+  model: string;
+  agentHost: string;
+  agentPort: string;
+  armIP: string;
+  armPort: string;
+  dof: string;
 };
 
 const INITIAL_FORM: FormData = {
@@ -36,6 +44,13 @@ const INITIAL_FORM: FormData = {
   cameraIP: '',
   port: '8554',
   path: '',
+  vendor: 'realman',
+  model: '',
+  agentHost: '',
+  agentPort: '12346',
+  armIP: '',
+  armPort: '8080',
+  dof: '6',
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -171,16 +186,35 @@ export default function ModuleManageModal({ isOpen, onClose, robotId, robotName,
   const goToEdit = () => {
     if (!selectedModule) return;
     setView('edit');
+    const cfg = selectedModule.config ?? {};
     setForm({
       moduleType: selectedModule.type,
       label: selectedModule.label,
       parentModuleId: selectedModule.parentModuleId,
-      streamType: (selectedModule.config?.streamType as string) ?? 'rtsp',
-      cameraIP: (selectedModule.config?.cameraIP as string) ?? '',
-      port: String(selectedModule.config?.port ?? '8554'),
-      path: (selectedModule.config?.path as string) ?? '',
+      streamType: (cfg.streamType as string) ?? 'rtsp',
+      cameraIP: (cfg.cameraIP as string) ?? '',
+      port: String(cfg.port ?? '8554'),
+      path: (cfg.path as string) ?? '',
+      vendor: (cfg.vendor as string) ?? 'realman',
+      model: (cfg.model as string) ?? '',
+      agentHost: (cfg.agentHost as string) ?? '',
+      agentPort: String(cfg.agentPort ?? '12346'),
+      armIP: (cfg.armIP as string) ?? '',
+      armPort: String(cfg.armPort ?? '8080'),
+      dof: String(cfg.dof ?? '6'),
     });
   };
+
+  // arm 상세 필드 → payload (빈 문자열은 null, 숫자는 파싱)
+  const buildArmPayload = (): Record<string, unknown> => ({
+    vendor: form.vendor.trim() || null,
+    model: form.model.trim() || null,
+    agentHost: form.agentHost.trim() || null,
+    agentPort: parseInt(form.agentPort) || null,
+    armIP: form.armIP.trim() || null,
+    armPort: parseInt(form.armPort) || null,
+    dof: parseInt(form.dof) || null,
+  });
 
   // ── CRUD ──
   const handleAdd = async () => {
@@ -195,6 +229,8 @@ export default function ModuleManageModal({ isOpen, onClose, robotId, robotName,
       payload.port = parseInt(form.port) || 8554;
       payload.path = form.path || null;
       payload.cameraIP = form.cameraIP || null;
+    } else if (form.moduleType === 'arm') {
+      Object.assign(payload, buildArmPayload());
     }
     try {
       const res = await apiFetch(`/DB/robots/${robotId}/modules`, {
@@ -219,6 +255,8 @@ export default function ModuleManageModal({ isOpen, onClose, robotId, robotName,
       payload.port = parseInt(form.port) || 8554;
       payload.path = form.path || null;
       payload.cameraIP = form.cameraIP || null;
+    } else if (form.moduleType === 'arm') {
+      Object.assign(payload, buildArmPayload());
     }
     try {
       const res = await apiFetch(`/DB/modules/${selectedModule.id}`, {
@@ -434,6 +472,38 @@ export default function ModuleManageModal({ isOpen, onClose, robotId, robotName,
                     </>
                   )}
 
+                  {/* 2. 연결 정보 (팔) */}
+                  {selectedModule.type === 'arm' && selectedModule.config && (
+                    <>
+                      <div className={styles.detailInfoRow}>
+                        <span className={styles.detailInfoLabel}>제조사/모델</span>
+                        <span className={styles.detailInfoValue}>
+                          {[selectedModule.config.vendor, selectedModule.config.model].filter(Boolean).join(' / ') || '-'}
+                        </span>
+                      </div>
+                      <div className={styles.detailInfoRow}>
+                        <span className={styles.detailInfoLabel}>Agent</span>
+                        <span className={styles.detailInfoValue}>
+                          {selectedModule.config.agentHost
+                            ? `${maskCredentials(selectedModule.config.agentHost as string)}:${selectedModule.config.agentPort ?? '-'}`
+                            : '-'}
+                        </span>
+                      </div>
+                      <div className={styles.detailInfoRow}>
+                        <span className={styles.detailInfoLabel}>팔 주소</span>
+                        <span className={styles.detailInfoValue}>
+                          {selectedModule.config.armIP
+                            ? `${selectedModule.config.armIP}:${selectedModule.config.armPort ?? '-'}`
+                            : '-'}
+                        </span>
+                      </div>
+                      <div className={styles.detailInfoRow}>
+                        <span className={styles.detailInfoLabel}>자유도</span>
+                        <span className={styles.detailInfoValue}>{selectedModule.config.dof ? String(selectedModule.config.dof) : '-'}</span>
+                      </div>
+                    </>
+                  )}
+
                   {/* 3. 부가 정보 */}
                   <div className={styles.detailInfoRow}>
                     <span className={styles.detailInfoLabel}>상태</span>
@@ -564,7 +634,85 @@ export default function ModuleManageModal({ isOpen, onClose, robotId, robotName,
                   </>
                 )}
 
-                {form.moduleType !== 'camera' && (
+                {form.moduleType === 'arm' && (
+                  <>
+                    <div className={styles.formRow}>
+                      <label>제조사</label>
+                      <input
+                        type="text"
+                        maxLength={30}
+                        placeholder="realman"
+                        value={form.vendor}
+                        onChange={e => setForm(p => ({ ...p, vendor: e.target.value }))}
+                      />
+                    </div>
+                    <div className={styles.formRow}>
+                      <label>모델</label>
+                      <input
+                        type="text"
+                        maxLength={30}
+                        placeholder="RM65-B"
+                        value={form.model}
+                        onChange={e => setForm(p => ({ ...p, model: e.target.value }))}
+                      />
+                    </div>
+                    <div className={styles.formRow}>
+                      <label>Agent Host</label>
+                      <input
+                        type="text"
+                        maxLength={45}
+                        placeholder="192.168.1.103 (Firefly arm-agent)"
+                        value={form.agentHost}
+                        onChange={e => setForm(p => ({ ...p, agentHost: e.target.value }))}
+                      />
+                    </div>
+                    <div className={styles.formRow}>
+                      <label>Agent 포트</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={5}
+                        placeholder="12346"
+                        value={form.agentPort}
+                        onChange={e => setForm(p => ({ ...p, agentPort: e.target.value.replace(/\D/g, '') }))}
+                      />
+                    </div>
+                    <div className={styles.formRow}>
+                      <label>팔 IP</label>
+                      <input
+                        type="text"
+                        maxLength={45}
+                        placeholder="192.168.137.x (사설망)"
+                        value={form.armIP}
+                        onChange={e => setForm(p => ({ ...p, armIP: e.target.value }))}
+                      />
+                    </div>
+                    <div className={styles.formRow}>
+                      <label>팔 포트</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={5}
+                        placeholder="8080"
+                        value={form.armPort}
+                        onChange={e => setForm(p => ({ ...p, armPort: e.target.value.replace(/\D/g, '') }))}
+                      />
+                    </div>
+                    <div className={styles.formRow}>
+                      <label>자유도(DoF)</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={2}
+                        placeholder="6"
+                        value={form.dof}
+                        onChange={e => setForm(p => ({ ...p, dof: e.target.value.replace(/\D/g, '') }))}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {form.moduleType !== 'camera' && form.moduleType !== 'arm' && (
                   <div className={`${styles.formRow} ${styles.formRowFull}`}>
                     <div className={styles.formNoConfig}>설정 항목이 없습니다</div>
                   </div>

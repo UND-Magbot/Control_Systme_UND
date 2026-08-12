@@ -1,6 +1,11 @@
 services:
   frontend:
-    build: ./Frontend
+    build:
+      context: ./Frontend
+      args:
+        # MediaMTX 가 프론트와 다른 머신(관제 PC)에 있을 때 지정한다.
+        # 비우면 기존대로 브라우저 접속 hostname 을 쓴다.
+        NEXT_PUBLIC_MEDIAMTX_HOST: ${NEXT_PUBLIC_MEDIAMTX_HOST:-}
     container_name: control-frontend
     ports:
       - "3001:3001"
@@ -12,13 +17,27 @@ services:
     network_mode: host
     environment:
       - TZ=Asia/Seoul
-      # DB 연결 문자열은 루트 .env 의 DATABASE_URL 에서 주입한다(비밀번호 평문 노출 방지).
-      # 미설정 시 즉시 에러로 기동을 막는다. backend 는 network_mode: host 라
-      # 호스트에서 원격 DB(192.168.0.21:3306)로 직접 접속한다.
-      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL 이 .env 에 설정되어야 합니다}
+      # ── 임시 검증용 ── RM 팔 미연결 상태에서 원격제어 '팔' 탭 UI를 확인하기 위한 목(mock).
+      # 실장비(RM) 연결하면 이 줄을 지우거나 0 으로 바꾸고 backend 재생성한다. (기본 동작=미연결 그대로)
+      - ARM_MOCK=1
+      # 인스턴스 프로필. prod=운영(control_system) / dev=개발(control_system_dev).
+      # APP_ENV 와 실제 접속 스키마가 어긋나면 백엔드가 기동을 거부한다(app/database/db_url.py).
+      - APP_ENV=${APP_ENV:-}
+      # DB 연결 문자열은 루트 .env 에서 주입한다(비밀번호 평문 노출 방지).
+      # DATABASE_URL 을 통째로 주거나, DB_* 조각만 주고 스키마는 APP_ENV 에서 파생시킨다.
+      # backend 는 network_mode: host 라 호스트에서 원격 DB(192.168.0.21:3306)로 직접 접속한다.
+      - DATABASE_URL=${DATABASE_URL:-}
+      - DB_HOST=${DB_HOST:-}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_USER=${DB_USER:-}
+      - DB_PASSWORD=${DB_PASSWORD:-}
+      - DB_NAME=${DB_NAME:-}
       # 인증 토큰(JWT) 서명 키. 값은 루트 .env 에서 주입한다(비밀 노출 방지).
       # 미설정 시 즉시 에러로 기동을 막는다.
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY 가 .env 에 설정되어야 합니다}
+      # 로봇(Jetson 음성 에이전트) → 관제 호출 채널 토큰.
+      # 비우면 /DB/agent/* 가 503 으로 닫힌다(기본 비활성 = 실수로 열리지 않는다).
+      - AGENT_TOKEN=${AGENT_TOKEN:-}
       # 카메라 RTSP 전송 방식: tcp(기본, 손실 없음) | udp(저지연, 깨끗한 망 전용).
       # H.265 카메라라 불안정 망에서 udp는 화면 깨짐 발생 → tcp 권장.
       - RTSP_TRANSPORT=tcp
@@ -33,6 +52,10 @@ services:
       - RECEIVER_IP=${RECEIVER_IP:-}
       - RECEIVER_PORT=${RECEIVER_PORT:-40000}
       - RECEIVER_TCP_PORT=${RECEIVER_TCP_PORT:-40001}
+      # 다층 경로 층 전환 방식. true(기본)=실엘베(사람이 로봇을 태워 도착층에 내려놓음).
+      # false=두 맵이 경계에서 겹치도록 매핑된 검증 환경(로봇이 경계를 스스로 주행).
+      # ⚠️ 실엘베에서 false 로 두면 층 이동 후 잘못된 좌표를 채택할 수 있어 위험하다.
+      - FLOOR_TRANSITION_ASSISTED=${FLOOR_TRANSITION_ASSISTED:-true}
       # NOS(로봇 PC) SSH 접속 정보 — 매핑 시작/종료/취소(drmap) 및 맵 파일 SCP 에 사용.
       # 값은 루트 .env 에서 주입한다(비밀번호 평문 노출 방지).
       - NOS_HOST=${NOS_HOST:-10.21.31.106}

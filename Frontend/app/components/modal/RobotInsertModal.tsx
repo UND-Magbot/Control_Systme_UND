@@ -8,6 +8,14 @@ import { apiFetch } from "@/app/lib/api";
 import { useBatterySlider } from '@/app/hooks/useBatterySlider';
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { useAlertModal } from '@/app/hooks/useAlertModal';
+import { useAuth } from '@/app/context/AuthContext';
+
+/** IPv4 점 4자리 형식 검사. 각 옥텟 0~255. */
+function isValidIPv4(v: string): boolean {
+    const m = v.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!m) return false;
+    return m.slice(1).every((o) => Number(o) <= 255);
+}
 
 export default function RobotInsertModal({
     isOpen,
@@ -48,6 +56,12 @@ export default function RobotInsertModal({
 
     // S/W 버전
     const [swVersion, setSwVersion] = useState("");
+    // 로봇 대표 IP. 폴링으로 받은 상태를 어느 로봇에 붙일지 정하는 키라, 비우면
+    // 등록은 되지만 그 로봇은 상태를 못 받아 계속 offline 으로 보인다.
+    const [robotIp, setRobotIp] = useState("");
+    const { user } = useAuth();
+    // 로봇 IP 는 관리자(1·2)만. 서버도 같은 기준으로 막는다 — UI 숨김은 방어가 아니다.
+    const canEditIp = user?.role === 1 || user?.role === 2;
 
     const battery = useBatterySlider({ min: 15, max: 30, defaultValue: 30 });
 
@@ -82,6 +96,7 @@ export default function RobotInsertModal({
         if (!robotModel.trim()) newErrors.robotModel = true;
         if (!robotSN.trim()) newErrors.robotSN = true;
         if (businessId == null) newErrors.businessId = true;
+        if (canEditIp && robotIp.trim() && !isValidIPv4(robotIp.trim())) newErrors.robotIp = true;
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
             return;
@@ -98,6 +113,7 @@ export default function RobotInsertModal({
             limit_battery: battery.value,
             business_id: businessId,
             sw_version: swVersion.trim() || undefined,
+            ...(canEditIp && robotIp.trim() ? { robot_ip: robotIp.trim() } : {}),
         };
         try {
             const res = await apiFetch(`/DB/RobotInsert`, {
@@ -343,6 +359,28 @@ export default function RobotInsertModal({
                                 />
                             </div>
                         </div>
+                        {/* 로봇 IP — 폴링 상태를 이 로봇에 붙이는 키(RobotInfo.RobotIP).
+                            비우면 등록은 되지만 계속 offline 으로 보인다. 관리자 전용. */}
+                        {canEditIp && (
+                        <div className={styles.insertItemBox}>
+                            <div className={styles.insertItemLabel}>로봇 IP</div>
+                            <div className={styles.insertInputWrap}>
+                                <input
+                                    type="text"
+                                    maxLength={15}
+                                    value={robotIp}
+                                    onChange={(e) => { setRobotIp(e.target.value); setErrors((p) => ({ ...p, robotIp: false })); }}
+                                    placeholder='예: 10.21.31.103 (비우면 상태를 받지 못합니다)'
+                                    className={errors.robotIp ? styles.inputError : ""}
+                                    aria-label="로봇 IP"
+                                    aria-invalid={errors.robotIp || false}
+                                />
+                                {errors.robotIp && (
+                                    <div className={styles.errorMessage}>IPv4 형식이 올바르지 않습니다.</div>
+                                )}
+                            </div>
+                        </div>
+                        )}
                         {/* Row 4: 복귀 배터리양 */}
                         <div className={styles.insertItemBox}>
                             <div className={styles.insertItemLabel}>복귀 배터리양 <span className={styles.batteryCurrentValue}>{battery.value}%</span></div>

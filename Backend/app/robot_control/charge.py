@@ -12,6 +12,23 @@ from app.logs.service import log_event
 
 router = APIRouter()
 
+
+def _robot_udp_addr() -> tuple[str, int]:
+    """현재 로봇의 본체(role=robot) UDP 주소를 리졸버로 해석.
+
+    robot_endpoint 미등록 시 RobotInfo.RobotIP → env(ROBOT_IP) 순으로 폴백하므로
+    기존 전역 동작을 그대로 보존한다(무중단). 향후 로봇별 charge 호출로 확장 시
+    get_robot_id() 자리에 대상 robot_id 를 넘기면 된다.
+    """
+    from app.robot_io import endpoints as _ep
+
+    e = _ep.resolve(get_robot_id(), _ep.ROLE_ROBOT)
+    if e.ip and e.udp_port:
+        return e.ip, e.udp_port
+    from app.robot_io.config import ROBOT_IP, ROBOT_PORT
+    return ROBOT_IP, ROBOT_PORT
+
+
 # 충전 복귀 시 "이미 도킹 포인트에 있음"으로 판정하는 거리 임계값(m).
 # 현재 위치가 도킹 포인트(ch-1)로부터 이 거리 안쪽이면 접근 경유지(ch-2, ch-3...)를
 # 건너뛰고 도킹 포인트로 직행한다. 경유지는 벽/꺾인 길목 회피용이라, 실제로 도킹
@@ -22,7 +39,7 @@ AT_DOCK_THRESHOLD_M = 2.0
 @router.post("/robot/charge")
 def start_charge():
     """충전소로 이동 (자동 충전) 명령 전송."""
-    from app.robot_io import ROBOT_IP, ROBOT_PORT, build_packet
+    from app.robot_io import build_packet
 
     asdu = {
         "PatrolDevice": {
@@ -36,7 +53,7 @@ def start_charge():
     }
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        sock.sendto(build_packet(asdu), _robot_udp_addr())
         # 진단용 마커: 이 시점부터 charge_state 시계열을 추적해야 함
         print(
             "🔋 [CHARGE START] 충전소 이동 명령(UDP Charge=1) 송신 — "
@@ -54,7 +71,7 @@ def start_charge():
 @router.post("/robot/stop-charge")
 def stop_charge():
     """충전 해제 (Charge=0). 도킹 상태에서 충전을 해제한다."""
-    from app.robot_io import ROBOT_IP, ROBOT_PORT, build_packet
+    from app.robot_io import build_packet
 
     asdu = {
         "PatrolDevice": {
@@ -68,7 +85,7 @@ def stop_charge():
     }
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        sock.sendto(build_packet(asdu), _robot_udp_addr())
         log_event("robot", "robot_charging_stop", "충전 해제 명령 전송",
                   robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
         return {"status": "ok", "msg": "충전 해제 명령 전송 완료"}
@@ -80,7 +97,7 @@ def stop_charge():
 
 def _send_stop_charge_packet() -> bool:
     """stop-charge UDP 패킷만 전송 (상태 체크 없이). 내부 헬퍼."""
-    from app.robot_io import ROBOT_IP, ROBOT_PORT, build_packet
+    from app.robot_io import build_packet
 
     asdu = {
         "PatrolDevice": {
@@ -92,7 +109,7 @@ def _send_stop_charge_packet() -> bool:
     }
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        sock.sendto(build_packet(asdu), _robot_udp_addr())
         return True
     except Exception as e:
         print(f"[WARN] stop-charge 전송 실패: {e}")
@@ -233,7 +250,7 @@ def _send_start_charge_packet() -> bool:
     완충 대기(state 0)에서 도크 이탈 시퀀스(state 2→3→0)를 트리거하기 위해
     충전을 잠깐 재개(state→2)시키는 용도. 이후 stop-charge(Charge=0)로 이탈.
     """
-    from app.robot_io import ROBOT_IP, ROBOT_PORT, build_packet
+    from app.robot_io import build_packet
 
     asdu = {
         "PatrolDevice": {
@@ -245,7 +262,7 @@ def _send_start_charge_packet() -> bool:
     }
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        sock.sendto(build_packet(asdu), _robot_udp_addr())
         return True
     except Exception as e:
         print(f"[WARN] start-charge(Charge=1) 전송 실패: {e}")
@@ -260,7 +277,7 @@ def _send_charge_clear_packet() -> bool:
     언도킹(도킹 이탈) 확정 시점에 로봇 충전 상태머신을 강제 리셋하여,
     ROS2 `/CHARGE_STATUS` 전환 통보 누락에 의한 stale(충전 중) 고정을 방지한다.
     """
-    from app.robot_io import ROBOT_IP, ROBOT_PORT, build_packet
+    from app.robot_io import build_packet
 
     asdu = {
         "PatrolDevice": {
@@ -272,7 +289,7 @@ def _send_charge_clear_packet() -> bool:
     }
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        sock.sendto(build_packet(asdu), (ROBOT_IP, ROBOT_PORT))
+        sock.sendto(build_packet(asdu), _robot_udp_addr())
         return True
     except Exception as e:
         print(f"[WARN] charge-clear(Charge=2) 전송 실패: {e}")

@@ -14,6 +14,12 @@ type FilterSelectBoxProps = {
   items: FilterOption[];
   selectedLabel: string | null;   // null = 전체
   placeholder: string;            // e.g. "로봇명 선택"
+  /**
+   * 전체 선택 상태의 문구. 미지정 시 트리거는 placeholder 를 유지하고
+   * 드롭다운 첫 항목은 "전체"를 쓴다.
+   * 트리거를 리터럴 "전체"로 덮으면 나란히 놓인 필터끼리 구분이 사라진다(T-03).
+   */
+  allLabel?: string;
   showTotal?: boolean;            // 기본 true
   onSelect: (item: FilterOption | null) => void; // null = 전체 선택
   className?: string;
@@ -25,6 +31,7 @@ export default function FilterSelectBox({
   items,
   selectedLabel,
   placeholder,
+  allLabel,
   showTotal = true,
   onSelect,
   className,
@@ -32,30 +39,22 @@ export default function FilterSelectBox({
   minWidth = 130,
 }: FilterSelectBoxProps) {
   const s = selectStyles;
+  const resolvedAllLabel = allLabel ?? placeholder;   // 트리거 표시용
+  const allOptionLabel = allLabel ?? "전체";           // 드롭다운 첫 항목
 
   // 옵션 텍스트 중 가장 긴 것 기준으로 너비 자동 계산
   const resolvedWidth = useMemo(() => {
     if (width !== "auto") return width;
     const labels = items.map(i => i.label);
-    if (showTotal) labels.push("전체");
+    if (showTotal) labels.push(resolvedAllLabel);
     labels.push(placeholder);
     const maxLen = Math.max(...labels.map(l => l.length));
     // padding 42px (좌14+우14+gap8+arrow14) + 글자당 13px (한글 기준)
     const estimated = maxLen * 13 + 42;
     return Math.max(estimated, minWidth);
-  }, [width, items, showTotal, placeholder, minWidth]);
+  }, [width, items, showTotal, placeholder, resolvedAllLabel, minWidth]);
 
   const [isOpen, setIsOpen] = useState(false);
-  const [totalClicked, setTotalClicked] = useState(false);
-  const prevLabelRef = useRef<string | null>(selectedLabel);
-
-  // 외부에서 특정 항목으로 변경되면 totalClicked 리셋
-  useEffect(() => {
-    if (selectedLabel !== null && selectedLabel !== "전체") {
-      setTotalClicked(false);
-    }
-    prevLabelRef.current = selectedLabel;
-  }, [selectedLabel]);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const selectRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -74,7 +73,8 @@ export default function FilterSelectBox({
       position: "fixed",
       top: rect.bottom + 6,
       left: rect.left,
-      minWidth: rect.width,
+      // 드롭다운 폭을 트리거(select) 폭과 정확히 일치시킨다(옵션 길이에 따라 넓어지지 않음).
+      width: rect.width,
     });
   };
 
@@ -107,9 +107,14 @@ export default function FilterSelectBox({
     setIsOpen((v) => !v);
   };
 
-  // selectedLabel이 "전체" 문자열이거나, null인데 전체를 클릭한 적 있으면 "전체" 표시
-  const isAllSelected = selectedLabel === "전체" || (selectedLabel === null && totalClicked);
-  const displayText = isAllSelected ? "전체" : (selectedLabel ?? placeholder);
+  // 전체 항목이 있는 필터에서 selectedLabel=null 은 곧 전체다.
+  // showTotal=false 인 필수 선택(예: 작업유형)에서는 null 이 "미선택"이라 placeholder 를 남긴다.
+  const isAllSelected =
+    selectedLabel === "전체" ||
+    selectedLabel === resolvedAllLabel ||
+    (selectedLabel === null && showTotal);
+  // 전체여도 무엇에 대한 필터인지 남긴다 — 리터럴 "전체"로 덮지 않는다
+  const displayText = isAllSelected ? resolvedAllLabel : (selectedLabel ?? placeholder);
 
   return (
     <div ref={wrapperRef} className={`${s.seletWrapper} ${className ?? ""}`} style={{ width: resolvedWidth }}>
@@ -136,12 +141,11 @@ export default function FilterSelectBox({
               <div
                 className={`${s.floorLabel} ${isAllSelected ? s.active ?? "" : ""}`.trim()}
                 onClick={() => {
-                  setTotalClicked(true);
                   onSelect(null);
                   setIsOpen(false);
                 }}
               >
-                전체
+                {allOptionLabel}
               </div>
             )}
             {items.map((item) => (
@@ -149,7 +153,6 @@ export default function FilterSelectBox({
                 key={item.id}
                 className={`${s.floorLabel} ${selectedLabel === item.label ? s.active ?? "" : ""}`.trim()}
                 onClick={() => {
-                  setTotalClicked(false);
                   onSelect(item);
                   setIsOpen(false);
                 }}

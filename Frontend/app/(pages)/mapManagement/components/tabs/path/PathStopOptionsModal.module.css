@@ -15,6 +15,9 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
   padding: 22px 24px 20px;
   position: relative;
+  /* L-03: 발화+확인+대기+무응답+헬퍼가 쌓여 낮은 화면에서 클립되지 않도록 내부 스크롤 */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
 }
 
 .closeBtn {
@@ -29,14 +32,14 @@
 }
 
 .title {
-  font-size: 15px;
+  font-size: var(--font-size-lg);
   font-weight: 700;
-  color: #7fd0ff;
+  color: var(--color-accent-cyan);
   margin-bottom: 4px;
 }
 
 .subtitle {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: #cfd6e6;
   margin-bottom: 18px;
 }
@@ -49,7 +52,7 @@
 }
 
 .label {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   color: #cfd6e6;
 }
@@ -69,12 +72,52 @@
   padding: 0 12px;
   color: #fff;
   outline: none;
-  font-size: 13px;
+  font-size: var(--font-size-base);
+}
+
+/* 숫자 입력 상하 스피너 제거 (미세 조정이라 스피너가 방해된다) */
+.input::-webkit-outer-spin-button,
+.input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* CustomSelect 를 formRow grid 의 1fr 칸에 채운다 */
+.selectWrap {
+  min-width: 0;
 }
 
 .unit {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: #cfd6e6;
+}
+
+.select {
+  width: 100%;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #2d3147;
+  padding: 0 10px;
+  color: #fff;
+  outline: none;
+  font-size: var(--font-size-base);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.select:focus {
+  border-color: var(--color-accent-cyan);
+}
+
+.divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.09);
+  margin: 16px 0 14px;
 }
 
 .help {
@@ -108,7 +151,7 @@
   border-radius: 7px;
   border: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--font-size-base);
   color: #fff;
 }
 
@@ -127,3 +170,45 @@
   border: 1px solid #0E85B7;
   background: #196189;
 }
+
+/* ── 확인 인식어 안내 (확인 방식 = 음성) ──
+   멘트를 쓰는 화면과 인식어가 떨어져 있으면 서로 어긋나도 알 수가 없다. */
+.confirmWordHint {
+  margin-top: 10px;
+  padding: 9px 12px;
+  background: var(--surface-3);
+  border-left: 2px solid var(--color-info);
+  border-radius: 0 6px 6px 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.confirmWordHint b { color: var(--text-accent); font-weight: 600; }
+
+.confirmWordManage {
+  margin-left: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-accent);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.confirmWordManage:hover { opacity: 0.8; }
+
+.confirmWordWarn {
+  margin-top: 8px;
+  padding: 9px 12px;
+  background: rgba(255, 198, 53, 0.10);
+  border: 1px solid rgba(255, 198, 53, 0.42);
+  border-radius: 6px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.confirmWordWarn b { color: var(--color-warning); font-weight: 600; }

@@ -6,7 +6,8 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 90;
+  /* L-08: CRUD 모달(z-index:90) 내부의 닫기/초기화 확인 다이얼로그로도 쓰이므로 위에 오도록 상향 */
+  z-index: 110;
 }
 
 .box {

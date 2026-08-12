@@ -8,15 +8,18 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.database.database import get_db
 from app.database.models import RobotMapInfo, UserInfo
 from app.auth.dependencies import require_permission
+from app.cluster.deps import require_robot_available
 
 from dotenv import load_dotenv
 import paramiko
 import os
+import re
+import shlex
 import time
 
 # 로컬(비 docker) 실행 시 .env 로드 — docker 에서는 compose environment 로 주입됨.
@@ -66,6 +69,37 @@ mapping_state = {
     "floor_id": None,
     "prev_active": None,
 }
+
+
+# ── 맵 이름 검증 ──
+# 맵 이름은 SSH 로 실행하는 bash 명령(drmap -n, ls, rm -rf) 에 그대로 들어간다.
+# 셸 메타문자가 섞이면 로봇에서 임의 명령이 실행되므로 화이트리스트로 막고,
+# 명령 조립 시에는 추가로 shlex.quote 를 건다(이중 방어).
+# 길이 100 = DB robot_map_info.MapName Column(String(100)) 과 동일.
+MAP_NAME_MAX_LEN = 100
+MAP_NAME_PATTERN = re.compile(r"^[0-9A-Za-z가-힣][0-9A-Za-z가-힣 ._-]{0,99}$")
+
+
+def validate_map_name(name: str) -> str:
+    """맵 이름을 검증하고 앞뒤 공백을 제거한 값을 돌려준다."""
+    value = (name or "").strip()
+    if not value:
+        raise ValueError("맵 이름을 입력해주세요.")
+    if len(value) > MAP_NAME_MAX_LEN:
+        raise ValueError(f"맵 이름은 {MAP_NAME_MAX_LEN}자 이하여야 합니다.")
+    if not MAP_NAME_PATTERN.match(value):
+        raise ValueError(
+            "맵 이름은 한글·영문·숫자로 시작하고, 공백과 . _ - 만 사용할 수 있습니다."
+        )
+    return value
+
+
+def _map_dir_prefix(map_name: str) -> str:
+    """`{맵베이스}/{맵이름}-` 을 셸 안전하게 인용한 문자열(뒤에 `*/` 를 붙여 glob).
+
+    인용부호 밖에 glob 만 남으므로 `'/base/name-'*/` 형태로 매칭은 그대로 동작한다.
+    """
+    return shlex.quote(f"{NOS_MAP_BASE_DIR}/{map_name}-")
 
 
 # 로봇별 NOS는 로봇 IP와 같은 /24 대역의 이 호스트 옥텟에 있다(기본 .106).
@@ -204,7 +238,9 @@ def map_dir_is_complete(client: paramiko.SSHClient, map_dir: str) -> bool:
     if not map_dir:
         return False
     try:
-        r = ssh_exec(client, f"test -f {map_dir}/full_cloud.pcd && echo OK || echo NO").strip()
+        r = ssh_exec(
+            client, f"test -f {shlex.quote(map_dir + '/full_cloud.pcd')} && echo OK || echo NO"
+        ).strip()
         return r.endswith("OK")
     except Exception as e:
         print(f"[WARN] 맵 완전성 확인 실패({map_dir}): {e}")
@@ -227,7 +263,7 @@ def restore_active(client: paramiko.SSHClient, target: str) -> bool:
             print(f"[WARN] active 링크 제거 실패: {e}")
         return False
     try:
-        exists = ssh_exec(client, f"test -d {target} && echo OK || echo NO").strip()
+        exists = ssh_exec(client, f"test -d {shlex.quote(target)} && echo OK || echo NO").strip()
         if not exists.endswith("OK"):
             ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/active")
             print(f"[MAP] 이전 active 대상 없음({target}) — active 링크 제거(초기화)")
@@ -236,7 +272,11 @@ def restore_active(client: paramiko.SSHClient, target: str) -> bool:
             ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/active")
             print(f"[MAP] 복원 대상이 미완성 맵({target}, full_cloud.pcd 없음) — active 제거(초기화)")
             return False
-        ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && sudo ln -s {target} {NOS_MAP_BASE_DIR}/active")
+        ssh_exec(
+            client,
+            f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && "
+            f"sudo ln -s {shlex.quote(target)} {NOS_MAP_BASE_DIR}/active",
+        )
         ssh_exec(client, "sudo systemctl restart localization")
         print(f"[MAP] active 복원: → {target} (localization 재시작)")
         return True
@@ -316,7 +356,8 @@ def download_robot_map(client: paramiko.SSHClient, map_dir: str, map_name: str) 
     remote_zip = f"{NOS_MAP_BASE_DIR}/{dir_basename}.zip"
 
     # 1) zip 압축 (이미 있으면 zip -ry 가 갱신; 동기화용 산출물)
-    zip_cmd = f"cd {NOS_MAP_BASE_DIR} && sudo zip -ry {dir_basename}.zip {dir_basename}"
+    _q_dir = shlex.quote(dir_basename)
+    zip_cmd = f"cd {shlex.quote(NOS_MAP_BASE_DIR)} && sudo zip -ry {_q_dir}.zip {_q_dir}"
     ssh_exec(client, zip_cmd, exec_timeout=120)
     print(f"📦 zip 압축: {remote_zip}")
 
@@ -360,9 +401,38 @@ class MappingStartReq(BaseModel):
     FloorId: int
     MapName: str
 
+    @field_validator("MapName")
+    @classmethod
+    def _check_map_name(cls, v: str) -> str:
+        return validate_map_name(v)
+
+
+MAPPING_OWNER = "mapping"
+
+
+def _claim_mapping(hold: bool) -> None:
+    """매핑 세션 동안 로봇 소유권을 잡고 놓는다.
+
+    매핑은 IsWorking 이 아니라 mapping_state 로 관리되므로 주행 경로(_claim_nav)에
+    묻어가지 않는다. 두 관제가 동시에 매핑을 걸면 SLAM 상태가 엉키고 active 링크가
+    깨진다(nos-active-symlink-directory-bug).
+    """
+    try:
+        from app.robot_control import control_lock as cl
+        from app.user_cache import get_robot_id
+        rid = get_robot_id()
+        if rid is None:
+            return
+        if hold:
+            cl.acquire_system(rid, MAPPING_OWNER, label="매핑")
+        else:
+            cl.release_system(rid, MAPPING_OWNER)
+    except Exception as e:  # noqa: BLE001 - 소유권 처리 실패가 매핑을 막지 않는다
+        print(f"[MAPPING] 소유권 처리 실패(무시): {str(e)[:80]}")
+
 
 @mapping_ctrl.post("/start")
-def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require_permission("map-edit"))):
+def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require_robot_available("map-edit"))):
     if mapping_state["is_running"]:
         raise HTTPException(status_code=409, detail="이미 매핑이 진행 중입니다.")
 
@@ -371,6 +441,7 @@ def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require
     # 오인돼 '위치 재조정' 모달·경고가 샌다(_is_mapping 가드가 아직 꺼져 있어서).
     # → 진입 시 켜고, 시작에 실패하면 except 에서 되돌린다.
     mapping_state["is_running"] = True
+    _claim_mapping(True)
     mapping_state["map_name"] = req.MapName
     mapping_state["business_id"] = req.BusinessId
     mapping_state["floor_id"] = req.FloorId
@@ -378,7 +449,7 @@ def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require
     client = None
     try:
         # 1. drmap mapping 실행 (SSH 실패 시 재접속하여 재시도)
-        command = f"sudo drmap mapping -n {req.MapName}"
+        command = f"sudo drmap mapping -n {shlex.quote(req.MapName)}"
         start_success = False
         snapshotted = False
         for attempt in range(3):
@@ -415,6 +486,7 @@ def mapping_start(req: MappingStartReq, current_user: UserInfo = Depends(require
     except Exception as e:
         # 시작 실패 → 조기 활성화한 가드/상태를 롤백(매핑 미진행으로 복귀).
         mapping_state["is_running"] = False
+        _claim_mapping(False)
         mapping_state["map_name"] = None
         mapping_state["business_id"] = None
         mapping_state["floor_id"] = None
@@ -437,9 +509,19 @@ class MappingEndReq(BaseModel):
     FloorId: int
     MapName: str
 
+    @field_validator("MapName")
+    @classmethod
+    def _check_map_name(cls, v: str) -> str:
+        return validate_map_name(v)
+
 
 @mapping_ctrl.post("/end")
 def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_permission("map-edit"))):
+    # 시작하지 않은 매핑을 종료하면 맵 디렉토리를 60초간 헛기다린 뒤 실패한다.
+    # 진입 시점에 막고 원인을 알려준다.
+    if not mapping_state["is_running"]:
+        raise HTTPException(status_code=409, detail="진행 중인 매핑이 없습니다. 먼저 매핑을 시작해주세요.")
+
     client = None
 
     try:
@@ -468,7 +550,7 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
 
         # 2. 맵 디렉토리 생성 대기 (최대 60초, SSH 끊기면 재접속)
         map_dir = ""
-        find_cmd = f"sudo ls -dt {NOS_MAP_BASE_DIR}/{req.MapName}-*/ 2>/dev/null | head -1"
+        find_cmd = f"sudo ls -dt {_map_dir_prefix(req.MapName)}*/ 2>/dev/null | head -1"
 
         for wait in range(20):
             time.sleep(3)
@@ -502,7 +584,7 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
             ssh_exec(
                 client,
                 f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && "
-                f"sudo ln -sfn {map_dir} {NOS_MAP_BASE_DIR}/active",
+                f"sudo ln -sfn {shlex.quote(map_dir)} {NOS_MAP_BASE_DIR}/active",
             )
             is_link = ssh_exec(
                 client, f"test -L {NOS_MAP_BASE_DIR}/active && echo OK || echo NO"
@@ -544,6 +626,7 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
 
         # 8. 상태 초기화 (active 는 위 4.5 에서 완성된 새 맵으로 명시적으로 재링크함)
         mapping_state["is_running"] = False
+        _claim_mapping(False)
         mapping_state["map_name"] = None
         mapping_state["business_id"] = None
         mapping_state["floor_id"] = None
@@ -557,8 +640,10 @@ def mapping_end(req: MappingEndReq, db: Session = Depends(get_db), current_user:
         }
 
     except Exception as e:
+        # is_running 을 지우지 않는다 — 지우면 재시도(/end)가 409 로 막히고,
+        # 취소(/cancel)도 스킵돼 로봇 active 가 미완결 맵에 고착된다.
+        # 매핑은 여전히 "진행 중"으로 두고 사용자가 재시도 또는 취소를 선택하게 한다.
         print(f"[ERR] 매핑 종료 실패: {e}")
-        mapping_state["is_running"] = False
         raise HTTPException(status_code=500, detail=f"매핑 종료 실패: {str(e)}")
     finally:
         if client:
@@ -576,9 +661,19 @@ def mapping_cancel(current_user: UserInfo = Depends(require_permission("map-edit
     종료(/end) 없이 중단된 경우 active 가 미완결 맵에 고착되므로,
     시작 시 스냅샷한 이전 정상 맵으로 active 를 복원(없으면 초기화)하고 localization 을 재시작한다.
     """
+    # 매핑을 시작하지 않았으면 로봇을 건드리지 않는다.
+    # (가드가 없으면 prev_active=None 으로 restore_active("") 가 돌아 정상 active 링크까지
+    #  제거해 버려, 매핑을 시작조차 안 했는데 로봇 측위가 깨진다.)
+    if not mapping_state["is_running"]:
+        print("[MAP] 매핑 취소 요청 — 진행 중인 매핑 없음(무시)")
+        return {"status": "ok", "message": "진행 중인 매핑이 없습니다.", "skipped": True}
+
     map_name = mapping_state.get("map_name")
     prev_active = mapping_state.get("prev_active")
     client = None
+
+    cleanup_ok = True
+    cleanup_error = ""
 
     try:
         client = get_ssh_client()
@@ -589,23 +684,39 @@ def mapping_cancel(current_user: UserInfo = Depends(require_permission("map-edit
 
         if map_name:
             time.sleep(2)
-            ssh_exec(client, f"sudo rm -rf {NOS_MAP_BASE_DIR}/{map_name}-*/")
+            ssh_exec(client, f"sudo rm -rf {_map_dir_prefix(map_name)}*/")
             print(f"🗑️ 맵 디렉토리 삭제: {map_name}-*/")
 
         # active 복원/초기화: 미완결 맵(또는 방금 삭제된 디렉토리)을 가리키지 않도록
         # 이전 정상 맵으로 되돌린다. prev_active 가 없으면 active 링크 자체를 제거한다.
         restore_active(client, prev_active or "")
     except Exception as e:
+        # 로봇에 닿지 못해도 서버 상태는 반드시 푼다(안 그러면 새 매핑이 409 로 영구 차단).
+        # 대신 정리 실패를 호출자에게 알려 운영자가 로봇 상태를 확인하도록 한다.
+        cleanup_ok = False
+        cleanup_error = str(e)
         print(f"[ERR] 매핑 취소 중 오류: {e}")
     finally:
         if client:
             try: client.close()
             except: pass
         mapping_state["is_running"] = False
+        _claim_mapping(False)
         mapping_state["map_name"] = None
         mapping_state["business_id"] = None
         mapping_state["floor_id"] = None
         mapping_state["prev_active"] = None
+
+    if not cleanup_ok:
+        print("🚫 매핑 취소(로봇 정리 실패)")
+        return {
+            "status": "warning",
+            "message": (
+                "매핑을 취소했지만 로봇 정리에 실패했습니다. "
+                "로봇 연결 상태와 현재 맵을 확인해주세요."
+            ),
+            "detail": cleanup_error,
+        }
 
     print("🚫 매핑 취소됨")
     return {"status": "ok", "message": "매핑이 취소되었습니다."}

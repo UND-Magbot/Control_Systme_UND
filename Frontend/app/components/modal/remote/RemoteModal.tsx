@@ -17,6 +17,7 @@ import { useRecording } from './hooks/useRecording';
 import StatusBar from './components/StatusBar';
 import ViewportArea from './components/ViewportArea';
 import { useRemoteFloorMap } from './hooks/useRemoteFloorMap';
+import { useRemoteFloorPois } from './hooks/useRemoteFloorPois';
 import MovementPad from './components/MovementPad';
 import ControlPanel from './components/ControlPanel';
 import AlertDialog from './components/AlertDialog';
@@ -136,6 +137,8 @@ export default function RemoteModal({
   });
   // 로봇 현재 층의 실제 맵 (없으면 null → ViewportArea가 고정 맵으로 폴백)
   const floorMapConfig = useRemoteFloorMap(selectedRobot?.currentFloorId ?? null);
+  // 같은 층의 장소 — 로봇이 지금 어디쯤인지 판단하려면 주변 지형지물이 필요하다
+  const floorPois = useRemoteFloorPois(selectedRobot?.currentFloorId ?? null);
   // --- 제어권 (기본은 관찰, 조작하려면 명시적으로 시작) ---
   const control = useControlLock({
     robotId: selectedRobot?.id ?? null,
@@ -247,6 +250,7 @@ export default function RemoteModal({
             robotConnected={robotConnected}
             isDisconnected={isDisconnected}
             mapConfig={floorMapConfig}
+            pois={floorPois}
           />
 
           <div className={styles.sidebar}>
@@ -286,6 +290,7 @@ export default function RemoteModal({
               onClearPoints={work.clearPoints}
               onFinishCreating={work.finishCreating}
               onCancelCreating={work.cancelCreating}
+              controlHeaders={control.controlHeaders}
             />
           </div>
         </div>

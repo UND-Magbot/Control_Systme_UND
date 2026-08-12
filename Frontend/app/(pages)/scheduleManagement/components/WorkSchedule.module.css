@@ -1,6 +1,6 @@
 .ScheduleContainer {
     background: #282d43;
-    border-radius: 15px;
+    border-radius: 15px 0 15px 15px;   /* 우상단은 탭이 붙는 자리 (다른 메뉴와 동일 규약) */
     width: 100%;
     flex: 1;
     min-height: 0;
@@ -1410,6 +1410,11 @@
   color: #F0A030;
 }
 
+.dayListModeBadge[data-mode="standby"] {
+  background: rgba(192, 140, 232, 0.15);
+  color: #C08CE8;
+}
+
 .dayListTime {
   font-size: 12px;
   color: var(--text-secondary);
@@ -1593,3 +1598,49 @@
   background: var(--surface-4);
   color: var(--text-primary);
 }
+
+/* ─── 상태 범례 ───
+   컨트롤이 아니라 '읽는 것'이므로 테두리·배경을 주지 않는다. 캘린더 그리드 바로
+   위에 우측 정렬로 붙여, 좌측의 날짜 내비게이션과 시선이 부딪히지 않게 한다.
+   색은 실제 이벤트 색(evYellow/evBlue/evOrange/evRed/evGreen)과 같은 값이어야
+   범례가 거짓말을 하지 않는다. */
+.statusLegend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  height: 18px;
+  margin: -8px 0 9px;
+  flex-shrink: 0;
+}
+
+.legendCaption {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  margin-right: 2px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.legendDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legendWaiting   { background: var(--color-warning); }
+.legendWorking   { background: var(--color-info); }
+.legendCancelled { background: #FF9800; }            /* evOrange 와 동일 값 */
+.legendError     { background: var(--color-error); }
+.legendCompleted { background: #66bb6a; }            /* evGreen 과 동일 값 */
+

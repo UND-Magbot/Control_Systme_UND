@@ -5,11 +5,13 @@ import TabMenu from '@/app/components/button/TabMenu';
 import type { Tab, TabKey } from '@/app/types';
 import ModeSpeedControl from './ModeSpeedControl';
 import WorkProgressPanel from './WorkProgressPanel';
+import ArmPanel from './ArmPanel'; // RM 6축 팔 (Phase 1, additive)
 import styles from './ControlPanel.module.css';
 
 const TABS: Tab[] = [
   { id: 'control', label: '제어' },
   { id: 'work', label: '작업 진행' },
+  { id: 'arm', label: '팔' }, // additive
 ];
 
 type PathOption = {
@@ -53,6 +55,8 @@ type ControlPanelProps = {
   onClearPoints: () => void;
   onFinishCreating: (wayName?: string, taskType?: string) => void;
   onCancelCreating: () => void;
+  // 팔 제어권 헤더 getter (additive · 선택). 없으면 관측만.
+  controlHeaders?: () => Record<string, string>;
 };
 
 export default function ControlPanel({
@@ -84,6 +88,7 @@ export default function ControlPanel({
   onClearPoints,
   onFinishCreating,
   onCancelCreating,
+  controlHeaders,
 }: ControlPanelProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('control');
   const controlDisabled = isWorking || isDisconnected;
@@ -130,6 +135,10 @@ export default function ControlPanel({
             onFinishCreating={onFinishCreating}
             onCancelCreating={onCancelCreating}
           />
+        )}
+
+        {activeTab === 'arm' && (
+          <ArmPanel controlHeaders={controlHeaders} disabled={controlDisabled} />
         )}
       </div>
     </div>

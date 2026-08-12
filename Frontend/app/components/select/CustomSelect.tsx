@@ -223,7 +223,7 @@ export default function CustomSelect<T extends SelectOption = SelectOption>({
         </div>
       ) : (
         <div className={selectClasses} onClick={handleToggle}>
-          <span>{value?.label ?? placeholder}</span>
+          <span title={value?.label ?? undefined}>{value?.label ?? placeholder}</span>
           <img
             src={isOpen ? "/icon/arrow_up.png" : "/icon/arrow_down.png"}
             alt=""

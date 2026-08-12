@@ -179,6 +179,14 @@ def position_thread():
 _was_online: dict[int, bool] = {}  # robot_id → 이전 온라인 상태
 _status_source_stale: dict[int, bool] = {}  # robot_id → receiver STATUS source timestamp stale 상태
 
+
+def _robot_is_online() -> bool:
+    """상태 스레드가 하트비트로 판정한 현재 로봇 온라인 여부."""
+    rid = runtime.get_robot_id_by_ip(ROBOT_IP)
+    if rid is None:
+        return False
+    return bool(_was_online.get(rid, False))
+
 # 시간 기반 임계값 — 마지막 성공 시각으로부터 경과한 시간으로 판정
 UNSTABLE_ALARM_AFTER_SEC = 15.0   # 15초 이상 끊김 → 불안정 알람 (1회)
 OFFLINE_AFTER_SEC = 35.0          # 35초 이상 끊김 → 오프라인 확정 (runtime ERROR_MAX_AGE와 일치)
@@ -420,6 +428,7 @@ def nav_thread():
     consecutive_timeouts = 0  # NAV_STATUS UDP 타임아웃 연속 횟수 (연결 끊김 감지)
     comm_lost_since = 0.0     # 통신 두절(타임아웃/송신실패) 시작 시각 (0=정상 수신 중)
     recv_lost_alerted = False  # 통신 두절 안전 정지 알림을 이번 두절 구간에서 이미 발생시켰는가
+    receiver_alert_fired = False  # receiver 응답 불능 알림을 이번 두절 구간에서 이미 발생시켰는가
 
     print(f"[LISTEN] 네비 Listener 시작 (via receiver.py {RECEIVER_IP}:{RECEIVER_PORT})")
 
@@ -471,6 +480,13 @@ def nav_thread():
             consecutive_timeouts = 0
             comm_lost_since = 0.0
             recv_lost_alerted = False
+
+            # NAV_STATUS 정상 수신 복귀 — 앞서 올린 응답 불능 error를 해제 이벤트로 닫는다.
+            if receiver_alert_fired:
+                receiver_alert_fired = False
+                log_event("robot", "receiver_recovered", "NOS receiver 응답 복구",
+                          detail=f"NOS({RECEIVER_IP}:{RECEIVER_PORT}) NAV_STATUS 정상 수신",
+                          robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
 
             status = nav.get("status")
             nav_age = nav.get("age")  # receiver가 자기 monotonic 시계로 계산한 경과시간(초)
@@ -643,8 +659,14 @@ def nav_thread():
             consecutive_timeouts += 1
             if is_nav_active():
                 _navdbg(f"[NAV DEBUG] NAV_STATUS 응답 타임아웃 ({consecutive_timeouts}회)")
-            # NOS receiver 응답 불능 감지 — 임계값 도달 시 1회만 로그 기록 (alerts 발생 안 함)
-            if consecutive_timeouts == RECEIVER_UNRESPONSIVE_THRESHOLD:
+            # NOS receiver 응답 불능 감지 — 이번 두절 구간에서 1회만 기록.
+            # 로봇이 온라인(하트비트 정상)인데 NAV_STATUS만 계속 타임아웃되는 경우에만 발화한다.
+            # 로봇 자체가 꺼져 있으면 robot_offline이 이미 그 사실을 알리므로, 여기서 중복으로
+            # error를 올리면 로봇이 꺼진 채 백엔드를 재시작할 때마다 오탐이 남는다.
+            if (consecutive_timeouts >= RECEIVER_UNRESPONSIVE_THRESHOLD
+                    and not receiver_alert_fired
+                    and _robot_is_online()):
+                receiver_alert_fired = True
                 log_event("error", "receiver_unresponsive",
                           f"NOS receiver 응답 불능 의심 (NAV_STATUS {consecutive_timeouts}회 연속 타임아웃)",
                           detail=f"NOS({RECEIVER_IP}:{RECEIVER_PORT}) receiver.py 점검 필요",
@@ -660,6 +682,10 @@ def nav_thread():
             log_event("error", "nav_error", "네비게이션 오류 발생",
                       detail=err_detail, error_json=str(e),
                       robot_id=get_robot_id(), robot_name=get_robot_name(), business_id=get_robot_business_id())
+            # 실패 지점을 남긴다 — 로그로만 흘리면 화면이 "어디서 멈췄는지"를 못 그린다.
+            if err_wp_idx > 0:
+                from app.navigation.send_move import set_nav_error
+                set_nav_error(err_wp_idx, "주행 중 통신 오류로 중단되었습니다")
         finally:
             if sock:
                 try: sock.close()
@@ -700,9 +726,13 @@ def nav_thread():
                 runtime.update_nav(rid, True, last_status, time.time())
             try:
                 navigation_send_next()
-                # 네비게이션이 완료되었으면 스케줄러 콜백 호출
+                # 네비게이션이 완료되었으면 스케줄러 콜백 호출.
+                # **응대 세션도 이 콜백으로 다음 단계를 정한다** — 작업 없이 받은
+                # 음성 호출은 활성 스케줄이 없어서, 스케줄만 보면 도착이 아무에게도
+                # 안 잡힌다(로봇이 목적지에 선 채로 안내 멘트도 없이 멈춘다).
                 if not is_nav_active():
-                    if get_active_schedule_id() is not None:
+                    from app.scheduler import standby_session as sess_mod
+                    if get_active_schedule_id() is not None or sess_mod.is_active():
                         on_navigation_complete()
                     # 작업 완료 후 충전소 자동 복귀 (스케줄러 / 원격 startpath)
                     import app.navigation.send_move as nav_mod

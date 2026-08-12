@@ -152,6 +152,16 @@ def check_and_init_pose(robot_id: int) -> None:
         if _is_mapping():
             return
 
+        # 층 전환 중/직후: floor_transition 이 의도적으로 localization 을 재시작해 위치가 원점으로
+        # 리셋되고, init_pose(EV로비 seed)도 이미 처리한다. 이 원점 리셋을 재부팅으로 오인하면
+        # '위치 재조정' 모달·nav 보류가 뜬다 → 매핑과 동일하게 baseline 만 갱신(위)하고 트리거 건너뜀.
+        try:
+            from app.navigation.floor_transition import is_init_suppressed
+            if is_init_suppressed(robot_id):
+                return
+        except Exception:
+            pass
+
         rising_power = powered and not prev_powered          # Sleep!=0 → 0 (전원 on 또는 네트워크 복구)
         reset_to_origin = near_origin and not prev_near_origin  # 위치 원점 점프(SLAM 리셋)
 

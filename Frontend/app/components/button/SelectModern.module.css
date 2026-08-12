@@ -1,8 +1,10 @@
 .seletWrapper {
     position: relative;
+    box-sizing: border-box;
 }
 
 .selete {
+    box-sizing: border-box;
     width: 100%;
     height: 34px;
     padding: 0 14px;
@@ -10,6 +12,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    overflow: hidden;
     background: var(--surface-5);
     border: 1px solid var(--border-subtle);
     border-radius: 6px;
@@ -19,12 +22,24 @@
     cursor: pointer;
 }
 
+/* 선택 텍스트: 길어도 박스를 밀지 않고 말줄임(…) 처리 —
+   flex 항목 기본 min-width:auto 때문에 화살표가 밀리던 문제 보정. */
+.selete > span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .selete img {
     width: 14px;
     height: auto;
+    flex-shrink: 0;
 }
 
 .seletbox {
+    box-sizing: border-box; /* width(=트리거 폭)에 padding 포함 → 트리거와 정확히 동일 폭 */
     padding: 8px 6px;
     background: var(--surface-4);
     border: 1px solid var(--border-subtle);
@@ -42,6 +57,8 @@
     color: var(--text-secondary);
     transition: background 0.15s ease;
     white-space: nowrap;
+    overflow: hidden;        /* 폭 고정 시 긴 옵션은 말줄임(트리거와 동일한 처리) */
+    text-overflow: ellipsis;
 }
 
 .seletbox .floorLabel:hover,

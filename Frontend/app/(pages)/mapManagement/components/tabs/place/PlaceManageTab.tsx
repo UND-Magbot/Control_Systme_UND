@@ -8,12 +8,14 @@ import type { RobotRowData, Floor } from '@/app/types';
 import type { PlaceRow } from "@/app/types";
 import PlaceCrudModal, { type PlaceRowData } from "@/app/(pages)/mapManagement/components/tabs/place/PlaceCrudModal";
 import PlaceDeleteConfirmModal from "@/app/(pages)/mapManagement/components/tabs/place/PlaceDeleteConfirmModal";
+import PathAlertsModal from "@/app/(pages)/mapManagement/components/tabs/path/PathAlertsModal";
 import PlaceMapView from "@/app/(pages)/mapManagement/components/tabs/place/PlaceMapView";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
+import { degFromYaw } from "@/app/lib/yaw";
 import { apiFetch } from "@/app/lib/api";
 import type { FloorMapRow } from "@/app/(pages)/mapManagement/hooks/useFloorMapConfig";
 
-const PLACE_PAGE_SIZE = 6;
+const PLACE_PAGE_SIZE = 9;
 
 interface PlaceListProps {
   robots: RobotRowData[];
@@ -37,6 +39,10 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
   const [placeCreateOpen, setPlaceCreateOpen] = useState(false);
   const [placeEditOpen, setPlaceEditOpen] = useState(false);
   const [placeDeleteConfirmOpen, setPlaceDeleteConfirmOpen] = useState(false);
+  const [placeLoading, setPlaceLoading] = useState(false); // PE-05
+  const [placeAlertMessage, setPlaceAlertMessage] = useState<string | null>(null); // PE-01/03
+  const [placeSearch, setPlaceSearch] = useState(""); // PE-10 장소명 검색
+  const [pathList, setPathList] = useState<{ wayName: string; wayPoints: string }[]>([]); // PE-07 참조 경로 경고용
 
   // ── 버튼 정책 ──
   const isPlaceCreateEnabled = placeCheckedCount === 0;
@@ -63,8 +69,10 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
 
   // ── fetch ──
   const fetchPlaces = async () => {
+    setPlaceLoading(true);
     try {
       const res = await apiFetch(`/DB/places`);
+      if (!res.ok) throw new Error("장소 목록 조회 실패"); // PC-01
       const data = await res.json();
       const mapped: PlaceRow[] = data.map((p: any) => ({
         id: p.id,
@@ -73,7 +81,7 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
         placeName: p.LacationName ?? "",
         x: p.LocationX ?? 0,
         y: p.LocationY ?? 0,
-        direction: typeof p.Yaw === "number" ? (p.Yaw * 180) / Math.PI : 0,
+        direction: typeof p.Yaw === "number" ? degFromYaw(p.Yaw) : 0,
         updatedAt: p.UpdatedAt
           ? new Date(p.UpdatedAt).toLocaleString("ko-KR")
           : "",
@@ -83,25 +91,59 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
       setPlaceRows(mapped);
     } catch (e) {
       console.error("장소 목록 로드 실패", e);
-      setPlaceRows([]);
+      // PE-03: 실패를 사용자에게 알린다. 기존 목록은 지우지 않아(저장 직후 재조회 실패 시 방금 만든 장소 보존).
+      setPlaceAlertMessage("장소 목록을 불러오지 못했습니다. 네트워크 확인 후 다시 시도해 주세요.");
+    } finally {
+      setPlaceLoading(false);
     }
   };
 
   const fetchMaps = async () => {
     try {
       const res = await apiFetch(`/map/maps`);
+      if (!res.ok) throw new Error("맵 목록 조회 실패");
       const data = await res.json();
       setMapRows(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("맵 목록 로드 실패", e);
       setMapRows([]);
+      setPlaceAlertMessage("맵 정보를 불러오지 못했습니다. 지도 표시가 제한될 수 있습니다.");
+    }
+  };
+
+  // PE-07: 삭제 시 참조 경로 경고를 위해 경로 목록을 함께 로드(WayPoints에 장소명 포함).
+  const fetchPathsForRef = async () => {
+    try {
+      const res = await apiFetch(`/DB/getpath`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setPathList(
+        (Array.isArray(data) ? data : []).map((p: any) => ({
+          wayName: p.WayName ?? "",
+          wayPoints: p.WayPoints ?? "",
+        }))
+      );
+    } catch (e) {
+      console.error("참조 경로 로드 실패", e);
     }
   };
 
   useEffect(() => {
     fetchPlaces();
     fetchMaps();
+    fetchPathsForRef();
   }, []);
+
+  // 삭제 대상 장소를 사용하는 경로(WayPoints에 장소명 포함) — 삭제 경고용.
+  const referencingPaths = useMemo(() => {
+    if (checkedPlaceIds.length === 0 || pathList.length === 0) return [];
+    const ids = new Set(checkedPlaceIds);
+    const names = new Set(placeRows.filter((p) => ids.has(p.id)).map((p) => p.placeName));
+    if (names.size === 0) return [];
+    return pathList.filter((p) =>
+      p.wayPoints.split(" - ").map((s) => s.trim()).some((n) => names.has(n))
+    );
+  }, [checkedPlaceIds, placeRows, pathList]);
 
   // ── 변환 ──
   const toPlaceRowData = (row: PlaceRow): PlaceRowData => ({
@@ -114,16 +156,23 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
     direction: String(row.direction ?? 0),
     desc: "",
     updatedAt: row.updatedAt,
+    mapId: (row as any).mapId ?? null, // PE-09: 편집 시 기존 맵 사전선택용
   });
 
   // ── 필터링 ──
   const filteredPlaceRows = useMemo(() => {
+    // PE-10: 장소명 검색 — 대소문자·띄어쓰기 무시 + 단어(토큰) 단위 AND(경로와 동일).
+    const searchTokens = placeSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return placeRows.filter((r) => {
       const robotOk = !selectedPlaceRobot || r.robotNo === selectedPlaceRobot;
       const floorOk = !selectedPlaceFloor || r.floor === selectedPlaceFloor;
-      return robotOk && floorOk;
-    });
-  }, [placeRows, selectedPlaceRobot, selectedPlaceFloor]);
+      const target = (r.placeName ?? "").toLowerCase().replace(/\s+/g, "");
+      const searchOk = searchTokens.length === 0 || searchTokens.every((t) => target.includes(t));
+      return robotOk && floorOk && searchOk;
+    })
+    // PE-12: id 내림차순(최신 우선) 정렬 — 서버순서/prepend 혼재로 순서가 뒤바뀌던 문제 해소.
+    .sort((a, b) => b.id - a.id);
+  }, [placeRows, selectedPlaceRobot, selectedPlaceFloor, placeSearch]);
 
   const selectedPlaceRow = useMemo(() => {
     if (selectedPlaceId == null) return null;
@@ -133,7 +182,7 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
   // ── 페이지네이션 ──
   const { currentPage: placePage, setPage: setPlacePage, pagedItems: currentPlaceItems, totalItems: placeTotalItems } = usePaginatedList(filteredPlaceRows, {
     pageSize: PLACE_PAGE_SIZE,
-    resetDeps: [selectedPlaceRobot, selectedPlaceFloor],
+    resetDeps: [selectedPlaceRobot, selectedPlaceFloor, placeSearch],
   });
 
   const handlePlacePageChange = (page: number) => {
@@ -221,28 +270,45 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
     });
 
     setCheckedPlaceIds([nextRow.id]);
-    setPlaceCreateOpen(false);
-    setPlaceEditOpen(false);
+    // PE-04: 모달은 성공 표시 후 스스로 닫으므로 여기서 닫지 않는다(닫으면 성공 모달이 사장됨).
+    // PE-02: 서버가 부여한 mapId/floorId를 받아야 저장 직후 지도가 뜨므로 재조회.
+    fetchPlaces();
   };
 
   const confirmDeletePlace = async () => {
     if (checkedPlaceIds.length === 0) return;
-
+    if (placeLoading) return; // PE-01: 재진입(더블클릭) 방지
+    setPlaceLoading(true);
     try {
-      await Promise.all(
-        checkedPlaceIds.map((id) =>
-          apiFetch(`/DB/places/${id}`, { method: "DELETE" })
+      const ids = [...checkedPlaceIds];
+      // PE-01: allSettled로 부분 실패를 집계하고, 성공/실패 무관하게 재조회로 화면·DB를 동기화.
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          apiFetch(`/DB/places/${id}`, { method: "DELETE" }).then((r) => {
+            if (!r.ok) throw new Error(`삭제 실패 id=${id}`);
+            return id;
+          })
         )
       );
+      const failed = results.filter((r) => r.status === "rejected").length;
+
+      setCheckedPlaceIds([]);
+      setPlaceDeleteConfirmOpen(false);
+      setPlaceDeleteMode(false);
+
+      await fetchPlaces();
+      setPlacePage(1); // 삭제 후 페이지 경계 초과 방지
+
+      if (failed > 0) {
+        setPlaceAlertMessage(`${ids.length}개 중 ${failed}개 삭제에 실패했습니다. 목록을 다시 확인해 주세요.`);
+      }
     } catch (err) {
       console.error("장소 삭제 실패:", err);
+      setPlaceAlertMessage("장소 삭제에 실패했습니다.");
+      await fetchPlaces();
+    } finally {
+      setPlaceLoading(false);
     }
-
-    const del = new Set(checkedPlaceIds);
-    setPlaceRows((prev) => prev.filter((p) => !del.has(p.id)));
-    setCheckedPlaceIds([]);
-    setPlaceDeleteConfirmOpen(false);
-    setPlaceDeleteMode(false);
   };
 
   // ── 렌더링 ──
@@ -264,6 +330,7 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
               onSelect={(item) => {
                 setSelectedPlaceRobot(item?.label ?? null);
                 setSelectedPlaceId(null);
+                setCheckedPlaceIds([]); // PE-06: 안 보이는 항목 오삭제 방지
               }}
             />
 
@@ -276,11 +343,36 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
               onSelect={(item) => {
                 setSelectedPlaceFloor(item?.label ?? null);
                 setSelectedPlaceId(null);
+                setCheckedPlaceIds([]); // PE-06
               }}
             />
+
+            {/* PE-10/11: 장소명 검색 + 새로고침 */}
+            <input
+              className={styles.pathSearchInput}
+              value={placeSearch}
+              onChange={(e) => { setPlaceSearch(e.target.value); setSelectedPlaceId(null); setCheckedPlaceIds([]); }}
+              placeholder="장소명 검색"
+              aria-label="장소명 검색"
+            />
+            <button
+              type="button"
+              className={styles.pathRefreshBtn}
+              onClick={() => { fetchPlaces(); fetchMaps(); }}
+              title="새로고침"
+              aria-label="장소 목록 새로고침"
+            >
+              <img src="/icon/data_update.png" alt="" />
+            </button>
           </div>
         </div>
 
+        <div className={styles.pathListBoxWrap}>
+        {placeLoading && (
+          <div className={styles.pathLoadingOverlay}>
+            <div className={styles.pathSpinner} />
+          </div>
+        )}
         <div className={styles.placeListBox}>
           <table className={`${styles.status} ${placeDeleteMode ? styles.placeTableDelete : styles.placeTable}`}>
             <thead>
@@ -317,7 +409,17 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
                     key={row.id}
                     className={placeDeleteMode ? (deleteChecked ? styles.selectedRow : undefined) : (selected ? styles.selectedRow : undefined)}
                     style={{ cursor: "pointer" }}
+                    tabIndex={0}
+                    aria-selected={placeDeleteMode ? deleteChecked : selected}
                     onClick={() => placeDeleteMode ? toggleDeleteCheck(row.id, !deleteChecked) : selectPlace(row.id)}
+                    onKeyDown={(e) => {
+                      // PA-01: Enter/Space로 행 선택·체크(키보드 조작)
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        if (placeDeleteMode) toggleDeleteCheck(row.id, !deleteChecked);
+                        else selectPlace(row.id);
+                      }
+                    }}
                   >
                     {placeDeleteMode && (
                       <td>
@@ -341,9 +443,10 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
             </tbody>
           </table>
         </div>
+        </div>
 
         {!hideActions && (
-        <div className={`${styles.bottomPosition} ${styles.placeBottomPosition}`}>
+        <div className={styles.bottomPosition}>
           {placeDeleteMode ? (
             <>
               <div
@@ -362,7 +465,7 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
           ) : (
             <>
               <div
-                className={styles.placePrimaryBtn}
+                className={`${styles.placePrimaryBtn} ${!isPlaceCreateEnabled ? styles.btnDisabled : ""}`}
                 aria-disabled={!isPlaceCreateEnabled}
                 onClick={openPlaceCreate}
               >
@@ -375,7 +478,7 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
                   장소 삭제
                 </div>
                 <div
-                  className={styles.robotWorkCommonBtn}
+                  className={`${styles.robotWorkCommonBtn} ${selectedPlaceId == null ? styles.btnDisabled : ""}`}
                   onClick={openPlaceEdit}
                   aria-disabled={selectedPlaceId == null}
                 >
@@ -397,6 +500,8 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
         mode="create"
         robots={robots}
         floors={floorLabels}
+        floorRows={floors}
+        mapRows={mapRows}
         initial={null}
         existingPlaces={placeRows}
         onClose={() => setPlaceCreateOpen(false)}
@@ -408,6 +513,8 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
         mode="edit"
         robots={robots}
         floors={floorLabels}
+        floorRows={floors}
+        mapRows={mapRows}
         initial={singleCheckedPlaceRow ? toPlaceRowData(singleCheckedPlaceRow) : null}
         existingPlaces={placeRows}
         onClose={() => setPlaceEditOpen(false)}
@@ -417,12 +524,23 @@ export default function PlaceManageTab({ robots, floors, hideActions }: PlaceLis
       <PlaceDeleteConfirmModal
         isOpen={placeDeleteConfirmOpen}
         message={
-          checkedPlaceIds.length <= 1
+          (checkedPlaceIds.length <= 1
             ? "선택한 장소를 정말 삭제하시겠습니까?"
-            : `${checkedPlaceIds.length}개의 장소를 정말 삭제하시겠습니까?`
+            : `${checkedPlaceIds.length}개의 장소를 정말 삭제하시겠습니까?`)
+          + (referencingPaths.length > 0
+            ? `\n\n⚠ 이 장소를 사용하는 경로 ${referencingPaths.length}개가 있습니다.\n삭제 시 해당 경로가 깨질 수 있습니다.`
+            : "")
         }
         onCancel={() => setPlaceDeleteConfirmOpen(false)}
         onConfirm={confirmDeletePlace}
+      />
+
+      {/* PE-01/03: 로드·삭제 실패 등 사용자 알림 */}
+      <PathAlertsModal
+        isOpen={!!placeAlertMessage}
+        message={placeAlertMessage ?? ""}
+        onCancel={() => setPlaceAlertMessage(null)}
+        onConfirm={() => setPlaceAlertMessage(null)}
       />
 
       {/* RIGHT: 장소 위치 */}

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { apiFetch } from '@/app/lib/api';
+import { resolveTaskTypeLabel } from '@/app/lib/taskType';
 
 const NAV_POLL_INTERVAL = 2000;
 
@@ -69,7 +70,7 @@ export function useWorkAutomation(isOpen: boolean, options: UseWorkAutomationOpt
           wayName: p.WayName,
           wayPoints: p.WayPoints || '',
           waitSeconds,
-          taskType: p.TaskType || '',
+          taskType: resolveTaskTypeLabel(p.TaskType),
           floorId: p.FloorId ?? null,
         };
       });

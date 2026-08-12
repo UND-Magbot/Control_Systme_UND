@@ -1872,6 +1872,9 @@ button.workPopoverItem:hover {
   width: 100%;
   display: flex;
   justify-content: flex-end;
+  /* 취소/저장이 맞붙어 오조작이 나기 쉬웠다. 다른 모달(ScheduleCrud/PathCrud)과 같은 값으로 맞춘다. */
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .btnTotal {
@@ -3515,6 +3518,7 @@ button.workPopoverItem:hover {
 .detailTaskHeader {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;          /* 작업명 + 상태 + 응대 상태가 한 줄에 다 안 들어갈 수 있다 */
   gap: 10px;
   margin-bottom: 10px;
 }
@@ -3580,7 +3584,6 @@ button.workPopoverItem:hover {
   border-radius: 10px;
   color: #00B0EE;
   background: rgba(0, 176, 238, 0.15);
-  margin-left: auto;
 }
 
 /* 다중 시각 슬롯 */
@@ -3874,4 +3877,233 @@ button.workPopoverItem:hover {
 
 .detailActionBar button {
   flex: 1;
+}
+/* ── 상시 대기 응대 진행 단계 (로봇 상세 › 현재 작업) ──
+   작업 카드 안에 들어가므로 세로를 최소로 쓴다 — 6단계는 점으로 축약한다. */
+.standbyLiveRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.standbyChip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.standbyChipBusy { background: var(--color-info-badge); color: var(--text-primary); }
+.standbyChipWait { background: var(--color-success-bg); color: var(--text-primary); }
+
+.standbyDots {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.standbyDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.standbyDotDone { background: var(--color-success); }
+
+.standbyDotNow {
+  background: var(--color-info);
+  box-shadow: 0 0 0 3px rgba(0, 176, 238, 0.18);
+}
+
+.standbyStep {
+  color: var(--text-primary);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.standbySub {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
+/* 발화 원문만 길이를 못 정한다 — 남는 폭을 주고 넘치면 줄인다 */
+.standbyHeard {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.standbyHeard b { color: var(--text-primary); font-weight: 600; }
+
+.standbyWarn { color: var(--color-warning); }
+
+.standbyWarnTag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-warning-badge);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* 목적지 개수가 가변이라 카드 높이를 깨지 않도록 팝오버로 띄운다 */
+.standbyCallAnchor {
+  position: relative;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.standbyCallBtn {
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-button);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.standbyCallBtn:hover:not(:disabled) { background: var(--color-info-selected); color: var(--text-primary); }
+.standbyCallBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.standbyCallPopover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 260px;
+  max-width: 380px;
+  padding: 11px 13px;
+  background: var(--surface-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  white-space: normal;
+}
+
+.standbyCallLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-bottom: 9px;
+}
+
+.standbyCallBtns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.standbyDestBtn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-button);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.standbyDestBtn:hover:not(:disabled) { background: var(--color-info-selected); color: var(--text-primary); }
+.standbyDestBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.standbyDestUnlinked { border-style: dashed; }
+
+.standbyCallEmpty {
+  font-size: var(--font-size-sm);
+  color: var(--color-warning);
+}
+
+.standbyCallMsg {
+  margin-top: 9px;
+  font-size: var(--font-size-sm);
+  color: var(--text-accent);
+}
+
+/* 작업 상태 배지 — 기본은 진행중(파랑). '오류'는 눈에 띄어야 재개로 이어진다 */
+.detailTaskStatus[data-status="오류"] {
+  color: var(--color-error-soft);
+  background: var(--color-error-badge);
+}
+
+.detailTaskStatus[data-status="대기"] {
+  color: var(--color-warning);
+  background: var(--color-warning-badge);
+}
+
+.detailTaskActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.detailTaskResumeBtn {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 176, 238, 0.5);
+  background: var(--color-info-selected);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.detailTaskResumeBtn:hover { background: var(--color-info-bg); }
+
+/* 중단 알림에서 바로 재개 — 통지 옆에 조치를 둔다.
+   당일 발생 건에만 붙는다(어제 알림에 두면 눌러도 오늘 아무 일도 안 일어난다). */
+.aletsResumeBtn {
+  height: 18px;
+  padding: 0 8px;
+  background: var(--color-info-selected);
+  border: 1px solid rgba(0, 176, 238, 0.5);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+}
+
+.aletsResumeBtn:hover:not(:disabled) { background: var(--color-info-bg); }
+.aletsResumeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── 경유지 진행 (로봇 상세 › 현재 작업) ──
+   컴포넌트(WaypointProgress)는 오래전부터 있었는데 채울 API 가 없어 렌더되지 못했다.
+   GET /nav/progress 로 데이터가 생겨 비로소 붙는다. */
+.detailWaypointBox {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.detailWaypointHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.detailWaypointLoop {
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--text-muted);
 }

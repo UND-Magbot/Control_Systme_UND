@@ -14,6 +14,8 @@ import {
 import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 import ChargingIcon from "@/app/components/common/ChargingIcon";
 import { apiFetch } from "@/app/lib/api";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
+import { getNetworkBadge, isPowerOnConfirmed, isRobotLive, isStatusStale } from "@/app/lib/robotLiveness";
 import { useModalAlert } from "@/app/hooks/useModalAlert";
 import AlertModal from "@/app/components/modal/AlertModal";
 import dynamic from "next/dynamic";
@@ -29,7 +31,7 @@ const RemoteModal = dynamic(() => import("@/app/components/modal/remote/RemoteMo
 const CHARGE_FULL_PCT = 90;
 
 type RobotLocation = {
-  floor: string;
+  floor: string | null;
   placeName: string | null;
 };
 
@@ -46,6 +48,21 @@ type RobotCardProps = {
   hasActiveSchedule?: boolean;
 };
 
+// 네트워크 배지 tone → CSS 모듈 클래스
+const DOT_CLASS = {
+  online: styles.dotOnline,
+  error: styles.dotError,
+  offline: styles.dotOffline,
+  unknown: styles.dotUnknown,
+} as const;
+
+const BADGE_CLASS = {
+  online: styles.badgeOnline,
+  error: styles.badgeError,
+  offline: styles.badgeOffline,
+  unknown: styles.badgeUnknown,
+} as const;
+
 const ROBOT_ICONS = [
   "/icon/robot_icon(1).png",
   "/icon/robot_icon(2).png",
@@ -56,19 +73,29 @@ const ROBOT_ICONS = [
 export default function RobotCard({ robot, isSelected, onClick, robots, video, cameras, robotLocation, floors = [], canControlRobot = true, hasActiveSchedule = false }: RobotCardProps) {
   const { modal, modalAlert, closeModal } = useModalAlert();
   const { user } = useAuth();
+  const { serverStatus } = useRobotStatusContext();
+  // 관제 서버 응답이 없으면 카드의 로봇 값은 마지막 확인 시점의 잔존값이다.
+  const statusStale = isStatusStale(serverStatus);
   // 원격 제어 노출 기준 — 운영관리 "원격" 버튼과 동일하게 role 1(관리자)·2(매니저) 허용
   const canRemote = user?.role === 1 || user?.role === 2;
+  // 층 변경(파괴적: NOS active 맵 교체 + localization 재시작) — Manager(2)+ 에게만 노출
+  const canForceFloor = user?.role === 1 || user?.role === 2;
   const currentFloorName = floors.find((f) => f.id === robot.currentFloorId)?.label ?? "층";
   const typeIdx = ROBOT_TYPE_INDEX[robot.type] ?? 0;
   const isUnregistered = robot.power === "-";
   const isPowerOff = robot.power === "Off";
-  const isInactive = isUnregistered || isPowerOff;
-  const dotClass = styles[`dot${robot.network}`] ?? styles.dotOffline;
-  const badgeClass = styles[`badge${robot.network}`] ?? styles.badgeOffline;
-  const isOnline = robot.network === "Online";
+  // 서버 두절 구간엔 전원 상태도 단정할 수 없다 → 조작 불가(비활성) 취급.
+  const isInactive = isUnregistered || isPowerOff || statusStale;
+  const netBadge = getNetworkBadge(robot.network, serverStatus, { unregistered: isUnregistered });
+  const dotClass = DOT_CLASS[netBadge.tone];
+  const badgeClass = BADGE_CLASS[netBadge.tone];
+  const isOnline = isRobotLive(robot.network, serverStatus);
+  const canRemoteNow = isPowerOnConfirmed(robot.power, serverStatus);
 
   // 작업 상태 파생
   const taskStatus = (() => {
+    // 관제 서버 응답 없음 — 작업 상태도 잔존값이라 단정하지 않는다.
+    if (statusStale) return { label: "확인 불가", className: styles.taskIdle, tooltip: netBadge.tooltip };
     if (robot.power === "-") return { label: "미확인", className: styles.taskIdle, tooltip: "" };
     if (robot.network === "Offline") return { label: "-", className: styles.taskIdle, tooltip: "" };
     // 전환 구간의 Error 는 '통신 끊김'을 뜻한다(전원 off 는 백엔드에서 Online 유지 → 여기 안 옴).
@@ -179,28 +206,30 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
             <span className={styles.robotName}>
               {robot.no}
             </span>
-            <button
-              className={`${styles.floorChangeBtn} ${isInactive ? styles.floorChangeBtnDisabled : ""}`}
-              onClick={(e) => { e.stopPropagation(); if (!isInactive) setFloorChangeOpen(true); }}
-              title="현재 층 변경"
-              disabled={isInactive}
-            >
-              현재 층 변경
-            </button>
+            {canForceFloor && (
+              <button
+                className={`${styles.floorChangeBtn} ${isInactive || robot.isNavigating ? styles.floorChangeBtnDisabled : ""}`}
+                onClick={(e) => { e.stopPropagation(); if (!isInactive && !robot.isNavigating) setFloorChangeOpen(true); }}
+                title={robot.isNavigating ? "자율 주행/작업 중에는 층 변경 불가 — 먼저 정지" : isInactive ? "로봇 전원이 꺼져있습니다" : "층 변경 (관리자)"}
+                disabled={isInactive || robot.isNavigating}
+              >
+                층 변경
+              </button>
+            )}
             {/* 원격 제어 — 운영관리를 거치지 않고 카드에서 바로 진입 (role 1·2 + 전원 On) */}
             {canRemote && (
               <button
-                className={`${styles.floorChangeBtn} ${robot.power !== "On" ? styles.floorChangeBtnDisabled : ""}`}
-                onClick={(e) => { e.stopPropagation(); if (robot.power === "On") setRemoteOpen(true); }}
-                title={robot.power === "On" ? "원격 제어" : "로봇 전원이 꺼져있습니다"}
-                disabled={robot.power !== "On"}
+                className={`${styles.floorChangeBtn} ${!canRemoteNow ? styles.floorChangeBtnDisabled : ""}`}
+                onClick={(e) => { e.stopPropagation(); if (canRemoteNow) setRemoteOpen(true); }}
+                title={canRemoteNow ? "원격 제어" : statusStale ? netBadge.tooltip : "로봇 전원이 꺼져있습니다"}
+                disabled={!canRemoteNow}
               >
                 원격 제어
               </button>
             )}
-            <span className={`${styles.networkBadge} ${badgeClass}`}>
+            <span className={`${styles.networkBadge} ${badgeClass}`} title={netBadge.tooltip || undefined}>
               <span className={`${styles.dot} ${dotClass}`} />
-              {isUnregistered ? "Offline" : robot.network === "Error" ? "끊김" : robot.network}
+              {netBadge.label}
             </span>
           </div>
 
@@ -258,12 +287,15 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
                 </span>
               )}
             </span>
-            <span className={styles.floorLabel}>
-              {isUnregistered ? "-" : (
+            <span
+              className={styles.floorLabel}
+              title={!isUnregistered && robotLocation.floor == null ? "층 정보를 확인할 수 없습니다." : undefined}
+            >
+              {isUnregistered || robotLocation.floor == null ? "-" : (
                 <>{robotLocation.floor}{robotLocation.placeName ? ` · ${robotLocation.placeName}` : ""}</>
               )}
             </span>
-            {(!isPowerOff && !isUnregistered) && (
+            {(statusStale || (!isPowerOff && !isUnregistered)) && (
               <span className={`${styles.taskBadge} ${taskStatus.className}`} title={taskStatus.tooltip || undefined}>
                 {taskStatus.label === "충전 중" && isOnline && <ChargingIcon size={12} style={{ marginLeft: 0, marginRight: 3 }} />}
                 {taskStatus.label}
@@ -292,6 +324,7 @@ export default function RobotCard({ robot, isSelected, onClick, robots, video, c
           isOpen={placeModalOpen}
           onClose={() => setPlaceModalOpen(false)}
           selectedRobotIds={[robot.id]}
+          robotFloorId={robot.currentFloorId}
         />
       )}
 

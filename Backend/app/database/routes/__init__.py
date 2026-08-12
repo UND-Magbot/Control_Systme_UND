@@ -15,6 +15,11 @@ from app.database.routes import robot     # noqa: F401
 from app.database.routes import place     # noqa: F401
 from app.database.routes import path_way  # noqa: F401
 from app.database.routes import schedule  # noqa: F401
+from app.database.routes import schedule_run  # noqa: F401
+from app.database.routes import standby   # noqa: F401
 from app.database.routes import module    # noqa: F401
+from app.database.routes import voice     # noqa: F401
+from app.database.routes import agent_bridge  # noqa: F401  로봇→관제 호출 채널(토큰 인증)
+from app.cluster import routes as cluster_routes  # noqa: F401  인스턴스·소유권 조회
 
 __all__ = ["database", "get_db"]

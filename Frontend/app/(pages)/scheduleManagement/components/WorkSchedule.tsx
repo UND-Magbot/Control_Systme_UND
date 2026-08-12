@@ -14,7 +14,7 @@ import { expandRepeatSchedules, extractOriginalId, type DBSchedule } from "../ut
 import { formatDate, parseYmdDate, hourLabel, timeLabel } from "../utils/datetime";
 import { clampMinutes, parseMinuteValue, normalizeMinuteRange, type ParsedMinutes } from "../utils/minuteParse";
 import { buildMonthCells, type MonthDayCell } from "../utils/monthCalendar";
-import { WORK_TYPES } from "../constants";
+import { WORK_TYPES, resolveTaskTypeLabel, resolveScheduleMode, getScheduleModeLabel, isActiveWindowMode } from "../constants";
 import CustomSelect, { type SelectOption } from "@/app/components/select/CustomSelect";
 
 
@@ -102,7 +102,12 @@ export default function Page({ robots }: RobotScheduleProps) {
             const res = await apiFetch(`/DB/schedule`);
             if (!res.ok) throw new Error("서버 응답 오류");
             const data = await res.json();
-            setSchedules(Array.isArray(data) ? data : []);
+            // 적재 시 TaskType을 표준 라벨로 정규화 → 레거시(task1 등)와 현행 유형을 필터/표시에서 통일.
+            setSchedules(
+                Array.isArray(data)
+                    ? data.map((s) => ({ ...s, TaskType: resolveTaskTypeLabel(s.TaskType) }))
+                    : []
+            );
         } catch (e) {
             console.error("스케줄 조회 실패", e);
             setError("스케줄 데이터를 불러오지 못했습니다.");
@@ -568,8 +573,9 @@ export default function Page({ robots }: RobotScheduleProps) {
     const [isDayListOpen, setIsDayListOpen] = useState(false);
     const [dayListDate, setDayListDate] = useState<string>("");
     const [dayListEvents, setDayListEvents] = useState<LayoutEvent[]>([]);
-    const ALL_TYPE_OPTION: SelectOption = { id: "all", label: "전체 작업유형" };
-    const ALL_ROBOT_OPTION: SelectOption = { id: "all", label: "전체 로봇" };
+    // id 는 필터별로 달라야 한다 — 둘 다 "all" 이면 옵션 목록을 합칠 때 키가 충돌한다
+    const ALL_TYPE_OPTION: SelectOption = { id: "all-type", label: "전체 작업유형" };
+    const ALL_ROBOT_OPTION: SelectOption = { id: "all-robot", label: "전체 로봇" };
     const [dayListFilterType, setDayListFilterType] = useState<SelectOption>(ALL_TYPE_OPTION);
     const [dayListFilterRobot, setDayListFilterRobot] = useState<SelectOption>(ALL_ROBOT_OPTION);
 
@@ -918,6 +924,18 @@ useEffect(() => {
                         </div>
                     </div>
                 </div>
+
+                {/* 상태 범례 — 이 색을 쓰는 캘린더 바로 위에 둔다.
+                    페이지 헤더에 있으면 탭(내비게이션)과 같은 무게로 읽혀 서로 경쟁한다. */}
+                <div className={styles.statusLegend}>
+                    <span className={styles.legendCaption}>상태</span>
+                    <span className={styles.legendItem}><i className={`${styles.legendDot} ${styles.legendWaiting}`} />대기</span>
+                    <span className={styles.legendItem}><i className={`${styles.legendDot} ${styles.legendWorking}`} />작업중</span>
+                    <span className={styles.legendItem}><i className={`${styles.legendDot} ${styles.legendCancelled}`} />작업중(취소)</span>
+                    <span className={styles.legendItem}><i className={`${styles.legendDot} ${styles.legendError}`} />작업중(오류)</span>
+                    <span className={styles.legendItem}><i className={`${styles.legendDot} ${styles.legendCompleted}`} />작업완료</span>
+                </div>
+
                 {/* 작업등록 모달 */}
 
                 {isInsertModalOpen && (
@@ -1085,14 +1103,14 @@ useEffect(() => {
                                                         key={ev.id}
                                                         className={styles.weekSlotEvent}
                                                         onClick={() => handleClickWeekEvent(ev)}
-                                                        title={ev.scheduleMode === 'interval'
+                                                        title={isActiveWindowMode(ev.scheduleMode)
                                                           ? `${ev.title} (${timeLabel(ev.startMin)} ~ ${timeLabel(ev.endMin)})`
                                                           : `${ev.title} (${timeLabel(ev.startMin)})`}
                                                     >
                                                         <span className={`${styles.weekSlotDot} ${colorClass(ev.color)}`} />
                                                         <span className={styles.weekSlotTitle}>{ev.title}</span>
                                                         <span className={styles.weekSlotTime}>
-                                                            {ev.scheduleMode === 'interval'
+                                                            {isActiveWindowMode(ev.scheduleMode)
                                                               ? `${timeLabel(ev.startMin)}~${timeLabel(ev.endMin)}`
                                                               : timeLabel(ev.startMin)}
                                                         </span>
@@ -1126,8 +1144,8 @@ useEffect(() => {
                     const robotFilterOptions = robotNameOptions.map(r => r.no);
 
                     const filtered = dayListEvents.filter((ev) => {
-                        if (dayListFilterType.id !== "all" && ev.robotType !== dayListFilterType.id) return false;
-                        if (dayListFilterRobot.id !== "all" && ev.robotNo !== dayListFilterRobot.id) return false;
+                        if (dayListFilterType.id !== ALL_TYPE_OPTION.id && ev.robotType !== dayListFilterType.id) return false;
+                        if (dayListFilterRobot.id !== ALL_ROBOT_OPTION.id && ev.robotNo !== dayListFilterRobot.id) return false;
                         return true;
                     });
 
@@ -1167,9 +1185,9 @@ useEffect(() => {
                                     {filtered.map((ev) => {
                                         const origId = extractOriginalId(ev.id);
                                         const full = schedules.find((s) => String(s.id) === origId);
-                                        const mode = full?.ScheduleMode || (full?.Repeat === "Y" ? "weekly" : "once");
+                                        const mode = resolveScheduleMode(full ?? {});
                                         const isRepeat = mode === "weekly" || mode === "interval";
-                                        const timeText = mode === 'interval'
+                                        const timeText = isActiveWindowMode(mode)
                                             ? `${timeLabel(ev.startMin)} ~ ${timeLabel(ev.endMin)}`
                                             : timeLabel(ev.startMin);
                                         return (
@@ -1183,11 +1201,11 @@ useEffect(() => {
                                             <div className={styles.dayListInfo}>
                                                 <div className={styles.dayListRowTop}>
                                                     <span className={styles.dayListTitle}>{ev.title}</span>
-                                                    <span className={styles.dayListStatus} data-color={ev.color}>{ev.status || full?.TaskStatus}</span>
+                                                    <span className={styles.dayListStatus} data-color={ev.color}>{ev.status}</span>
                                                 </div>
                                                 <div className={styles.dayListRowBottom}>
                                                     <span className={styles.dayListModeBadge} data-mode={mode}>
-                                                        {mode === 'once' ? '단일' : mode === 'weekly' ? '요일반복' : '주기반복'}
+                                                        {getScheduleModeLabel(mode)}
                                                     </span>
                                                     <span className={styles.dayListTime}>{timeText}</span>
                                                     <span className={styles.dayListDivider}>·</span>
@@ -1279,6 +1297,9 @@ useEffect(() => {
                                             startMin: startDate.getHours() * 60 + startDate.getMinutes(),
                                             endMin: endDate.getHours() * 60 + endDate.getMinutes(),
                                             color: ev.color as WeekEvent["color"],
+                                            // 회차 상태를 그대로 넘긴다. 원본(full.TaskStatus)으로 폴백하면
+                                            // 미래 회차가 시리즈 상태로 되돌아가 캘린더와 목록이 어긋난다.
+                                            status: ev.status,
                                             col: 0,
                                             totalCols: 1,
                                         };

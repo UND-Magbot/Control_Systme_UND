@@ -73,6 +73,7 @@
 
     --color-accent:        #92d4f4;
     --color-accent-light:  #b1e4ff;
+    --color-accent-cyan:   #7fd0ff; /* 경로/맵 편집 계열 섹션 타이틀·서클·포커스 링에 쓰이던 리터럴 토큰화 */
     --color-accent-pink:   #ea7f81;
     --color-accent-slider: #79C9F2;
 

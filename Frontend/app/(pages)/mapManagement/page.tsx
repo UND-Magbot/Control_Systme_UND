@@ -6,8 +6,9 @@ import PermissionGuard from "@/app/components/common/PermissionGuard";
 import styles from "./mapManagement.module.css";
 import PlaceList from "./components/tabs/place/PlaceManageTab";
 import PathList from "./components/tabs/path/PathManageTab";
+import FacilityTab from "./components/tabs/facility/FacilityTab";
 import MapPlaceCreateModal from "./components/tabs/map/MapPlaceCreateModal";
-import type { PendingPlace } from "./components/tabs/map/MapPlaceCreateModal";
+import type { PendingPlace, PlaceEditData } from "./components/tabs/map/MapPlaceCreateModal";
 import { getCategoryStyle, ROBOT_MARKER_FILL, ROBOT_MARKER_STROKE } from "@/app/components/map/poiStyle";
 import type { RobotRowData, Floor } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
@@ -58,6 +59,19 @@ import { polygonCentroid } from "./dangerZone/geometry";
 import { validateDangerZone } from "./dangerZone/validation";
 import type { ZonePoint, SvgMetaLike, DangerZone } from "./dangerZone/types";
 
+/** FastAPI 오류 응답에서 사용자에게 보여줄 문구를 뽑는다(422 는 detail 이 배열). */
+function detailMessage(err: unknown): string {
+  const detail = (err as { detail?: unknown } | null)?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((d) => (typeof d?.msg === "string" ? d.msg.replace(/^Value error, /, "") : ""))
+      .filter(Boolean);
+    if (msgs.length > 0) return msgs.join("\n");
+  }
+  return "";
+}
+
 export default function MapManagementPage() {
   const setPageReady = usePageReady();
   const { modal, modalAlert, modalConfirm, closeModal, handleConfirm } = useModalAlert();
@@ -67,9 +81,11 @@ export default function MapManagementPage() {
   };
   // ── URL query에서 초기 탭 결정 ──
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get("tab") as MapTab) || "map";
+  const rawTab = searchParams.get("tab") || "map";
+  // 시설 장치 탭으로 일반화되기 전의 딥링크(?tab=elevator)를 그대로 받는다.
+  const initialTab = (rawTab === "elevator" ? "facility" : rawTab) as MapTab;
   const [activeTab, setActiveTab] = useState<MapTab>(
-    ["map", "place", "path"].includes(initialTab) ? initialTab : "map"
+    ["map", "place", "path", "facility"].includes(initialTab) ? initialTab : "map"
   );
 
   // ── 탭 권한 필터 (DB menu_info 기반) ──
@@ -80,12 +96,18 @@ export default function MapManagementPage() {
       { id: "place", menuKey: "place-list", fallback: "장소 목록" },
       { id: "path",  menuKey: "path-list",  fallback: "경로 목록" },
     ];
-    return all
+    const tabs = all
       .filter((t) => hasPermission(t.menuKey) && isMenuVisible(t.menuKey))
       .map((t) => ({
         id: t.id,
         label: menuIndex.get(t.menuKey)?.label ?? t.fallback,
       }));
+    // 시설 장치(엘리베이터·자동문) 탭 — 맵 편집(map-edit) 권한 재사용, 고정 라벨.
+    // 설비 유형이 늘어도 탭은 늘리지 않는다(유형 칩으로 분기).
+    if (hasPermission("map-edit") && isMenuVisible("map-edit")) {
+      tabs.push({ id: "facility", label: "시설 장치" });
+    }
+    return tabs;
   }, [hasPermission, isMenuVisible, menuIndex]);
 
   // 권한 필터링으로 현재 탭이 사라지면 첫 탭으로 복귀
@@ -218,6 +240,30 @@ export default function MapManagementPage() {
     loadMapPlaces(selectedMap as number);
   }, [selectedMap, loadMapPlaces]);
 
+  // ── 사업장 전체 장소명 (중복 사전 검사용) ──
+  // 서버는 경로가 장소를 '이름'으로 찾는 탓에 사업장 내 장소명 중복을 409 로 막는다.
+  // 저장 시점에 알면 늦으므로 등록 모달에서 미리 걸러낸다.
+  const [takenPlaces, setTakenPlaces] = useState<{ id: number; name: string }[]>([]);
+  const loadTakenPlaces = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/DB/places`);
+      const data = await res.json();
+      setTakenPlaces(
+        Array.isArray(data)
+          ? data
+              .filter((p: { Category?: string }) => (p.Category ?? "waypoint") !== "danger")
+              .map((p: { id: number; LacationName?: string }) => ({ id: p.id, name: String(p.LacationName ?? "") }))
+          : []
+      );
+    } catch (e) {
+      console.error("장소명 목록 로드 실패:", e);
+      setTakenPlaces([]);
+    }
+  }, []);
+  useEffect(() => {
+    loadTakenPlaces();
+  }, [loadTakenPlaces]);
+
   // ── 미저장 장소 (맵 위 임시) ──
   const [pendingPlaces, setPendingPlaces] = useState<PendingPlace[]>([]);
 
@@ -290,32 +336,64 @@ export default function MapManagementPage() {
     });
   };
 
+  // 맵 편집 탭의 미저장 변경사항 유무 (저장 버튼 / 탭 이탈 경고 공용)
+  const hasUnsavedMapEdits = () =>
+    pendingPlaces.length > 0 || deletedDbIds.size > 0
+    || pendingRoutes.length > 0 || deletedRouteDbIds.size > 0
+    || movedPlaces.size > 0;
+
+  // 미저장 편집 상태 폐기. 탭 재진입 시 필터·맵이 초기화되므로 남겨두면
+  // 엉뚱한 맵 위에 '저장된 것처럼 보이는' 마커가 얹힌다.
+  const discardMapEdits = () => {
+    setPendingPlaces([]);
+    setPendingRoutes([]);
+    setDeletedDbIds(new Set());
+    setDeletedRouteDbIds(new Set());
+    setMovedPlaces(new Map());
+    setModifiedDbIds(new Set());
+    setUndoStack([]);
+  };
+
   // ── 상단 저장 버튼: 장소+구간 삭제/신규 일괄 DB 저장 ──
   const handleSaveAll = async () => {
     clearAllModes();
-    const hasChanges = pendingPlaces.length > 0 || deletedDbIds.size > 0
-      || pendingRoutes.length > 0 || deletedRouteDbIds.size > 0
-      || movedPlaces.size > 0;
+    const hasChanges = hasUnsavedMapEdits();
     if (!hasChanges) {
       modalAlert("저장할 변경사항이 없습니다.");
       return;
     }
 
+    // 항목별로 성공/실패를 따로 처리한다. 하나가 실패해도 나머지는 저장하고,
+    // 실패한 것만 화면에 남겨 다시 시도할 수 있게 한다.
+    const failed: string[] = [];
+    const keptDeletedDbIds = new Set<number>();
+    const keptDeletedRouteDbIds = new Set<number>();
+    const keptMovedPlaces = new Map<string, { x: number; y: number }>();
+    const keptPendingPlaces: PendingPlace[] = [];
+    const keptPendingRoutes: typeof pendingRoutes = [];
+
     try {
-      // 삭제된 장소명 수집 (경로 정리용)
-      const deletedPlaceNames = new Set(
-        mapPlaces.filter((p) => deletedDbIds.has(p.id)).map((p) => p.LacationName)
-      );
+      // 삭제 성공한 장소명만 수집 (경로 정리용)
+      const deletedPlaceNames = new Set<string>();
 
       // 장소 삭제
       for (const id of deletedDbIds) {
         const res = await apiFetch(`/DB/places/${id}`, { method: "DELETE" });
-        if (!res.ok) throw new Error(`장소 ID ${id} 삭제 실패`);
+        if (res.ok) {
+          const name = mapPlaces.find((p) => p.id === id)?.LacationName;
+          if (name) deletedPlaceNames.add(name);
+        } else {
+          keptDeletedDbIds.add(id);
+          failed.push(`장소 삭제 (ID ${id})`);
+        }
       }
       // 구간 삭제
       for (const id of deletedRouteDbIds) {
         const res = await apiFetch(`/DB/routes/${id}`, { method: "DELETE" });
-        if (!res.ok) throw new Error(`구간 ID ${id} 삭제 실패`);
+        if (!res.ok) {
+          keptDeletedRouteDbIds.add(id);
+          failed.push(`구간 삭제 (ID ${id})`);
+        }
       }
       // 삭제된 장소를 참조하는 경로(WayInfo) 삭제
       if (deletedPlaceNames.size > 0) {
@@ -338,7 +416,7 @@ export default function MapManagementPage() {
       for (const [name, coords] of movedPlaces) {
         const dbPlace = mapPlaces.find((p) => p.LacationName === name);
         if (dbPlace && !deletedDbIds.has(dbPlace.id)) {
-          const res = await apiFetch(`/DB/places/${dbPlace.id}`, {
+          const res: Response = await apiFetch(`/DB/places/${dbPlace.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -353,10 +431,14 @@ export default function MapManagementPage() {
               Imformation: dbPlace.Imformation ?? null,
             }),
           });
-          if (!res.ok) throw new Error(`장소 "${name}" 위치 업데이트 실패`);
+          if (!res.ok) {
+            keptMovedPlaces.set(name, coords);
+            failed.push(`장소 "${name}" 위치 업데이트`);
+          }
         }
       }
       // 장소 신규 저장 (이동된 pending 장소는 좌표 반영)
+      const failedPlaceNames = new Set<string>();
       for (const p of pendingPlaces) {
         const { tempId, ...payload } = p;
         const moved = movedPlaces.get(p.LacationName);
@@ -369,11 +451,24 @@ export default function MapManagementPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error(`장소 "${p.LacationName}" 저장 실패`);
+        if (res.ok) {
+          // 저장에 반영됐으므로 이동 기록도 함께 소진한다.
+          keptMovedPlaces.delete(p.LacationName);
+        } else {
+          keptPendingPlaces.push(p);
+          failedPlaceNames.add(p.LacationName);
+          if (moved) keptMovedPlaces.set(p.LacationName, moved);
+          failed.push(`장소 "${p.LacationName}" 저장`);
+        }
       }
-      // 경로 신규 저장
+      // 경로 신규 저장 — 장소 저장이 실패한 구간은 서버에서 어차피 풀리지 않으므로 보류한다.
       const mapId = selectedMap as number;
       for (const r of pendingRoutes) {
+        if (failedPlaceNames.has(r.startName) || failedPlaceNames.has(r.endName)) {
+          keptPendingRoutes.push(r);
+          failed.push(`구간 "${r.startName}→${r.endName}" 저장 (장소 저장 실패로 보류)`);
+          continue;
+        }
         const res = await apiFetch(`/DB/routes`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -384,17 +479,30 @@ export default function MapManagementPage() {
             Direction: r.direction,
           }),
         });
-        if (!res.ok) throw new Error(`구간 "${r.startName}→${r.endName}" 저장 실패`);
+        if (!res.ok) {
+          keptPendingRoutes.push(r);
+          failed.push(`구간 "${r.startName}→${r.endName}" 저장`);
+        }
       }
 
-      modalAlert("저장되었습니다.");
-      setPendingPlaces([]);
-      setDeletedDbIds(new Set());
-      setPendingRoutes([]);
-      setDeletedRouteDbIds(new Set());
-      setMovedPlaces(new Map());
+      // 성공한 것만 비우고 실패한 것은 화면에 남긴다.
+      setPendingPlaces(keptPendingPlaces);
+      setDeletedDbIds(keptDeletedDbIds);
+      setPendingRoutes(keptPendingRoutes);
+      setDeletedRouteDbIds(keptDeletedRouteDbIds);
+      setMovedPlaces(keptMovedPlaces);
       setModifiedDbIds(new Set());
+      // 일부만 반영된 뒤 되돌리면 저장된 장소가 미저장으로 되살아나 중복이 되므로 스택을 버린다.
       setUndoStack([]);
+      if (failed.length > 0) {
+        modalAlert(
+          `${failed.length}건을 저장하지 못했습니다.\n\n${failed.join("\n")}\n\n` +
+          `실패한 항목은 화면에 남아 있습니다. 장소명이 이미 쓰이고 있지 않은지 확인해 주세요.`
+        );
+      } else {
+        modalAlert("저장되었습니다.");
+      }
+      loadTakenPlaces();
       if (selectedMap !== "") {
         loadMapPlaces(selectedMap as number);
         loadMapRoutes(selectedMap as number);
@@ -425,12 +533,8 @@ export default function MapManagementPage() {
   const [chargeDockSetup, setChargeDockSetup] = useState<{ chargeName: string } | null>(null);
   const [dockSetupCharging, setDockSetupCharging] = useState<boolean | null>(null);
 
-  // ── 장소 인라인 수정 ──
-  const [editingPlace, setEditingPlace] = useState<{
-    key: string; name: string; svgX: number; svgY: number;
-    x: number; y: number; yaw: number; desc: string;
-  } | null>(null);
-  const [editValues, setEditValues] = useState({ name: "", x: "", y: "", dir: "", desc: "" });
+  // ── 장소 수정 (등록과 동일한 MapPlaceCreateModal edit 모드 재사용) ──
+  const [editPlaceData, setEditPlaceData] = useState<PlaceEditData | null>(null);
   const [modifiedDbIds, setModifiedDbIds] = useState<Set<number>>(new Set());
 
   // ── 장소 삭제 모드 (훅으로 분리) ──
@@ -440,6 +544,15 @@ export default function MapManagementPage() {
     deleteConfirmTarget, setDeleteConfirmTarget,
     reset: resetDeleteMode,
   } = usePlaceDelete();
+
+  // 등록 모달에 넘길 '이미 사용 중인 이름' — 이번 저장에서 지울 장소는 빼고, 미저장 장소는 넣는다.
+  const usedPlaceNames = useMemo(() => {
+    const names = takenPlaces.filter((p) => !deletedDbIds.has(p.id)).map((p) => p.name);
+    for (const p of pendingPlaces) {
+      if ((p.Category ?? "waypoint") !== "danger") names.push(p.LacationName);
+    }
+    return names;
+  }, [takenPlaces, deletedDbIds, pendingPlaces]);
 
   // ── 경로 생성 모드 (way_info) — 훅으로 분리 ──
   const {
@@ -635,6 +748,7 @@ export default function MapManagementPage() {
   const [isMappingRunning, setIsMappingRunning] = useState(false); // 맵핑 진행 중 여부
   const [isMappingStarting, setIsMappingStarting] = useState(false); // 맵핑 시작 준비 중
   const [isMappingEnding, setIsMappingEnding] = useState(false); // 맵핑 종료(맵 생성) 중
+  const [isMappingCanceling, setIsMappingCanceling] = useState(false); // 맵핑 취소 처리 중
 
   // ── 맵핑 실시간 시각화 (훅으로 분리) ──
   const { mappingCanvasRef } = useMappingWebSocket(mappingState);
@@ -1167,14 +1281,19 @@ export default function MapManagementPage() {
 
   // ── 영역 이름 중복 체크 ──
   const handleCheckMapName = async () => {
-    if (!startMapName.trim()) return;
+    const name = startMapName.trim();
+    if (!name) return;
     try {
       const res = await apiFetch(`/map/maps`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: RobotMap[] = await res.json();
-      const exists = data.some((m) => m.MapName === startMapName.trim());
+      const exists = data.some((m) => m.MapName.trim() === name);
       setStartMapNameChecked(!exists);
     } catch (e) {
+      // 조회 실패를 조용히 넘기면 "확인 버튼이 왜 안 눌리는지" 알 수 없다.
       console.error("중복 체크 실패:", e);
+      setStartMapNameChecked(null);
+      modalAlert("영역 이름을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.");
     }
   };
 
@@ -1182,6 +1301,15 @@ export default function MapManagementPage() {
   const handleConfirmMappingStart = async () => {
     if (startMapNameChecked !== true) {
       modalAlert("영역 이름 중복 체크를 해주세요.");
+      return;
+    }
+    // 사업장·층은 필수 — 비어 있으면 잘못된 id 로 매핑이 시작된다.
+    if (startBizMode === "select" ? startBizId === "" : !startBizNew.trim()) {
+      modalAlert("사업장을 선택하거나 입력해주세요.");
+      return;
+    }
+    if (startFloorMode === "select" ? startFloorId === "" : !startFloorNew.trim()) {
+      modalAlert("층을 선택하거나 입력해주세요.");
       return;
     }
 
@@ -1194,6 +1322,11 @@ export default function MapManagementPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ BusinessName: startBizNew.trim() }),
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          modalAlert(detailMessage(err) || "사업장 생성 실패");
+          return;
+        }
         const biz = await res.json();
         bizId = biz.id;
         loadBusinesses();
@@ -1212,12 +1345,22 @@ export default function MapManagementPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ BusinessId: bizId, FloorName: startFloorNew.trim() }),
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          modalAlert(detailMessage(err) || "층 생성 실패");
+          return;
+        }
         const newFloor = await res.json();
         floorId = newFloor.id;
       } catch (e) {
         modalAlert("층 생성 실패");
         return;
       }
+    }
+
+    if (!bizId || !floorId) {
+      modalAlert("사업장·층 정보를 확인해주세요.");
+      return;
     }
 
     // 맵핑 시작 정보 임시 저장 (종료 시 사용)
@@ -1242,14 +1385,61 @@ export default function MapManagementPage() {
           MapName: saveMapName,
         }),
       });
-      if (!res.ok) throw new Error("시작 실패");
+      if (!res.ok) {
+        // 409(이미 진행 중)/422(입력 오류)/500(SSH 실패)을 구분해 원인을 보여준다.
+        const err = await res.json().catch(() => null);
+        modalAlert(detailMessage(err) || "맵핑을 시작하지 못했습니다.");
+        return;
+      }
       setIsMappingRunning(true);
     } catch (e) {
       console.error("맵핑 시작 실패:", e);
-      modalAlert("맵핑 시작 실패");
+      modalAlert("네트워크 오류로 맵핑을 시작하지 못했습니다.");
     } finally {
       setIsMappingStarting(false);
     }
+  };
+
+  // ── 맵핑 취소 ──
+  // 취소는 로봇의 맵 디렉토리를 삭제하는 되돌릴 수 없는 동작이므로 진행 중일 때는 확인을 받는다.
+  const runMappingCancel = async () => {
+    setIsMappingCanceling(true);
+    try {
+      const res = await apiFetch(`/map/mapping/cancel`, {
+        method: "POST",
+        timeoutMs: 120_000, // SSH 정리(stop → 삭제 → active 복원 → localization 재시작)
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        modalAlert(detailMessage(err) || "맵핑 취소에 실패했습니다. 다시 시도해주세요.");
+        return; // 모달을 닫지 않고 재시도할 수 있게 둔다
+      }
+      const data = await res.json().catch(() => null);
+      if (data?.status === "warning" && data?.message) {
+        modalAlert(data.message); // 서버 상태는 풀렸지만 로봇 정리 실패
+      }
+      setIsMappingRunning(false);
+      setMappingState("idle");
+    } catch (e) {
+      console.error("맵핑 취소 실패:", e);
+      modalAlert("네트워크 오류로 맵핑을 취소하지 못했습니다. 다시 시도해주세요.");
+    } finally {
+      setIsMappingCanceling(false);
+    }
+  };
+
+  const handleMappingCancel = () => {
+    if (isMappingCanceling) return;
+    if (!isMappingRunning) {
+      // 아직 시작 전 — 로봇에 남긴 것이 없으므로 확인 없이 닫는다.
+      // (서버가 진행 중이라고 알고 있는 경우를 대비해 취소 요청은 그대로 보낸다. 미진행이면 서버가 무시한다.)
+      void runMappingCancel();
+      return;
+    }
+    modalConfirm(
+      "맵핑을 취소하면 지금까지 수집한 맵 데이터가 로봇에서 삭제되며 복구할 수 없습니다.\n취소하시겠습니까?",
+      () => void runMappingCancel()
+    );
   };
 
   // ── 맵핑 종료 → SSH 파일 가져오기 → DB 저장 → 성공 팝업 ──
@@ -1276,7 +1466,7 @@ export default function MapManagementPage() {
       } else {
         // 백엔드가 실제 실패 응답(4xx/5xx)을 준 경우에만 경고
         const err = await res.json().catch(() => null);
-        modalAlert(err?.detail || "맵 저장 실패");
+        modalAlert(detailMessage(err) || "맵 저장 실패");
       }
     } catch (e) {
       // 타임아웃(TimeoutError/AbortError)은 실패로 단정하지 않는다.
@@ -1765,11 +1955,21 @@ export default function MapManagementPage() {
               key={tab.id}
               className={activeTab === tab.id ? styles.mapTabActive : ""}
               onClick={() => {
-                if (tab.id !== activeTab) {
+                if (tab.id === activeTab) return;
+                const goTab = () => {
                   clearAllModes();
                   setRightPanelOpen(true);
+                  setActiveTab(tab.id);
+                };
+                // 맵 편집을 벗어나면 미저장 편집은 되살릴 수 없다(재진입 시 맵/필터가 초기화됨).
+                if (activeTab === "map" && hasUnsavedMapEdits()) {
+                  modalConfirm(
+                    "저장하지 않은 장소·구간 변경사항이 있습니다.\n탭을 이동하면 사라집니다. 이동하시겠습니까?",
+                    () => { discardMapEdits(); goTab(); }
+                  );
+                  return;
                 }
-                setActiveTab(tab.id);
+                goTab();
               }}
             >
               {tab.label}
@@ -1778,12 +1978,14 @@ export default function MapManagementPage() {
         </div>
       </div>
 
-      {activeTab === "place" && mapTabs.some((t) => t.id === "place") && <PlaceList robots={tabRobots} floors={tabFloors} hideActions />}
-      {activeTab === "path" && mapTabs.some((t) => t.id === "path") && <PathList robots={tabRobots} floors={tabFloors} hideActions />}
+      {activeTab === "place" && mapTabs.some((t) => t.id === "place") && <PlaceList robots={tabRobots} floors={tabFloors} />}
+      {activeTab === "path" && mapTabs.some((t) => t.id === "path") && <PathList robots={tabRobots} floors={tabFloors} />}
+      {activeTab === "facility" && mapTabs.some((t) => t.id === "facility") && <FacilityTab robots={tabRobots} floors={tabFloors} businesses={businesses} />}
 
       {activeTab === "map" && mapTabs.some((t) => t.id === "map") && <div className={styles.container}>
-        {/* ── 상단 툴바 ── */}
+        {/* ── 상단바(제목 + 컨트롤) ── */}
         <MapToolbar
+          title={mapTabs.find((t) => t.id === "map")?.label ?? "맵 편집"}
           businesses={businesses}
           floors={floors}
           maps={maps}
@@ -2029,13 +2231,18 @@ export default function MapManagementPage() {
                           const pendP = place.tempId ? pendingPlaces.find((p) => p.tempId === place.tempId) : null;
                           const yaw = dbP?.Yaw ?? pendP?.Yaw ?? 0;
                           const desc = dbP?.Imformation ?? pendP?.Imformation ?? "";
-                          setEditingPlace({ key: place.key, name: place.name, svgX, svgY, x: wx, y: wy, yaw, desc });
-                          setEditValues({
+                          const floorName = floors.find((f) => f.id === (dbP?.FloorId ?? pendP?.FloorId))?.FloorName ?? "";
+                          setEditPlaceData({
+                            key: place.key,
                             name: place.name,
-                            x: wx.toFixed(3),
-                            y: wy.toFixed(3),
-                            dir: String(Math.round(yaw * 180 / Math.PI)),
-                            desc: desc,
+                            robotName: dbP?.RobotName ?? pendP?.RobotName ?? connectedRobots[0]?.RobotName ?? "",
+                            floor: floorName,
+                            x: wx,
+                            y: wy,
+                            yaw,
+                            desc,
+                            mapId: dbP?.MapId ?? pendP?.MapId ?? (selectedMap !== "" ? (selectedMap as number) : null),
+                            category: dbP?.Category ?? pendP?.Category ?? "waypoint",
                           });
                         } : undefined}
                         onClick={(isDeleteMode || isRouteMode || isPathBuildMode) ? (e) => {
@@ -2644,15 +2851,12 @@ export default function MapManagementPage() {
         isMappingRunning={isMappingRunning}
         isMappingStarting={isMappingStarting}
         isMappingEnding={isMappingEnding}
+        isMappingCanceling={isMappingCanceling}
         saveMapName={saveMapName}
         mappingCanvasRef={mappingCanvasRef}
         onStart={handleMappingRun}
         onEnd={handleMappingEnd}
-        onCancel={async () => {
-          await apiFetch(`/map/mapping/cancel`, { method: "POST" }).catch(() => {});
-          setIsMappingRunning(false);
-          setMappingState("idle");
-        }}
+        onCancel={handleMappingCancel}
       />
 
       <MappingSuccessModal
@@ -2754,170 +2958,67 @@ export default function MapManagementPage() {
         states={syncProgressStates}
       />
 
-      {/* ── 장소 인라인 수정 팝오버 ── */}
-      {editingPlace && (() => {
-        const fieldStyle: React.CSSProperties = {
-          width: "100%", height: 28, borderRadius: 5,
-          border: "1px solid var(--border-input)", background: "var(--surface-input)",
-          color: "var(--text-primary)", padding: "0 8px", fontSize: "var(--font-size-sm)", outline: "none",
-        };
-        const labelStyle: React.CSSProperties = {
-          fontSize: "var(--font-size-xs)", color: "var(--text-tertiary)", fontWeight: 600, marginBottom: 2,
-        };
+      {/* ── 장소 수정 모달 (등록과 동일한 MapPlaceCreateModal 재사용) ── */}
+      {editPlaceData && (
+        <MapPlaceCreateModal
+          isOpen={!!editPlaceData}
+          mode="edit"
+          worldX={editPlaceData.x}
+          worldY={editPlaceData.y}
+          pixelX={0}
+          pixelY={0}
+          mapId={editPlaceData.mapId ?? undefined}
+          editData={editPlaceData}
+          floors={floors}
+          usedNames={usedPlaceNames}
+          onClose={() => setEditPlaceData(null)}
+          onConfirm={(place, oldNameArg) => {
+            const key = place.tempId;
+            const trimmed = place.LacationName.trim();
+            if (!trimmed) { setEditPlaceData(null); return; }
+            const oldName = oldNameArg ?? editPlaceData.name;
+            const nameChanged = trimmed !== oldName;
+            const newYaw = place.Yaw;
+            const newDesc = place.Imformation ?? "";
+            const newCategory = place.Category;
+            const newFloorId = place.FloorId;
+            const newRobot = place.RobotName;
 
-        const handleEditConfirm = () => {
-          const trimmed = editValues.name.trim();
-          if (!trimmed) { setEditingPlace(null); return; }
-
-          const oldName = editingPlace.name;
-          const newX = Number(editValues.x);
-          const newY = Number(editValues.y);
-          const newYaw = Number((Number(editValues.dir) * Math.PI / 180).toFixed(4));
-          const newDesc = editValues.desc.trim();
-          const nameChanged = trimmed !== oldName;
-          const coordChanged = Math.abs(newX - editingPlace.x) > 0.0001 || Math.abs(newY - editingPlace.y) > 0.0001;
-
-          // 이름 변경
-          if (nameChanged) {
-            setMapPlaces((prev) => prev.map((p) =>
-              p.LacationName === oldName ? { ...p, LacationName: trimmed } : p
-            ));
-            setPendingPlaces((prev) => prev.map((p) =>
-              p.LacationName === oldName ? { ...p, LacationName: trimmed } : p
-            ));
-            setMovedPlaces((prev) => {
-              const moved = prev.get(oldName);
-              if (!moved) return prev;
-              const next = new Map(prev);
-              next.delete(oldName);
-              next.set(trimmed, moved);
-              return next;
-            });
-            setPendingRoutes((prev) => prev.map((r) => ({
-              ...r,
-              startName: r.startName === oldName ? trimmed : r.startName,
-              endName: r.endName === oldName ? trimmed : r.endName,
-            })));
-            setDbRoutes((prev) => prev.map((r) => ({
-              ...r,
-              StartPlaceName: r.StartPlaceName === oldName ? trimmed : r.StartPlaceName,
-              EndPlaceName: r.EndPlaceName === oldName ? trimmed : r.EndPlaceName,
-            })));
-          }
-
-          // Yaw, 설명 업데이트
-          const placeName = trimmed;
-          setMapPlaces((prev) => prev.map((p) =>
-            p.LacationName === placeName ? { ...p, Yaw: newYaw, Imformation: newDesc } : p
-          ));
-          setPendingPlaces((prev) => prev.map((p) =>
-            p.LacationName === placeName ? { ...p, Yaw: newYaw, Imformation: newDesc } : p
-          ));
-
-          // 좌표 변경
-          if (coordChanged || nameChanged) {
-            const finalName = trimmed;
-            setMovedPlaces((prev) => {
-              const next = new Map(prev);
-              next.set(finalName, { x: newX, y: newY });
-              return next;
-            });
-          }
-
-          // DB 변경 추적
-          if (editingPlace.key.startsWith("db_")) {
-            const dbId = Number(editingPlace.key.replace("db_", ""));
-            setModifiedDbIds((prev) => new Set(prev).add(dbId));
-            if (!movedPlaces.has(trimmed) && !coordChanged) {
+            // 이름 변경 전파 (장소/경로 참조 갱신)
+            if (nameChanged) {
+              setMapPlaces((prev) => prev.map((p) => p.LacationName === oldName ? { ...p, LacationName: trimmed } : p));
+              setPendingPlaces((prev) => prev.map((p) => p.LacationName === oldName ? { ...p, LacationName: trimmed } : p));
               setMovedPlaces((prev) => {
+                const moved = prev.get(oldName);
+                if (!moved) return prev;
+                const next = new Map(prev); next.delete(oldName); next.set(trimmed, moved); return next;
+              });
+              setPendingRoutes((prev) => prev.map((r) => ({ ...r, startName: r.startName === oldName ? trimmed : r.startName, endName: r.endName === oldName ? trimmed : r.endName })));
+              setDbRoutes((prev) => prev.map((r) => ({ ...r, StartPlaceName: r.StartPlaceName === oldName ? trimmed : r.StartPlaceName, EndPlaceName: r.EndPlaceName === oldName ? trimmed : r.EndPlaceName })));
+            }
+
+            // 방향/설명/카테고리/층/로봇 업데이트 (좌표는 드래그로만 변경)
+            setMapPlaces((prev) => prev.map((p) => p.LacationName === trimmed
+              ? { ...p, Yaw: newYaw, Imformation: newDesc, Category: newCategory, FloorId: newFloorId ?? p.FloorId, RobotName: newRobot ?? p.RobotName } : p));
+            setPendingPlaces((prev) => prev.map((p) => p.LacationName === trimmed
+              ? { ...p, Yaw: newYaw, Imformation: newDesc, Category: newCategory, FloorId: newFloorId ?? p.FloorId, RobotName: newRobot ?? p.RobotName } : p));
+
+            // DB 장소면 저장 대상(movedPlaces)에 넣어 PUT 트리거 (좌표는 기존값 유지)
+            if (key.startsWith("db_")) {
+              const dbId = Number(key.replace("db_", ""));
+              setModifiedDbIds((prev) => new Set(prev).add(dbId));
+              setMovedPlaces((prev) => {
+                if (prev.has(trimmed)) return prev;
                 const next = new Map(prev);
-                next.set(trimmed, { x: editingPlace.x, y: editingPlace.y });
+                next.set(trimmed, { x: editPlaceData.x, y: editPlaceData.y });
                 return next;
               });
             }
-          }
 
-          setEditingPlace(null);
-        };
-
-        // SVG 좌표 → 화면 좌표 변환
-        const svgEl = svgRef.current;
-        if (!svgEl) return null;
-        const rect = svgEl.getBoundingClientRect();
-        const rad = (rotation * Math.PI) / 180;
-        const rx = editingPlace.svgX * Math.cos(rad) - editingPlace.svgY * Math.sin(rad);
-        const ry = editingPlace.svgX * Math.sin(rad) + editingPlace.svgY * Math.cos(rad);
-        const screenX = Math.min(Math.max(rect.left + offset.x + rx * zoom, rect.left + 140), rect.right - 140);
-        const screenY = rect.top + offset.y + ry * zoom;
-
-        return (
-          <div style={{ position: "fixed", inset: 0, zIndex: 85 }} onClick={() => setEditingPlace(null)}>
-            <div
-              style={{
-                position: "absolute", left: screenX, top: screenY - 70,
-                transform: "translateX(-50%)",
-                background: "var(--surface-3)", borderRadius: 10, padding: "14px 16px",
-                boxShadow: "0 6px 24px rgba(0,0,0,0.45)", border: "1px solid rgba(255,255,255,0.1)",
-                minWidth: 260, display: "flex", flexDirection: "column", gap: 8,
-              }}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "TEXTAREA") handleEditConfirm();
-                if (e.key === "Escape") setEditingPlace(null);
-              }}
-            >
-              {/* 장소명 */}
-              <div>
-                <div style={labelStyle}>장소명</div>
-                <input autoFocus value={editValues.name} onChange={(e) => setEditValues((v) => ({ ...v, name: e.target.value }))}
-                  maxLength={50} style={fieldStyle} placeholder="장소명" />
-              </div>
-              {/* X, Y */}
-              <div style={{ display: "flex", gap: 6 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={labelStyle}>X</div>
-                  <input value={editValues.x} onChange={(e) => setEditValues((v) => ({ ...v, x: e.target.value }))}
-                    type="number" step="0.001" style={fieldStyle} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={labelStyle}>Y</div>
-                  <input value={editValues.y} onChange={(e) => setEditValues((v) => ({ ...v, y: e.target.value }))}
-                    type="number" step="0.001" style={fieldStyle} />
-                </div>
-              </div>
-              {/* 각도 */}
-              <div>
-                <div style={labelStyle}>방향 (°)</div>
-                <input value={editValues.dir} onChange={(e) => setEditValues((v) => ({ ...v, dir: e.target.value }))}
-                  type="number" min={0} max={360} style={fieldStyle} placeholder="0~360" />
-              </div>
-              {/* 설명 */}
-              <div>
-                <div style={labelStyle}>설명</div>
-                <textarea value={editValues.desc} onChange={(e) => setEditValues((v) => ({ ...v, desc: e.target.value }))}
-                  maxLength={100} rows={2}
-                  style={{ ...fieldStyle, height: "auto", padding: "6px 8px", resize: "none" }}
-                  placeholder="장소 설명" />
-              </div>
-              {/* 버튼 */}
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 2 }}>
-                <button onClick={() => setEditingPlace(null)}
-                  style={{
-                    height: 30, padding: "0 14px", borderRadius: 6,
-                    border: "1px solid var(--border-input)", background: "var(--surface-5)",
-                    color: "var(--text-primary)", fontSize: "var(--font-size-sm)", cursor: "pointer",
-                  }}>취소</button>
-                <button onClick={handleEditConfirm}
-                  style={{
-                    height: 30, padding: "0 14px", borderRadius: 6,
-                    border: "1px solid var(--color-info-border)", background: "var(--color-info-bg)",
-                    color: "var(--text-primary)", fontSize: "var(--font-size-sm)", cursor: "pointer",
-                  }}>확인</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+            setEditPlaceData(null);
+          }}
+        />
+      )}
 
       {/* ── 장소 삭제 확인 팝업 ── */}
       {deleteConfirmTarget && (
@@ -3020,6 +3121,7 @@ export default function MapManagementPage() {
               : ""
           }
           floors={floors}
+          usedNames={usedPlaceNames}
           lockCoords={isFromRobotPos}
           defaultYaw={isFromRobotPos && robotPos ? robotPos.yaw : undefined}
           defaultCategory={isChargeCreate ? "charge" : undefined}

@@ -312,6 +312,11 @@
   background: rgba(240, 160, 48, 0.15);
 }
 
+.taskCellBadgeStandby {
+  color: #C08CE8;
+  background: rgba(192, 140, 232, 0.15);
+}
+
 .taskCellBadgeType {
   color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.08);

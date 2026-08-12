@@ -59,7 +59,7 @@ class CreatePathReq(BaseModel):
     waypoints: list[dict]  # [{"x": 1.0, "y": 2.0, "yaw": 0.5}, ...]
     way_name: str | None = None  # 지정하지 않으면 자동 생성
     wait_seconds: list[int] | None = None  # 각 지점 도착 후 대기(초). None/all-zero면 미저장
-    task_type: str = "task1"  # 작업 유형 (task1/task2/task3/test 등)
+    task_type: str = "길 안내"  # 작업 유형 (길 안내/물품 운반/순찰·점검)
 
 
 @point.post("/createpath")
@@ -144,7 +144,7 @@ def create_remote_path(req: CreatePathReq, db: Session = Depends(get_db), curren
     way = WayInfo(
         UserId=current_user.id,
         RobotName=robot_name,
-        TaskType=(req.task_type or "task1").strip() or "task1",
+        TaskType=(req.task_type or "길 안내").strip() or "길 안내",
         WayName=way_name,
         WayPoints=way_points_str,
         WaitSeconds=wait_json,

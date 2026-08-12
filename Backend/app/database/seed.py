@@ -5,6 +5,8 @@ startup_event에서 호출되며, 존재하지 않는 기본 데이터(메뉴 �
 생성 또는 동기화한다.
 """
 
+import os
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -38,6 +40,7 @@ MENU_SEED = [
     ("video",            "영상 관리",    "data-mgmt",       1, False),
     ("statistics",       "통계 관리",    "data-mgmt",       2, False),
     ("log",              "로그 관리",    "data-mgmt",       3, False),
+    ("voice",            "음성 관리",    "data-mgmt",       4, False),
     ("alerts",           "알림",         None,              6, True),
     ("alert-total",      "전체",         "alerts",          1, False),
     ("alert-schedule",   "스케줄",       "alerts",          2, False),
@@ -53,7 +56,7 @@ MANAGER_MENUS = [
     "dashboard", "schedule-list",
     "robot-list", "business-list",
     "map-edit", "place-list", "path-list",
-    "video", "statistics", "log",
+    "video", "statistics", "log", "voice",
     "alert-total", "alert-schedule", "alert-robot", "alert-notice",
     "menu-permissions",
 ]
@@ -81,7 +84,6 @@ DEFAULT_BUILT_IN_CAMERAS = {
     "HUMANOID":  [("전방", "/video1"), ("후방", "/video2")],
     "COBOT":     [],
 }
-
 
 # ─────────────────────────────────────────────────────────
 # 메뉴 마스터 스키마 마이그레이션 (Alembic 부재)
@@ -206,6 +208,22 @@ def seed_menus(db: Session) -> None:
 # ─────────────────────────────────────────────────────────
 # 사용자 계정
 # ─────────────────────────────────────────────────────────
+def _seed_password(env_key: str, account_label: str) -> str:
+    """시드 계정 비밀번호를 환경변수에서 읽는다(하드코딩 금지). 미설정 시 즉시 오류.
+
+    실제로 계정을 생성하거나 LoginId 마이그레이션으로 비밀번호를 기록하는 시점에만
+    호출된다. 따라서 이미 시드된 기존 배포(계정 존재·마이그레이션 불필요)는 이 env 가
+    없어도 정상 기동한다(신규 시드/마이그레이션 시에만 요구).
+    """
+    pw = os.getenv(env_key, "").strip()
+    if not pw:
+        raise RuntimeError(
+            f"{account_label} 시드 비밀번호 환경변수 {env_key} 가 설정되지 않았습니다. "
+            f".env 에 {env_key}=<강력한 비밀번호> 를 설정하세요."
+        )
+    return pw
+
+
 def seed_super_admin(db: Session) -> UserInfo:
     admin_user = (
         db.query(UserInfo).filter(UserInfo.LoginId == "superadmin").first()
@@ -216,7 +234,7 @@ def seed_super_admin(db: Session) -> UserInfo:
         changed = False
         if admin_user.LoginId != "superadmin":
             admin_user.LoginId = "superadmin"
-            admin_user.Password = hash_password("superadmin1234!")
+            admin_user.Password = hash_password(_seed_password("SEED_SUPERADMIN_PASSWORD", "최고관리자"))
             changed = True
         if admin_user.Permission != 1:
             admin_user.Permission = 1
@@ -233,7 +251,7 @@ def seed_super_admin(db: Session) -> UserInfo:
             Permission=1,
             UserName="최고관리자",
             LoginId="superadmin",
-            Password=hash_password("superadmin1234!"),
+            Password=hash_password(_seed_password("SEED_SUPERADMIN_PASSWORD", "최고관리자")),
             IsActive=1,
         )
         db.add(admin_user)
@@ -280,7 +298,7 @@ def seed_manager(db: Session) -> UserInfo:
         changed = False
         if manager_user.LoginId != "admin":
             manager_user.LoginId = "admin"
-            manager_user.Password = hash_password("admin1234!")
+            manager_user.Password = hash_password(_seed_password("SEED_MANAGER_PASSWORD", "관리자"))
             changed = True
         if manager_user.Permission != 2:
             manager_user.Permission = 2
@@ -297,7 +315,7 @@ def seed_manager(db: Session) -> UserInfo:
             Permission=2,
             UserName="관리자",
             LoginId="admin",
-            Password=hash_password("admin1234!"),
+            Password=hash_password(_seed_password("SEED_MANAGER_PASSWORD", "관리자")),
             IsActive=1,
         )
         db.add(manager_user)
@@ -330,7 +348,7 @@ def seed_normal_user(db: Session) -> UserInfo:
             Permission=3,
             UserName="사용자",
             LoginId="user",
-            Password=hash_password("user1234!"),
+            Password=hash_password(_seed_password("SEED_USER_PASSWORD", "일반 사용자")),
             IsActive=1,
         )
         db.add(normal_user)
@@ -386,12 +404,239 @@ def seed_builtin_cameras(db: Session) -> None:
         print(f"[OK] 기존 로봇 {seeded_count}대에 내장 카메라 모듈 시드 완료")
 
 
+def seed_incumbent_endpoints(db: Session) -> None:
+    """기존(단일) 로봇의 통신 엔드포인트를 env 전역값으로 1회 백필(멱등).
+
+    전역 ROBOT_IP/RECEIVER_IP 로 통신하던 기존 로봇을 새 robot_endpoint 구조에
+    표현해, 관제 UI 에서 조회·수정 가능하게 한다. 이미 엔드포인트 행이 있는 로봇은
+    건드리지 않는다(멱등). 실패해도 스타트업을 막지 않도록 방어한다.
+    """
+    from app.database.models import RobotInfo, RobotEndpoint
+    from app.robot_io.config import (
+        ROBOT_IP, ROBOT_PORT, RECEIVER_IP, RECEIVER_PORT, RECEIVER_TCP_PORT,
+    )
+
+    try:
+        # 대상: RobotIP 가 전역 ROBOT_IP 와 일치하는 로봇(현행 M20), 없으면 첫 로봇
+        incumbent = db.query(RobotInfo).filter(RobotInfo.RobotIP == ROBOT_IP).first()
+        if incumbent is None:
+            incumbent = db.query(RobotInfo).order_by(RobotInfo.id.asc()).first()
+        if incumbent is None:
+            return
+
+        has_rows = (
+            db.query(RobotEndpoint).filter(RobotEndpoint.RobotId == incumbent.id).first()
+            is not None
+        )
+        if has_rows:
+            return  # 멱등: 이미 등록됨
+
+        db.add(RobotEndpoint(
+            RobotId=incumbent.id, Role="receiver",
+            Ip=RECEIVER_IP, UdpPort=RECEIVER_PORT, TcpPort=RECEIVER_TCP_PORT,
+        ))
+        db.add(RobotEndpoint(
+            RobotId=incumbent.id, Role="robot",
+            Ip=incumbent.RobotIP or ROBOT_IP, UdpPort=incumbent.RobotPort or ROBOT_PORT,
+        ))
+        db.commit()
+        print(f"[OK] 기존 로봇(id={incumbent.id}) 통신 엔드포인트 env 백필 완료 "
+              f"(receiver={RECEIVER_IP}:{RECEIVER_PORT}, robot={incumbent.RobotIP or ROBOT_IP})")
+    except Exception as e:
+        db.rollback()
+        print(f"[WARN] 엔드포인트 백필 건너뜀: {e}")
+
+
 # ─────────────────────────────────────────────────────────
 # 오케스트레이터
 # ─────────────────────────────────────────────────────────
+def migrate_way_info_columns(db: Session) -> None:
+    """way_info에 StopActions 컬럼이 없으면 ALTER TABLE로 추가. 멱등.
+    경유지 도착 상호작용(PRD-Waypoint-Arrival-Interaction) — 기존 테이블이라 create_all이 못 붙인다."""
+    rows = db.execute(text(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'way_info'"
+    )).fetchall()
+    existing = {r[0] for r in rows}
+    if not existing:
+        return  # 테이블 자체가 아직 없으면 create_all이 생성
+    if "StopActions" not in existing:
+        db.execute(text("ALTER TABLE way_info ADD COLUMN StopActions TEXT NULL"))
+        db.commit()
+        print("[OK] way_info 스키마 마이그레이션 완료 (StopActions)")
+
+
+def migrate_service_session_nullable_schedule(db: Session) -> None:
+    """service_session.ScheduleId 를 NULL 허용으로. 멱등.
+
+    응대가 반드시 작업(상시대기 스케줄) 안에서만 일어난다는 전제로 만든 컬럼인데,
+    작업 없이도 호출에 응하도록 바뀌었다. 그런 응대도 이력에 남아야 한다 —
+    "작업이 없어서 기록이 없다"는 상태가 제일 나쁘다.
+    """
+    rows = db.execute(text(
+        "SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'service_session' "
+        "AND COLUMN_NAME = 'ScheduleId'"
+    )).fetchall()
+    if not rows:
+        return  # 테이블/컬럼이 아직 없으면 create_all이 생성
+    if rows[0][0] == "YES":
+        return
+    db.execute(text("ALTER TABLE service_session MODIFY COLUMN ScheduleId INT NULL"))
+    db.commit()
+    print("[OK] service_session 스키마 마이그레이션 완료 (ScheduleId NULL 허용)")
+
+
+def migrate_voice_confirm_word_columns(db: Session) -> None:
+    """voice_confirm_word 에 Kind 컬럼이 없으면 ALTER TABLE로 추가. 멱등.
+
+    인식어가 '도착 확인' 하나뿐이던 시절에 만든 테이블이라 종류 구분이 없다.
+    '해산 확인'(안내 후 복귀)이 같은 표를 쓰므로 나눠야 한다 — 안 나누면 '없음' 이
+    도착 확인을 통과시킨다.
+
+    유니크 키도 (RobotId, Word) → (RobotId, Kind, Word) 로 바꾼다. 안 바꾸면 같은 말을
+    두 종류에 등록할 수 없다(예: '네' 는 양쪽 모두에 있을 법하다).
+    """
+    rows = db.execute(text(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'voice_confirm_word'"
+    )).fetchall()
+    existing = {r[0] for r in rows}
+    if not existing:
+        return  # 테이블 자체가 아직 없으면 create_all이 생성
+    if "Kind" in existing:
+        return
+
+    # 기존 행은 전부 도착 확인이다 — DEFAULT 로 채워진다
+    db.execute(text(
+        "ALTER TABLE voice_confirm_word "
+        "ADD COLUMN Kind VARCHAR(16) NOT NULL DEFAULT 'arrival'"
+    ))
+    idx = db.execute(text(
+        "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'voice_confirm_word' "
+        "AND INDEX_NAME = 'uq_voice_confirm_robot_word'"
+    )).fetchall()
+    if idx:
+        db.execute(text("ALTER TABLE voice_confirm_word DROP INDEX uq_voice_confirm_robot_word"))
+    db.execute(text(
+        "ALTER TABLE voice_confirm_word "
+        "ADD UNIQUE KEY uq_voice_confirm_robot_kind_word (RobotId, Kind, Word)"
+    ))
+    db.commit()
+    print("[OK] voice_confirm_word 스키마 마이그레이션 완료 (Kind)")
+
+
+def migrate_schedule_info_columns(db: Session) -> None:
+    """schedule_info에 실행 보장 컬럼이 없으면 ALTER TABLE로 추가. 멱등.
+    PRD-Schedule-Execution §2.3 — 기존 테이블이라 create_all이 못 붙인다."""
+    rows = db.execute(text(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'schedule_info'"
+    )).fetchall()
+    existing = {r[0] for r in rows}
+    if not existing:
+        return  # 테이블 자체가 아직 없으면 create_all이 생성
+
+    specs = [
+        ("GraceMinutes", "INT NULL DEFAULT 10"),
+        ("MaxDurationMin", "INT NULL DEFAULT 60"),
+        ("ReturnPolicy", "VARCHAR(10) NULL DEFAULT 'charge'"),
+        ("ReturnPlaceId", "INT NULL"),
+        ("PausedUntil", "DATETIME NULL"),
+        ("StopActionsOverride", "TEXT NULL"),
+        # 상시 대기 응대 (§3.3)
+        ("StandbyTrigger", "VARCHAR(10) NULL DEFAULT 'button'"),
+        ("StandbyDestinations", "TEXT NULL"),
+        ("StandbyMaxSessionMin", "INT NULL DEFAULT 20"),
+        ("StandbyRetryCount", "INT NULL DEFAULT 2"),
+        ("StandbyRetryWindowSec", "INT NULL DEFAULT 10"),
+        ("StandbyIdleSitSec", "INT NULL DEFAULT 40"),
+    ]
+    added = [name for name, ddl in specs if name not in existing]
+    for name, ddl in specs:
+        if name not in existing:
+            db.execute(text(f"ALTER TABLE schedule_info ADD COLUMN {name} {ddl}"))
+    if added:
+        db.commit()
+        print(f"[OK] schedule_info 스키마 마이그레이션 완료 ({', '.join(added)})")
+
+
+def migrate_module_voice_columns(db: Session) -> None:
+    """module_voice_info에 능력 플래그(HasMic/HasSpeaker)를 추가. 멱등.
+
+    기본값은 '마이크 없음 · 스피커 있음'이다 — 마이크는 아직 확보되지 않았고,
+    없는 것을 있다고 두면 상시 대기가 자동 청취로 등록됐다가 동작하지 않는다."""
+    rows = db.execute(text(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'module_voice_info'"
+    )).fetchall()
+    existing = {r[0] for r in rows}
+    if not existing:
+        return  # 테이블 자체가 아직 없으면 create_all이 생성
+
+    specs = [
+        ("HasMic", "TINYINT(1) NOT NULL DEFAULT 0"),
+        ("HasSpeaker", "TINYINT(1) NOT NULL DEFAULT 1"),
+    ]
+    added = [name for name, _ in specs if name not in existing]
+    for name, ddl in specs:
+        if name not in existing:
+            db.execute(text(f"ALTER TABLE module_voice_info ADD COLUMN {name} {ddl}"))
+    if added:
+        db.commit()
+        print(f"[OK] module_voice_info 스키마 마이그레이션 완료 ({', '.join(added)})")
+
+
+def migrate_voice_announcement_labels(db: Session) -> None:
+    """안내 멘트의 발화명(Label)을 필수로 전환. 멱등.
+
+    기존엔 Label이 선택(NULL 허용)이었다. 이제 정지 옵션 드롭다운에 발화명만 표시하므로
+    필수·유일이어야 한다. NULL/빈 라벨은 발화 문구 앞부분으로 백필하고, 로봇 내 중복은
+    뒤에 번호를 붙여 유일하게 만든다."""
+    rows = db.execute(text(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'voice_announcement'"
+    )).fetchall()
+    if not rows:
+        return  # 테이블 자체가 아직 없으면 create_all이 생성
+
+    empties = db.execute(text(
+        "SELECT id, RobotId, Text FROM voice_announcement "
+        "WHERE Label IS NULL OR Label = '' ORDER BY RobotId, id"
+    )).fetchall()
+    if not empties:
+        return
+
+    for row in empties:
+        ann_id, robot_id, txt = row[0], row[1], (row[2] or "")
+        base = (txt.strip()[:36] or f"발화 {ann_id}")
+        candidate = base
+        n = 1
+        # 같은 로봇 안에서 유일해질 때까지 접미사 부여
+        while db.execute(text(
+            "SELECT 1 FROM voice_announcement WHERE RobotId = :rid AND Label = :lbl "
+            "AND id <> :aid LIMIT 1"
+        ), {"rid": robot_id, "lbl": candidate, "aid": ann_id}).first():
+            n += 1
+            suffix = f" {n}"
+            candidate = base[: 40 - len(suffix)] + suffix
+        db.execute(text(
+            "UPDATE voice_announcement SET Label = :lbl WHERE id = :aid"
+        ), {"lbl": candidate, "aid": ann_id})
+    db.commit()
+    print(f"[OK] voice_announcement 발화명 백필 완료 ({len(empties)}건)")
+
+
 def seed_all(db: Session) -> None:
     """모든 기본 데이터 시드 실행."""
     seed_menus(db)
+    migrate_way_info_columns(db)
+    migrate_schedule_info_columns(db)
+    migrate_voice_confirm_word_columns(db)
+    migrate_service_session_nullable_schedule(db)
+    migrate_module_voice_columns(db)
+    migrate_voice_announcement_labels(db)
     admin_user = seed_super_admin(db)
     seed_super_admin_permissions(db, admin_user)
     manager_user = seed_manager(db)
@@ -399,3 +644,4 @@ def seed_all(db: Session) -> None:
     normal_user = seed_normal_user(db)
     seed_normal_user_permissions(db, normal_user)
     seed_builtin_cameras(db)
+    seed_incumbent_endpoints(db)

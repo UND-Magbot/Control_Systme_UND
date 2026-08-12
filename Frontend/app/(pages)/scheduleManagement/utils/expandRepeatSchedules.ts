@@ -1,7 +1,10 @@
 /**
  * 반복 스케줄을 달력 표시 범위 내 개별 인스턴스로 확장하는 유틸리티
- * 3모드 지원: once, weekly, interval
+ * 4모드 지원: once, weekly, interval, standby
+ * (interval·standby 는 둘 다 ActiveStartTime~ActiveEndTime 시간대 밴드로 확장한다)
  */
+import { resolveScheduleMode, isScheduleMode } from "@/app/lib/scheduleMode";
+import { resolveOccurrenceStatus } from "@/app/lib/occurrenceStatus";
 
 /** 한글 요일 → JS Date.getDay() 매핑 */
 const KOREAN_DAY_TO_JS: Record<string, number> = {
@@ -70,26 +73,27 @@ export function expandRepeatSchedules(
   const result: ExpandedSchedule[] = [];
 
   for (const schedule of schedules) {
-    // Repeat 플래그 우선 판별 (API에서 ScheduleMode 미포함 시 대비)
-    let mode: string;
-    if (schedule.Repeat === "Y") {
-      mode = (schedule.ScheduleMode === "weekly" || schedule.ScheduleMode === "interval")
-        ? schedule.ScheduleMode
-        : "weekly";
-    } else {
-      mode = schedule.ScheduleMode || "once";
-    }
+    // ScheduleMode 우선. 없거나 모르는 값일 때만 Repeat 플래그로 판정한다(구 API 대비).
+    // 예전엔 Repeat="Y"를 먼저 봐서 standby 가 weekly 로 흡수됐다.
+    let mode = resolveScheduleMode(schedule);
+    if (!isScheduleMode(mode)) mode = schedule.Repeat === "Y" ? "weekly" : "once";
 
     if (mode === "once") {
       expandOnce(schedule, rangeStart, rangeEnd, result);
     } else if (mode === "weekly") {
       expandWeekly(schedule, rangeStart, rangeEnd, result);
-    } else if (mode === "interval") {
-      expandInterval(schedule, rangeStart, rangeEnd, result);
+    } else if (mode === "interval" || mode === "standby") {
+      expandActiveWindow(schedule, rangeStart, rangeEnd, result);
     }
   }
 
-  return result;
+  return result.map(normalizeFutureStatus);
+}
+
+/** 회차 상태 판정은 occurrenceStatus 단일 출처를 쓴다(상세 모달·대시보드와 같은 규칙). */
+function normalizeFutureStatus(item: ExpandedSchedule): ExpandedSchedule {
+  const resolved = resolveOccurrenceStatus(item.TaskStatus, item._virtualDate);
+  return resolved === item.TaskStatus ? item : { ...item, TaskStatus: resolved };
 }
 
 /** 단일 실행: StartDate가 범위 안에 있으면 포함 */
@@ -239,8 +243,8 @@ function expandWeekly(
   }
 }
 
-/** 주기 반복: 매칭 날짜마다 ActiveStartTime~ActiveEndTime 시간대 밴드 생성 */
-function expandInterval(
+/** 주기 반복·상시 대기: 매칭 날짜마다 ActiveStartTime~ActiveEndTime 시간대 밴드 생성 */
+function expandActiveWindow(
   schedule: DBSchedule,
   rangeStart: Date,
   rangeEnd: Date,

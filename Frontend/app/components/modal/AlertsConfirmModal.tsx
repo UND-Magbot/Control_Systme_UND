@@ -7,6 +7,7 @@ import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
 import { type AlertMockData, type AlertType } from '@/app/types';
 import { useCustomScrollbar } from '@/app/hooks/useCustomScrollbar';
 import { useAlertContext } from '@/app/context/AlertContext';
+import { apiFetch } from '@/app/lib/api';
 
 type AlertsConfirmModalProps = {
     isOpen: boolean;
@@ -37,6 +38,41 @@ export default function AlertsConfirmModal({
     const [activeTab, setActiveTab] = useState<ModalTabKey>('total');
 
     const router = useRouter();
+
+    // ── 중단된 작업 재개 ──
+    // 알림은 '일어났다'는 통지지만, 이 건은 사람이 재개하지 않으면 작업이 영영 멈춰 있다.
+    // 그래서 통지 옆에 조치를 같이 둔다.
+    const [resumeTarget, setResumeTarget] = useState<AlertMockData | null>(null);
+    const [resumingId, setResumingId] = useState<number | null>(null);
+    const [resumedIds, setResumedIds] = useState<number[]>([]);
+
+    /** 이 알림에서 재개할 수 있는 스케줄 id (없으면 null) — **당일 발생 건만** 대상 */
+    const resumableId = (item: AlertMockData): number | null => {
+        if (item.log?.Action !== 'schedule_interrupted') return null;
+        const raw = (item.errorJson as { scheduleId?: unknown } | undefined)?.scheduleId;
+        const id = typeof raw === 'number' ? raw : Number(raw);
+        if (!Number.isFinite(id)) return null;
+        if (resumedIds.includes(id)) return null;      // 방금 재개한 것은 더 안 보여준다
+        // 어제 끊긴 알림에 재개 버튼을 두면 오늘 아무 일도 안 일어난다
+        const today = new Date().toISOString().slice(0, 10);
+        return item.date?.slice(0, 10) === today ? id : null;
+    };
+
+    const handleResumeConfirm = async () => {
+        const id = resumeTarget ? resumableId(resumeTarget) : null;
+        if (id === null) { setResumeTarget(null); return; }
+        setResumingId(id);
+        try {
+            const res = await apiFetch(`/DB/schedule/${id}/resume`, { method: 'POST' });
+            if (res.ok) setResumedIds((prev) => [...prev, id]);
+            await refresh();
+        } catch (e) {
+            console.error('작업 재개 실패', e);
+        } finally {
+            setResumingId(null);
+            setResumeTarget(null);
+        }
+    };
 
     // 로그 전송 확인 모달
     const [showConfirm, setShowConfirm] = useState(false);
@@ -260,6 +296,15 @@ export default function AlertsConfirmModal({
                                                         )}
                                                     </div>
                                                     <div className={styles.aletsActions} onClick={(e) => e.stopPropagation()}>
+                                                        {resumableId(item) !== null && (
+                                                            <button
+                                                                className={styles.aletsResumeBtn}
+                                                                disabled={resumingId === resumableId(item)}
+                                                                onClick={() => setResumeTarget(item)}
+                                                            >
+                                                                작업 재개
+                                                            </button>
+                                                        )}
                                                         <button className={styles.aletsReadBtn} onClick={() => handleMarkRead(item.id)}>
                                                             읽음
                                                         </button>
@@ -292,6 +337,15 @@ export default function AlertsConfirmModal({
                     message="운영사의 통합관제시스템으로 로그 전송 하시겠습니까?"
                     onConfirm={handleSendLogOk}
                     onCancel={handleSendLogCancel}
+                />
+            )}
+
+            {/* 재개는 로봇을 실제로 움직인다 — 무엇이 일어나는지 먼저 말한다 */}
+            {resumeTarget && (
+                <CancelConfirmModal
+                    message={"중단된 작업을 재개하시겠습니까?\n다시 자동 실행 대상이 되며, 상시 대기라면 로봇이 대기 장소로 돌아갑니다."}
+                    onConfirm={handleResumeConfirm}
+                    onCancel={() => setResumeTarget(null)}
                 />
             )}
         </>

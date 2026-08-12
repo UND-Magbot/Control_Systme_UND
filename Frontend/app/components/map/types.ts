@@ -22,6 +22,7 @@ export type POIItem = {
   y: number;
   floor: string;
   floorId?: number | null;
+  mapId?: number | null;
   category?: POICategory;
   isSelected?: boolean;
   icon?: string;

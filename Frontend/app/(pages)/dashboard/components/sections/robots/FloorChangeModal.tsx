@@ -17,6 +17,25 @@ type Props = {
   onComplete: () => void;
 };
 
+/** 라벨 옆 `?` 도움말. 설명을 상시 노출하면 모달이 길어져 정작 중요한 경고가 묻힌다. */
+function HelpTip({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      aria-label={text}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        width: 14, height: 14, marginLeft: 5, borderRadius: "50%",
+        border: "1px solid var(--border-input)", color: "var(--text-tertiary)",
+        fontSize: 10, lineHeight: 1, cursor: "help", verticalAlign: "middle",
+        fontWeight: 600,
+      }}
+    >
+      ?
+    </span>
+  );
+}
+
 export default function FloorChangeModal({ isOpen, robotId, robotName, currentFloorId, currentMapId, onClose, onComplete }: Props) {
   const [floors, setFloors] = useState<FloorItem[]>([]);
   const [maps, setMaps] = useState<MapItem[]>([]);
@@ -24,6 +43,7 @@ export default function FloorChangeModal({ isOpen, robotId, robotName, currentFl
   const [selectedMapId, setSelectedMapId] = useState<number | "">(currentMapId ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
 
   // 층 목록 로드
   useEffect(() => {
@@ -31,6 +51,7 @@ export default function FloorChangeModal({ isOpen, robotId, robotName, currentFl
     setSelectedFloorId(currentFloorId ?? "");
     setSelectedMapId(currentMapId ?? "");
     setError(null);
+    setReason("");
     apiFetch(`/map/floors`)
       .then((res) => res.ok ? res.json() : [])
       .then((data) => setFloors(data))
@@ -52,14 +73,14 @@ export default function FloorChangeModal({ isOpen, robotId, robotName, currentFl
   }, [selectedFloorId]);
 
   const handleConfirm = async () => {
-    if (!selectedMapId) return;
+    if (!selectedMapId || !reason.trim()) return;
     setLoading(true);
     setError(null);
     try {
       const res = await apiFetch(`/map/maps/activate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ map_id: selectedMapId, robot_id: robotId }),
+        body: JSON.stringify({ map_id: selectedMapId, robot_id: robotId, reason: reason.trim() }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -77,7 +98,13 @@ export default function FloorChangeModal({ isOpen, robotId, robotName, currentFl
   if (!isOpen) return null;
 
   const currentFloorName = floors.find((f) => f.id === currentFloorId)?.FloorName ?? "-";
-  const isSameFloor = selectedFloorId === currentFloorId;
+
+  // 확인 버튼이 왜 비활성인지 알려준다. 표시가 없으면 버튼 고장으로 오해한다.
+  const blockedReason = !selectedMapId
+    ? "적용할 맵을 선택해야 활성화됩니다."
+    : !reason.trim()
+      ? "사유를 입력해야 활성화됩니다."
+      : null;
 
   return (
     <div className={styles.confirmOverlay} onClick={onClose}>
@@ -92,7 +119,7 @@ export default function FloorChangeModal({ isOpen, robotId, robotName, currentFl
             <img src="/icon/floor_change.png" alt="" style={{ width: 18, height: 18, opacity: 0.7 }}
               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
             />
-            <span style={{ fontWeight: 600, fontSize: "var(--font-size-lg)" }}>현재 층 변경</span>
+            <span style={{ fontWeight: 600, fontSize: "var(--font-size-lg)" }}>층 변경 (관리자)</span>
           </div>
           <button
             onClick={onClose}
@@ -117,10 +144,10 @@ export default function FloorChangeModal({ isOpen, robotId, robotName, currentFl
         </div>
 
         {/* 층 선택 */}
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 18 }}>
           <label style={{
             fontSize: "var(--font-size-xs)", color: "var(--text-secondary)",
-            display: "block", marginBottom: 6, fontWeight: 500,
+            display: "block", marginBottom: 8, fontWeight: 500,
           }}>
             변경할 층
           </label>
@@ -146,9 +173,10 @@ export default function FloorChangeModal({ isOpen, robotId, robotName, currentFl
         <div style={{ marginBottom: 18 }}>
           <label style={{
             fontSize: "var(--font-size-xs)", color: "var(--text-secondary)",
-            display: "block", marginBottom: 6, fontWeight: 500,
+            display: "block", marginBottom: 8, fontWeight: 500,
           }}>
             적용할 맵
+            <HelpTip text={"선택한 층에 등록된 맵 중 로봇에 활성화할 맵입니다.\n\n활성 맵을 바꾸면 NOS active 맵을 교체하고 localization 을 재시작합니다.\n자율 주행/전환 중이면 측위가 발산할 수 있어, 로봇이 작업 중이면 서버가 거부합니다."} />
           </label>
           <select
             value={selectedMapId}
@@ -168,18 +196,40 @@ export default function FloorChangeModal({ isOpen, robotId, robotName, currentFl
           </select>
         </div>
 
-        {/* 안내 메시지 */}
-        {selectedMapId && !error && (
-          <div style={{
-            fontSize: "var(--font-size-xs)", color: "var(--text-tertiary)",
-            padding: "8px 12px", borderRadius: 6,
-            background: "rgba(0, 168, 232, 0.08)",
-            marginBottom: 14, lineHeight: 1.5,
+        {/* 위험 고지 — 파괴적 작업. 상세는 '적용할 맵' 의 ? 툴팁으로 옮겼고,
+            한 줄은 남긴다. 측위 재시작은 되돌릴 수 없어 접어두면 안 된다. */}
+        <div style={{
+          fontSize: "var(--font-size-xs)", color: "#e8b9bd",
+          padding: "8px 12px", borderRadius: 6,
+          background: "rgba(148, 22, 33, 0.14)",
+          border: "1px solid rgba(255, 75, 75, 0.35)",
+          marginBottom: 18, lineHeight: 1.5,
+        }}>
+          <b style={{ color: "#ffb4b4", fontWeight: 600 }}>주의</b> — 맵을 바꾸면 측위가 재시작됩니다.
+        </div>
+
+        {/* 사유 (필수) — 감사 로그 기록 */}
+        <div style={{ marginBottom: 18 }}>
+          <label style={{
+            fontSize: "var(--font-size-xs)", color: "var(--text-secondary)",
+            display: "block", marginBottom: 8, fontWeight: 500,
           }}>
-            맵 활성화 시 localization 서비스가 재시작되며,{"\n"}
-            초기 위치가 설정된 경우 자동으로 적용됩니다.
-          </div>
-        )}
+            사유 <span style={{ color: "var(--color-error-soft)" }}>*</span>
+            <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}> — 감사 로그에 기록됩니다</span>
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder="예: 엘리베이터 대기 타임아웃 후 로봇이 3F에 실제 하차함. 수동 정합."
+            style={{
+              width: "100%", padding: "8px 10px", borderRadius: 6,
+              border: "1px solid var(--border-input)", background: "var(--surface-input)",
+              color: "var(--text-primary)", fontSize: "var(--font-size-sm)",
+              resize: "vertical", minHeight: 52, fontFamily: "inherit",
+            }}
+          />
+        </div>
 
         {/* 에러 */}
         {error && (
@@ -193,27 +243,37 @@ export default function FloorChangeModal({ isOpen, robotId, robotName, currentFl
           </div>
         )}
 
-        {/* 버튼 */}
-        <div className={styles.confirmButtons}>
-          <button className={`${styles.btnItemCommon} ${styles.btnBgRed}`} onClick={onClose} disabled={loading}>
-            <img src="/icon/close_btn.png" alt="" />
-            <div>취소</div>
-          </button>
-          <button
-            className={`${styles.btnItemCommon} ${styles.btnBgBlue}`}
-            onClick={handleConfirm}
-            disabled={!selectedMapId || loading}
-            style={{ opacity: !selectedMapId || loading ? 0.5 : 1 }}
-          >
-            {loading ? (
-              <div>활성화 중...</div>
-            ) : (
-              <>
-                <img src="/icon/check.png" alt="" />
-                <div>{isSameFloor ? "맵 변경" : "현재 층 변경"}</div>
-              </>
-            )}
-          </button>
+        {/* 버튼 — 힌트와 한 묶음으로 감싼다(confirmBox 의 flex gap 이 따로 벌어지지 않도록) */}
+        <div>
+          {!loading && blockedReason && (
+            <div style={{
+              fontSize: "var(--font-size-xs)", color: "var(--text-tertiary)",
+              textAlign: "center", marginBottom: 10,
+            }}>
+              {blockedReason}
+            </div>
+          )}
+          <div className={styles.confirmButtons}>
+            <button className={`${styles.btnItemCommon} ${styles.btnBgRed}`} onClick={onClose} disabled={loading}>
+              <img src="/icon/close_btn.png" alt="" />
+              <div>취소</div>
+            </button>
+            <button
+              className={`${styles.btnItemCommon} ${styles.btnBgBlue}`}
+              onClick={handleConfirm}
+              disabled={!!blockedReason || loading}
+              style={{ opacity: blockedReason || loading ? 0.5 : 1 }}
+            >
+              {loading ? (
+                <div>활성화 중...</div>
+              ) : (
+                <>
+                  <img src="/icon/check.png" alt="" />
+                  <div>층 변경</div>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

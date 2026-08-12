@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import PathStopOptionsModal from "../path/PathStopOptionsModal";
+import { WORK_TYPES } from "@/app/lib/taskType";
 
 type Props = {
   isOpen: boolean;
@@ -167,10 +168,9 @@ export default function PathBuildPanel({
               fontSize: "var(--font-size-sm)",
             }}
           >
-            <option value="task1">task1</option>
-            <option value="task2">task2</option>
-            <option value="task3">task3</option>
-            <option value="test">test</option>
+            {WORK_TYPES.map((t) => (
+              <option key={t.id} value={t.label}>{t.label}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -272,7 +272,7 @@ export default function PathBuildPanel({
                         borderRadius: 4,
                         background: "rgba(127, 208, 255, 0.15)",
                         border: "1px solid rgba(127, 208, 255, 0.4)",
-                        color: "#7fd0ff",
+                        color: "var(--color-accent-cyan)",
                         fontSize: 10,
                         fontWeight: 600,
                       }}
@@ -301,15 +301,15 @@ export default function PathBuildPanel({
                 )}
                 <button
                   onClick={() => setOptionsIdx(i)}
-                  title="정지 옵션 설정"
+                  title="도착 지점 정지·안내 설정"
                   aria-label="옵션"
                   style={{
                     width: 20,
                     height: 20,
                     borderRadius: "50%",
-                    border: "1.5px solid #7fd0ff",
+                    border: "1.5px solid var(--color-accent-cyan)",
                     background: "transparent",
-                    color: "#7fd0ff",
+                    color: "var(--color-accent-cyan)",
                     cursor: "pointer",
                     fontSize: 13,
                     fontWeight: 700,

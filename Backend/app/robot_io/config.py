@@ -22,6 +22,18 @@ def _env_int(name: str, default: int) -> int:
         print(f"[ROBOT CONFIG] {name}={value!r} 값이 정수가 아니어서 기본값 {default} 사용")
         return default
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    if not value:
+        return default
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off"):
+        return False
+    print(f"[ROBOT CONFIG] {name}={value!r} 값이 bool 이 아니어서 기본값 {default} 사용")
+    return default
+
 # 로봇 본체 (ASDU 프로토콜 엔드포인트)
 ROBOT_IP = _env_str("ROBOT_IP", "10.21.31.103")
 ROBOT_PORT = _env_int("ROBOT_PORT", 30000)
@@ -45,6 +57,19 @@ REQ_INTERVAL_HB = 1.0
 
 # 기본 초기 pose
 INIT_POSE = {"PosX": 3.965, "PosY": -2.395, "PosZ": 0.0, "Yaw": -1.664}
+
+# ── 다층 경로 층 전환 (floor_transition) ──
+# True(기본, 실엘베): 사람이 로봇을 엘리베이터에 태워 도착층 EV로비에 내려놓는다.
+#   → 로봇은 이미 도착 waypoint 자리에 있으므로, 그 좌표를 seed 로 주입해 수렴하면
+#     '도착 자동감지'로 보고 해당 waypoint 를 건너뛴 뒤 다음 목적지로 주행한다.
+# False(겹침 매핑 검증): 두 맵이 경계 구간에서 겹치도록 매핑되어, 로봇이 경계를
+#   스스로 주행해 건널 수 있다. 출발 EV로비에 선 채로 도착 맵이 로드되므로 로봇은
+#   아직 도착 waypoint 자리가 '아니다'.
+#   → seed 는 초기 추정일 뿐이고(도착 waypoint 와 실제 위치가 어긋나 있음),
+#     scan-match 가 새 맵에서 잡아낸 위치가 안정 정착하면 그 좌표를 채택한다.
+#     경계 waypoint 는 건너뛰지 않고 정상 주행 명령으로 전송한다.
+# ⚠️ 실엘베에서 False 로 두면 층 이동 후 '안정적으로 틀린' 좌표를 채택할 수 있어 위험하다.
+FLOOR_TRANSITION_ASSISTED = _env_bool("FLOOR_TRANSITION_ASSISTED", True)
 
 # ── 전원 자동 on(부팅) 시 init_pose 자동 주입 (ERR-07) ──
 AUTO_INIT_POSE_ENABLED = True          # 자동 주입 기능 on/off

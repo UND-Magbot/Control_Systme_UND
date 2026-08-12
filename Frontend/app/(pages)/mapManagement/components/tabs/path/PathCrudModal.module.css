@@ -5,14 +5,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px; /* L-02: 낮은 뷰포트에서 모달이 화면 가장자리에 붙지 않도록 */
   z-index: 90
 }
 
 .modal {
   width: 880px;
   height: 560px;
+  /* L-02: 뷰포트보다 큰 경우 잘리지 않도록 상한 + 내부 스크롤 */
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
 
-  background: #292D43;
+  background: var(--surface-3); /* = #292D43 (D-03: 등가 토큰) */
 
   border-radius: 14px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
@@ -103,9 +108,9 @@
 }
 
 .sectionTitle {
-  font-size: 15px;
+  font-size: var(--font-size-lg);
   font-weight: 700;
-  color: #7fd0ff;
+  color: var(--color-accent-cyan);
 
   display: flex;
   align-items: center;
@@ -168,7 +173,7 @@
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   height: 30px;
   color: #fff;
 }
@@ -189,7 +194,7 @@
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   height: 32px;
   color: #cfd6e6;
 }
@@ -244,7 +249,7 @@
   line-height: 30px;
   padding: 0 8px;
   color: #fff;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   border-radius: 5px;
 }
 
@@ -254,7 +259,7 @@
   line-height: 28px;
   padding: 0 10px;
   color: #cfd6e6;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   border-radius: 5px;
   transition: background 0.12s ease;
 }
@@ -395,7 +400,7 @@
 }
 
 .placeCol {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   text-align: center;
 }
 
@@ -424,7 +429,7 @@
 }
 
 .emptyTitle {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   font-weight: 700;
   opacity: 0.9;
 }
@@ -448,7 +453,7 @@
 
 .formLabel {
   color: #cfd6e6;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   opacity: 0.9;
 }
@@ -461,7 +466,7 @@
   padding: 0 12px;
   color: #fff;
   outline: none;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .textInput::placeholder {
@@ -548,12 +553,12 @@
   align-items: center;
   justify-content: center;
   color: #dbe3f5;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
 .orderTitle {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
   color: #ffffff;
 }
@@ -590,9 +595,9 @@
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  border: 1.5px solid #7fd0ff;
-  color: #7fd0ff;
-  font-size: 14px;
+  border: 1.5px solid var(--color-accent-cyan);
+  color: var(--color-accent-cyan);
+  font-size: var(--font-size-md);
   font-weight: 700;
   line-height: 1;
   display: inline-flex;
@@ -611,8 +616,21 @@
   border-radius: 4px;
   background: rgba(127, 208, 255, 0.15);
   border: 1px solid rgba(127, 208, 255, 0.4);
-  color: #7fd0ff;
-  font-size: 10px;
+  color: var(--color-accent-cyan);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sayBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(146, 208, 80, 0.14);
+  border: 1px solid rgba(146, 208, 80, 0.4);
+  color: #c7ef9a;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   line-height: 1;
 }
@@ -676,7 +694,7 @@
   border-radius: 7px;
 
   color: #ffffff;
-  font-size: 13px;
+  font-size: var(--font-size-base);
 
   display: flex;
   align-items: center;
@@ -687,7 +705,7 @@
   width: 10px;
   height: 10px;
 
-  margin-right: 20px;
+  margin-right: 8px; /* L-04: 과도한 20px → 8px, 스피너와 동일 간격으로 idle↔loading 점프 제거 */
 }
 
 .btnBgRed {
@@ -697,8 +715,8 @@
 }
 
 .btnBgBlue {
-  border: 1px solid #0E85B7;
-  background: #196189;
+  border: 1px solid var(--color-info-border); /* = #0E85B7 (D-03) */
+  background: var(--color-info-bg); /* = #196189 (D-03) */
 }
 
 
@@ -746,7 +764,7 @@
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
-  margin-right: 29px;
+  margin-right: 8px; /* L-04: 아이콘과 동일 간격 */
 }
 
 @keyframes spin {
@@ -791,12 +809,12 @@
 }
 
 .orderEmptyIcon {
-  font-size: 28px;
+  font-size: var(--font-size-3xl);
   opacity: 0.5;
 }
 
 .orderEmptyText {
-  font-size: 13px;
+  font-size: var(--font-size-base);
   text-align: center;
   line-height: 1.5;
 }
@@ -809,12 +827,12 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.25);
-  border-radius: 16px;
+  border-radius: 12px; /* L-07: 부모 .right(12px)와 일치 */
   z-index: 10;
 }
 
 .rightDisabledText {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.7);
   text-align: center;
@@ -842,7 +860,7 @@
   padding: 0 10px;
   color: #fff;
   outline: none;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   margin-bottom: 8px;
 }
 
@@ -852,7 +870,7 @@
 
 /* ─── 전체삭제 버튼 ─── */
 .clearAllBtn {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: rgba(255, 255, 255, 0.55);
   background: none;
   border: none;
@@ -872,6 +890,6 @@
 .moveBtn:focus-visible,
 .resetBtn:focus-visible,
 .clearAllBtn:focus-visible {
-  outline: 2px solid #7fd0ff;
+  outline: 2px solid var(--color-accent-cyan);
   outline-offset: -2px;
 }

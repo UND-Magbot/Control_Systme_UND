@@ -48,7 +48,10 @@ class PathInsertReq(BaseModel):
     TaskType: str
     WayName: str
     WayPoints: str
-    WaitSeconds: str | None = None  # JSON array of int
+    WaitSeconds: str | None = None  # JSON array of int (정차 지점별 대기/최대 대기 초)
+    # 경유지 도착 상호작용 — WayPoints 정차 지점과 병렬 JSON.
+    # [{announceId, announceText, confirm(none|button|voice|gesture), onTimeout(wait|skip|abort)} | null]
+    StopActions: str | None = None
 
 
 @database.post("/path")
@@ -60,6 +63,7 @@ def insert_path(req: PathInsertReq, request: Request, db: Session = Depends(get_
         WayName=req.WayName,
         WayPoints=req.WayPoints,
         WaitSeconds=req.WaitSeconds,
+        StopActions=req.StopActions,
     )
     db.add(path)
     db.commit()
@@ -94,6 +98,7 @@ class PathRes(BaseModel):
     WayName: str | None
     WayPoints: str | None
     WaitSeconds: str | None
+    StopActions: str | None
     UpdateTime: datetime | None
 
     class Config:
@@ -118,8 +123,8 @@ def get_paths_legacy(db: Session = Depends(get_db), current_user: UserInfo = Dep
 
 @database.get("/way-names")
 def get_way_names(db: Session = Depends(get_db), current_user: UserInfo = Depends(require_any_permission("path-list", "map-edit", "schedule-list"))):
-    # FloorId 계산을 위해 WayPoints 까지 포함해 조회 (경량 필드만)
-    q = db.query(WayInfo.id, WayInfo.WayName, WayInfo.RobotName, WayInfo.TaskType, WayInfo.WayPoints)
+    # FloorId 계산을 위해 WayPoints 까지 포함해 조회. StopActions 는 작업 등록 도착 안내 미리보기용.
+    q = db.query(WayInfo.id, WayInfo.WayName, WayInfo.RobotName, WayInfo.TaskType, WayInfo.WayPoints, WayInfo.StopActions)
     if not is_admin(current_user) and current_user.BusinessId:
         biz_names = get_business_robot_names(db, current_user.BusinessId)
         q = q.filter(WayInfo.RobotName.in_(biz_names) | (WayInfo.RobotName == "") | (WayInfo.RobotName.is_(None)))
@@ -132,6 +137,8 @@ def get_way_names(db: Session = Depends(get_db), current_user: UserInfo = Depend
             "WayName": p.WayName,
             "RobotName": p.RobotName,
             "TaskType": p.TaskType,
+            "WayPoints": p.WayPoints,
+            "StopActions": p.StopActions,
             "FloorId": floor_map.get(p.id),
         }
         for p in paths
@@ -160,6 +167,9 @@ def update_path(path_id: int, req: PathInsertReq, request: Request, db: Session 
     if path.WaitSeconds != req.WaitSeconds:
         changes.append(f"대기 시간 변경")
         path.WaitSeconds = req.WaitSeconds
+    if path.StopActions != req.StopActions:
+        changes.append("도착 발화/확인 변경")
+        path.StopActions = req.StopActions
 
     db.commit()
     db.refresh(path)

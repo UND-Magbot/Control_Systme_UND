@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 
-from app.database.models import RobotInfo, UserInfo, RobotModule, ModuleCameraInfo
+from app.database.models import RobotInfo, UserInfo, RobotModule, ModuleCameraInfo, ModuleArmInfo
 from app.auth.dependencies import require_permission, require_any_permission
 from app.auth.audit import write_audit, get_client_ip
 
@@ -45,6 +45,18 @@ def _build_module_tree(modules: list[RobotModule], robot: RobotInfo) -> list[dic
                 "cameraIP": ip,
                 "port": ci.Port,
                 "path": ci.Path,
+            }
+
+        elif m.ModuleType == "arm" and m.arm_info:
+            ai = m.arm_info
+            node["config"] = {
+                "vendor": ai.Vendor,
+                "model": ai.Model,
+                "agentHost": ai.AgentHost,
+                "agentPort": ai.AgentPort,
+                "armIP": ai.ArmIP,
+                "armPort": ai.ArmPort,
+                "dof": ai.DoF,
             }
 
         by_id[m.id] = node
@@ -95,6 +107,14 @@ class ModuleCreateReq(BaseModel):
     cameraIP: Optional[str] = None
     port: Optional[int] = None
     path: Optional[str] = None
+    # 팔(arm) 전용
+    vendor: Optional[str] = None
+    model: Optional[str] = None
+    agentHost: Optional[str] = None
+    agentPort: Optional[int] = None
+    armIP: Optional[str] = None
+    armPort: Optional[int] = None
+    dof: Optional[int] = None
 
 
 @database.post("/robots/{robot_id}/modules")
@@ -136,6 +156,17 @@ def create_module(
             Port=req.port,
             Path=req.path,
         ))
+    elif req.moduleType == "arm":
+        db.add(ModuleArmInfo(
+            ModuleId=module.id,
+            Vendor=req.vendor,
+            Model=req.model,
+            AgentHost=req.agentHost,
+            AgentPort=req.agentPort,
+            ArmIP=req.armIP,
+            ArmPort=req.armPort,
+            DoF=req.dof,
+        ))
 
     db.commit()
 
@@ -155,6 +186,14 @@ class ModuleUpdateReq(BaseModel):
     cameraIP: Optional[str] = None
     port: Optional[int] = None
     path: Optional[str] = None
+    # 팔(arm) 전용
+    vendor: Optional[str] = None
+    model: Optional[str] = None
+    agentHost: Optional[str] = None
+    agentPort: Optional[int] = None
+    armIP: Optional[str] = None
+    armPort: Optional[int] = None
+    dof: Optional[int] = None
 
 
 @database.put("/modules/{module_id}")
@@ -186,6 +225,27 @@ def update_module(
             ci.Port = req.port
         if req.path is not None:
             ci.Path = req.path
+
+    elif module.ModuleType == "arm":
+        # 기존 arm 모듈은 상세 행이 없을 수 있어 upsert
+        ai = module.arm_info
+        if ai is None:
+            ai = ModuleArmInfo(ModuleId=module.id)
+            db.add(ai)
+        if req.vendor is not None:
+            ai.Vendor = req.vendor or None
+        if req.model is not None:
+            ai.Model = req.model or None
+        if req.agentHost is not None:
+            ai.AgentHost = req.agentHost or None
+        if req.agentPort is not None:
+            ai.AgentPort = req.agentPort
+        if req.armIP is not None:
+            ai.ArmIP = req.armIP or None
+        if req.armPort is not None:
+            ai.ArmPort = req.armPort
+        if req.dof is not None:
+            ai.DoF = req.dof
 
     db.commit()
 

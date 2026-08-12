@@ -7,6 +7,8 @@ import Pagination from "@/app/components/common/Pagination";
 import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import type { RobotRowData, Camera, Video, PowerItem } from '@/app/types';
 import { apiFetch } from "@/app/lib/api";
+import { resolveTaskTypeLabel } from "@/app/lib/taskType";
+import { resolveScheduleMode, getScheduleModeLabel } from "@/app/lib/scheduleMode";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 
 const RobotInsertModal = dynamic(() => import("@/app/components/modal/RobotInsertModal"), { ssr: false });
@@ -21,8 +23,10 @@ import {
 import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 import ChargingIcon from "@/app/components/common/ChargingIcon";
 import { useAuth } from "@/app/context/AuthContext";
+import { useRobotLocations, type RobotLocation } from "@/app/hooks/useRobotLocations";
 import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
 import { usePageReady } from "@/app/context/PageLoadingContext";
+import { getStaleStatusLabel, isPowerOnConfirmed, isStatusStale, type ServerStatus } from "@/app/lib/robotLiveness";
 
 const ROBOT_PAGE_SIZE = 6;
 
@@ -61,10 +65,19 @@ export type RobotDraft = {
   site: string;
   registrationDateTime: string;
   returnBattery: number;
+  /** 로봇 IP(관리자 전용). 폴링 상태를 이 로봇에 붙이는 키. */
+  robotIp?: string;
 };
 
 /** 로봇 상태를 계산하는 헬퍼 (대시보드와 통일) */
-function getRobotStatus(r: RobotRowData, hasActiveSchedule = false): { label: string; className: string; tooltip: string } {
+function getRobotStatus(
+  r: RobotRowData,
+  hasActiveSchedule = false,
+  serverStatus: ServerStatus = "ok"
+): { label: string; className: string; tooltip: string } {
+  // 관제 서버 응답 없음 — 잔존값이므로 '오프라인'으로 단정하지 않는다.
+  const stale = getStaleStatusLabel(serverStatus);
+  if (stale) return { label: stale.label, className: styles.statusOffline, tooltip: stale.tooltip };
   if (r.power === "-") return { label: "오프라인", className: styles.statusOffline, tooltip: "" };
   if (r.network === "Offline" || r.power === "Off") return { label: "오프라인", className: styles.statusOffline, tooltip: "" };
   if (r.network === "Error") return { label: "오류", className: styles.statusError, tooltip: "" };
@@ -89,13 +102,16 @@ function getRobotStatus(r: RobotRowData, hasActiveSchedule = false): { label: st
   return { label: "대기 중", className: styles.statusStandby, tooltip: "" };
 }
 
-/** 로봇 현재 위치 표시 (API 준비 시 교체 예정) */
-// TODO: 백엔드 로봇별 실시간 위치 API (/robot/positions) 완성 후
-//       useRobotLocations(robots) 훅으로 교체하여 "1F 대기실" 형태로 표시
-function getRobotLocation(r: RobotRowData): string {
+/** 로봇 현재 위치 표시 — "2F · 접수" 형태.
+ *
+ * 예전에는 `site`(사업장명)를 위치인 것처럼 보여줬다. 사업장은 로봇이 어디 있는지와
+ * 무관해서, 로봇이 어디로 가든 같은 값이 떠 있었다. 별도 API 를 기다리고 있었지만
+ * 좌표는 이미 로봇마다 흐르고 있어서, 대시보드 카드와 같은 훅이면 된다.
+ */
+function getRobotLocation(r: RobotRowData, loc: RobotLocation | undefined): string {
   if (r.power === "-") return "-";
-  // 현재는 site 필드로 대체. API 연동 시 floor + placeName 조합으로 교체
-  return r.site || "-";
+  if (!loc?.floor) return "-";
+  return loc.placeName ? `${loc.floor} · ${loc.placeName}` : loc.floor;
 }
 
 /** 로봇 현재 작업 표시 */
@@ -124,7 +140,11 @@ export default function RobotManageTab({
   powerStatus,
 }: RobotStatusListProps) {
 
-  const { robots, loaded } = useRobotStatusContext();
+  const { robots, loaded, serverStatus } = useRobotStatusContext();
+  // 위치는 로봇마다 다르다 — 대시보드 카드와 같은 출처를 쓴다
+  const { byRobotId: robotLocations } = useRobotLocations(robots);
+  // 관제 서버 응답이 없으면 목록의 상태 값은 마지막 확인 시점의 잔존값이다.
+  const statusStale = isStatusStale(serverStatus);
 
   const { user } = useAuth();
   const admin = user?.role === 1 || user?.role === 2;
@@ -172,19 +192,21 @@ export default function RobotManageTab({
     IntervalMinutes?: number | null;
   };
   const [activeSchedules, setActiveSchedules] = useState<ActiveSchedule[]>([]);
+  // '오류'로 멈춘 작업은 진행 중과 섞지 않는다 — 섞으면 로봇 상태가 '작업중'으로 잘못 뜬다.
+  const [erroredSchedules, setErroredSchedules] = useState<ActiveSchedule[]>([]);
 
   useEffect(() => {
     const fetchActive = () => {
       apiFetch(`/DB/schedule`)
         .then((res) => res.json())
         .then((data: ActiveSchedule[]) => {
+          const rows = Array.isArray(data) ? data : [];
           setActiveSchedules(
-            Array.isArray(data)
-              ? data.filter((s) => s.TaskStatus === "진행중" || s.TaskStatus === "진행")
-              : []
+            rows.filter((s) => s.TaskStatus === "진행중" || s.TaskStatus === "진행")
           );
+          setErroredSchedules(rows.filter((s) => s.TaskStatus === "오류"));
         })
-        .catch(() => setActiveSchedules([]));
+        .catch(() => { setActiveSchedules([]); setErroredSchedules([]); });
     };
     fetchActive();
     const timer = setInterval(fetchActive, 5_000);
@@ -193,6 +215,10 @@ export default function RobotManageTab({
 
   const getActiveScheduleForRobot = (robotName: string): ActiveSchedule | null => {
     return activeSchedules.find((s) => s.RobotName === robotName) ?? null;
+  };
+
+  const getErroredScheduleForRobot = (robotName: string): ActiveSchedule | null => {
+    return erroredSchedules.find((s) => s.RobotName === robotName) ?? null;
   };
 
   // 원격 모드 모달
@@ -213,7 +239,7 @@ export default function RobotManageTab({
 
     let matchStatus = true;
     if (selectedStatus) {
-      matchStatus = getRobotStatus(robot, !!activeSchedules.find(s => s.RobotName === robot.no)).label === selectedStatus;
+      matchStatus = getRobotStatus(robot, !!activeSchedules.find(s => s.RobotName === robot.no), serverStatus).label === selectedStatus;
     }
 
     let matchPower = true;
@@ -430,10 +456,12 @@ export default function RobotManageTab({
             {currentItems.map((r, idx) => {
               const robotIndex = getRobotIndexFromNo(r.no);
               const robotColor = ROBOT_COLORS[robotIndex];
-              const status = getRobotStatus(r, !!getActiveScheduleForRobot(r.no));
-              const isRobotOnline = r.network === "Online" && r.power !== "Off" && r.power !== "-";
+              const status = getRobotStatus(r, !!getActiveScheduleForRobot(r.no), serverStatus);
+              const isRobotOnline = !statusStale && r.network === "Online" && r.power !== "Off" && r.power !== "-";
 
-              const isInactive = r.power === "Off" || r.power === "-";
+              // 서버 두절이면 전원 상태도 단정 불가 → 조작 비활성 취급
+              const isInactive = statusStale || r.power === "Off" || r.power === "-";
+              const powerOnNow = isPowerOnConfirmed(r.power, serverStatus);
               const inactiveTextStyle = isInactive ? { color: "var(--text-muted)" } : undefined;
               const labelColor = isInactive ? "var(--text-muted)" : "#e0e0e0";
 
@@ -470,14 +498,14 @@ export default function RobotManageTab({
                   <td style={inactiveTextStyle}>{(robotsPage - 1) * ROBOT_PAGE_SIZE + idx + 1}</td>
                   <td style={inactiveTextStyle}><div>{r.no}</div></td>
                   <td><span className={`${styles.statusBadge} ${status.className}`} title={status.tooltip}>{status.label}</span></td>
-                  <td className={styles.locationCell} style={inactiveTextStyle}>{getRobotLocation(r)}</td>
+                  <td className={styles.locationCell} style={inactiveTextStyle}>{getRobotLocation(r, robotLocations[r.id])}</td>
                   <td className={styles.taskCell} style={inactiveTextStyle}>
                     {(() => {
                       const active = getActiveScheduleForRobot(r.no);
                       if (!active) return getRobotCurrentTask(r);
-                      const mode = active.ScheduleMode || (active.Repeat === "Y" ? "weekly" : "once");
-                      const modeLabel = mode === "weekly" ? "요일반복" : mode === "interval" ? "주기반복" : "단일";
-                      const modeBadgeClass = mode === "weekly" ? styles.taskCellBadgeWeekly : mode === "interval" ? styles.taskCellBadgeInterval : styles.taskCellBadgeOnce;
+                      const mode = resolveScheduleMode(active);
+                      const modeLabel = getScheduleModeLabel(mode);
+                      const modeBadgeClass = mode === "weekly" ? styles.taskCellBadgeWeekly : mode === "interval" ? styles.taskCellBadgeInterval : mode === "standby" ? styles.taskCellBadgeStandby : styles.taskCellBadgeOnce;
                       // 현재 실행 중인 시각 계산
                       let time: string;
                       if (mode === "weekly" && active.ExecutionTime) {
@@ -505,7 +533,7 @@ export default function RobotManageTab({
                           </div>
                           <div className={styles.taskCellRow}>
                             <span className={`${styles.taskCellBadge} ${modeBadgeClass}`}>{modeLabel}</span>
-                            <span className={`${styles.taskCellBadge} ${styles.taskCellBadgeType}`}>{active.TaskType}</span>
+                            <span className={`${styles.taskCellBadge} ${styles.taskCellBadgeType}`}>{resolveTaskTypeLabel(active.TaskType)}</span>
                             <span className={styles.taskCellSub}>{time} 실행</span>
                           </div>
                         </div>
@@ -542,18 +570,18 @@ export default function RobotManageTab({
                       </>
                     )}
                   </td>
-                  <td style={inactiveTextStyle}>{r.power === "-" ? "Off" : r.power}</td>
+                  <td style={inactiveTextStyle}>{statusStale ? "-" : r.power === "-" ? "Off" : r.power}</td>
                   <td>
                     <div className={styles.infoBtnGroup}>
                       <div className={styles["info-box"]} onClick={(e) => { e.stopPropagation(); ViewInfoClick(idx, r); }}>상세보기</div>
                       <div
-                        className={`${styles["viewMap"]} ${r.power !== "On" ? styles.btnDisabled : ""}`}
-                        onClick={(e) => { e.stopPropagation(); if (r.power === "On") handleModuleClick(r); }}
+                        className={`${styles["viewMap"]} ${!powerOnNow ? styles.btnDisabled : ""}`}
+                        onClick={(e) => { e.stopPropagation(); if (powerOnNow) handleModuleClick(r); }}
                       >장치관리</div>
                       <div
-                        className={`${styles["viewMap"]} ${!admin || r.power !== "On" ? styles.btnDisabled : ""}`}
-                        onClick={(e) => { e.stopPropagation(); if (admin && r.power === "On") handleRemoteClick(r); }}
-                        title={r.power !== "On" ? "로봇 전원이 꺼져있습니다" : undefined}
+                        className={`${styles["viewMap"]} ${!admin || !powerOnNow ? styles.btnDisabled : ""}`}
+                        onClick={(e) => { e.stopPropagation(); if (admin && powerOnNow) handleRemoteClick(r); }}
+                        title={!powerOnNow ? (statusStale ? "관제 서버 응답 없음 — 로봇 상태를 확인할 수 없습니다." : "로봇 전원이 꺼져있습니다") : undefined}
                       >원격</div>
                     </div>
                   </td>
@@ -565,7 +593,7 @@ export default function RobotManageTab({
         </div>
 
         <RobotInsertModal isOpen={robotInsertModalOpen} onClose={() => setRobotInsertModalOpen(false)} />
-        <RobotDetailModal isOpen={robotDetailModalOpen} onClose={() => { setRobotDetailModalOpen(false); setRobotDetailEditMode(false); }} selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} initialEditMode={robotDetailEditMode} activeSchedule={selectedRobot ? getActiveScheduleForRobot(selectedRobot.no) : null} />
+        <RobotDetailModal isOpen={robotDetailModalOpen} onClose={() => { setRobotDetailModalOpen(false); setRobotDetailEditMode(false); }} selectedRobotId={selectedRobotId} selectedRobot={selectedRobot} robots={robots} initialEditMode={robotDetailEditMode} activeSchedule={selectedRobot ? getActiveScheduleForRobot(selectedRobot.no) : null} erroredSchedule={selectedRobot ? getErroredScheduleForRobot(selectedRobot.no) : null} />
         {remoteModalOpen && remoteTargetRobot && (
           <RemoteMapModal isOpen={remoteModalOpen} onClose={() => setRemoteModalOpen(false)} selectedRobots={robots.find((r) => r.id === remoteTargetRobot.id) ?? remoteTargetRobot} robots={robots} video={video} camera={cameras} primaryView="map" />
         )}

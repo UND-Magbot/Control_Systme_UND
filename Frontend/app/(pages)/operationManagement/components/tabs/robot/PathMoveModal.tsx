@@ -7,6 +7,7 @@ import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import type { PathRow } from "@/app/types";
 import { useModalBehavior } from '@/app/hooks/useModalBehavior';
 import { formatPathOrderWithWaits } from "@/app/lib/pathOrder";
+import { WORK_TYPES, resolveTaskTypeLabel } from "@/app/lib/taskType";
 
 type Props = {
   isOpen: boolean;
@@ -81,6 +82,12 @@ export default function PathMoveModal({
             <div ref={scrollRef} className={styles.placeInner} role="listbox">
               {filteredPaths.map((path) => {
                 const isSelected = selectedPathId === path.id;
+                const typeLabel = resolveTaskTypeLabel(path.workType);
+                // 작업유형별 배지 색 — 표준 3종에 1/2/3 배지, 그 외는 3번 배지.
+                const badgeClass =
+                  typeLabel === WORK_TYPES[0].label ? styles.pathMoveBadge1
+                  : typeLabel === WORK_TYPES[1].label ? styles.pathMoveBadge2
+                  : styles.pathMoveBadge3;
                 return (
                   <div
                     key={path.id}
@@ -96,11 +103,7 @@ export default function PathMoveModal({
                     <div className={styles.pathMoveInfo}>
                       <div className={styles.pathMoveNameRow}>
                         <span className={styles.pathMoveName}>{path.pathName}</span>
-                        <span className={`${styles.pathMoveBadge} ${
-                          path.workType === "task1" ? styles.pathMoveBadge1
-                          : path.workType === "task2" ? styles.pathMoveBadge2
-                          : styles.pathMoveBadge3
-                        }`}>{path.workType}</span>
+                        <span className={`${styles.pathMoveBadge} ${badgeClass}`}>{typeLabel}</span>
                       </div>
                       <div className={styles.pathMoveOrder}>{formatPathOrderWithWaits(path.pathOrder, path.waitSeconds)}</div>
                     </div>

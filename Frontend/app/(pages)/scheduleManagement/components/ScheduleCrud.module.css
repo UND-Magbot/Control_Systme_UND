@@ -60,13 +60,26 @@
   width: 20px;
   height: 20px;
   opacity: 0.8;
+  flex-shrink: 0;
+  display: block;
+  object-fit: contain;
 }
 
-.detailHeaderLeft h2 {
+/* 제목은 기본 margin 이 없는 span(.detailHeaderTitle) 을 쓴다 — h2 의 UA 기본 margin(0.83em)이
+   캐시/스타일 유실 시 새어나와 아이콘과 세로 정렬이 틀어지던 문제를 근본 차단.
+   (h2 셀렉터는 하위호환용으로 함께 남긴다) */
+.detailHeaderLeft h2,
+.detailHeaderTitle {
   margin: 0;
+  padding: 0;
   font-weight: 600;
   font-size: 16px;
   color: var(--text-primary);
+  /* 아이콘(20px)과 동일한 20px 박스 안에 글리프를 flex 로 세로 중앙정렬 */
+  height: 20px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
 }
 
 .CloseBtn {
@@ -83,27 +96,6 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-}
-
-.Title {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.Title img {
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-.Title h2 {
-  font-weight: 600;
-  font-size: 20px;
-  color: #ffffff;
-  margin: 0;
-  letter-spacing: -0.2px;
 }
 
 .itemContainer {
@@ -354,6 +346,12 @@
   border-radius: 6px;
   line-height: 1.4;
   word-break: break-all;
+}
+
+/* 작업경로 select 아래 '경로순서' 블록 — 다른 항목 간 간격(16px)과 맞춤.
+   itemBoxWrap 안에 중첩돼 상단 간격이 0이 되는 문제를 보정한다. */
+.pathOrderWrap {
+  margin-top: 16px;
 }
 
 .detailPathOrderCollapsed {
@@ -1251,6 +1249,40 @@
   cursor: pointer;
 }
 
+/* 선택 불가 옵션 — 사유는 title 로 붙는다. 숨기지 않는 이유는
+   "왜 이 모드가 없지"보다 "왜 못 고르는지"가 나은 안내라서다. */
+.modeRadioDisabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.modeRadioDisabled input[type="radio"] {
+  cursor: not-allowed;
+}
+
+/* ====== 상시 대기 안내 ====== */
+.standbyNotice {
+  background: rgba(255, 198, 53, 0.09);
+  border: 1px solid rgba(255, 198, 53, 0.32);
+  border-radius: 8px;
+  padding: 9px 13px;
+  margin-bottom: 12px;
+  font-size: var(--font-size-sm);
+  color: var(--color-warning);
+  line-height: 1.6;
+}
+
+.standbyNotice b { color: var(--text-primary); font-weight: 600; }
+
+.standbyHint {
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+  line-height: 1.6;
+  margin: -4px 0 12px;
+}
+
+.standbyHint b { color: var(--text-secondary); font-weight: 600; }
+
 /* ====== 반복 요일 래퍼 ====== */
 .repeatDayWrap {
   display: flex;
@@ -1710,6 +1742,12 @@
   color: #F0A030;
   background: rgba(255, 160, 50, 0.15);
   border: 1px solid rgba(255, 160, 50, 0.3);
+}
+
+.modeBadgeStandby {
+  color: #C08CE8;
+  background: rgba(192, 140, 232, 0.15);
+  border: 1px solid rgba(192, 140, 232, 0.3);
 }
 
 .modeBadgeDot {

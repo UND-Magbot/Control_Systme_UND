@@ -8,8 +8,9 @@ import { useAuth } from "@/app/context/AuthContext";
 import VideoTab from "./tabs/video/VideoTab";
 import StatsTab from "./tabs/stats/StatsTab";
 import LogTab from "./tabs/log/LogTab";
+import VoiceTab from "./tabs/voice/VoiceTab";
 
-type TabKey = "video" | "dt" | "log";
+type TabKey = "video" | "dt" | "log" | "voice";
 
 type Props = {
   video: Video[];
@@ -24,12 +25,14 @@ const TAB_MENU_KEY: Record<TabKey, string> = {
   video: "video",
   dt: "statistics",
   log: "log",
+  voice: "voice",
 };
 
 const TAB_FALLBACK_LABEL: Record<TabKey, string> = {
   video: "영상 관리",
   dt: "통계 관리",
   log: "로그 관리",
+  voice: "음성 관리",
 };
 
 export default function DataManagementTabs({
@@ -44,7 +47,7 @@ export default function DataManagementTabs({
 
   // 권한+가시성 있는 탭만 필터링
   const tabs = useMemo(() => {
-    const all: TabKey[] = ["video", "dt", "log"];
+    const all: TabKey[] = ["video", "dt", "log", "voice"];
     return all
       .filter((id) => hasPermission(TAB_MENU_KEY[id]) && isMenuVisible(TAB_MENU_KEY[id]))
       .map((id) => ({
@@ -101,6 +104,9 @@ export default function DataManagementTabs({
       )}
       {activeTab === "log" && tabs.some((t) => t.id === "log") && (
         <LogTab initialSearch={initialSearch} onLoaded={markReady} />
+      )}
+      {activeTab === "voice" && tabs.some((t) => t.id === "voice") && (
+        <VoiceTab robots={robots} onLoaded={markReady} />
       )}
     </>
   );

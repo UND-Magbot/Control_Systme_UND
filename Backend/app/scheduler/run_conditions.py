@@ -4,7 +4,7 @@
 결정한다. 외부 부수효과 없이 ScheduleInfo와 현재 시각만으로 판단.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.database.models import ScheduleInfo
 
@@ -77,7 +77,12 @@ def has_remaining_today(schedule: ScheduleInfo, now: datetime) -> bool:
 
 
 def should_run_now(schedule: ScheduleInfo, now: datetime) -> bool:
-    """스케줄이 지금 실행되어야 하는지 판단 (모드 디스패처)."""
+    """스케줄이 지금 실행되어야 하는지 판단 (모드 디스패처).
+
+    회차 단위 판정(due_planned_times)이 도입된 뒤로 스케줄러 루프는 이 함수를
+    쓰지 않는다 — grace 를 모르는 '분 단위 정확 매칭'이라 놓친 회차를 복구할 수
+    없기 때문(PRD §2.1 G1). 판정 결과를 단일 bool 로 알아야 하는 곳을 위해 남긴다.
+    """
     mode = getattr(schedule, 'ScheduleMode', None) or (
         "weekly" if schedule.Repeat == "Y" else "once"
     )
@@ -89,6 +94,193 @@ def should_run_now(schedule: ScheduleInfo, now: datetime) -> bool:
     elif mode == "interval":
         return _should_run_interval(schedule, now)
     return False
+
+
+# ─── 회차(슬롯) 단위 판정 — PRD-Schedule-Execution §2.1 G1 ───
+
+def _mode_of(schedule: ScheduleInfo) -> str:
+    return getattr(schedule, 'ScheduleMode', None) or (
+        "weekly" if schedule.Repeat == "Y" else "once"
+    )
+
+
+def _parse_hm(value: str | None, fallback: str) -> int | None:
+    """'HH:MM' → 분. 파싱 실패 시 fallback 으로 재시도, 그것도 실패면 None."""
+    for v in (value, fallback):
+        if not v:
+            continue
+        try:
+            h, m = v.split(":")
+            return int(h) * 60 + int(m)
+        except (ValueError, AttributeError):
+            continue
+    return None
+
+
+def _series_gates_ok(schedule: ScheduleInfo, day) -> bool:
+    """반복 시리즈 공통 게이트 — 날짜 범위 · 예외일 · 요일 · 실행 상한."""
+    series_start = getattr(schedule, 'SeriesStartDate', None)
+    if series_start and day < series_start:
+        return False
+
+    series_end = getattr(schedule, 'SeriesEndDate', None)
+    if not series_end and schedule.Repeat_End:
+        try:
+            series_end = datetime.strptime(str(schedule.Repeat_End).strip(), "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    if series_end and day > series_end:
+        return False
+
+    exceptions = getattr(schedule, 'SeriesExceptions', None)
+    if exceptions:
+        if day.strftime("%Y-%m-%d") in {d.strip() for d in exceptions.split(",") if d.strip()}:
+            return False
+
+    if schedule.MaxRunCount and (schedule.RunCount or 0) >= schedule.MaxRunCount:
+        return False
+
+    if schedule.Repeat_Day:
+        allowed = [d.strip() for d in schedule.Repeat_Day.split(",")]
+        if DAY_MAP.get(day.weekday()) not in allowed:
+            return False
+
+    return True
+
+
+def planned_times(schedule: ScheduleInfo, now: datetime) -> list[datetime]:
+    """이 스케줄이 '지금 시점에 관심 있는' 예정 시각 목록(오름차순).
+
+    반환값은 실행 여부가 아니라 **회차 후보**다. 실제 실행/미실행 판정은
+    ScheduleRun 기록과 grace 를 함께 보는 호출부(loop)가 한다.
+    """
+    mode = _mode_of(schedule)
+    today = now.date()
+
+    # 상시 대기는 '예정 시각에 출발'이 아니라 '시간대 안에 대기'라 회차 후보가 없다.
+    # 진입/종료는 standby_window() 로 판정하며, 여기서 슬롯을 내보내면 매일 미실행으로 잡힌다.
+    if mode == "standby":
+        return []
+
+    if mode == "once":
+        start_dt = schedule.StartDate
+        if not start_dt:
+            return []
+        if (schedule.RunCount or 0) > 0:
+            return []   # 레거시 방어: ScheduleRun 도입 전에 이미 실행된 단일 작업
+        return [start_dt]
+
+    if not _series_gates_ok(schedule, today):
+        return []
+
+    last_run = schedule.LastRunDate
+    slots: list[datetime] = []
+
+    if mode == "weekly":
+        exec_time = getattr(schedule, 'ExecutionTime', None)
+        if exec_time:
+            raw = [t.strip() for t in exec_time.split(",") if t.strip()]
+        elif schedule.StartDate:
+            raw = [f"{schedule.StartDate.hour:02d}:{schedule.StartDate.minute:02d}"]
+        else:
+            raw = []
+        for t in raw:
+            minutes = _parse_hm(t, "")
+            if minutes is None:
+                continue
+            slots.append(datetime.combine(today, datetime.min.time()) + timedelta(minutes=minutes))
+
+    elif mode == "interval":
+        interval_min = getattr(schedule, 'IntervalMinutes', None)
+        if not interval_min or interval_min <= 0:
+            return []
+        start_min = _parse_hm(getattr(schedule, 'ActiveStartTime', None), "00:00")
+        end_min = _parse_hm(getattr(schedule, 'ActiveEndTime', None), "23:59")
+        if start_min is None or end_min is None:
+            return []
+
+        # 활동 시간대 시작을 기준점으로 한 고정 그리드.
+        # LastRunDate 체이닝과 달리 예정 시각이 결정적이라 (ScheduleId, PlannedAt)
+        # 유니크 키로 중복 실행을 막을 수 있다.
+        base_day = today
+        span = end_min - start_min
+        if span < 0:
+            # 자정 넘김(22:00~06:00): 지금이 종료 시각 이전이면 어제 시작한 창이다
+            span += 24 * 60
+            if now.hour * 60 + now.minute <= end_min:
+                base_day = today - timedelta(days=1)
+                if not _series_gates_ok(schedule, base_day):
+                    return []
+        anchor = datetime.combine(base_day, datetime.min.time()) + timedelta(minutes=start_min)
+        offset = 0
+        while offset <= span:
+            slots.append(anchor + timedelta(minutes=offset))
+            offset += interval_min
+
+    # 레거시 브리지: ScheduleRun 이 없던 시절 이미 돈 회차를 다시 실행하지 않는다
+    if last_run:
+        slots = [s for s in slots if s > last_run]
+
+    return sorted(slots)
+
+
+def standby_window(schedule: ScheduleInfo, now: datetime) -> tuple[datetime, datetime] | None:
+    """상시 대기 운영 시간대 — now 가 포함된 창을 (시작, 종료)로 돌려준다.
+
+    반환값이 있으면 "지금 대기 근무 중이어야 한다"는 뜻이다. 요일·유효기간·예외일
+    게이트를 통과하지 못하거나 시간대 밖이면 None.
+    """
+    if _mode_of(schedule) != "standby":
+        return None
+
+    start_min = _parse_hm(getattr(schedule, 'ActiveStartTime', None), "00:00")
+    end_min = _parse_hm(getattr(schedule, 'ActiveEndTime', None), "23:59")
+    if start_min is None or end_min is None:
+        return None
+
+    now_min = now.hour * 60 + now.minute
+    base_day = now.date()
+
+    if start_min <= end_min:
+        if not (start_min <= now_min < end_min):
+            return None
+    else:
+        # 자정 넘김(22:00~06:00): 종료 시각 이전이면 어제 시작한 창이다
+        if now_min < start_min and now_min >= end_min:
+            return None
+        if now_min < end_min:
+            base_day = base_day - timedelta(days=1)
+
+    # 요일·기간 게이트는 '창이 시작된 날' 기준으로 본다
+    if not _series_gates_ok(schedule, base_day):
+        return None
+
+    begin = datetime.combine(base_day, datetime.min.time()) + timedelta(minutes=start_min)
+    end = datetime.combine(base_day, datetime.min.time()) + timedelta(minutes=end_min)
+    if end <= begin:
+        end += timedelta(days=1)
+    return begin, end
+
+
+def due_planned_times(schedule: ScheduleInfo, now: datetime, grace_min: int) -> list[datetime]:
+    """지금 실행해야 하는 회차 — 예정시각 ≤ now < 예정시각 + grace."""
+    limit = timedelta(minutes=grace_min)
+    return [p for p in planned_times(schedule, now) if p <= now < p + limit]
+
+
+def expired_planned_times(schedule: ScheduleInfo, now: datetime, grace_min: int,
+                          since: datetime | None = None) -> list[datetime]:
+    """grace 를 넘겨 실행 기회를 잃은 회차 — 미실행(missed)으로 기록할 대상.
+
+    since 는 스케줄러가 관측을 시작한 시각. 그 이전 회차는 애초에 볼 수 없었으므로
+    미실행으로 단정하지 않는다(서버 재시작 직후 과거 회차가 무더기로 잡히는 것 방지).
+    """
+    limit = timedelta(minutes=grace_min)
+    out = []
+    for p in planned_times(schedule, now):
+        if now >= p + limit and (since is None or p >= since):
+            out.append(p)
+    return out
 
 
 def _should_run_once(schedule: ScheduleInfo, now: datetime) -> bool:

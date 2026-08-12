@@ -13,8 +13,11 @@ import PlaceDeleteConfirmModal from "./PlaceDeleteConfirmModal";
 import type { PlaceRow } from "@/app/types";
 import type { POIItem } from "@/app/components/map/types";
 import DropdownSelect from "@/app/components/button/DropdownSelect";
+import { useFloorMapConfig, type FloorMapRow } from "@/app/(pages)/mapManagement/hooks/useFloorMapConfig";
 import ZoomControl from "@/app/components/button/ZoomControl";
 import { apiFetch } from "@/app/lib/api";
+import { degFromYaw, yawFromDeg } from "@/app/lib/yaw";
+import DirectionPicker from "@/app/components/common/DirectionPicker";
 import { MapPin, MapPinned } from "lucide-react";
 import type { POICategory } from "@/app/components/map/types";
 
@@ -36,6 +39,7 @@ export type PlaceRowData = {
   direction: string;
   desc: string;
   updatedAt: string;
+  mapId?: number | null; // PE-09: 좌표가 속한 실제 맵
 };
 
 type Mode = "create" | "edit";
@@ -50,6 +54,10 @@ type Props = {
   mode: Mode;
   robots: RobotRowData[];
   floors?: string[];
+  /** 층 이름→id 해석용(맵 후보 필터). */
+  floorRows?: { id: number; label: string }[];
+  /** 좌표 선택에 쓸 실제 맵 후보(층별). PE-09 */
+  mapRows?: FloorMapRow[];
   initial?: PlaceRowData | null;
   existingPlaces?: PlaceRow[];
   onClose: () => void;
@@ -63,6 +71,8 @@ export default function PlaceCrudModal({
   mode,
   robots,
   floors = DEFAULT_FLOORS,
+  floorRows = [],
+  mapRows = [],
   initial = null,
   existingPlaces = [],
   onClose,
@@ -71,7 +81,6 @@ export default function PlaceCrudModal({
   const isEdit = mode === "edit";
 
   const mapRef = useRef<CanvasMapHandle>(null);
-  const dirWheelRef = useRef<HTMLDivElement>(null);
 
   const [dbRobots, setDbRobots] = useState<DBRobot[]>([]);
 
@@ -84,6 +93,7 @@ export default function PlaceCrudModal({
   const [direction, setDirection] = useState<string>("");
   const [desc, setDesc] = useState<string>("");
   const [category, setCategory] = useState<POICategory>("waypoint");
+  const [selectedMapId, setSelectedMapId] = useState<number | null>(null); // PE-09
   const [isPinMode, setIsPinMode] = useState(false);
   const [pinPlaced, setPinPlaced] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
@@ -119,13 +129,14 @@ export default function PlaceCrudModal({
   // 실시간 로봇 위치
   const { position: liveRobotPos, isReady: robotPosReady } = useRobotPosition(isOpen);
 
-  // create 모드: 로봇+층 선택 완료 시 핀 모드 자동 활성화
+  // create 모드: 로봇+층+맵 선택 완료 시 핀 모드 자동 활성화
   useEffect(() => {
     if (mode !== "create") return;
     if (!robotNo || !floor) return;
+    if (selectedMapId == null) return; // PE-09: 실제 맵이 정해져야 좌표가 그 맵 기준으로 찍힌다
     if (pinPlaced || x || y) return; // 이미 좌표 설정됨
     setIsPinMode(true);
-  }, [robotNo, floor, mode, pinPlaced, x, y]);
+  }, [robotNo, floor, mode, pinPlaced, x, y, selectedMapId]);
 
   // DB 로봇 목록 fetch
   const [robotFetchError, setRobotFetchError] = useState(false);
@@ -148,6 +159,28 @@ export default function PlaceCrudModal({
     fetchRobots();
   }, [isOpen, fetchRobots]);
 
+  // PE-09: 선택한 층에 해당하는 실제 맵 후보 + 선택 상태.
+  const selectedFloorId = useMemo(
+    () => floorRows.find((f) => f.label === floor)?.id ?? null,
+    [floorRows, floor]
+  );
+  const candidateMaps = useMemo(
+    () => (selectedFloorId == null ? [] : mapRows.filter((m) => m.FloorId === selectedFloorId)),
+    [mapRows, selectedFloorId]
+  );
+  // 층 변경 시: 후보 1개면 자동 선택, 현재 선택이 후보에 없으면 재설정.
+  useEffect(() => {
+    if (candidateMaps.length === 0) { setSelectedMapId(null); return; }
+    setSelectedMapId((prev) =>
+      prev != null && candidateMaps.some((m) => m.id === prev)
+        ? prev
+        : candidateMaps.length === 1 ? candidateMaps[0].id : null
+    );
+  }, [candidateMaps]);
+
+  // 선택된 실제 맵으로 CanvasMap config 생성(없으면 데모맵 폴백).
+  const realMapConfig = useFloorMapConfig(selectedMapId, mapRows);
+
   // open/close lifecycle
   useEffect(() => {
     if (!isOpen) return;
@@ -155,6 +188,7 @@ export default function PlaceCrudModal({
     if (initial) {
       setRobotNo(initial.robotNo ?? "");
       setFloor(initial.floor ?? "");
+      setSelectedMapId(initial.mapId ?? null);
       setName(initial.name ?? "");
       setX(initial.x ?? "");
       setY(initial.y ?? "");
@@ -259,6 +293,7 @@ export default function PlaceCrudModal({
   };
 
   const submit = async () => {
+    if (isSubmitting) return; // PE-08: 재진입(Enter/재클릭) 방지
     // 필드별 에러 수집
     const errors: typeof fieldErrors = {};
     if (!robotNo) errors.robotNo = "로봇명을 선택해 주세요.";
@@ -276,6 +311,9 @@ export default function PlaceCrudModal({
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
+    // PE-08: floors 조회 await 구간에도 중복 제출이 통과하지 않도록 미리 in-flight 설정.
+    setIsSubmitting(true);
+
     // FloorId 조회
     let floorId: number | null = null;
     try {
@@ -291,14 +329,15 @@ export default function PlaceCrudModal({
       RobotName: robotNo,
       LacationName: name.trim(),
       FloorId: floorId,
+      MapId: selectedMapId, // PE-09: 좌표가 속한 실제 맵을 함께 저장(등록·수정 모두)
       LocationX: Number(x),
       LocationY: Number(y),
-      LocationDir: Number(direction),
+      // 백엔드 스키마는 Yaw(라디안)만 받는다. 기존 LocationDir(도)는 무시돼 Yaw=0 으로 저장되던 버그 수정.
+      Yaw: yawFromDeg(Number(direction)),
       Category: category,
       Imformation: desc || null,
     };
 
-    setIsSubmitting(true);
     try {
       const isEditMode = mode === "edit" && initial?.id;
       const url = isEditMode
@@ -333,6 +372,7 @@ export default function PlaceCrudModal({
         direction,
         desc,
         updatedAt: nowText,
+        mapId: selectedMapId,
       });
 
       setSaveSuccessOpen(true);
@@ -391,53 +431,13 @@ export default function PlaceCrudModal({
     if (isSubmitting || !robotPosReady || !liveRobotPos) return;
     setX(liveRobotPos.x.toFixed(3));
     setY(liveRobotPos.y.toFixed(3));
-    // 로봇 yaw(rad) → 방향(deg, 0~360)
-    let deg = (Number(liveRobotPos.yaw) * 180) / Math.PI;
-    deg = ((deg % 360) + 360) % 360;
-    setDirection(String(Math.round(deg)));
+    // 로봇 ROS yaw(rad) → 방향 도(로봇 yaw 와 동일)
+    setDirection(String(degFromYaw(Number(liveRobotPos.yaw))));
     setXDirty(true);
     setYDirty(true);
     setPinPlaced(true);
     setIsPinMode(false);
     setFieldErrors((prev) => ({ ...prev, coordinates: undefined, direction: undefined }));
-  };
-
-  const handleDirectionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    if (val === "" || val === "-") { setDirection(val); return; }
-    const num = Number(val);
-    if (num < 0) setDirection("0");
-    else if (num > 360) setDirection("360");
-    else setDirection(val);
-  };
-
-  const handleDirectionBlur = () => {
-    if (direction === "" || direction === "-") {
-      if (direction === "-") setDirection("");
-      if (!direction) {
-        setFieldErrors((prev) => ({ ...prev, direction: "방향을 입력해 주세요." }));
-      }
-      return;
-    }
-    const num = Number(direction);
-    if (isNaN(num)) { setDirection(""); return; }
-    const clamped = Math.max(0, Math.min(360, Math.round(num)));
-    setDirection(String(clamped));
-    setFieldErrors((prev) => ({ ...prev, direction: undefined }));
-  };
-
-  // 방향 인디케이터 클릭으로 방향 설정
-  const handleDirectionWheelClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = e.clientX - cx;
-    const dy = e.clientY - cy;
-    let angle = Math.atan2(dx, -dy) * (180 / Math.PI);
-    if (angle < 0) angle += 360;
-    const rounded = Math.round(angle);
-    setDirection(String(rounded));
-    setFieldErrors((prev) => ({ ...prev, direction: undefined }));
   };
 
   const title = isEdit ? "장소 수정" : "장소 등록";
@@ -531,6 +531,25 @@ export default function PlaceCrudModal({
                   {fieldErrors.floor && <div className={styles.fieldError}>{fieldErrors.floor}</div>}
                 </div>
               </div>
+
+              {/* 맵 (한 층에 맵이 여러 개일 때만 노출) — PE-09 */}
+              {candidateMaps.length > 1 && (
+                <div className={styles.row}>
+                  <div className={`${styles.label} ${styles.required}`}>맵</div>
+                  <div className={styles.selectWrap}>
+                    <DropdownSelect<FloorMapRow>
+                      placeholder="맵을 선택하세요"
+                      value={candidateMaps.find((m) => m.id === selectedMapId) ?? null}
+                      options={candidateMaps}
+                      getLabel={(m) => m.MapName}
+                      getKey={(m) => m.id}
+                      onChange={(m) => setSelectedMapId(m.id)}
+                      className={styles.modalSelect}
+                    />
+                    <div className={styles.fieldHint}>이 층에 맵이 여러 개입니다. 좌표를 찍을 맵을 선택하세요.</div>
+                  </div>
+                </div>
+              )}
 
               {/* 장소명 */}
               <div className={styles.row}>
@@ -631,42 +650,16 @@ export default function PlaceCrudModal({
                 </div>
               )}
 
-              {/* 방향 */}
-              <div className={styles.directionRow}>
-                <div className={`${styles.label} ${styles.required}`}>방향(°)</div>
-                <div className={styles.directionInputWrap}>
-                  <input
-                    className={`${styles.xyInput} ${styles.edit} ${direction ? styles.xyInputFilled : styles.xyInputEmpty}`}
-                    value={direction}
-                    onChange={handleDirectionChange}
-                    onBlur={handleDirectionBlur}
-                    placeholder="0~360"
-                    type="number"
-                    min={0}
-                    max={360}
-                  />
-                  <div
-                    ref={dirWheelRef}
-                    className={styles.directionIndicator}
-                    onClick={handleDirectionWheelClick}
-                    title="클릭하여 방향 설정"
-                    role="button"
-                    aria-label="방향 설정 휠"
-                  >
-                    {(direction || direction === "0") && (
-                      <div
-                        className={styles.directionArrow}
-                        style={{ transform: `rotate(${Number(direction)}deg)` }}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-              {fieldErrors.direction && (
-                <div className={styles.xyErrorRow}>
-                  <div className={styles.fieldError}>{fieldErrors.direction}</div>
-                </div>
-              )}
+              {/* 방향 — DirectionPicker 공통(다이얼 포인팅 + 현재 로봇 방향, 숫자 부차) */}
+              <DirectionPicker
+                value={direction}
+                onChange={(d) => {
+                  setDirection(d);
+                  setFieldErrors((prev) => ({ ...prev, direction: undefined }));
+                }}
+                liveRobotYawRad={robotPosReady && liveRobotPos ? Number(liveRobotPos.yaw) : null}
+                error={fieldErrors.direction}
+              />
             </div>
 
             {/* 장소설명 */}
@@ -728,7 +721,7 @@ export default function PlaceCrudModal({
 
                 <CanvasMap
                   ref={mapRef}
-                  config={getOccGridConfig()}
+                  config={realMapConfig ?? getOccGridConfig()}
                   robotPos={robotPosForMap}
                   showRobot={robotPosReady}
                   pois={mapPois}

@@ -197,6 +197,8 @@
 .dotOnline { background: var(--color-success); }
 .dotError { background: var(--color-warning); }
 .dotOffline { background: var(--color-error); }
+/* 관제 서버 응답 없음 — 로봇 상태 미확인(로봇 오프라인과 구분) */
+.dotUnknown { background: var(--text-muted); }
 
 .badgeOnline {
   background: rgba(146, 208, 80, 0.15);
@@ -211,6 +213,12 @@
 .badgeOffline {
   background: rgba(255, 0, 0, 0.15);
   color: var(--color-error-soft);
+}
+
+.badgeUnknown {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--text-muted);
+  border: 1px dashed rgba(148, 163, 184, 0.5);
 }
 
 .cardBottom {

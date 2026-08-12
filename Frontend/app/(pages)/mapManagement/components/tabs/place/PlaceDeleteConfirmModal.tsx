@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import styles from "./PlaceDeleteConfirmModal.module.css";
 
 type Props = {
@@ -11,6 +11,13 @@ type Props = {
 };
 
 export default function PlaceDeleteConfirmModal({ isOpen, message, onCancel, onConfirm }: Props) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  // PA-02: 열릴 때 확인 버튼에 포커스 → 키보드(Enter/Space)로 확정 가능.
+  useEffect(() => {
+    if (isOpen) confirmRef.current?.focus();
+  }, [isOpen]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -42,7 +49,7 @@ export default function PlaceDeleteConfirmModal({ isOpen, message, onCancel, onC
             <img src="/icon/close_btn.png" alt="" />
             취소
           </button>
-          <button className={`${styles.btnItemCommon} ${styles.btnBgBlue}`} onClick={onConfirm}>
+          <button ref={confirmRef} className={`${styles.btnItemCommon} ${styles.btnBgBlue}`} onClick={onConfirm}>
             <img src="/icon/check.png" alt="" />
             확인
           </button>

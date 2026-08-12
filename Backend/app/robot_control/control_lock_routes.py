@@ -27,14 +27,23 @@ def _owner_label_of(user: UserInfo) -> str:
     return user.UserName or _owner_id_of(user)
 
 
-def _conflict(cur: cl.ControlLock) -> HTTPException:
+def _conflict(cur: cl.ControlLock, preemptible: bool = False) -> HTTPException:
+    """409 변환. preemptible 이면 프론트가 '개입하시겠습니까?' 를 띄우고
+    force=true 로 재요청한다(사람은 자율을 선점할 수 있다)."""
+    if cur.owner_type == "user":
+        message = f"{cur.owner_label or cur.owner_id}님이 제어 중입니다"
+    elif cur.meta.get("remote"):
+        message = f"{cur.owner_label or '다른 관제'}가 이 로봇을 사용 중입니다"
+    elif preemptible:
+        message = f"{cur.owner_label or cur.owner_id} 작업이 진행 중입니다. 개입하시겠습니까?"
+    else:
+        message = "자율 작업이 제어 중입니다"
     return HTTPException(
         status_code=409,
         detail={
-            "message": f"{cur.owner_label or cur.owner_id}님이 제어 중입니다"
-            if cur.owner_type == "user"
-            else "자율 작업이 제어 중입니다",
+            "message": message,
             "owner": cur.to_public(),
+            "preemptible": preemptible,
         },
     )
 
@@ -56,19 +65,25 @@ def get_control_state(
 def acquire_control(
     robot_id: int,
     request: Request,
+    force: bool = False,
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(require_permission("robot-list")),
 ):
-    """제어 시작. 이미 다른 세션이 쥐고 있으면 409."""
+    """제어 시작. 이미 다른 세션이 쥐고 있으면 409.
+
+    force=true 는 **자율 작업을 선점**할 때만 쓴다(사람 → 자율). 사람이 쥔 것은
+    force 로도 못 뺏는다 — 그건 관리자 강제 회수(force-release)의 몫이다.
+    """
     try:
         lock = cl.acquire(
             robot_id,
             "user",
             _owner_id_of(current_user),
             owner_label=_owner_label_of(current_user),
+            force=force,
         )
     except cl.ControlLockConflict as e:
-        raise _conflict(e.current) from e
+        raise _conflict(e.current, e.preemptible) from e
 
     write_audit(
         db,

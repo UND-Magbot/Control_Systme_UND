@@ -14,7 +14,7 @@ from app.database.database import get_db
 from app.database.models import (
     RobotMapInfo, UserInfo, LocationInfo, RouteInfo, WayInfo, MapInitPose,
 )
-from app.auth.dependencies import get_current_user, require_permission, is_admin
+from app.auth.dependencies import get_current_user, require_permission, require_manager, is_admin
 from app.auth.audit import write_audit, get_client_ip
 
 router = APIRouter()
@@ -32,6 +32,7 @@ class MapSaveReq(BaseModel):
 class ActivateMapReq(BaseModel):
     map_id: int
     robot_id: int
+    reason: Optional[str] = None  # 강제 층 지정 사유(감사 기록용)
 
 
 class SyncMapReq(BaseModel):
@@ -212,47 +213,59 @@ def delete_map(map_id: int, request: Request, db: Session = Depends(get_db), cur
 # =========================
 # 활성 맵 변경 (로봇 NOS의 active 심볼릭 링크 교체)
 # =========================
-@router.post("/maps/activate")
-def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(get_current_user)):
-    """로봇의 활성 맵을 변경하고, CurrentFloorId를 업데이트."""
-    from app.database.models import RobotInfo
+# ── 측위 서비스 준비 대기 (경량 fix) ──
+# systemctl restart localization 은 즉시 리턴하지만, 재시작한 측위가 맵 로드·스캔매칭
+# 준비를 마치기 전엔 seed/검증이 오수렴한다(pose 가 seed 값으로만 세팅되고 실제 정합 전).
+# → 재시작 후 서비스 active + grace 대기해 '준비된 뒤' 시드/검증하게 한다.
+LOC_READY_TIMEOUT_SEC = 25   # is-active 대기 상한
+LOC_READY_POLL_SEC = 1
+LOC_READY_GRACE_SEC = 3      # active 후 맵로드·스캔매칭 시작 여유
+
+
+def _wait_localization_ready(client) -> None:
+    """restart localization 후 서비스 active 될 때까지 폴링 + grace. best-effort(SSH 실패 무시)."""
+    from app.map.mapping_control import ssh_exec
+    deadline = time.time() + LOC_READY_TIMEOUT_SEC
+    active = False
+    while time.time() < deadline:
+        try:
+            state = ssh_exec(client, "systemctl is-active localization 2>/dev/null || true").strip()
+        except Exception:
+            state = ""
+        if state == "active":
+            active = True
+            break
+        time.sleep(LOC_READY_POLL_SEC)
+    time.sleep(LOC_READY_GRACE_SEC)  # active 여도 노드 로드/스캔매칭 시작엔 시간 필요
+    print(f"⏳ [LOC-READY] localization {'active' if active else 'timeout(진행)'} + grace {LOC_READY_GRACE_SEC}s")
+
+
+def switch_active_map(db: Session, robot, map_row) -> None:
+    """로봇 NOS의 active 심볼릭 링크를 map_row 로 교체하고 DB/런타임 CurrentMap/Floor 갱신.
+
+    activate_map 라우트와 다층 자동 전환(floor_transition)이 공유하는 코어.
+    init_pose 전송·감사 로그는 호출측 책임(라우트=충전소 seed, 전환=EV로비 seed).
+    실패 시 예외를 던진다.
+    """
     from app.map.mapping_control import get_ssh_client, ssh_exec, NOS_MAP_BASE_DIR, nos_host_for_robot_ip
     import app.robot_io.runtime as runtime
 
-    # 맵 조회
-    m = db.query(RobotMapInfo).filter(RobotMapInfo.id == req.map_id).first()
-    if not m:
-        raise HTTPException(status_code=404, detail="맵을 찾을 수 없습니다.")
-
-    # 로봇 조회
-    robot = db.query(RobotInfo).filter(RobotInfo.id == req.robot_id).first()
-    if not robot:
-        raise HTTPException(status_code=404, detail="로봇을 찾을 수 없습니다.")
-
-    map_name = m.MapName
+    map_name = map_row.MapName
     # 로봇 디렉토리명은 ZipFilePath(항상 로봇 dir 기반: ./static/maps/{robot_dir}.zip)에서 복원.
-    # → 사용자가 가져오기에서 MapName을 바꿔도 로봇 dir를 정확히 찾을 수 있다.
     zip_dir = ""
-    if m.ZipFilePath:
-        zip_dir = os.path.basename(m.ZipFilePath).rsplit(".zip", 1)[0]
-    # 로봇별 NOS — 로봇 IP 기준(.106). 유효하지 않으면 env 기본 NOS 사용.
+    if map_row.ZipFilePath:
+        zip_dir = os.path.basename(map_row.ZipFilePath).rsplit(".zip", 1)[0]
     try:
         nos_host = nos_host_for_robot_ip(robot.RobotIP)
     except ValueError:
         nos_host = None
     client = None
     try:
-        # SSH 실패 시 재접속하여 재시도 (최대 3회)
         activate_success = False
         map_dir = ""
         for attempt in range(3):
             try:
                 client = get_ssh_client(host=nos_host)
-
-                # 로봇 디렉토리 탐색 순서:
-                #   1) zip 기준 robot dir 정확 일치 (가져오기·매핑 공통, 이름 변경에도 안전)
-                #   2) MapName 정확 일치 (구버전/직접 지정)
-                #   3) {MapName}-* 글롭 (매핑 베이스 이름 호환)
                 candidates = []
                 if zip_dir:
                     candidates.append(f"ls -d {NOS_MAP_BASE_DIR}/{zip_dir} 2>/dev/null")
@@ -260,11 +273,9 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
                 candidates.append(f"ls -dt {NOS_MAP_BASE_DIR}/{map_name}-*/ 2>/dev/null | head -1")
                 find_cmd = "sudo bash -c '" + " || ".join(candidates) + "'"
                 map_dir = ssh_exec(client, find_cmd).rstrip("/")
-
                 if not map_dir:
                     raise HTTPException(status_code=404, detail=f"로봇에서 맵 디렉토리를 찾을 수 없습니다: {map_name}")
 
-                # 미완성 맵(매핑 중단 등 — full_cloud.pcd 없음)은 active 로 걸지 않는다(측위 발산 방지).
                 from app.map.mapping_control import map_dir_is_complete
                 if not map_dir_is_complete(client, map_dir):
                     raise HTTPException(
@@ -272,14 +283,6 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
                         detail=f"맵 데이터가 불완전합니다(full_cloud.pcd 없음): {map_name}. 매핑을 다시 완료한 뒤 활성화하세요.",
                     )
 
-                # active 심볼릭 링크 교체 (robust).
-                #   rm -rf(후행 슬래시 없음 → 심볼릭이면 링크만, 실제 디렉토리 잔재면 통째로 제거)
-                #   + ln -sfn(-n: active 가 심볼릭→디렉토리여도 따라가 중첩 생성하지 않고 교체).
-                #   ⚠️ rm 과 ln 사이에 다른 프로세스(drmap/localization)가 active 를 실제
-                #   디렉토리로 재생성하면, ln 이 그 디렉토리 안에 중첩 링크를 만들고 성공(exit 0)해
-                #   active 가 심볼릭이 아닌 일반 디렉토리로 깨진다(층 변경 중 active 유실).
-                #   → 교체 직후 test -L 로 심볼릭 여부를 검증하고, 아니면 예외를 던져
-                #   재시도 루프로 자가복구한다.
                 activate_cmd = (
                     f"sudo rm -rf {NOS_MAP_BASE_DIR}/active && "
                     f"sudo ln -sfn {map_dir} {NOS_MAP_BASE_DIR}/active"
@@ -293,10 +296,9 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
                         f"active 재링크 후에도 심볼릭이 아님(디렉토리로 깨짐) — 재시도: {NOS_MAP_BASE_DIR}/active"
                     )
 
-                # localization 서비스 재시작 (새 맵 로드)
                 ssh_exec(client, "sudo systemctl restart localization")
-                print(f"🗺️ 활성 맵 변경: {map_name} → {map_dir} (localization 재시작)")
-
+                _wait_localization_ready(client)  # 준비 전 seed/검증 오수렴 방지(경량)
+                print(f"🗺️ 활성 맵 변경: {map_name} → {map_dir} (localization 재시작·준비대기)")
                 activate_success = True
                 break
             except HTTPException:
@@ -312,23 +314,60 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
 
         if not activate_success:
             raise Exception("SSH 연결 불안정으로 맵 활성화 실패")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"맵 활성화 실패: {str(e)}")
     finally:
         if client:
             try: client.close()
             except: pass
 
     # CurrentFloorId, CurrentMapId 업데이트
-    robot.CurrentFloorId = m.FloorId
-    robot.CurrentMapId = m.id
+    robot.CurrentFloorId = map_row.FloorId
+    robot.CurrentMapId = map_row.id
     db.commit()
+    runtime.update_floor(robot.id, map_row.FloorId, map_row.id)
 
-    # 런타임에도 반영
-    runtime.update_floor(req.robot_id, m.FloorId, m.id)
+
+@router.post("/maps/activate")
+def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(get_db), current_user: UserInfo = Depends(require_manager)):
+    """로봇의 활성 맵을 강제 변경(강제 층 지정)하고 CurrentFloorId를 업데이트.
+
+    파괴적 작업(NOS active 교체 + localization 재시작)이라 게이트를 둔다:
+      - 권한: Manager(2)+ (require_manager). 자율 실패 폴백 복구를 위해 Superadmin 전용화하지 않는다.
+      - 범위: 비관리자(2)는 자기 사업장(BusinessId)의 로봇·맵으로만. 크로스사이트 전환은 Superadmin(1)만.
+      - 상태: 로봇이 자율 주행/작업 중이면 409 거부(측위 발산 방지). 자율 층전환은 이 라우트가 아니라
+              switch_active_map 코어를 직접 쓰므로 이 가드에 걸리지 않는다.
+    """
+    from app.database.models import RobotInfo
+    import app.robot_io.runtime as runtime
+
+    # 맵 조회
+    m = db.query(RobotMapInfo).filter(RobotMapInfo.id == req.map_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="맵을 찾을 수 없습니다.")
+
+    # 로봇 조회
+    robot = db.query(RobotInfo).filter(RobotInfo.id == req.robot_id).first()
+    if not robot:
+        raise HTTPException(status_code=404, detail="로봇을 찾을 수 없습니다.")
+
+    # 범위(사업장) 검사 — Superadmin(1)은 크로스사이트 허용, Manager(2)는 자기 사업장만
+    if not is_admin(current_user):
+        biz = current_user.BusinessId
+        if biz is None or robot.BusinessId != biz or m.BusinessId != biz:
+            raise HTTPException(status_code=403, detail="다른 사업장의 로봇/맵으로는 강제 층 지정을 할 수 없습니다.")
+
+    # 상태 가드 — 자율 주행/작업 중에는 강제 지정 거부(측위 발산 방지)
+    if runtime.is_robot_navigating(robot.id):
+        raise HTTPException(status_code=409, detail="로봇이 자율 주행/작업 중입니다. 먼저 정지한 뒤 강제 층 지정하세요.")
+
+    # NOS active 교체 + DB/런타임 갱신 (공통 코어)
+    try:
+        switch_active_map(db, robot, m)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"맵 활성화 실패: {str(e)}")
+
+    map_name = m.MapName
 
     # 맵+로봇 초기 위치가 저장되어 있으면 init_pose 전송
     init_pose_sent = False
@@ -343,8 +382,10 @@ def activate_map(req: ActivateMapReq, request: Request, db: Session = Depends(ge
         _send_init_pose(robot.RobotIP, robot.RobotPort or 30000, init_items)
         init_pose_sent = True
 
+    reason_txt = (req.reason or "").strip()
     write_audit(db, current_user.id, "map_activated", "map", m.id,
-                detail=f"활성 맵 변경: {map_name} (로봇: {robot.RobotName})",
+                detail=f"강제 층 지정: {map_name} (로봇: {robot.RobotName})"
+                       + (f" · 사유: {reason_txt}" if reason_txt else " · 사유 미입력"),
                 ip_address=get_client_ip(request))
 
     return {
@@ -440,7 +481,8 @@ def sync_map(req: SyncMapReq, request: Request, db: Session = Depends(get_db), c
                     # 3/3 — localization 재시작
                     yield _evt(event="step", step=3, total=3, msg="로봇이 새 맵에 적응하는 중")
                     ssh_exec(client, "sudo systemctl restart localization")
-                    print(f"🗺️ 맵 동기화 완료: {m.MapName} → 로봇 {robot.RobotName} (localization 재시작)")
+                    _wait_localization_ready(client)  # 준비 전 오수렴 방지(경량)
+                    print(f"🗺️ 맵 동기화 완료: {m.MapName} → 로봇 {robot.RobotName} (localization 재시작·준비대기)")
 
                     sync_success = True
                     break

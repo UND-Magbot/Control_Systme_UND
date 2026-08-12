@@ -6,6 +6,7 @@ import { apiFetch } from '@/app/lib/api';
 import InlineConfirm from './InlineConfirm';
 import PathStopOptionsModal from '@/app/(pages)/mapManagement/components/tabs/path/PathStopOptionsModal';
 import { formatPathOrderWithWaits } from '@/app/lib/pathOrder';
+import { WORK_TYPES } from '@/app/lib/taskType';
 import styles from './ControlPanel.module.css';
 
 type PathOption = {
@@ -97,8 +98,8 @@ export default function WorkProgressPanel({
   // 경로 이름 입력
   const [pathName, setPathName] = useState('');
   const [autoName, setAutoName] = useState(true);
-  // 작업 유형 (직접 경로 생성 시) — 기본 task1, 백엔드 기본값과 동일
-  const [createTaskType, setCreateTaskType] = useState<string>('task1');
+  // 작업 유형 (직접 경로 생성 시) — 기본값은 표준 유형 첫 항목(백엔드 기본값과 동일)
+  const [createTaskType, setCreateTaskType] = useState<string>(WORK_TYPES[0].label);
 
   // 드롭다운
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -229,10 +230,9 @@ export default function WorkProgressPanel({
               disabled={isDisabled}
               aria-label="작업 유형"
             >
-              <option value="task1">task1</option>
-              <option value="task2">task2</option>
-              <option value="task3">task3</option>
-              <option value="test">test</option>
+              {WORK_TYPES.map((t) => (
+                <option key={t.id} value={t.label}>{t.label}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -241,7 +241,7 @@ export default function WorkProgressPanel({
           <button
             type="button"
             className={styles.wpCancelBtn}
-            onClick={() => { onCancelCreating(); setPathName(''); setAutoName(true); setCreateTaskType('task1'); }}
+            onClick={() => { onCancelCreating(); setPathName(''); setAutoName(true); setCreateTaskType(WORK_TYPES[0].label); }}
           >
             취소
           </button>
@@ -252,7 +252,7 @@ export default function WorkProgressPanel({
               onFinishCreating(autoName ? undefined : pathName, createTaskType);
               setPathName('');
               setAutoName(true);
-              setCreateTaskType('task1');
+              setCreateTaskType(WORK_TYPES[0].label);
             }}
             disabled={createdPoints.length < 2 || (!autoName && !pathName.trim())}
           >
@@ -317,10 +317,9 @@ export default function WorkProgressPanel({
             disabled={isDisabled}
           >
             <option value="">전체</option>
-            <option value="task1">task1</option>
-            <option value="task2">task2</option>
-            <option value="task3">task3</option>
-            <option value="test">test</option>
+            {WORK_TYPES.map((t) => (
+              <option key={t.id} value={t.label}>{t.label}</option>
+            ))}
           </select>
         </div>
 

@@ -28,6 +28,10 @@ export type ScheduleFormState = {
   intervalMinutes: number | null;
   intervalRepeatDays: string[];
 
+  // standby 모드 (운영 시간대·요일은 interval 필드를 그대로 쓴다)
+  standbyTrigger?: string | null;
+  standbyMaxSessionMin?: number | null;
+
   // weekly + interval 공통
   seriesStartDate: string; // "YYYY-MM-DD"
   seriesEndType: "none" | "date";
@@ -105,7 +109,8 @@ export function validateScheduleForm(form: ScheduleFormState): FieldErrors {
   if (!form.selectedWorkType) {
     errors.workType = "작업유형을 선택하세요.";
   }
-  if (!form.selectedWorkPath) {
+  // 상시 대기는 경로를 돌지 않는다 — 대기 장소에서 호출을 기다린다
+  if (form.scheduleMode !== "standby" && !form.selectedWorkPath) {
     errors.workPath = "작업경로를 선택하세요.";
   }
 
@@ -142,6 +147,24 @@ export function validateScheduleForm(form: ScheduleFormState): FieldErrors {
     if (!form.activeEndMin) errors.activeEndMin = "분을 선택하세요.";
     if (!form.intervalMinutes || form.intervalMinutes < 1) {
       errors.intervalMinutes = "반복 간격을 1분 이상 입력하세요.";
+    }
+    if (form.seriesEndType === "date" && form.seriesEndDate && form.seriesStartDate) {
+      if (form.seriesEndDate < form.seriesStartDate) {
+        errors.seriesEndDate = "종료일이 시작일보다 빠릅니다.";
+      }
+    }
+  } else if (form.scheduleMode === "standby") {
+    if (!form.activeStartAmpm) errors.activeStartAmpm = "오전/오후를 선택하세요.";
+    if (!form.activeStartHour) errors.activeStartHour = "시간을 선택하세요.";
+    if (!form.activeStartMin) errors.activeStartMin = "분을 선택하세요.";
+    if (!form.activeEndAmpm) errors.activeEndAmpm = "오전/오후를 선택하세요.";
+    if (!form.activeEndHour) errors.activeEndHour = "시간을 선택하세요.";
+    if (!form.activeEndMin) errors.activeEndMin = "분을 선택하세요.";
+    if (!form.standbyTrigger) {
+      errors.standbyTrigger = "호출 방식을 선택하세요.";
+    }
+    if (!form.standbyMaxSessionMin || form.standbyMaxSessionMin < 1) {
+      errors.standbyMaxSessionMin = "응대 1건 최대 시간을 1분 이상 입력하세요.";
     }
     if (form.seriesEndType === "date" && form.seriesEndDate && form.seriesStartDate) {
       if (form.seriesEndDate < form.seriesStartDate) {

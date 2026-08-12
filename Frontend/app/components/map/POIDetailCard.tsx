@@ -3,6 +3,7 @@
 import React from "react";
 import { MapPin, BatteryCharging, Home, Navigation, AlertTriangle, Crosshair, Layers } from "lucide-react";
 import type { POIItem, POICategory } from "./types";
+import { isMovableCategory } from "@/app/lib/placeFilter";
 import styles from "./POIDetailCard.module.css";
 
 const CATEGORY_META: Record<POICategory, { label: string; color: string; icon: typeof MapPin }> = {
@@ -56,7 +57,8 @@ export default function POIDetailCard({ poi, screenX = 0, screenY = 0, anchored 
         {poi.floor}
       </div>
 
-      {onNavigate && (
+      {/* 위험구역(폴리곤 centroid)·충전소로는 보내지 않는다 — 규칙은 placeFilter 단일 출처(D-01) */}
+      {onNavigate && isMovableCategory(poi.category) && (
         <button
           className={styles.navigateBtn}
           onClick={() => onNavigate(poi)}

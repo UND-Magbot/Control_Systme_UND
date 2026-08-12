@@ -5,7 +5,7 @@ import type { Camera } from '@/app/types';
 import { CanvasMap } from '@/app/components/map';
 import WebRTCPlayer from '@/app/components/camera/WebRTCPlayer';
 import { getOccGridConfig } from '@/app/components/map/mapConfigs';
-import type { RobotPosition, MapConfig } from '@/app/components/map/types';
+import type { RobotPosition, MapConfig, POIItem } from '@/app/components/map/types';
 import { apiFetch } from '@/app/lib/api';
 import styles from './ViewportArea.module.css';
 
@@ -28,6 +28,8 @@ type ViewportAreaProps = {
   robotPos: RobotPosition;
   robotConnected: boolean;
   mapConfig?: MapConfig | null;
+  /** 로봇 현재 층의 장소. 확대 상태에서만 표시한다(PiP 는 라벨이 안 읽힌다). */
+  pois?: POIItem[];
   // disconnect overlay
   isDisconnected: boolean;
 };
@@ -48,6 +50,7 @@ export default function ViewportArea({
   robotPos,
   robotConnected,
   mapConfig,
+  pois,
   isDisconnected,
 }: ViewportAreaProps) {
   // 로봇 현재 층 맵이 로드되면 그것을, 아직 없으면 고정 맵으로 폴백
@@ -398,6 +401,8 @@ export default function ViewportArea({
 
       {mapState === 'expanded' && (
         <div className={styles.pipExpanded}>
+          {/* onPoiNavigate 는 넘기지 않는다 — 수동 조작 중에 POI 카드의 '장소 이동'으로
+              자율 주행이 끼어들면 제어권과 충돌한다. 여기선 위치 확인 용도로만 쓴다. */}
           <CanvasMap
             key={resolvedMapConfig.imageSrc}
             config={resolvedMapConfig}
@@ -405,6 +410,8 @@ export default function ViewportArea({
             showRobot={robotConnected}
             robotMarkerSize={20}
             interactive
+            pois={pois}
+            showPois={!!pois?.length}
             style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
           />
           {/* 축소 (우상단) */}

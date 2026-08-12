@@ -637,6 +637,15 @@ def _check_navigating(robot_id: int) -> bool:
         return False
 
 
+def is_robot_navigating(robot_id: int) -> bool:
+    """로봇이 자율 주행/작업 중인지 (강제 개입 가드용).
+
+    status 의 is_navigating 과 동일 판정(메모리 nav + DB IsWorking).
+    강제 층 지정 등 파괴적 개입 전 '작업 중이면 거부'에 쓴다.
+    """
+    return _check_navigating(robot_id)
+
+
 def _check_charging(battery: dict) -> bool:
     """배터리 딕셔너리에서 충전 여부 판정.
     - 일반 로봇: Charging 키
@@ -776,6 +785,21 @@ def is_initpose_pending(robot_id: int) -> bool:
         if not entry:
             return False
         return bool(entry.get("_initpose_pending", False))
+
+
+def get_current_map_id(robot_id: int):
+    """해당 로봇의 현재 활성 맵 id(런타임 기준). 없으면 None.
+
+    activate/switch_active_map 이 update_floor 로 갱신하므로, 다층 경로 실행 시
+    '다음 웨이포인트가 다른 맵인가' 판정의 기준으로 쓴다.
+    """
+    if robot_id is None:
+        return None
+    with _lock:
+        entry = _runtime.get(robot_id)
+        if not entry:
+            return None
+        return entry.get("current_map_id")
 
 
 def mark_manual_confirm(robot_id: int) -> None:

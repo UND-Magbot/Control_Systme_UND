@@ -1,4 +1,5 @@
 import { minToHm, toAmpmHour, pad2 } from './datetime';
+import type { ScheduleMode } from '../constants';
 
 export type PathDetail = {
   order: number;
@@ -37,7 +38,7 @@ export type FormState = {
   pathOrder: string;
 
   // 3모드 스케줄
-  scheduleMode: 'once' | 'weekly' | 'interval';
+  scheduleMode: ScheduleMode;
 
   // 반복 설정 (weekly)
   repeatEnabled: boolean;

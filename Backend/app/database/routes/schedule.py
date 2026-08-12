@@ -112,7 +112,9 @@ def _validate_exec_time(value: str | None) -> str | None:
         raise ValueError(f"ExecutionTime 시각은 최대 24개까지 허용됩니다 (현재 {len(times)}개)")
     return ",".join(sorted(times))
 
-from app.database.models import ScheduleInfo, UserInfo
+from app.database.models import (
+    ScheduleInfo, UserInfo, RobotInfo, RobotModule, ModuleVoiceInfo, VoiceSlotValue,
+)
 from app.auth.dependencies import require_permission, is_admin, get_business_robot_names
 from app.auth.audit import write_audit, get_client_ip
 
@@ -123,10 +125,10 @@ class ScheduleInsertReq(BaseModel):
     RobotName: str
     TaskName: str
     TaskType: str
-    WayName: str
+    WayName: str | None = None              # standby 는 경로가 아니라 대기 장소로 움직인다
     WorkStatus: str
 
-    ScheduleMode: str = "once"              # "once" | "weekly" | "interval"
+    ScheduleMode: str = "once"              # "once" | "weekly" | "interval" | "standby"
 
     # once 모드
     StartTime: datetime | None = None       # 실행 일시
@@ -143,6 +145,14 @@ class ScheduleInsertReq(BaseModel):
     # weekly + interval 공통
     SeriesStartDate: str | None = None      # "YYYY-MM-DD"
     SeriesEndDate: str | None = None        # "YYYY-MM-DD" or null
+
+    # standby 모드 — 운영 시간대·요일·유효기간은 interval 필드를 그대로 쓴다
+    ReturnPlaceId: int | None = None            # 대기 장소 (미지정 시 충전소)
+    StandbyTrigger: str | None = None           # "mic" | "button"
+    StandbyDestinations: str | None = None      # 허용 목적지 id 콤마 목록 (null=전체)
+    StandbyMaxSessionMin: int | None = None
+    StandbyRetryCount: int | None = None
+    StandbyRetryWindowSec: int | None = None
 
     @field_validator("ExecutionTime")
     @classmethod
@@ -196,8 +206,26 @@ class ScheduleInsertReq(BaseModel):
                 missing.append("SeriesStartDate")
             if missing:
                 raise ValueError(f"interval 모드는 다음 필드가 필수입니다: {', '.join(missing)}")
+        elif mode == "standby":
+            missing = []
+            if not _nonempty(self.ActiveStartTime):
+                missing.append("ActiveStartTime")
+            if not _nonempty(self.ActiveEndTime):
+                missing.append("ActiveEndTime")
+            if not _nonempty(self.SeriesStartDate):
+                missing.append("SeriesStartDate")
+            if missing:
+                raise ValueError(f"상시 대기 모드는 다음 필드가 필수입니다: {', '.join(missing)}")
+            if self.StandbyTrigger not in ("mic", "button"):
+                # 호출 방식을 명시 필드로 못박아야 "마이크로 등록했는데 실제로는 버튼"이
+                # 구조적으로 불가능해진다 (PRD §3.6).
+                raise ValueError("상시 대기 모드는 StandbyTrigger('mic' 또는 'button')가 필수입니다.")
         else:
             raise ValueError(f"지원하지 않는 ScheduleMode: {mode}")
+
+        # standby 를 제외한 모드는 경로가 있어야 실행할 수 있다
+        if mode != "standby" and not _nonempty(self.WayName):
+            raise ValueError(f"{mode} 모드는 WayName이 필수입니다.")
 
         return self
 
@@ -353,6 +381,121 @@ def _check_schedule_conflict(
                     )
 
 
+def standby_capability(db: Session, robot_name: str) -> dict:
+    """상시 대기 등록 가능 여부. 화면 게이팅과 저장 검증이 같은 판정을 쓴다 (PRD §3.6).
+
+    "기능이 없으니 막는다"가 아니라 **대체 트리거가 있느냐**로 가른다 —
+    마이크만 없으면 호출 방식이 버튼으로 고정될 뿐 나머지는 그대로 성립한다.
+    """
+    robot = (
+        db.query(RobotInfo)
+        .filter(RobotInfo.RobotName == robot_name, RobotInfo.DeletedAt.is_(None))
+        .first()
+    )
+    if not robot:
+        return {"allowed": False, "reason": "로봇을 찾을 수 없습니다.",
+                "hasVoice": False, "hasMic": False, "hasSpeaker": False, "destinationCount": 0}
+
+    mod = (
+        db.query(RobotModule)
+        .filter(RobotModule.RobotId == robot.id, RobotModule.ModuleType == "voice")
+        .first()
+    )
+    info = (
+        db.query(ModuleVoiceInfo).filter(ModuleVoiceInfo.ModuleId == mod.id).first()
+        if mod else None
+    )
+    has_voice = bool(mod and mod.IsActive)
+    has_mic = bool(info and info.HasMic)
+    has_speaker = bool(info.HasSpeaker) if info else True
+
+    # 목적지 사전 — 장소가 연결된 항목만 실제로 안내할 수 있다
+    dest_count = (
+        db.query(VoiceSlotValue)
+        .filter(VoiceSlotValue.RobotId == robot.id,
+                VoiceSlotValue.SlotName == "목적지",
+                VoiceSlotValue.LocationId.isnot(None))
+        .count()
+    )
+
+    reason = None
+    if not has_voice:
+        reason = "이 로봇은 음성 모듈이 없습니다. 상시 대기 응대를 등록할 수 없습니다."
+    elif not has_speaker:
+        reason = "이 로봇은 스피커가 없어 응답 발화를 할 수 없습니다."
+    elif dest_count == 0:
+        reason = "음성 관리 › 목적지 사전에 목적지를 먼저 등록하세요."
+
+    return {
+        "allowed": reason is None,
+        "reason": reason,
+        "hasVoice": has_voice,
+        "hasMic": has_mic,
+        "hasSpeaker": has_speaker,
+        "destinationCount": dest_count,
+        # 마이크가 없으면 호출 방식은 버튼으로 고정된다
+        "allowedTriggers": ["mic", "button"] if has_mic else ["button"],
+    }
+
+
+def _standby_overlap_warnings(db: Session, robot_name: str, req, exclude_id: int | None = None) -> list[str]:
+    """상시 대기 시간대와 겹치는 예약 작업 안내.
+
+    막지 않는다 — 겹쳐도 예약 작업이 우선이고 상시 대기는 양보한다(S8).
+    저장을 차단하면 "예약이 하나라도 있으면 상시 대기를 못 만든다"가 되어 과하다.
+    """
+    try:
+        start = int(req.ActiveStartTime.split(":")[0]) * 60 + int(req.ActiveStartTime.split(":")[1])
+        end = int(req.ActiveEndTime.split(":")[0]) * 60 + int(req.ActiveEndTime.split(":")[1])
+    except (AttributeError, ValueError):
+        return []
+
+    days = {d.strip() for d in (getattr(req, "RepeatDays", "") or "").split(",") if d.strip()}
+    q = db.query(ScheduleInfo).filter(
+        ScheduleInfo.RobotName == robot_name,
+        ScheduleInfo.TaskStatus.in_(["대기", "진행중"]),
+        ScheduleInfo.ScheduleMode != "standby",
+    )
+    if exclude_id is not None:
+        q = q.filter(ScheduleInfo.id != exclude_id)
+
+    warnings: list[str] = []
+    for ex in q.all():
+        ex_days = {d.strip() for d in (ex.Repeat_Day or "").split(",") if d.strip()}
+        if days and ex_days and not (days & ex_days):
+            continue
+        points: list[int] = []
+        ex_mode = ex.ScheduleMode or ("weekly" if ex.Repeat == "Y" else "once")
+        if ex_mode == "once" and ex.StartDate:
+            points = [ex.StartDate.hour * 60 + ex.StartDate.minute]
+        elif ex_mode == "weekly" and ex.ExecutionTime:
+            for t in ex.ExecutionTime.split(","):
+                try:
+                    h, m = t.strip().split(":")
+                    points.append(int(h) * 60 + int(m))
+                except ValueError:
+                    continue
+        elif ex_mode == "interval" and ex.ActiveStartTime:
+            try:
+                h, m = ex.ActiveStartTime.split(":")
+                points = [int(h) * 60 + int(m)]
+            except ValueError:
+                points = []
+        if any(start <= p < end for p in points):
+            warnings.append(f"'{ex.WorkName}'이(가) 같은 시간대에 있습니다 — 예약 작업이 우선하며 상시 대기는 양보합니다.")
+    return warnings
+
+
+@database.get("/schedule-standby-capability")
+def get_standby_capability(
+    robot: str,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_permission("schedule-list")),
+):
+    """등록 화면 게이팅용 — 이 로봇이 상시 대기를 등록할 수 있는지."""
+    return standby_capability(db, robot)
+
+
 @database.post("/schedule")
 def insert_schedule(
     req: ScheduleInsertReq,
@@ -374,7 +517,20 @@ def insert_schedule(
     if req.ScheduleMode == "interval":
         _validate_interval_range(req.ActiveStartTime, req.ActiveEndTime, req.IntervalMinutes)
 
-    _check_schedule_conflict(db, req.RobotName, req.ScheduleMode, req)
+    warnings: list[str] = []
+    if req.ScheduleMode == "standby":
+        cap = standby_capability(db, req.RobotName)
+        if not cap["allowed"]:
+            raise HTTPException(status_code=400, detail=cap["reason"])
+        if req.StandbyTrigger not in cap["allowedTriggers"]:
+            raise HTTPException(
+                status_code=400,
+                detail="이 로봇에는 마이크가 등록되어 있지 않습니다. 호출 방식을 '버튼'으로 선택하세요.",
+            )
+        # 겹침은 차단이 아니라 경고다 — 예약이 우선하고 상시 대기가 양보한다(S8)
+        warnings = _standby_overlap_warnings(db, req.RobotName, req)
+    else:
+        _check_schedule_conflict(db, req.RobotName, req.ScheduleMode, req)
 
     schedule = ScheduleInfo(
         UserId=current_user.id,
@@ -421,6 +577,27 @@ def insert_schedule(
             schedule.SeriesEndDate = datetime.strptime(req.SeriesEndDate, "%Y-%m-%d").date()
             schedule.Repeat_End = req.SeriesEndDate
 
+    elif req.ScheduleMode == "standby":
+        series_start = datetime.strptime(req.SeriesStartDate, "%Y-%m-%d").date() if req.SeriesStartDate else date_type.today()
+        start_h, start_m = (req.ActiveStartTime or "09:00").split(":")
+        schedule.StartDate = datetime.combine(series_start, datetime.min.time().replace(hour=int(start_h), minute=int(start_m)))
+        schedule.EndDate = schedule.StartDate
+        schedule.Repeat = "Y"
+        schedule.Repeat_Day = req.RepeatDays
+        schedule.ActiveStartTime = req.ActiveStartTime
+        schedule.ActiveEndTime = req.ActiveEndTime
+        schedule.SeriesStartDate = series_start
+        if req.SeriesEndDate:
+            schedule.SeriesEndDate = datetime.strptime(req.SeriesEndDate, "%Y-%m-%d").date()
+            schedule.Repeat_End = req.SeriesEndDate
+        schedule.ReturnPolicy = "place" if req.ReturnPlaceId else "charge"
+        schedule.ReturnPlaceId = req.ReturnPlaceId
+        schedule.StandbyTrigger = req.StandbyTrigger
+        schedule.StandbyDestinations = req.StandbyDestinations
+        schedule.StandbyMaxSessionMin = req.StandbyMaxSessionMin or 20
+        schedule.StandbyRetryCount = req.StandbyRetryCount if req.StandbyRetryCount is not None else 2
+        schedule.StandbyRetryWindowSec = req.StandbyRetryWindowSec or 10
+
     db.add(schedule)
     db.commit()
     db.refresh(schedule)
@@ -429,7 +606,7 @@ def insert_schedule(
                 detail=f"작업명: {req.TaskName}, 로봇: {req.RobotName}, 유형: {req.TaskType}, 경로: {req.WayName}, 모드: {req.ScheduleMode}",
                 ip_address=get_client_ip(request))
 
-    return {"status": "ok", "id": schedule.id}
+    return {"status": "ok", "id": schedule.id, "warnings": warnings}
 
 
 @database.get("/schedule")
@@ -612,6 +789,12 @@ def _apply_edit_fields(sched: ScheduleInfo, req: ScheduleUpdateReq) -> None:
         elif req.ScheduleMode == "interval":
             sched.Repeat = "Y"
             sched.ExecutionTime = None
+        elif req.ScheduleMode == "standby":
+            # 운영 시간대(ActiveStart/End)로 사는 모드 — 실행 시각·반복 간격은 쓰지 않는다.
+            # 호출 방식·대기 장소 등 Standby* 설정은 수정 모달이 다루지 않으므로 건드리지 않는다.
+            sched.Repeat = "Y"
+            sched.ExecutionTime = None
+            sched.IntervalMinutes = None
 
     if req.StartTime is not None:
         sched.StartDate = req.StartTime
@@ -650,6 +833,41 @@ def _apply_edit_fields(sched: ScheduleInfo, req: ScheduleUpdateReq) -> None:
             sched.Repeat_End = req.SeriesEndDate
 
 
+# 편집을 막는 상태. "지나간 것과 지금 도는 것은 못 고친다"가 원칙이다.
+# 오늘 이미 실행됐어도 지금 '대기'면 허용한다 — 오늘 회차는 어차피 지나갔고,
+# 내일 이후 회차를 위한 수정까지 막으면 반복 작업이 그날 내내 잠긴다.
+UNEDITABLE_STATUSES = ("진행중", "진행", "완료", "취소")
+
+
+def _edit_block_reason(
+    sched: ScheduleInfo,
+    scope: str | None = None,
+    target_date: date | None = None,
+) -> str | None:
+    """수정을 막아야 하면 사유, 고칠 수 있으면 None.
+
+    '진행중' 차단은 **지금 도는 그 회차를 건드릴 때만** 건다.
+    앞으로의 회차만 고치는 것까지 막으면 반복 작업이 그날 내내 잠긴다 —
+    특히 상시 대기는 운영 시간(예: 09:00~18:00) 내내 '진행중'이라
+    그 아홉 시간 동안 아무것도 못 고치게 된다.
+    """
+    status = sched.TaskStatus
+    if status not in UNEDITABLE_STATUSES:
+        return None
+    if status not in ("진행중", "진행"):
+        return f"'{status}' 상태의 작업은 수정할 수 없습니다. 새로 등록해 주세요."
+
+    # 범위가 '전체'거나 대상 날짜가 오늘 이전이면 지금 도는 회차를 건드린다.
+    touches_running = (
+        scope in (None, "all")
+        or target_date is None
+        or target_date <= date.today()
+    )
+    if touches_running:
+        return "진행 중인 작업은 수정할 수 없습니다. 이 회차 이후만 고치려면 수정 범위를 '이후 모든 회차'로 선택해 주세요."
+    return None
+
+
 def _clone_schedule_for_split(source: ScheduleInfo) -> ScheduleInfo:
     """시리즈 분할 시 새 ScheduleInfo를 source 기준으로 복제한다.
     대기 상태로 초기화하고 RunCount/LastRunDate/SeriesExceptions는 리셋.
@@ -677,6 +895,16 @@ def _clone_schedule_for_split(source: ScheduleInfo) -> ScheduleInfo:
         SeriesGroupId=source.SeriesGroupId,
         RunCount=0,
         MaxRunCount=source.MaxRunCount,
+        # 상시 대기 전용 설정. 빠뜨리면 분할된 회차가 호출 방식·대기 장소·목적지
+        # 화이트리스트를 잃고 기본값(button/충전소/전체허용)으로 조용히 바뀐다.
+        ReturnPolicy=source.ReturnPolicy,
+        ReturnPlaceId=source.ReturnPlaceId,
+        StandbyTrigger=source.StandbyTrigger,
+        StandbyDestinations=source.StandbyDestinations,
+        StandbyMaxSessionMin=source.StandbyMaxSessionMin,
+        StandbyRetryCount=source.StandbyRetryCount,
+        StandbyRetryWindowSec=source.StandbyRetryWindowSec,
+        StandbyIdleSitSec=source.StandbyIdleSitSec,
     )
 
 
@@ -698,7 +926,7 @@ def update_schedule(
 
     # ─── 반복 시리즈 편집 범위 결정 ───
     scope = (req.RepeatScope or "all").strip()
-    is_series = (sched.ScheduleMode in ("weekly", "interval")) or (sched.Repeat == "Y")
+    is_series = (sched.ScheduleMode in ("weekly", "interval", "standby")) or (sched.Repeat == "Y")
     # 시리즈가 아닌 once 스케줄엔 범위 의미 없음 → all로 강제
     if not is_series:
         scope = "all"
@@ -710,6 +938,12 @@ def update_schedule(
             raise HTTPException(status_code=400, detail=f"잘못된 TargetDate: {req.TargetDate}")
     else:
         target_date = date.today()
+
+    # 완료·취소는 기록이라 손대지 않는다. 진행 중은 **지금 도는 회차를 건드릴 때만** 막는다 —
+    # 범위·대상 날짜를 알아야 판정할 수 있어 여기서 검사한다.
+    block = _edit_block_reason(sched, scope, target_date)
+    if block:
+        raise HTTPException(status_code=409, detail=block)
 
     # interval 활동 시간대 / 간격 일관성 검증 (merged 값 기준)
     effective_mode = req.ScheduleMode or sched.ScheduleMode or ("weekly" if sched.Repeat == "Y" else "once")
@@ -978,6 +1212,160 @@ def update_schedule(
         "scope": scope,
         "created_id": created_id,
         "original_deleted": sched_was_deleted,
+    }
+
+
+class ScheduleCancelReq(BaseModel):
+    # 반복 작업에서 취소할 회차의 날짜 (YYYY-MM-DD, 생략 시 오늘)
+    TargetDate: str | None = None
+    Reason: str | None = None
+
+
+@database.post("/schedule/{schedule_id}/cancel")
+def cancel_schedule(
+    schedule_id: int,
+    request: Request,
+    req: ScheduleCancelReq | None = Body(default=None),
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_permission("schedule-list")),
+):
+    """작업 회차를 취소한다 — **삭제가 아니다.**
+
+    - 대기   : 이 회차만 실행하지 않는다(반복이면 다음 회차는 그대로)
+    - 진행중 : 로봇을 세우고 중단한다. 기존 정지 경로를 재사용한다 —
+               로봇 정지·ScheduleRun 마감·녹화 정지까지 함께 해야 하기 때문이다
+    - 그 외  : 409
+    """
+    from app.scheduler.cancel_occurrence import CancelError, cancel_occurrence
+
+    sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule_id).first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    # 남의 사업장 작업을 취소하지 못하게 한다(조회 권한과 같은 기준).
+    if not is_admin(current_user) and current_user.BusinessId:
+        allowed = get_business_robot_names(db, current_user.BusinessId)
+        if sched.RobotName not in allowed:
+            raise HTTPException(status_code=403, detail="해당 작업을 취소할 권한이 없습니다.")
+
+    reason = (req.Reason if req else None) or "사용자 취소"
+    target_date = None
+    if req and req.TargetDate:
+        try:
+            target_date = datetime.strptime(req.TargetDate.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="TargetDate 는 YYYY-MM-DD 형식이어야 합니다.")
+
+    # 진행 중인 그 작업이면 로봇부터 세운다. DB 만 '취소'로 바꾸면 로봇은 계속 간다.
+    try:
+        from app.scheduler.loop import get_active_schedule_id
+        is_active = get_active_schedule_id() == schedule_id
+    except Exception:  # noqa: BLE001 — 스케줄러가 없어도 대기 작업 취소는 되어야 한다
+        is_active = False
+
+    if is_active:
+        from app.navigation.send_move import stop_navigation_internal
+        stop_navigation_internal(reason)   # 로봇 정지 + 회차 마감 + 스케줄 취소
+        summary = {"mode": _cancel_mode_label(sched), "scope": "active", "date": None}
+    else:
+        try:
+            summary = cancel_occurrence(db, sched, target_date)
+        except CancelError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        db.commit()
+
+    write_audit(db, current_user.id, "schedule_cancelled", "schedule", schedule_id,
+                detail=f"작업명: {sched.WorkName}, 로봇: {sched.RobotName}, "
+                       f"범위: {summary['scope']}, 날짜: {summary['date'] or '-'}, 사유: {reason}",
+                ip_address=get_client_ip(request))
+
+    return {"status": "ok", "id": schedule_id, **summary}
+
+
+def _cancel_mode_label(sched) -> str:
+    return getattr(sched, "ScheduleMode", None) or ("weekly" if sched.Repeat == "Y" else "once")
+
+
+@database.post("/schedule/{schedule_id}/resume")
+def resume_schedule(
+    schedule_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: UserInfo = Depends(require_permission("schedule-list")),
+):
+    """'오류'로 멈춘 작업을 다시 자동 실행 대상으로 되돌린다.
+
+    서버가 재기동되면 진행 중이던 작업은 '오류'로 남고 스케줄러가 집어가지 않는다
+    (메인 루프는 '대기'만 조회). 물리 상태를 모르는 채 자동 재개하면 로봇이
+    복도 한가운데서 갑자기 움직일 수 있어, 재개는 사람이 누른다.
+
+    상시 대기는 회차 하나가 하루 근무 전체라, 운영 시간대가 남아 있으면
+    그 회차를 되살려 이어간다. 그렇지 않으면 (ScheduleId, PlannedAt) 유니크에
+    막혀 그날은 영영 다시 시작되지 않는다.
+    """
+    sched = db.query(ScheduleInfo).filter(ScheduleInfo.id == schedule_id).first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    if not is_admin(current_user) and current_user.BusinessId:
+        allowed = get_business_robot_names(db, current_user.BusinessId)
+        if sched.RobotName not in allowed:
+            raise HTTPException(status_code=403, detail="해당 작업을 재개할 권한이 없습니다.")
+
+    if sched.TaskStatus != "오류":
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{sched.TaskStatus}' 상태의 작업은 재개할 수 없습니다. 오류로 멈춘 작업만 재개합니다.",
+        )
+
+    from app.database.models import ScheduleRun
+    from app.logs.service import log_event
+
+    now = datetime.now()
+    mode = _cancel_mode_label(sched)
+    resumed_run = False
+
+    # 멈춰 있는 동안 그 시간대에 다른 작업이 들어왔을 수 있다 — 되돌리기 전에 다시 본다.
+    _check_schedule_conflict(db, sched.RobotName, mode, sched, exclude_id=sched.id)
+
+    if mode == "standby":
+        from app.scheduler.run_conditions import standby_window
+        window = standby_window(sched, now)
+        if window:
+            begin, _end = window
+            run = (
+                db.query(ScheduleRun)
+                .filter(ScheduleRun.ScheduleId == sched.id, ScheduleRun.PlannedAt == begin)
+                .first()
+            )
+            if run and run.Result != "running":
+                run.Result = "running"
+                run.EndedAt = None
+                run.Reason = f"{run.Reason or '중단'} → 사용자 재개"
+                resumed_run = True
+
+    sched.TaskStatus = "대기"
+    db.commit()
+
+    log_event("schedule", "schedule_resumed",
+              f"작업 재개: {sched.WorkName}",
+              detail=f"모드={mode}, 회차 이어받음={'예' if resumed_run else '아니오'}",
+              robot_name=sched.RobotName)
+    write_audit(db, current_user.id, "schedule_resumed", "schedule", schedule_id,
+                detail=f"작업명: {sched.WorkName}, 로봇: {sched.RobotName}, "
+                       f"모드: {mode}, 회차 이어받음: {'예' if resumed_run else '아니오'}",
+                ip_address=get_client_ip(request))
+
+    return {
+        "status": "ok",
+        "id": schedule_id,
+        "TaskStatus": sched.TaskStatus,
+        "resumedRun": resumed_run,
+        "message": (
+            "오늘 근무를 이어서 재개합니다. 로봇이 대기 장소로 돌아간 뒤 호출을 기다립니다."
+            if resumed_run else
+            "작업을 다시 실행 대상으로 되돌렸습니다."
+        ),
     }
 
 

@@ -10,7 +10,7 @@ type Props = {
   onConfirm: () => void;
 };
 
-export default function PathDeleteConfirmModal({ isOpen, message, onCancel, onConfirm }: Props) {
+export default function PathAlertsModal({ isOpen, message, onCancel, onConfirm }: Props) {
   
   useEffect(() => {
     if (!isOpen) return;
@@ -33,7 +33,7 @@ export default function PathDeleteConfirmModal({ isOpen, message, onCancel, onCo
     <div className={styles.overlay} onClick={onCancel}>
       <div className={styles.box} onClick={(e) => e.stopPropagation()}>
         <button className={styles.closeBtn} onClick={onCancel} aria-label="close">
-          <img src="/icon/close_btn.png" alt="" />
+          ✕
         </button>
 
         <div className={styles.message}>{message}</div>

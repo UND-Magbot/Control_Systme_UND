@@ -5,11 +5,13 @@ import type { RobotRowData } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
 import { isDualBatteryType } from "@/app/constants/robotCapabilities";
 import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
+import type { ServerStatus } from "@/app/lib/robotLiveness";
 
 const STATUS_API = `/robot/status`;
 const POLL_INTERVAL = 5000;
 const POLL_INTERVAL_HIDDEN = 15000; // 백그라운드 탭에서는 5s→15s로 완화 (C-7)
-const OFFLINE_THRESHOLD = 3; // 연속 실패 횟수 — 이 횟수 이상 실패해야 Offline 처리
+// 연속 실패 횟수 — 이 횟수 이상 실패해야 '관제 서버 응답 없음' 으로 판정
+const SERVER_UNREACHABLE_THRESHOLD = 3;
 
 // 충전→비충전 전환 디바운스 카운터 (로봇ID → 연속 false 횟수)
 const _chargingDropCount: Record<number, number> = {};
@@ -46,12 +48,21 @@ type RobotStatusContextType = {
   robots: RobotRowData[];
   loaded: boolean;
   refresh: () => Promise<void>;
+  /**
+   * 관제 서버(/robot/status) 응답 상태. "unreachable" 이면 robots 의 상태 값은
+   * lastSuccessAt 시점의 잔존값이며 '로봇 오프라인'을 뜻하지 않는다.
+   */
+  serverStatus: ServerStatus;
+  /** 마지막으로 상태 폴링에 성공한 시각(ms). 한 번도 성공 못 했으면 null. */
+  lastSuccessAt: number | null;
 };
 
 const RobotStatusContext = createContext<RobotStatusContextType>({
   robots: [],
   loaded: false,
   refresh: async () => {},
+  serverStatus: "ok",
+  lastSuccessAt: null,
 });
 
 export function useRobotStatusContext() {
@@ -61,6 +72,8 @@ export function useRobotStatusContext() {
 export function RobotStatusProvider({ children }: { children: React.ReactNode }) {
   const [robots, setRobots] = useState<RobotRowData[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [serverStatus, setServerStatus] = useState<ServerStatus>("ok");
+  const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null);
   const initialLoaded = useRef(false);
   const failCount = useRef(0);
 
@@ -99,7 +112,9 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
       initialLoaded.current = true;
       setLoaded(true);
     } catch {
-      // 실패 시 빈 배열 유지
+      // 목록 로드 실패(관제 서버·DB 장애) — 빈 배열이지만 로딩은 끝낸다.
+      // 여기서 loaded 를 막으면 장애 상황에서 화면이 무한 로딩으로 멈춰 원인 안내조차 못 한다.
+      setLoaded(true);
     }
   }, []);
 
@@ -111,6 +126,8 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
       const statuses: StatusEntry[] = await res.json();
 
       failCount.current = 0; // 성공 시 실패 카운트 초기화
+      setServerStatus("ok");
+      setLastSuccessAt(Date.now());
 
       setRobots((prev) =>
         prev.map((r) => {
@@ -194,15 +211,11 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
       );
     } catch {
       failCount.current += 1;
-      // 연속 실패가 임계값 이상일 때만 Offline 처리
-      if (failCount.current >= OFFLINE_THRESHOLD) {
-        setRobots((prev) =>
-          prev.map((r) => ({
-            ...r,
-            network: "Offline" as const,
-            power: "Off" as const,
-          }))
-        );
+      // 관제 서버 응답 없음 — 로봇 상태 값은 건드리지 않고 서버 상태만 내린다.
+      // (예전엔 여기서 전체를 Offline/Off 로 덮어써서 '관제 서버 장애'와 '로봇 통신 두절'이
+      //  구분되지 않았다. 값은 잔존값으로 두고 소비하는 쪽이 '확인 불가'로 표시한다.)
+      if (failCount.current >= SERVER_UNREACHABLE_THRESHOLD) {
+        setServerStatus("unreachable");
       }
     }
   }, []);
@@ -224,7 +237,10 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
     immediate: false, // 위 effect가 초기 폴링을 담당
   });
 
-  const value = useMemo(() => ({ robots, loaded, refresh }), [robots, loaded, refresh]);
+  const value = useMemo(
+    () => ({ robots, loaded, refresh, serverStatus, lastSuccessAt }),
+    [robots, loaded, refresh, serverStatus, lastSuccessAt]
+  );
 
   return (
     <RobotStatusContext.Provider value={value}>

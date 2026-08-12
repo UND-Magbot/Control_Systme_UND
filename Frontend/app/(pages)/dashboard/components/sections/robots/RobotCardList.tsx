@@ -5,15 +5,13 @@ import styles from "./RobotCardList.module.css";
 import type { RobotRowData, Floor, Camera, Video } from "@/app/types";
 import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
 import { apiFetch } from "@/app/lib/api";
+import { isStatusStale } from "@/app/lib/robotLiveness";
 import RobotCard from "./RobotCard";
 import SectionHeader from "../../SectionHeader";
 import RobotLegend from "./RobotLegend";
 import Link from "next/link";
 
-type RobotLocation = {
-  floor: string;
-  placeName: string | null;
-};
+import { EMPTY_LOCATION, type RobotLocation } from "@/app/hooks/useRobotLocations";
 
 type RobotCardListProps = {
   robots: RobotRowData[];
@@ -22,7 +20,7 @@ type RobotCardListProps = {
   onSelectRobot: (id: number) => void;
   cameras: Camera[];
   videoStatus: Video[];
-  robotLocation: RobotLocation;
+  robotLocations: Record<number, RobotLocation>;
   canLinkRobots?: boolean;
   canControlRobot?: boolean;
 };
@@ -34,11 +32,11 @@ export default function RobotCardList({
   onSelectRobot,
   cameras,
   videoStatus,
-  robotLocation,
+  robotLocations,
   canLinkRobots = true,
   canControlRobot = true,
 }: RobotCardListProps) {
-  const { robots: liveRobots } = useRobotStatusContext();
+  const { robots: liveRobots, serverStatus } = useRobotStatusContext();
   const [search, setSearch] = useState("");
 
   // 진행 중인 스케줄 폴링 (운영 상태 판별용)
@@ -76,6 +74,10 @@ export default function RobotCardList({
 
   const legendStats = useMemo(() => {
     let operating = 0, standby = 0, charging = 0, offline = 0;
+    // 관제 서버 응답 없음 — 어떤 분류도 단정할 수 없으므로 전부 '확인 불가'.
+    if (isStatusStale(serverStatus)) {
+      return { total: liveRobots.length, operating: 0, standby: 0, charging: 0, offline: 0, unknown: liveRobots.length };
+    }
     liveRobots.forEach(r => {
       if (r.power === "Off") { offline++; return; }
       if (r.power === "-") { offline++; return; }
@@ -83,8 +85,8 @@ export default function RobotCardList({
       if (activeRobotNames.has(r.no) || (r.tasks.length > 0 && r.waitingTime === 0) || r.isNavigating) { operating++; return; }
       standby++;
     });
-    return { total: liveRobots.length, operating, standby, charging, offline };
-  }, [liveRobots, activeRobotNames]);
+    return { total: liveRobots.length, operating, standby, charging, offline, unknown: 0 };
+  }, [liveRobots, activeRobotNames, serverStatus]);
 
   const headerRight = canLinkRobots ? (
     <Link href="/operationManagement" prefetch={false} className={styles.moreLink}>더보기 ›</Link>
@@ -139,7 +141,7 @@ export default function RobotCardList({
               robots={robots}
               video={videoStatus}
               cameras={cameras}
-              robotLocation={robotLocation}
+              robotLocation={robotLocations[robot.id] ?? EMPTY_LOCATION}
               floors={floors}
               canControlRobot={canControlRobot}
               hasActiveSchedule={activeRobotNames.has(robot.no)}

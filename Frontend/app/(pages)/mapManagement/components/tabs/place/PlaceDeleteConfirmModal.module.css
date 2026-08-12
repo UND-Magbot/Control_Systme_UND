@@ -12,8 +12,8 @@
 .box {
   width: 360px;
   border-radius: 12px;
-  background: #282d43ff;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  background: var(--surface-3); /* PD-01: #282d43 리터럴 → 토큰 */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35); /* PD-04: 다른 모달과 그림자 깊이 통일 */
   position: relative;
   padding: 32px 24px 24px;
 }
@@ -22,7 +22,7 @@
   background: transparent;
   border: none;
   color: var(--text-primary, #fff);
-  font-size: 14px;
+  font-size: var(--font-size-md); /* PD-02 */
   position: absolute;
   top: 14px;
   right: 16px;
@@ -38,7 +38,7 @@
   margin: 16px 0 24px 0;
   text-align: center;
   white-space: pre-line;
-  font-size: 14px;
+  font-size: var(--font-size-md); /* PD-02 */
   color: var(--text-primary, #fff);
   line-height: 1.5;
 }
@@ -59,8 +59,9 @@
   border-radius: 7px;
   border: none;
   cursor: pointer;
-  color: #ffffff;
-  font-size: 13px;
+  color: var(--text-primary); /* PD-02: #ffffff → 토큰 */
+  font-size: var(--font-size-base);
+  transition: background 0.15s ease;
 }
 
 .btnItemCommon img {
@@ -70,11 +71,17 @@
 }
 
 .btnBgRed {
-  border: 1px solid #BF0E14;
-  background: #941621;
+  border: 1px solid var(--color-error-border); /* PD-01: 리터럴 → 토큰 */
+  background: var(--color-error-bg);
+}
+.btnBgRed:hover {
+  background: var(--color-error-hover); /* PD-01: 상호작용 피드백 추가 */
 }
 
 .btnBgBlue {
-  border: 1px solid #0E85B7;
-  background: #196189;
+  border: 1px solid var(--color-info-border);
+  background: var(--color-info-bg);
+}
+.btnBgBlue:hover {
+  background: #1d7aab;
 }

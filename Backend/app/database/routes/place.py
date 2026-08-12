@@ -24,6 +24,34 @@ class RobotPlaceInsertReq(BaseModel):
     Polygon: list[list[float]] | None = None
 
 
+def _assert_unique_place_name(db: Session, name: str, category: str | None,
+                              current_user: UserInfo, exclude_id: int | None = None) -> None:
+    """경로(WayInfo.WayPoints)가 장소를 '이름'으로 참조·조회(.first())하므로,
+    waypoint 계열 장소명은 사업장 내에서 유일해야 한다. 중복이면 경로가 항상 첫 번째
+    장소로만 해석돼 다층 경로·전환 등이 깨진다.
+    위험구역(Category='danger')은 폴리곤이며 경로 waypoint로 참조되지 않으므로 검사 제외."""
+    if (category or "waypoint") == "danger":
+        return
+    name = (name or "").strip()
+    if not name:
+        return
+    q = db.query(LocationInfo.id).filter(
+        LocationInfo.LacationName == name,
+        (LocationInfo.Category != "danger") | (LocationInfo.Category.is_(None)),
+    )
+    if exclude_id is not None:
+        q = q.filter(LocationInfo.id != exclude_id)
+    # 사업장 스코프(경로가 참조하는 범위와 동일). 관리자/무사업장은 전역 검사.
+    if not is_admin(current_user) and current_user.BusinessId:
+        biz_map_ids = get_business_map_ids(db, current_user.BusinessId)
+        q = q.filter(LocationInfo.MapId.in_(biz_map_ids))
+    if q.first():
+        raise HTTPException(
+            status_code=409,
+            detail=f"이미 '{name}' 이름의 장소가 있습니다. 경로가 이름으로 장소를 찾으므로 층이 달라도 이름은 다르게 지정하세요.",
+        )
+
+
 @database.post("/places")
 def insert_robot_place(
     req: RobotPlaceInsertReq,
@@ -31,6 +59,8 @@ def insert_robot_place(
     db: Session = Depends(get_db),
     current_user: UserInfo = Depends(require_any_permission("place-list", "map-edit")),
 ):
+    _assert_unique_place_name(db, req.LacationName, req.Category, current_user)
+
     place = LocationInfo(
         UserId=current_user.id,
         RobotName=req.RobotName,
@@ -103,6 +133,9 @@ def update_place(place_id: int, req: RobotPlaceInsertReq, request: Request, db: 
 
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
+
+    # 이름 변경 시 사업장 내 중복 차단(경로가 이름으로 참조하므로). 자기 자신 제외.
+    _assert_unique_place_name(db, req.LacationName, req.Category, current_user, exclude_id=place_id)
 
     changes = []
     field_map = {

@@ -38,6 +38,16 @@
   flex-shrink: 0;
 }
 
+/* 선택값이 길면 넘치지 않게 말줄임 (드롭다운 목록에는 전체가 보인다). 화살표는 밀리지 않음. */
+.select > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
 .selectCompact img {
   width: 10px;
   height: auto;

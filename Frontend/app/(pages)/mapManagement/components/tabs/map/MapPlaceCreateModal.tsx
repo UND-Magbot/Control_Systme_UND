@@ -1,14 +1,19 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useModalBehavior } from "@/app/hooks/useModalBehavior";
 import styles from "./MapPlaceCreateModal.module.css";
 import DropdownSelect from "@/app/components/button/DropdownSelect";
 
 import { API_BASE } from "@/app/config";
 import { apiFetch } from "@/app/lib/api";
+import { degFromYaw, yawFromDeg } from "@/app/lib/yaw";
+import DirectionPicker from "@/app/components/common/DirectionPicker";
+import { MapPin } from "lucide-react";
 
 type DBRobot = { id: number; RobotName: string };
+
+const DUPLICATE_NAME_MSG = "이미 사용 중인 장소명입니다. 층이 달라도 이름은 중복될 수 없습니다.";
 
 const CATEGORY_OPTIONS = [
   { value: "waypoint", label: "경유지" },
@@ -29,6 +34,7 @@ export type PlaceEditData = {
   yaw: number;
   desc: string;
   mapId: number | null;
+  category?: string;
 };
 
 type Props = {
@@ -56,6 +62,8 @@ type Props = {
   defaultCategory?: string;
   /** 층 목록 (floor_info) */
   floors?: { id: number; FloorName: string }[];
+  /** 이미 쓰이고 있는 장소명(사업장 전체 + 미저장분). 서버가 409 로 막기 전에 미리 걸러낸다. */
+  usedNames?: string[];
   onClose: () => void;
   onConfirm: (place: PendingPlace, oldName?: string) => void;
   /** create 모드에서 카테고리 "위험구역" 선택 시 호출 — 점 등록 대신 폴리곤 그리기로 전환 */
@@ -92,12 +100,12 @@ export default function MapPlaceCreateModal({
   defaultYaw,
   defaultCategory,
   floors = [],
+  usedNames = [],
   onClose,
   onConfirm,
   onSelectDanger,
 }: Props) {
   const isEdit = mode === "edit";
-  const dirWheelRef = useRef<HTMLDivElement>(null);
 
   const [dbRobots, setDbRobots] = useState<DBRobot[]>([]);
   const [robotFetchError, setRobotFetchError] = useState(false);
@@ -149,18 +157,16 @@ export default function MapPlaceCreateModal({
       setRobotNo(editData.robotName);
       setFloor(editData.floor);
       setName(editData.name);
-      // yaw(라디안) → 도 변환
-      setDirection(String(Math.round(editData.yaw * 180 / Math.PI)));
-      setCategory((editData as any).category || "waypoint");
+      // ROS yaw(라디안) → 방향 도(로봇 yaw 와 동일: 0=동·반시계)
+      setDirection(String(degFromYaw(editData.yaw)));
+      setCategory(editData.category || "waypoint");
       setDesc(editData.desc);
     } else {
       setRobotNo(defaultRobotName);
       setFloor(defaultFloor);
       setName("");
       if (lockCoords && defaultYaw !== undefined) {
-        let deg = Math.round(defaultYaw * 180 / Math.PI);
-        if (deg < 0) deg += 360;
-        setDirection(String(deg));
+        setDirection(String(degFromYaw(defaultYaw)));
       } else {
         setDirection("");
       }
@@ -173,8 +179,16 @@ export default function MapPlaceCreateModal({
   // ESC / 오버레이 클릭 닫기
   useModalBehavior({ isOpen, onClose, disabled: isSubmitting });
 
+  // 장소명 중복 검사 — 서버는 경로가 장소를 '이름'으로 찾는 탓에 사업장 내 중복을 409 로 막는다.
+  // 층·맵이 달라도 막히므로 저장 전에 여기서 알린다. 위험구역은 서버도 검사하지 않는다.
+  const takenNames = useMemo(() => {
+    const own = isEdit && editData ? editData.name.trim() : null;
+    return new Set(usedNames.map((n) => n.trim()).filter((n) => n && n !== own));
+  }, [usedNames, isEdit, editData]);
+  const isDuplicateName = category !== "danger" && !!name.trim() && takenNames.has(name.trim());
+
   // 필수 필드 검증
-  const canSave = !!(robotNo && floor && name.trim() && (direction || direction === "0"));
+  const canSave = !!(robotNo && floor && name.trim() && (direction || direction === "0")) && !isDuplicateName;
 
   // Enter 키 저장
   useEffect(() => {
@@ -191,47 +205,13 @@ export default function MapPlaceCreateModal({
     return () => document.removeEventListener("keydown", onEnter);
   }, [isOpen, isSubmitting, canSave, robotNo, floor, name, direction]);
 
-  const handleDirectionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    if (val === "" || val === "-") { setDirection(val); return; }
-    const num = Number(val);
-    if (num < 0) setDirection("0");
-    else if (num > 360) setDirection("360");
-    else setDirection(val);
-  };
-
-  const handleDirectionBlur = () => {
-    if (direction === "" || direction === "-") {
-      if (direction === "-") setDirection("");
-      if (!direction) {
-        setFieldErrors((prev) => ({ ...prev, direction: "방향을 입력해 주세요." }));
-      }
-      return;
-    }
-    const num = Number(direction);
-    if (isNaN(num)) { setDirection(""); return; }
-    const clamped = Math.max(0, Math.min(360, Math.round(num)));
-    setDirection(String(clamped));
-    setFieldErrors((prev) => ({ ...prev, direction: undefined }));
-  };
-
-  const handleDirectionWheelClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = e.clientX - cx;
-    const dy = e.clientY - cy;
-    let angle = Math.atan2(dx, -dy) * (180 / Math.PI);
-    if (angle < 0) angle += 360;
-    setDirection(String(Math.round(angle)));
-    setFieldErrors((prev) => ({ ...prev, direction: undefined }));
-  };
 
   const submit = async () => {
     const errors: typeof fieldErrors = {};
     if (!robotNo) errors.robotNo = "로봇명을 선택해 주세요.";
     if (!floor) errors.floor = "층을 선택해 주세요.";
     if (!name.trim()) errors.name = "장소명을 입력해 주세요.";
+    else if (isDuplicateName) errors.name = DUPLICATE_NAME_MSG;
     if (!direction && direction !== "0") errors.direction = "방향을 입력해 주세요.";
     else {
       const dirNum = Number(direction);
@@ -250,7 +230,7 @@ export default function MapPlaceCreateModal({
       FloorId: matchedFloor?.id ?? null,
       LocationX: isEdit && editData ? editData.x : Number(worldX.toFixed(3)),
       LocationY: isEdit && editData ? editData.y : Number(worldY.toFixed(3)),
-      Yaw: Number((Number(direction) * Math.PI / 180).toFixed(4)),
+      Yaw: yawFromDeg(Number(direction)),
       MapId: mapId ?? editData?.mapId ?? null,
       Category: category,
       Imformation: desc || null,
@@ -268,7 +248,7 @@ export default function MapPlaceCreateModal({
         {/* ─── 헤더 ─── */}
         <div className={styles.header}>
           <div className={styles.headerLeft}>
-            <img src="/icon/robot_place_w.png" alt="" />
+            <MapPin size={20} />
             <h2>{isEdit ? "장소 수정" : lockCoords ? "현 위치에서 장소 등록" : "장소 등록"}</h2>
           </div>
           <button className={styles.closeBtn} onClick={onClose} aria-label="close">
@@ -334,7 +314,7 @@ export default function MapPlaceCreateModal({
               <div className={`${styles.label} ${styles.required}`}>장소명</div>
               <div className={styles.inputWrap}>
                 <input
-                  className={`${styles.input} ${styles.edit} ${fieldErrors.name ? styles.inputError : ""}`}
+                  className={`${styles.input} ${styles.edit} ${fieldErrors.name || isDuplicateName ? styles.inputError : ""}`}
                   value={name}
                   onChange={(e) => {
                     setName(e.target.value);
@@ -347,7 +327,9 @@ export default function MapPlaceCreateModal({
                 <div className={`${styles.charCounter} ${name.length >= 40 ? styles.charCounterWarn : ""}`}>
                   {name.length}/50
                 </div>
-                {fieldErrors.name && <div className={styles.fieldError}>{fieldErrors.name}</div>}
+                {(fieldErrors.name || isDuplicateName) && (
+                  <div className={styles.fieldError}>{fieldErrors.name ?? DUPLICATE_NAME_MSG}</div>
+                )}
               </div>
             </div>
 
@@ -436,44 +418,17 @@ export default function MapPlaceCreateModal({
               </div>
             </div>
 
-            {/* 방향 */}
-            <div className={styles.directionRow}>
-              <div className={`${styles.label} ${styles.required}`}>방향(°)</div>
-              <div className={styles.directionInputWrap}>
-                <input
-                  className={`${styles.xyInput} ${lockCoords ? "" : styles.edit} ${direction ? styles.xyInputFilled : styles.xyInputEmpty}`}
-                  value={direction}
-                  onChange={lockCoords ? undefined : handleDirectionChange}
-                  onBlur={lockCoords ? undefined : handleDirectionBlur}
-                  placeholder="0~360"
-                  type="number"
-                  min={0}
-                  max={360}
-                  readOnly={lockCoords}
-                />
-                <div
-                  ref={dirWheelRef}
-                  className={styles.directionIndicator}
-                  onClick={lockCoords ? undefined : handleDirectionWheelClick}
-                  title={lockCoords ? "로봇 현재 방향" : "클릭하여 방향 설정"}
-                  role="button"
-                  aria-label="방향 설정 휠"
-                  style={lockCoords ? { opacity: 0.6, cursor: "default" } : undefined}
-                >
-                  {(direction || direction === "0") && (
-                    <div
-                      className={styles.directionArrow}
-                      style={{ transform: `rotate(${Number(direction)}deg)` }}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-            {fieldErrors.direction && (
-              <div className={styles.xyErrorRow}>
-                <div className={styles.fieldError}>{fieldErrors.direction}</div>
-              </div>
-            )}
+            {/* 방향 — DirectionPicker 공통(다이얼 포인팅 + 현재 로봇 방향, 숫자 부차) */}
+            <DirectionPicker
+              value={direction}
+              onChange={(d) => {
+                setDirection(d);
+                setFieldErrors((prev) => ({ ...prev, direction: undefined }));
+              }}
+              liveRobotYawRad={defaultYaw ?? null}
+              disabled={lockCoords}
+              error={fieldErrors.direction}
+            />
           </div>
 
           {/* 장소설명 */}

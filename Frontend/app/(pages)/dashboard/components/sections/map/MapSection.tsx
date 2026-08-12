@@ -13,12 +13,22 @@ import { getApiBase } from "@/app/config";
 import { useModalAlert } from "@/app/hooks/useModalAlert";
 import AlertModal from "@/app/components/modal/AlertModal";
 import { useOutsideClick } from "@/app/hooks/useOutsideClick";
+import { WORK_TYPES, resolveTaskTypeLabel } from "@/app/lib/taskType";
+import { isStatusStale } from "@/app/lib/robotLiveness";
+import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
+import { useElevatorOpState } from "./useElevatorOpState";
+import { useDoorOpState } from "./useDoorOpState";
+import { useArrivalGate } from "./useArrivalGate";
 import dynamic from "next/dynamic";
+
+const ElevatorOpOverlay = dynamic(() => import("./ElevatorOpOverlay"), { ssr: false });
+const DoorOpOverlay = dynamic(() => import("./DoorOpOverlay"), { ssr: false });
+const ArrivalGateOverlay = dynamic(() => import("./ArrivalGateOverlay"), { ssr: false });
 
 const StopAllConfirmModal = dynamic(() => import("@/app/components/modal/BatteryChargeModal"), { ssr: false });
 
-// 대시보드 맵 작업유형 필터 옵션. 신규 유형 추가 시 여기에 더한다.
-const TASK_TYPE_OPTIONS = ["task1", "task2", "task3", "test"] as const;
+// 대시보드 맵 작업유형 필터 옵션 — 단일 출처(@/app/lib/taskType)에서 파생.
+const TASK_TYPE_OPTIONS = WORK_TYPES.map((t) => t.label);
 
 type PathRow = {
   id: number;
@@ -63,6 +73,9 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
 
   const [floorActiveIndex, setFloorActiveIndex] = useState<number>(initial.idx);
   const [selectedFloor, setSelectedFloor] = useState<Floor | null>(initial.floor);
+  // 사용자가 로봇 층과 다른 층을 수동으로 보는 중인지 (뷰 override).
+  // false면 선택 로봇의 currentFloorId를 자동 추종한다.
+  const [userFloorOverride, setUserFloorOverride] = useState<boolean>(false);
   const [places, setPlaces] = useState<POIItem[]>(_cache.places ?? []);
   const [activeMapId, setActiveMapId] = useState<number | null>(null);
   const [navPath, setNavPath] = useState<NavPath | null>(null);
@@ -80,10 +93,14 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
 
   const mapRef = useRef<CanvasMapHandle>(null);
 
+  // 관제 서버 응답이 없으면 로봇 상태·좌표는 갱신이 멈춘 잔존값이다.
+  const { serverStatus } = useRobotStatusContext();
+  const statusStale = isStatusStale(serverStatus);
+
   const hasFloors = floors.length > 0;
   const hasRobots = robots.length > 0;
-  const hasOnlineRobot = robots.some(r => r.network === "Online");
-  const hasWorkingRobot = robots.some(r => r.network === "Online" && r.isNavigating);
+  const hasOnlineRobot = !statusStale && robots.some(r => r.network === "Online");
+  const hasWorkingRobot = !statusStale && robots.some(r => r.network === "Online" && r.isNavigating);
 
   const { modal, modalAlert, closeModal } = useModalAlert();
   const [stopAllConfirmOpen, setStopAllConfirmOpen] = useState(false);
@@ -113,9 +130,18 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
       });
   }, [modalAlert]);
 
+  // 엘리베이터 조작 오버레이 상태(선택 로봇 기준). 전환 중이 아니면 null → 오버레이 숨김.
+  const opState = useElevatorOpState(selectedRobotId);
+  // 자동문 통과 오버레이 — 같은 자리에 같은 문법으로 뜬다(둘이 동시에 진행되지는 않는다).
+  const { state: doorOpState, refresh: refreshDoorOp } = useDoorOpState(selectedRobotId);
+  // 게이트는 전역 1칸이라 로봇 선택과 무관하게 조회한다(응답의 robotName 으로 누구인지 보여준다)
+  const { state: arrivalGate, refresh: refreshArrivalGate } = useArrivalGate();
+
   // 현재 선택된 층에 있는 로봇들 — 전원이 On인 경우만 표시
   const floorRobots: RobotOnMap[] = useMemo(() => {
     if (!selectedFloor) return [];
+    // 관제 서버 두절 — 좌표가 갱신되지 않으므로 '지금 여기 있다'고 그리지 않는다.
+    if (statusStale) return [];
     return robots
       .map((r) => {
         // 위치 미확정(localization 발산/리셋 등)이면 발산하는 라이브 좌표 대신
@@ -128,6 +154,8 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
         r.currentFloorId === selectedFloor.id
         && (src?.timestamp ?? 0) > 0
         && r.power === "On"
+        // IN_TRANSIT/MAP_SWITCH 구간엔 선택 로봇 좌표가 측위 freeze로 무의미 → 마커 숨김
+        && !(opState?.inTransit && r.id === selectedRobotId)
       )
       .map(({ r, src, uncertain }) => ({
         id: r.id,
@@ -135,23 +163,24 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
         position: { x: src.x, y: src.y, yaw: src.yaw },
         uncertain,
       }));
-  }, [robots, selectedFloor?.id]);
+  }, [robots, selectedFloor?.id, opState?.inTransit, selectedRobotId, statusStale]);
 
-  // robotFloorId가 나중에 도착하면 최초 1회 반영.
-  // 초기 마운트 때 robotFloorId가 실제로 적용됐는지를 기준으로 판단해야 하며
-  // 단순히 initial.floor가 truthy한지로 판단하면 안 됨 (빈 로봇 상태에서 floors[0]
-  // 폴백이 이미 들어가 있어 false positive 발생).
-  const robotFloorApplied = useRef(robotFloorId != null);
+  // 선택 로봇의 currentFloorId를 자동 추종한다(뷰 override 중이 아닐 때).
+  // 사용자가 다른 층 탭을 눌러 override하면 추종을 멈추고, "로봇 층으로"로 복귀할 수 있다.
+  // (기존: robotFloorApplied ref로 최초 1회만 반영 → 로봇이 층을 옮겨도 지도가 안 따라가던 문제)
   useEffect(() => {
-    if (!hasFloors || robotFloorApplied.current) return;
-    if (robotFloorId == null) return;
+    if (!hasFloors || robotFloorId == null || userFloorOverride) return;
     const idx = floors.findIndex((f) => f.id === robotFloorId);
-    if (idx >= 0) {
+    if (idx >= 0 && floors[idx].id !== selectedFloor?.id) {
       setFloorActiveIndex(idx);
       setSelectedFloor(floors[idx]);
-      robotFloorApplied.current = true;
     }
-  }, [robotFloorId, hasFloors]);
+  }, [robotFloorId, hasFloors, userFloorOverride, selectedFloor?.id]);
+
+  // 선택 로봇이 바뀌면 뷰 override를 해제하고 그 로봇의 층을 다시 추종한다.
+  useEffect(() => {
+    setUserFloorOverride(false);
+  }, [selectedRobotId]);
 
   // 선택된 층의 맵 로드 (캐시 있으면 스킵)
   useEffect(() => {
@@ -242,6 +271,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           y: p.LocationY ?? 0,
           floor: p.Floor ?? "",
           floorId: p.FloorId ?? null,
+          mapId: p.MapId ?? null,
           // 맵관리와 동일한 카테고리 아이콘·색을 쓰도록 실제 Category 전달(미등록은 work).
           category: toPoiCategory(p.Category),
         }));
@@ -306,7 +336,7 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
       .then((data: any[]) => {
         const mapped: PathRow[] = data.map((p) => ({
           id: p.id,
-          taskType: p.TaskType ?? "",
+          taskType: resolveTaskTypeLabel(p.TaskType),
           wayPoints: p.WayPoints ?? "",
           floorId: p.FloorId ?? null,
         }));
@@ -343,8 +373,10 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
   // (매 렌더마다 새 배열이 만들어지면 CanvasMap/Map3DCanvas의 POI effect가
   //  불필요하게 재실행되어 씬이 깜빡이는 원인이 됨)
   const floorPois = useMemo(() => {
-    if (!selectedFloor) return [];
-    const base = places.filter((p) => p.floorId === selectedFloor.id);
+    if (!selectedFloor || activeMapId == null) return [];
+    // 현재 표시 중인 맵의 POI만 그린다. 한 층에 맵이 여러 개일 수 있으므로 floorId가 아닌
+    // mapId(activeMapId) 기준으로 필터해야 다른 맵의 POI가 새어 표시되지 않는다.
+    const base = places.filter((p) => p.mapId === activeMapId);
     if (!taskFilterSets) return base;
     // 충전소(category=charge)와 그 파생 지점은 작업유형 필터와 무관하게 항상 표시한다.
     // 파생 지점 명명 규칙(백엔드 charge.py): '<충전소>-<숫자>' — '-1'=도킹포인트, '-2,3…'=접근 경유지.
@@ -362,7 +394,8 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
         isChargeRelated(p.name) ||
         taskFilterSets.placeNames.has(p.name)
     );
-  }, [places, selectedFloor?.id, taskFilterSets]);
+    // base가 activeMapId로 필터되므로 의존성에 포함해야 맵 전환이 반영된다.
+  }, [places, activeMapId, selectedFloor?.id, taskFilterSets]);
 
   // 작업유형 필터 적용된 NavPath. 필터된 인접 쌍에 속한 segment만 통과.
   const filteredNavPath = useMemo<NavPath | null>(() => {
@@ -390,7 +423,21 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
     setMapLoading(true);
     setFloorActiveIndex(idx);
     setSelectedFloor(floor);
+    // 선택 로봇 층과 다른 층을 고르면 뷰 override(추종 중단). 같으면 추종 복귀.
+    setUserFloorOverride(robotFloorId != null && floor.id !== robotFloorId);
     mapRef.current?.handleZoom("reset");
+  };
+
+  // 선택 로봇이 있는 층 라벨 (뷰 전용 배너 표시용)
+  const robotFloorLabel = useMemo(
+    () => (robotFloorId != null ? floors.find((f) => f.id === robotFloorId)?.label ?? null : null),
+    [robotFloorId, floors]
+  );
+
+  const handleReturnToRobotFloor = () => {
+    if (robotFloorId == null) return;
+    const idx = floors.findIndex((f) => f.id === robotFloorId);
+    if (idx >= 0) handleFloorSelect(idx, floors[idx]);
   };
 
   const handleZoomFromChild = (action: string) => {
@@ -450,18 +497,56 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
           <div className={styles.floorList}>
             {[...floors].reverse().map((floor) => {
               const originalIdx = floors.indexOf(floor);
+              const isRobotFloor = floor.id === robotFloorId;
               return (
                 <button
                   key={floor.id}
-                  className={`${styles.floorBtn} ${originalIdx === floorActiveIndex ? styles.floorBtnActive : ""}`}
+                  className={`${styles.floorBtn} ${originalIdx === floorActiveIndex ? styles.floorBtnActive : ""} ${isRobotFloor ? styles.floorBtnRobot : ""}`}
                   onClick={() => handleFloorSelect(originalIdx, floor)}
+                  title={
+                    isRobotFloor
+                      ? `선택 로봇${selectedRobotName ? `(${selectedRobotName})` : ""}이 ${statusStale ? "마지막으로 확인된" : "있는"} 층`
+                      : undefined
+                  }
                 >
-                  {floor.label}
-                  {originalIdx === floorActiveIndex && <span className={styles.floorIndicator} />}
+                  <span className={styles.floorBtnLabel}>{floor.label}</span>
+                  {isRobotFloor && (
+                    <span className={styles.floorRobotName}>{selectedRobotName ? selectedRobotName.slice(-6) : "로봇"}</span>
+                  )}
                 </button>
               );
             })}
           </div>
+        )}
+
+        {hasFloors && robotFloorId != null && selectedFloor && selectedFloor.id !== robotFloorId && (
+          <div className={styles.viewOnlyBanner}>
+            <span className={styles.viewOnlyDot} />
+            <span>
+              보기 전용 — 선택 로봇은 <b>{robotFloorLabel ?? "다른 층"}</b>에 있습니다. 로봇은 움직이지 않습니다.
+            </span>
+            <button type="button" className={styles.viewOnlyBtn} onClick={handleReturnToRobotFloor}>
+              로봇 층으로
+            </button>
+          </div>
+        )}
+
+        {opState && (
+          <ElevatorOpOverlay state={opState} robotName={selectedRobotName} onStopAll={handleStopAll} />
+        )}
+
+        {!opState && doorOpState && (
+          <DoorOpOverlay state={doorOpState} robotName={selectedRobotName} onChanged={refreshDoorOp} />
+        )}
+
+        {/* 층 전환·자동문 통과가 우선 — 그 둘은 로봇이 이동 중이고, 도착 확인은 서 있는 상태다.
+            셋이 동시에 뜰 일은 없지만 겹치면 '움직이는 쪽'을 먼저 보여준다. */}
+        {!opState && !doorOpState && arrivalGate && (
+          <ArrivalGateOverlay
+            state={arrivalGate}
+            robotName={arrivalGate.robotName ?? selectedRobotName}
+            onChanged={refreshArrivalGate}
+          />
         )}
 
         {mapConfig && (
@@ -478,7 +563,10 @@ export default function MapSection({ floors, robots, video, cameras, selectedRob
             showPois
             showPath
             showLabels
-            onPoiNavigate={handlePoiNavigate}
+            onPoiNavigate={
+              // 보고 있는 층이 로봇 층과 다르면 이동을 걸지 않는다 — 다층 이동은 경로·작업으로만(Q8)
+              selectedFloor?.id === robotFloorId ? handlePoiNavigate : undefined
+            }
           />
         )}
         {hasRobots && hasFloors && mapConfig && (

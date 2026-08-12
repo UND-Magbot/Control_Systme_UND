@@ -53,15 +53,18 @@ def require_control(menu_key: str = "robot-list"):
             cl.verify(robot_id, x_control_token)
         except cl.ControlLockConflict as e:
             owner = e.current
+            if owner.owner_type == "user":
+                message = f"{owner.owner_label or owner.owner_id}님이 제어 중입니다"
+            elif owner.meta.get("remote"):
+                message = f"{owner.owner_label or '다른 관제'}가 이 로봇을 사용 중입니다"
+            else:
+                message = "자율 작업이 제어 중입니다"
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "message": (
-                        f"{owner.owner_label or owner.owner_id}님이 제어 중입니다"
-                        if owner.owner_type == "user"
-                        else "자율 작업이 제어 중입니다"
-                    ),
+                    "message": message,
                     "owner": owner.to_public(),
+                    "preemptible": e.preemptible,
                 },
             ) from e
         except cl.ControlLockDenied as e:

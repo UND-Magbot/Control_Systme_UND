@@ -29,101 +29,86 @@
     color: var(--text-primary) !important;
 }
 
+/* 탭 본문 패널 — 장소 목록·경로 목록·시설 장치 탭과 동일 규격 */
 .container {
-    display: flex;
+    width: 100%;
     flex: 1;
-    min-height: 0;
+    min-height: var(--page-body-min-height);
     min-width: var(--content-min-width);
+    background: var(--surface-3);
+    border-radius: 10px 0 10px 10px;
+    padding: 20px;
+    display: flex;
     flex-direction: column;
 }
 
-/* ── 상단 툴바 ── */
+/* ── 상단바 (제목 좌측 · 컨트롤 우측) ── */
+.topBar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    min-height: 40px;
+    flex-wrap: wrap;
+}
+
+.topBar h2 {
+    font-weight: 600;
+    font-size: var(--font-size-xl);
+    margin: 0;
+    color: var(--text-accent);
+    letter-spacing: -0.02em;
+}
+
 .toolbar {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface-1) 100%);
-    border-radius: 12px;
-    margin-bottom: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.toolbar select {
-    padding: 7px 12px;
-    background: var(--surface-input);
-    color: var(--text-primary);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 6px;
-    font-size: var(--font-size-md);
-    cursor: pointer;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.toolbar select:hover {
-    border-color: rgba(255, 255, 255, 0.2);
-}
-
-.toolbar select:focus {
-    border-color: var(--color-info);
-    box-shadow: 0 0 0 2px rgba(0, 176, 238, 0.15);
-}
-
-.toolbarLabel {
-    font-size: var(--font-size-md);
-    color: var(--text-tertiary);
-    font-weight: 500;
-}
-
-.toolbarCenter {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    gap: 6px;
-}
-
-.toolbarRight {
-    display: flex;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
+.toolSep {
+    width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0 2px;
+}
+
+/* 툴바 버튼 — 34px(CustomSelect·장소/경로 필터바와 동일 높이) */
 .toolbarBtn {
-    padding: 7px 18px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    height: 34px;
+    padding: 0 14px;
+    border: 1px solid var(--border-subtle);
     border-radius: 6px;
     font-size: var(--font-size-sm);
     font-weight: 500;
     cursor: pointer;
+    white-space: nowrap;
     color: var(--text-secondary);
-    background: var(--surface-button);
-    transition: all 0.2s;
+    background: var(--surface-5);
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
-.toolbarBtn:hover {
+.toolbarBtn:hover:not(:disabled) {
     background: var(--surface-elevated);
     color: var(--text-primary);
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
 .toolbarBtn:disabled {
-    cursor: not-allowed;
+    cursor: default;
     opacity: 0.45;
-    color: var(--text-muted);
-    background: var(--surface-button);
-    box-shadow: none;
-    transform: none;
 }
 
 /* ── 메인 영역 (맵 전체 배경 + 오버레이) ── */
+/* 지도 카드 — 장소/경로 탭의 .placeMapCard/.pathMapCard 와 같은 카드 규격(radius 18).
+   배경은 .mapCanvas(연두)가 그대로 덮는다. */
 .mainArea {
     flex: 1;
     min-height: 0;
     position: relative;
-    border-radius: 12px;
+    border-radius: 18px;
     overflow: hidden;
-    box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.06);
 }
 
 /* ── 공통 오버레이 패널 스타일 ── */
@@ -264,7 +249,7 @@
     opacity: 1;
 }
 
-/* 맵 캔버스 (전체 배경) */
+/* 맵 캔버스 (전체 배경) — 연두 배경은 맵 대비용이므로 그대로 둔다 */
 .mapCanvas {
     position: absolute;
     inset: 0;
@@ -526,8 +511,11 @@
     position: relative;
     background: linear-gradient(180deg, var(--surface-3) 0%, var(--surface-1) 100%);
     border-radius: 16px;
-    width: 55vw;
+    width: min(55vw, 1100px);
+    min-width: 760px;
     height: 55vh;
+    min-height: 480px;
+    max-height: 90vh;
     display: flex;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.06);
@@ -594,19 +582,31 @@
 /* 우측: 정보 + 컨트롤 */
 .mappingModalRight {
     width: 260px;
+    flex-shrink: 0;
     padding: 24px 20px;
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
     border-left: 1px solid rgba(255, 255, 255, 0.06);
     background: rgba(0, 0, 0, 0.12);
 }
 
+.mappingModalRight::-webkit-scrollbar {
+    width: 4px;
+}
+.mappingModalRight::-webkit-scrollbar-track {
+    background: transparent;
+}
+.mappingModalRight::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+}
+
 .mappingModalTitle {
+    margin: 0 0 24px;
     font-size: var(--font-size-xl);
-    font-weight: 700;
+    font-weight: 600;
     color: var(--text-primary);
-    margin-bottom: 24px;
-    letter-spacing: 0.5px;
 }
 
 /* 상태 정보 섹션 */
@@ -631,12 +631,18 @@
     font-size: var(--font-size-sm);
     color: var(--text-muted);
     font-weight: 500;
+    flex-shrink: 0;
 }
 
 .mappingStatusValue {
     font-size: var(--font-size-sm);
     color: var(--text-primary);
     font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
 }
 
 .statusRunning {
@@ -680,7 +686,7 @@
     50% { opacity: 0.6; box-shadow: 0 0 0 6px rgba(146, 208, 80, 0); }
 }
 
-/* 컨트롤 버튼 */
+/* 컨트롤 버튼 — 디자인 시스템 §3.1 (Primary / Danger, 40px, radius 9) */
 .mappingControls {
     display: flex;
     gap: 10px;
@@ -690,81 +696,53 @@
 
 .mappingCtrlBtn {
     flex: 1;
-    padding: 12px 0;
+    height: 40px;
     border: none;
-    border-radius: 10px;
+    border-radius: 9px;
     font-size: var(--font-size-md);
-    font-weight: 700;
+    font-weight: 600;
+    color: var(--text-primary);
     cursor: pointer;
-    transition: all 0.2s;
-    letter-spacing: 0.5px;
-    position: relative;
-    overflow: hidden;
+    transition: background 0.15s ease;
 }
 
-.mappingCtrlBtn::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 50%);
-    pointer-events: none;
+.mappingCtrlBtn:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
-.mappingCtrlBtn:hover {
-    transform: translateY(-1px);
-}
-
-.mappingCtrlBtn:active {
-    transform: translateY(0);
-}
-
-.mappingCtrlStart {
-    background: var(--color-info);
-    color: var(--text-primary);
-    box-shadow: 0 3px 10px rgba(0, 176, 238, 0.25);
-}
-
-.mappingCtrlStart:hover {
-    box-shadow: 0 5px 14px rgba(0, 176, 238, 0.35);
-}
-
-.mappingCtrlStop {
-    background: var(--color-warning);
-    color: var(--text-inverse);
-    box-shadow: 0 3px 10px rgba(255, 198, 53, 0.25);
-}
-
-.mappingCtrlStop:hover {
-    box-shadow: 0 5px 14px rgba(255, 198, 53, 0.35);
-}
-
+/* 시작·종료 모두 Primary — 상태에 따라 하나만 활성화된다. */
+.mappingCtrlStart,
 .mappingCtrlEnd {
-    background: var(--color-error-soft);
-    color: var(--text-primary);
-    box-shadow: 0 3px 10px rgba(255, 75, 75, 0.2);
+    background: var(--color-info);
 }
 
-.mappingCtrlEnd:hover {
-    box-shadow: 0 5px 14px rgba(255, 75, 75, 0.3);
+.mappingCtrlStart:hover:not(:disabled),
+.mappingCtrlEnd:hover:not(:disabled) {
+    background: var(--color-info-border);
 }
 
+/* 취소 = 맵 데이터 삭제(되돌릴 수 없음) → Danger */
 .mappingCancelBtn {
     width: 100%;
-    padding: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
+    height: 40px;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 9px;
     background: transparent;
-    color: var(--text-muted);
-    font-size: var(--font-size-sm);
-    font-weight: 500;
+    color: #ef4444;
+    font-size: var(--font-size-md);
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: background 0.15s ease;
 }
 
-.mappingCancelBtn:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-secondary);
-    border-color: rgba(255, 255, 255, 0.12);
+.mappingCancelBtn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.mappingCancelBtn:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
 /* ── 모달 오버레이 ── */
@@ -893,6 +871,8 @@
     border-radius: 16px;
     padding: 40px 48px;
     text-align: center;
+    max-height: 85vh;
+    overflow-y: auto;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
     border: 1px solid rgba(255, 255, 255, 0.06);
     animation: modalSlideIn 0.25s ease;
@@ -926,23 +906,27 @@
     font-weight: 600;
 }
 
+/* 강조 툴바 버튼 (디자인 시스템 §3.1) — 이름이 길어져도 버튼 폭이 밀리지 않게 말줄임 */
 .robotConnectBtn {
-    padding: 7px 18px;
-    border: none;
+    height: 34px;
+    max-width: 200px;
+    padding: 0 14px;
+    border: 1px solid var(--color-info-border);
     border-radius: 6px;
     font-size: var(--font-size-sm);
     font-weight: 600;
     cursor: pointer;
-    background: var(--color-info);
+    background: var(--color-info-selected);
     color: var(--text-primary);
-    transition: all 0.2s;
-    letter-spacing: 0.3px;
-    box-shadow: 0 2px 6px rgba(0, 176, 238, 0.2);
+    transition: background 0.15s ease;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .robotConnectBtn:hover {
-    box-shadow: 0 3px 10px rgba(0, 176, 238, 0.35);
-    transform: translateY(-1px);
+    background: var(--color-info-bg);
 }
 
 /* ══════════════════════════════════════
@@ -1298,7 +1282,7 @@
 
 .startModal {
     width: min(520px, 90vw);
-    max-height: min(580px, 85vh);
+    max-height: min(640px, 85vh);
     border-radius: 14px;
     background: var(--surface-3);
     padding: 14px 22px;
@@ -1336,14 +1320,14 @@
 
 .startHeaderLeft h2 {
     margin: 0;
-    font-weight: 500;
+    font-weight: 600;
     font-size: var(--font-size-xl);
     color: var(--text-primary);
 }
 
 .startCloseBtn {
-    width: 20px;
-    height: 20px;
+    width: 30px;
+    height: 30px;
     border: none;
     background: transparent;
     color: var(--text-primary);
@@ -1426,17 +1410,29 @@
     min-width: 0;
 }
 
+/* CustomSelect(기본 34px)를 모달 폼 규격(40px)에 맞춘다.
+   wrapper 의 직계 자식이 셀렉트 박스 — overlay 모드라 드롭다운은 portal 로 빠진다. */
+.startSelectBox {
+    height: 40px;
+}
+
+.startSelectBox > div {
+    height: 40px;
+    border-radius: 8px;
+}
+
+/* 디자인 시스템 §5.1 — 모달 안 폼 입력은 40px, radius 8, 14px */
 .startSelect,
 .startInput {
     flex: 1;
-    height: 32px;
+    height: 40px;
     background: var(--surface-input);
-    border-radius: 5px;
+    border-radius: 8px;
     border: 1px solid var(--border-input, rgba(138, 172, 199, 0.4));
-    padding: 0 11px;
+    padding: 0 12px;
     font-weight: 400;
     color: var(--text-primary);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-md);
     outline: none;
     min-width: 0;
     transition: border-color 0.15s;
@@ -1453,10 +1449,10 @@
 }
 
 .startToggleBtn {
-    height: 32px;
+    height: 40px;
     padding: 0 12px;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 5px;
+    border-radius: 8px;
     background: var(--surface-button);
     color: var(--text-tertiary);
     font-size: var(--font-size-xs);
@@ -1473,10 +1469,10 @@
 }
 
 .startCheckBtn {
-    height: 32px;
+    height: 40px;
     padding: 0 14px;
     border: 1px solid var(--color-info-border);
-    border-radius: 5px;
+    border-radius: 8px;
     background: var(--color-info-bg);
     color: var(--text-primary);
     font-size: var(--font-size-xs);
@@ -1511,48 +1507,55 @@
     border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* 디자인 시스템 §3.1 — 모달 버튼은 min 110×40, radius 9, 14px */
 .startFooterBtn {
-    height: 34px;
+    min-width: 110px;
+    height: 40px;
     padding: 0 18px;
-    border-radius: 6px;
-    font-size: var(--font-size-sm);
+    border-radius: 9px;
+    font-size: var(--font-size-md);
     font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
+    flex-shrink: 0;
     transition: background 0.15s;
 }
 
 .startFooterBtn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    opacity: 0.45;
+    cursor: default;
 }
 
 .startFooterBtn img {
-    width: 11px;
-    height: 11px;
+    width: 12px;
+    height: 12px;
 }
 
+/* 취소 = Secondary(회색). 빨강은 삭제 등 위험 동작에만 쓴다. */
 .startBtnCancel {
-    border: 1px solid var(--color-error-border);
-    background: var(--color-error-bg);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--surface-5);
     color: var(--text-primary);
 }
 
 .startBtnCancel:hover:not(:disabled) {
-    background: var(--color-error-hover);
+    background: var(--surface-elevated);
 }
 
-.startBtnConfirm {
+/* Primary — .startBtnStart 는 가져오기·동기화 모달에서 쓰던 이름(정의 누락분 보강) */
+.startBtnConfirm,
+.startBtnStart {
     border: 1px solid var(--color-info-border);
-    background: var(--color-info-bg);
+    background: var(--color-info);
     color: var(--text-primary);
 }
 
-.startBtnConfirm:hover:not(:disabled) {
-    background: #1d7aab;
+.startBtnConfirm:hover:not(:disabled),
+.startBtnStart:hover:not(:disabled) {
+    background: var(--color-info-border);
 }
 
 /* ══════════════════════════════════════

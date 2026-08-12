@@ -9,10 +9,12 @@ import RepeatConfirmModal, { type RepeatConfirmMode, type RepeatConfirmScope } f
 import MiniCalendar from '../widgets/MiniCalendar';
 import DateField from '../widgets/DateField';
 import { apiFetch } from "@/app/lib/api";
-import { WORK_TYPES, WORK_TYPE_ALL, WORK_STATUS, DOWS as DOWS_CONST, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, AMPM_OPTIONS, HOUR_OPTIONS, MINUTE_OPTIONS, type ScheduleMode, type Dow } from '../../constants';
+import { WORK_TYPES, WORK_TYPE_ALL, resolveTaskTypeLabel, WORK_STATUS, DOWS as DOWS_CONST, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, AMPM_OPTIONS, HOUR_OPTIONS, MINUTE_OPTIONS, type ScheduleMode, type Dow } from '../../constants';
+import { isRecurringSeries } from '@/app/lib/scheduleMode';
 import { getByteLength } from '../../utils/validation';
 import { extractOriginalId } from '../../utils/expandRepeatSchedules';
 import { pad2, formatDate, minToHm, hmToMin, toAmpmHour, fromAmpmHour } from '../../utils/datetime';
+import { resolveOccurrenceStatus, isFutureOccurrence } from '@/app/lib/occurrenceStatus';
 import { buildInitialForm, formatTimeRangeFromForm, type FormState, type PathDetail, type PathRow } from '../../utils/scheduleForm';
 import SharedCustomSelect, { type SelectOption as SharedSelectOption } from '@/app/components/select/CustomSelect';
 import NumberSpinner from '../widgets/NumberSpinner';
@@ -107,12 +109,22 @@ export default function ScheduleDetail({
     const dbId = extractOriginalId(event.id);
     const [mode, setMode] = useState<Mode>('view');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    // 작업 취소(= 이 회차만 실행 안 함). 편집 취소와 이름이 겹치므로 변수명을 work* 로 구분한다.
+    const [showWorkCancelConfirm, setShowWorkCancelConfirm] = useState(false);
+    const [workCancelling, setWorkCancelling] = useState(false);
+    // 작업 재개(= '오류'로 멈춘 것을 다시 실행 대상으로)
+    const [showResumeConfirm, setShowResumeConfirm] = useState(false);
+    const [resuming, setResuming] = useState(false);
     const [repeatConfirmOpen, setRepeatConfirmOpen] = useState(false);
     const [repeatConfirmMode, setRepeatConfirmMode] = useState<RepeatConfirmMode>("delete");
     const [repeatScope, setRepeatScope] = useState<RepeatConfirmScope>("this");
     const [showDirtyConfirm, setShowDirtyConfirm] = useState(false);
     const [dirtyAction, setDirtyAction] = useState<'cancel' | 'close'>('cancel');
     const [siblingCount, setSiblingCount] = useState(0);
+    // 회차가 여럿인 시리즈인가 — 하루짜리면 범위 선택을 묻지 않는다
+    const [isRecurring, setIsRecurring] = useState(false);
+    // 진행 중·완료·취소라 수정할 수 없을 때 뜨는 안내(삭제·작업 취소로 유도)
+    const [showEditBlocked, setShowEditBlocked] = useState(false);
     const [showMergeWarning, setShowMergeWarning] = useState(false);
     const [mergeWarningFor, setMergeWarningFor] = useState<RepeatConfirmMode>('edit');
     const [mergeWarningScope, setMergeWarningScope] = useState<RepeatConfirmScope>('all');
@@ -160,6 +172,29 @@ export default function ScheduleDetail({
     };
 
     // ===== actions =====
+    // form.workStatus 는 **원본 시리즈 row** 의 상태다. 이 모달은 특정 회차(targetDate)를
+    // 열어 놓고 보는 화면이라, 캘린더와 같은 규칙으로 회차 상태를 다시 판정해야 한다.
+    // 안 그러면 캘린더는 '대기'인데 상세는 '진행중'인 모순이 생긴다.
+    const occurrenceStatus = resolveOccurrenceStatus(form.workStatus, targetDate ?? null);
+    const isFuture = isFutureOccurrence(targetDate ?? null);
+
+    // 수정 차단 판정. 서버(_edit_block_reason)와 같은 기준을 화면에서도 쓴다.
+    // 오늘 이미 실행됐어도 지금 '대기'면 허용한다 — 내일 이후 회차는 고칠 수 있어야 한다.
+    const editBlockReason: string | null = (() => {
+      const s = form.workStatus;
+      if (s === '완료' || s === '취소') {
+        return `'${s}' 상태의 작업은 수정할 수 없습니다.`;
+      }
+      if ((s === '진행중' || s === '진행') && !isFuture) {
+        return '진행 중인 작업은 수정할 수 없습니다.';
+      }
+      return null;
+    })();
+
+    // 범위(이 회차/이후 모든/전체)를 물어야 하는가.
+    // 반복 모드라도 하루짜리 시리즈면 세 선택지가 같은 뜻이라 묻지 않고 바로 진행한다.
+    const needsScopeChoice = form.repeatEnabled && isRecurring;
+
     const openRepeatConfirm = (mode: RepeatConfirmMode) => {
       setRepeatConfirmMode(mode);
 
@@ -173,8 +208,13 @@ export default function ScheduleDetail({
     const handleEditStart = () => {
       setFieldErrors({});
       setApiError(null);
-      // 반복 작업이면: 범위 선택 모달 먼저
-      if (form.repeatEnabled) {
+      // 지나간 것(완료·취소)과 지금 도는 것(진행중)은 고칠 수 없다 — 서버도 409로 막는다.
+      if (editBlockReason) {
+        setShowEditBlocked(true);
+        return;
+      }
+      // 회차가 여럿인 반복 작업이면: 범위 선택 모달 먼저
+      if (needsScopeChoice) {
         openRepeatConfirm("edit");
         return;
       }
@@ -320,6 +360,16 @@ export default function ScheduleDetail({
                 payload.SeriesStartDate = form.seriesStartDate || startDateText;
                 payload.SeriesEndDate = form.repeatEndType === "date" ? form.repeatEndDate : null;
             }
+        } else if (form.scheduleMode === 'standby') {
+            // 운영 시간대·요일·유효기간만 보낸다. 호출 방식·대기 장소 등 Standby* 설정은
+            // 이 모달이 다루지 않으므로 페이로드에서 빼 서버의 기존 값을 유지시킨다.
+            payload.ActiveStartTime = form.activeStartTime;
+            payload.ActiveEndTime = form.activeEndTime;
+            payload.RepeatDays = form.intervalRepeatDays.length ? form.intervalRepeatDays.join(",") : null;
+            if (includeValidityPeriod) {
+                payload.SeriesStartDate = form.seriesStartDate || startDateText;
+                payload.SeriesEndDate = form.repeatEndType === "date" ? form.repeatEndDate : null;
+            }
         }
 
         setSaving(true);
@@ -362,9 +412,69 @@ export default function ScheduleDetail({
         }
     };
 
+    // ── 작업 취소 ─────────────────────────────────────────────
+    // **지금 돌고 있는 작업을 멈추는 것**만 취소로 남긴다.
+    //
+    // 아직 오지 않은 회차를 건너뛰는 일은 '삭제(이 회차)'가 이미 한다 —
+    // 서버가 두 경로 모두 SeriesExceptions 에 그날을 넣는 같은 방식이라,
+    // 같은 일을 하는 버튼을 둘 두면 무엇을 눌러야 할지만 헷갈린다.
+    // (차이는 달력에 '취소'로 남기느냐 지우느냐뿐이다.)
+    const isTodayOccurrence = !targetDate || targetDate === formatDate(new Date());
+    const canCancelWork = isTodayOccurrence
+        && (occurrenceStatus === '진행중' || occurrenceStatus === '진행');
+
+    const handleWorkCancelConfirm = async () => {
+        setWorkCancelling(true);
+        try {
+            const res = await apiFetch(`/DB/schedule/${dbId}/cancel`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(targetDate ? { TargetDate: targetDate } : {}),
+            });
+            if (!res.ok) {
+                // 이미 완료·취소된 작업이면 409 로 사유가 온다 — 그대로 보여준다.
+                let msg = "작업 취소에 실패했습니다.";
+                try { msg = (await res.json())?.detail || msg; } catch { /* 본문 없음 */ }
+                throw new Error(msg);
+            }
+            await onScheduleChanged?.();
+            setShowWorkCancelConfirm(false);
+            onClose();
+        } catch (e) {
+            console.error("작업 취소 실패", e);
+            setApiError(e instanceof Error ? e.message : "작업 취소에 실패했습니다.");
+            setShowWorkCancelConfirm(false);
+        } finally {
+            setWorkCancelling(false);
+        }
+    };
+
+    // ── 작업 재개 ─────────────────────────────────────────────
+    // 서버 재기동 등 외부 요인으로 끊긴 작업은 '오류'로 남고 스케줄러가 집어가지 않는다.
+    // 재기동 시점의 로봇 위치를 모르는 채 자동 재개하면 위험해서, 사람이 눌러 되돌린다.
+    const canResumeWork = occurrenceStatus === '오류';
+
+    const handleResumeConfirm = async () => {
+        setResuming(true);
+        try {
+            const res = await apiFetch(`/DB/schedule/${dbId}/resume`, { method: "POST" });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(body?.detail || "작업 재개에 실패했습니다.");
+            await onScheduleChanged?.();
+            setShowResumeConfirm(false);
+            onClose();
+        } catch (e) {
+            console.error("작업 재개 실패", e);
+            setApiError(e instanceof Error ? e.message : "작업 재개에 실패했습니다.");
+            setShowResumeConfirm(false);
+        } finally {
+            setResuming(false);
+        }
+    };
+
     const handleDelete = () => {
-      // ✅ 반복 작업이면: 범위 선택 모달 먼저
-      if (form.repeatEnabled) {
+      // ✅ 회차가 여럿인 반복 작업이면: 범위 선택 모달 먼저
+      if (needsScopeChoice) {
         openRepeatConfirm("delete");
         return;
       }
@@ -411,13 +521,25 @@ export default function ScheduleDetail({
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : (data?.paths ?? []);
-        const mapped = list.map((p: any) => ({
-          id: p.id,
-          label: p.WayName,
-          order: p.WayPoints ?? "",
-          taskType: p.TaskType ?? "",
-          floorId: p.FloorId ?? null,
-        }));
+        const mapped = list.map((p: any) => {
+          let stopActions: ({ announceText?: string | null; confirm?: string } | null)[] | undefined;
+          if (p.StopActions) {
+            try {
+              const parsed = JSON.parse(p.StopActions);
+              if (Array.isArray(parsed)) stopActions = parsed;
+            } catch {
+              stopActions = undefined;
+            }
+          }
+          return {
+            id: p.id,
+            label: p.WayName,
+            order: p.WayPoints ?? "",
+            taskType: resolveTaskTypeLabel(p.TaskType),
+            floorId: p.FloorId ?? null,
+            stopActions,
+          };
+        });
         pathOptionsRef.current = mapped;
         setPathOptions(mapped);
       })
@@ -449,7 +571,7 @@ export default function ScheduleDetail({
     const newForm: FormState = {
       robotNo: data.RobotName,
       title: data.TaskName,
-      workType: data.TaskType,
+      workType: resolveTaskTypeLabel(data.TaskType),
       workStatus: data.TaskStatus,
 
       dateText: formatDate(start),
@@ -470,7 +592,9 @@ export default function ScheduleDetail({
 
       scheduleMode: mode,
 
-      repeatEnabled: mode === "weekly" || mode === "interval",
+      // standby 도 시리즈(SeriesGroupId·SeriesExceptions)로 사는 반복 작업이다.
+      // 수정·삭제 모두 범위 선택(이 회차/이후/전체)을 거쳐야 한다.
+      repeatEnabled: mode === "weekly" || mode === "interval" || mode === "standby",
       repeatDays: mode === "weekly" && data.Repeat_Day
         ? data.Repeat_Day.split(",") as Array<'월'|'화'|'수'|'목'|'금'|'토'|'일'>
         : [],
@@ -485,7 +609,8 @@ export default function ScheduleDetail({
       intervalMinutes: data.IntervalMinutes ?? null,
       activeStartTime: data.ActiveStartTime ?? '09:00',
       activeEndTime: data.ActiveEndTime ?? '18:00',
-      intervalRepeatDays: mode === "interval" && data.Repeat_Day
+      // standby 도 운영 요일을 Repeat_Day 에 저장한다 — 같은 칩 UI를 쓴다
+      intervalRepeatDays: (mode === "interval" || mode === "standby") && data.Repeat_Day
         ? data.Repeat_Day.split(",") as Array<'월'|'화'|'수'|'목'|'금'|'토'|'일'>
         : [],
 
@@ -518,6 +643,7 @@ export default function ScheduleDetail({
       .then(data => {
         applyDetailData(data);
         setSiblingCount(Number(data.SiblingCount ?? 0));
+        setIsRecurring(isRecurringSeries(data));
 
         // 수정 일시 (API에 필드가 있으면 사용)
         if (data.UpdatedAt || data.updated_at) {
@@ -684,6 +810,7 @@ export default function ScheduleDetail({
     // 모드별 보기 텍스트
     const viewScheduleModeLabel = form.scheduleMode === 'once' ? '단일 실행'
       : form.scheduleMode === 'weekly' ? '요일 반복'
+      : form.scheduleMode === 'standby' ? '상시 대기'
       : '주기 반복';
 
     const viewTimeText = form.scheduleMode === 'once'
@@ -692,9 +819,11 @@ export default function ScheduleDetail({
         ? form.executionTimes.length > 0
           ? `매주 ${form.repeatDays.join(',')} ${form.executionTimes.join(', ')}`
           : `매주 ${form.repeatDays.join(',')} ${form.startAmpm} ${pad2(form.startHour)}:${pad2(form.startMin)}`
-        : `${form.activeStartTime}~${form.activeEndTime} 매 ${form.intervalMinutes ?? 0}분`;
+        : form.scheduleMode === 'standby'
+          ? `${form.activeStartTime}~${form.activeEndTime} 호출 대기`
+          : `${form.activeStartTime}~${form.activeEndTime} 매 ${form.intervalMinutes ?? 0}분`;
 
-    const viewSeriesText = (form.scheduleMode === 'weekly' || form.scheduleMode === 'interval')
+    const viewSeriesText = (form.scheduleMode === 'weekly' || form.scheduleMode === 'interval' || form.scheduleMode === 'standby')
       ? `${form.seriesStartDate}${form.repeatEndType === 'date' && form.repeatEndDate ? ` ~ ${form.repeatEndDate}` : ' ~ 무기한'}`
       : '';
 
@@ -769,7 +898,7 @@ export default function ScheduleDetail({
           <div className={styles.detailHeader}>
             <div className={styles.detailHeaderLeft}>
               <img src="/icon/robot_schedule_w.png" alt="" className={styles.detailHeaderIcon} />
-              <h2>{isEditMode ? '작업 수정' : '작업 상세'}</h2>
+              <span className={styles.detailHeaderTitle}>{isEditMode ? '작업 수정' : '작업 상세'}</span>
             </div>
             <button className={styles.CloseBtn} onClick={handleSafeClose}>✕</button>
           </div>
@@ -889,18 +1018,32 @@ export default function ScheduleDetail({
 
               {isEditMode ? (
                 <>
-                  {/* 실행 방식 라디오 */}
+                  {/* 실행 방식 — 상시 대기는 전환 대상이 아니다.
+                      대기 장소·호출 방식·목적지 화이트리스트가 이 모달에 없어, 다른 모드로 바꾸면
+                      그 설정들이 갈 곳을 잃는다. 읽기전용으로 고정해 전환 자체를 막는다. */}
                   <FieldRow label="실행 방식">
-                    <div className={styles.modeRadioGroup}>
-                      {(['once', 'weekly', 'interval'] as ScheduleMode[]).map((m) => (
-                        <label key={m} className={styles.modeRadioLabel}>
-                          <input type="radio" name="editScheduleMode" checked={form.scheduleMode === m}
-                            onChange={() => setForm((p) => ({ ...p, scheduleMode: m, repeatEnabled: m !== 'once' }))}
-                          />
-                          <span>{SCHEDULE_MODE_LABELS[m]}</span>
-                        </label>
-                      ))}
-                    </div>
+                    {form.scheduleMode === 'standby' ? (
+                      <div>
+                        <span className={`${styles.modeBadge} ${styles.modeBadgeStandby}`}>
+                          <span className={styles.modeBadgeDot} />
+                          {SCHEDULE_MODE_LABELS.standby}
+                        </span>
+                        <div className={styles.standbyHint} style={{ margin: '6px 0 0' }}>
+                          호출 방식·대기 장소 등 상시 대기 설정은 이 화면에서 바꿀 수 없습니다.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={styles.modeRadioGroup}>
+                        {(['once', 'weekly', 'interval'] as const).map((m) => (
+                          <label key={m} className={styles.modeRadioLabel}>
+                            <input type="radio" name="editScheduleMode" checked={form.scheduleMode === m}
+                              onChange={() => setForm((p) => ({ ...p, scheduleMode: m, repeatEnabled: m !== 'once' }))}
+                            />
+                            <span>{SCHEDULE_MODE_LABELS[m]}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </FieldRow>
 
                   {/* === once: 날짜 + 시각 === */}
@@ -1057,10 +1200,14 @@ export default function ScheduleDetail({
                   )}
 
                   {/* === interval: 활동시간 + 간격 + 요일 + 유효기간 === */}
-                  {form.scheduleMode === 'interval' && (
+                  {/* interval·standby 는 둘 다 운영 시간대로 사는 모드라 폼을 공유한다.
+                      standby 는 '반복 간격'만 없다. */}
+                  {(form.scheduleMode === 'interval' || form.scheduleMode === 'standby') && (
                     <>
                       <div className={styles.detailDateRow}>
-                        <div className={styles.detailFieldLabel}>활동 시작</div>
+                        <div className={styles.detailFieldLabel}>
+                          {form.scheduleMode === 'standby' ? '운영 시작' : '활동 시작'}
+                        </div>
                         <div className={styles.detailDateControls}>
                           <SharedCustomSelect options={AMPM_OPTIONS}
                             value={AMPM_OPTIONS.find(o => o.label === (parseInt(form.activeStartTime.split(':')[0]) < 12 ? '오전' : '오후')) ?? null}
@@ -1094,7 +1241,9 @@ export default function ScheduleDetail({
                         </div>
                       </div>
                       <div className={styles.detailDateRow}>
-                        <div className={styles.detailFieldLabel}>활동 종료</div>
+                        <div className={styles.detailFieldLabel}>
+                          {form.scheduleMode === 'standby' ? '운영 종료' : '활동 종료'}
+                        </div>
                         <div className={styles.detailDateControls}>
                           <SharedCustomSelect options={AMPM_OPTIONS}
                             value={AMPM_OPTIONS.find(o => o.label === (parseInt(form.activeEndTime.split(':')[0]) < 12 ? '오전' : '오후')) ?? null}
@@ -1127,24 +1276,29 @@ export default function ScheduleDetail({
                           />
                         </div>
                       </div>
-                      <FieldRow label="반복 간격">
-                        <div className={styles.intervalInputWrap}>
-                          <NumberSpinner value={form.intervalMinutes} onChange={(v) => setForm((p) => ({ ...p, intervalMinutes: v }))}
-                            min={1} max={1440} placeholder="10" pad={1} error={!!fieldErrors.intervalMinutes}
-                          />
-                          <span className={styles.intervalUnit}>분마다</span>
-                          <div className={styles.intervalPresets}>
-                            {INTERVAL_PRESETS.map((p) => (
-                              <button key={p} type="button"
-                                className={`${styles.intervalPresetBtn} ${form.intervalMinutes === p ? styles.intervalPresetActive : ''}`}
-                                onClick={() => setForm((prev) => ({ ...prev, intervalMinutes: p }))}
-                              >{p}분</button>
-                            ))}
-                          </div>
-                        </div>
-                      </FieldRow>
-                      {fieldErrors.intervalMinutes && <span className={styles.fieldError}>{fieldErrors.intervalMinutes}</span>}
-                      <FieldRow label="반복 요일">
+                      {/* 반복 간격은 주기 반복 전용 — 상시 대기는 호출이 트리거라 간격 개념이 없다 */}
+                      {form.scheduleMode === 'interval' && (
+                        <>
+                          <FieldRow label="반복 간격">
+                            <div className={styles.intervalInputWrap}>
+                              <NumberSpinner value={form.intervalMinutes} onChange={(v) => setForm((p) => ({ ...p, intervalMinutes: v }))}
+                                min={1} max={1440} placeholder="10" pad={1} error={!!fieldErrors.intervalMinutes}
+                              />
+                              <span className={styles.intervalUnit}>분마다</span>
+                              <div className={styles.intervalPresets}>
+                                {INTERVAL_PRESETS.map((p) => (
+                                  <button key={p} type="button"
+                                    className={`${styles.intervalPresetBtn} ${form.intervalMinutes === p ? styles.intervalPresetActive : ''}`}
+                                    onClick={() => setForm((prev) => ({ ...prev, intervalMinutes: p }))}
+                                  >{p}분</button>
+                                ))}
+                              </div>
+                            </div>
+                          </FieldRow>
+                          {fieldErrors.intervalMinutes && <span className={styles.fieldError}>{fieldErrors.intervalMinutes}</span>}
+                        </>
+                      )}
+                      <FieldRow label={form.scheduleMode === 'standby' ? '운영 요일' : '반복 요일'}>
                         <div className={styles.repeatDayWrap}>
                           <div className={styles.repeatDayBtns}>
                             {DOWS.map((d) => (
@@ -1216,6 +1370,7 @@ export default function ScheduleDetail({
                     <span className={`${styles.modeBadge} ${
                       form.scheduleMode === 'once' ? styles.modeBadgeOnce
                       : form.scheduleMode === 'weekly' ? styles.modeBadgeWeekly
+                      : form.scheduleMode === 'standby' ? styles.modeBadgeStandby
                       : styles.modeBadgeInterval
                     }`}>
                       <span className={styles.modeBadgeDot} />
@@ -1329,6 +1484,46 @@ export default function ScheduleDetail({
                       )}
                     </div>
                   )}
+
+                  {/* === standby 모드 보기 — 실행 시각이 아니라 운영 시간대가 수명이다 === */}
+                  {form.scheduleMode === 'standby' && (
+                    <div className={styles.timeCardWrap}>
+                      <div className={styles.timeCard}>
+                        <div className={`${styles.timeCardIcon} ${styles.timeCardIconInterval}`}>🎧</div>
+                        <div className={styles.timeCardBody}>
+                          <span className={styles.timeCardLabel}>운영 시간대</span>
+                          <span className={styles.timeCardValue}>
+                            {form.activeStartTime} ~ {form.activeEndTime}
+                          </span>
+                          <span className={styles.timeCardSub}>이 시간대에 대기 장소에서 호출을 기다립니다</span>
+                        </div>
+                      </div>
+                      {form.intervalRepeatDays.length > 0 && (
+                        <FieldRow label="운영 요일" lined>
+                          <div className={styles.dowChips}>
+                            {(['월','화','수','목','금','토','일'] as const).map((d) => (
+                              <span key={d} className={`${styles.dowChip} ${form.intervalRepeatDays.includes(d) ? styles.dowChipActiveInterval : ''}`}>
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                        </FieldRow>
+                      )}
+                      {(form.seriesStartDate || form.seriesEndDate) && (
+                        <FieldRow label="유효 기간" lined>
+                          <div className={styles.seriesCard}>
+                            <span className={styles.seriesCardIcon}>📅</span>
+                            <span>{form.seriesStartDate}</span>
+                            <span className={styles.seriesCardArrow}>→</span>
+                            {form.repeatEndType === 'date' && form.repeatEndDate
+                              ? <span>{form.repeatEndDate}</span>
+                              : <span className={styles.seriesCardInfinity}>무기한</span>
+                            }
+                          </div>
+                        </FieldRow>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
                 {isEditMode && (fieldErrors.dateTime || fieldErrors.pastDate) && (
@@ -1343,16 +1538,17 @@ export default function ScheduleDetail({
               <div className={styles.detailSection}>
                 <div className={styles.detailSectionTitle}>상태<span className={styles.detailSectionLine} /></div>
 
+                {/* 시리즈 원본이 아니라 **지금 열어 본 회차**의 상태다 — 캘린더와 같은 규칙 */}
                 <FieldRow label="작업상태" lined>
                   <span className={`${styles.detailStatusBadge} ${
-                      form.workStatus === '대기' ? styles.detailStatusYellow
-                      : form.workStatus === '진행중' || form.workStatus === '진행' ? styles.detailStatusBlue
-                      : form.workStatus === '완료' ? styles.detailStatusGreen
-                      : form.workStatus === '오류' ? styles.detailStatusRed
-                      : form.workStatus === '취소' ? styles.detailStatusOrange
+                      occurrenceStatus === '대기' ? styles.detailStatusYellow
+                      : occurrenceStatus === '진행중' || occurrenceStatus === '진행' ? styles.detailStatusBlue
+                      : occurrenceStatus === '완료' ? styles.detailStatusGreen
+                      : occurrenceStatus === '오류' ? styles.detailStatusRed
+                      : occurrenceStatus === '취소' ? styles.detailStatusOrange
                       : ''
                     }`}>
-                    {form.workStatus}
+                    {occurrenceStatus}
                   </span>
                 </FieldRow>
               </div>
@@ -1410,6 +1606,38 @@ export default function ScheduleDetail({
                   )}
                 </FieldRow>
 
+                {/* 도착 안내 미리보기 (읽기 전용) — 해당 경로에 발화가 설정된 경우만 */}
+                {(() => {
+                  const matched = pathOptions.find((p) => p.label === form.pathName) as
+                    | (SelectOption & { stopActions?: ({ announceText?: string | null; confirm?: string } | null)[] })
+                    | undefined;
+                  const actions = matched?.stopActions ?? [];
+                  const names = (form.pathOrder || '').split(' - ').map((s) => s.trim());
+                  const hasAnnounce = actions.some((a) => a && (a.announceText || '').trim());
+                  if (!hasAnnounce) return null;
+                  const cfLabel: Record<string, string> = { button: '버튼', voice: '음성', gesture: '제스처' };
+                  return (
+                    <FieldRow label="도착 안내" lined>
+                      <div style={{ width: '100%', border: '1px solid rgba(146,212,244,.22)', background: 'rgba(146,212,244,.05)', borderRadius: 8, padding: '8px 12px' }}>
+                        {names.map((nm, i) => {
+                          const a = actions[i];
+                          const text = a && (a.announceText || '').trim();
+                          if (!text) return null;
+                          const cf = a?.confirm && a.confirm !== 'none' ? (cfLabel[a.confirm] ?? a.confirm) : null;
+                          return (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: 12, color: '#cfd6e6' }}>
+                              <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#3B415F', color: '#cfd6e6', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                              <span style={{ width: 90, flexShrink: 0, color: '#9DADCB', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={nm}>{nm}</span>
+                              <span style={{ flex: 1, minWidth: 0, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={text}>&ldquo;{text}&rdquo;</span>
+                              {cf && <span style={{ fontSize: 11, color: '#dceeff', background: '#2568a8', borderRadius: 4, padding: '1px 8px', flexShrink: 0 }}>확인: {cf}</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </FieldRow>
+                  );
+                })()}
+
                 {isEditMode && (
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14, marginBottom: 14 }}>
                     <button
@@ -1445,6 +1673,31 @@ export default function ScheduleDetail({
                     <img src="/icon/delete_icon.png" alt="delete" />
                     <span>삭제</span>
                   </button>
+
+                  {/* 외부 요인(서버 재기동 등)으로 멈춘 작업만 — 자동 재개는 하지 않는다 */}
+                  {canResumeWork && (
+                    <button
+                      type="button"
+                      className={`${styles.btnItemCommon} ${styles.btnBgBlue}`}
+                      onClick={() => setShowResumeConfirm(true)}
+                    >
+                      <img src="/icon/check.png" alt="resume" />
+                      <span>작업 재개</span>
+                    </button>
+                  )}
+
+                  {/* 지금 돌고 있는 작업에만 — 미래 회차 건너뛰기는 삭제(이 회차)가 한다 */}
+                  {canCancelWork && (
+                    <button
+                      type="button"
+                      className={`${styles.btnItemCommon} ${styles.btnBgGray}`}
+                      onClick={() => setShowWorkCancelConfirm(true)}
+                    >
+                      <img src="/icon/close_btn.png" alt="stop-work" />
+                      {/* '취소'는 미래 회차 건너뛰기로 읽힌다 — 이 버튼은 지금 돌고 있는 걸 멈춘다 */}
+                      <span>작업 중단</span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -1488,6 +1741,67 @@ export default function ScheduleDetail({
           onConfirm={handleDeleteConfirm}
           onCancel={handleDeleteCancel}
         />
+      )}
+
+      {/* 작업 취소 확인 — 삭제와 헷갈리지 않게 "일정은 남는다"를 명시한다 */}
+      {showWorkCancelConfirm && (
+        <DeleteConfirmModal
+          message={
+            // 이 버튼은 이제 '지금 돌고 있는 작업 중단'에만 뜬다(미래 회차는 삭제로 처리).
+            form.scheduleMode !== 'once'
+              ? "진행 중인 작업을 중단하시겠습니까? 로봇이 즉시 정지하며, 일정은 삭제되지 않고 다음 회차는 그대로 실행됩니다."
+              : "진행 중인 작업을 중단하시겠습니까? 로봇이 즉시 정지하며, 일정은 삭제되지 않습니다."
+          }
+          onConfirm={workCancelling ? () => {} : handleWorkCancelConfirm}
+          onCancel={() => setShowWorkCancelConfirm(false)}
+        />
+      )}
+
+      {/* 작업 재개 확인 — 로봇이 실제로 움직이므로 무엇이 일어나는지 먼저 말한다 */}
+      {showResumeConfirm && (
+        <DeleteConfirmModal
+          message={
+            form.scheduleMode === 'standby'
+              ? "작업을 재개하시겠습니까? 운영 시간대가 남아 있으면 오늘 근무를 이어받고, 로봇이 대기 장소로 돌아간 뒤 호출을 기다립니다."
+              : "작업을 재개하시겠습니까? 다시 자동 실행 대상이 됩니다."
+          }
+          onConfirm={resuming ? () => {} : handleResumeConfirm}
+          onCancel={() => setShowResumeConfirm(false)}
+        />
+      )}
+
+      {/* 수정 불가 안내 — 막고 끝내지 않고 할 수 있는 일(삭제·작업 취소)로 보낸다 */}
+      {showEditBlocked && (
+        <div className={styles.confirmOverlay} onClick={() => setShowEditBlocked(false)}>
+          <div className={styles.confirmBox} onClick={(e) => e.stopPropagation()}>
+            <p>
+              {editBlockReason}
+              <br />
+              {canCancelWork
+                ? '삭제하거나, 진행 중인 작업을 중단할 수 있습니다.'
+                : '삭제만 가능합니다.'}
+            </p>
+            <div className={styles.confirmBtnGroup}>
+              <button className={styles.confirmBtnStay} onClick={() => setShowEditBlocked(false)}>
+                닫기
+              </button>
+              {canCancelWork && (
+                <button
+                  className={styles.confirmBtnStay}
+                  onClick={() => { setShowEditBlocked(false); setShowWorkCancelConfirm(true); }}
+                >
+                  작업 취소
+                </button>
+              )}
+              <button
+                className={styles.confirmBtnLeave}
+                onClick={() => { setShowEditBlocked(false); handleDelete(); }}
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 반복 작업 수정/삭제 범위 선택 모달 */}

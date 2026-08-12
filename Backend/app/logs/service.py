@@ -21,6 +21,13 @@ _COOLDOWN_EXEMPT = {
     "robot_error_code", "robot_error_resolved",
     # 모터 과열은 관절별 상태머신이 전이 시에만 발화하므로 action 쿨다운 제외(관절별 누락 방지)
     "motor_overheat_warning", "motor_overheat_danger", "motor_overheat_resolved",
+    # 스케줄 실패는 회차마다 대상·사유가 다르다. action 쿨다운에 걸리면 30초 안에
+    # 발생한 두 번째 회차의 실패가 조용히 사라져 "조용한 실패 금지"가 깨진다.
+    "schedule_missed", "schedule_skip_offline", "schedule_gate_timeout",
+    "schedule_ttl_exceeded", "schedule_return_failed", "schedule_state_error",
+    # 응대는 몇 분 간격으로 연속 발생한다. 쿨다운에 걸리면 세션 로그가 통째로 빈다.
+    "standby_session_start", "standby_session_end", "standby_session_timeout",
+    "standby_dest_unknown", "standby_session_extended",
 }
 
 # ── 큐 기반 단일 Writer ──
@@ -41,6 +48,20 @@ ALERT_TRIGGER_RULES = {
     "thermal_temp_high":       ("Robot", "event"),  # 열화상에서 고온 객체 감지 (45°C+)
     "robot_initpose_manual_needed": ("Robot", "error"),  # 자동 위치 초기화 실패 → 수동 재조정 필요 (확인창)
     "robot_initpose_no_chargestation": ("Robot", "error"),  # 충전 중인데 충전소 미등록 (설정 미비)
+    # 스케줄 실행 보장 (PRD-Schedule-Execution §4.5)
+    # 전부 Schedule 타입이다 — Robot 타입은 로봇 오프라인 시 알림이 억제되는데,
+    # 스케줄 실패의 상당수가 오프라인이 원인이라 정작 알려야 할 때 묻힌다.
+    "schedule_missed":         ("Schedule", "error"),  # 허용 지연 초과로 회차 미실행
+    "schedule_skip_offline":   ("Schedule", "error"),  # 로봇 오프라인으로 회차 스킵
+    "schedule_gate_timeout":   ("Schedule", "error"),  # 확인 무응답 절대 상한 도달
+    "schedule_ttl_exceeded":   ("Schedule", "error"),  # 회차 TTL 초과
+    "schedule_return_failed":  ("Schedule", "error"),  # 복귀 실패 — 개입 필요
+    "schedule_state_error":    ("Schedule", "error"),  # 작업 상태 갱신 DB 실패
+    "schedule_auto_paused":    ("Schedule", "error"),  # 연속 실패로 자동 일시정지
+    "schedule_interrupted":    ("Schedule", "error"),  # 재기동 등으로 진행 중 작업이 끊김 → 사람이 재개해야 다시 돈다
+    # 상시 대기 응대 (§4.5) — 세션 실패도 조용히 사라지면 안 된다
+    "standby_session_timeout": ("Schedule", "event"),  # 응대 시간 초과 (S5b·S5c)
+    "standby_dest_unknown":    ("Schedule", "event"),  # 안내 불가 목적지 요청 (S2)
 }
 
 # 로그 Action → 알림 제목 매핑
@@ -73,6 +94,22 @@ ACTION_TITLES = {
     "nav_loop":                "네비게이션 반복",
     "place_move_start":        "장소 이동",
     "path_move_start":         "경로 이동",
+    "schedule_cancel":         "작업 취소",
+    "schedule_missed":         "작업 미실행",
+    "schedule_skip_offline":   "로봇 오프라인으로 스킵",
+    "schedule_gate_timeout":   "확인 무응답으로 중단",
+    "schedule_ttl_exceeded":   "작업 시간 초과",
+    "schedule_return_failed":  "복귀 실패 — 개입 필요",
+    "schedule_state_error":    "작업 상태 갱신 실패",
+    "schedule_auto_paused":    "연속 실패로 자동 일시정지",
+    "standby_start":           "상시 대기 시작",
+    "standby_ready":           "대기 장소 도착 — 응대 가능",
+    "standby_end":             "상시 대기 종료",
+    "standby_session_start":   "응대 시작",
+    "standby_session_end":     "응대 종료",
+    "standby_session_extended": "응대 연장",
+    "standby_session_timeout": "응대 시간 초과",
+    "standby_dest_unknown":    "안내 불가 목적지 요청",
     "robot_online":            "로봇 온라인",
     "robot_offline":           "로봇 오프라인",
     # System

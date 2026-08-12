@@ -2,6 +2,13 @@
 
 import styles from '@/app/components/modal/Modal.module.css';
 import React, { useState, useEffect, useRef } from 'react';
+
+/** IPv4 점 4자리 형식 검사. 각 옥텟 0~255. */
+function isValidIPv4(v: string): boolean {
+    const m = v.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (!m) return false;
+    return m.slice(1).every((o) => Number(o) <= 255);
+}
 import type { RobotRowData } from '@/app/types';
 import type { RobotDraft } from "./RobotManageTab";
 import CancelConfirmModal from '@/app/components/modal/CancelConfirmModal';
@@ -20,6 +27,9 @@ import ChargingIcon from "@/app/components/common/ChargingIcon";
 import WaypointProgress from "./WaypointProgress";
 import type { WaypointStep } from "./WaypointProgress";
 import RobotActiveScheduleSection, { type ActiveScheduleInfo } from "./RobotActiveScheduleSection";
+import StandbyLiveDetail, { StandbyStatusChip } from "./StandbyLiveChips";
+import { useStandbyLive } from "./useStandbyLive";
+import { useNavProgress } from "./useNavProgress";
 import RobotRealtimeStatusSection from "./RobotRealtimeStatusSection";
 import RobotInfoViewSection from "./RobotInfoViewSection";
 import RobotInfoEditSection from "./RobotInfoEditSection";
@@ -34,6 +44,8 @@ type DetailModalProps = {
     robots: RobotRowData[];
     initialEditMode?: boolean;
     activeSchedule?: ActiveScheduleInfo | null;
+    /** '오류'로 멈춘 작업 — 여기서 재개할 수 있어야 작업관리로 건너가지 않는다 */
+    erroredSchedule?: ActiveScheduleInfo | null;
 
     persistedDraft?: RobotDraft;
     onPersistDraft?: (robotId: number, next: RobotDraft) => void;
@@ -47,6 +59,7 @@ export default function RobotDetailModal({
     robots,
     initialEditMode = false,
     activeSchedule = null,
+    erroredSchedule = null,
 }:DetailModalProps ){
 
     const { refresh: refreshRobots } = useRobotStatusContext();
@@ -84,6 +97,7 @@ export default function RobotDetailModal({
                     site: data.Site ?? selectedRobot.site,
                     registrationDateTime: data.Adddate ?? selectedRobot.registrationDateTime,
                     return: data.LimitBattery ?? selectedRobot.return ?? DEFAULT_RETURN_BATTERY,
+                    robotIp: data.RobotIP ?? "",
                 };
 
                 setRobotDetail(detail);
@@ -94,6 +108,7 @@ export default function RobotDetailModal({
                     model: detail.model,
                     group: detail.group,
                     softwareVersion: detail.softwareVersion,
+                    robotIp: (detail as any).robotIp ?? "",
                     site: detail.site,
                     registrationDateTime: detail.registrationDateTime,
                     returnBattery: detail.return ?? DEFAULT_RETURN_BATTERY,
@@ -143,6 +158,8 @@ export default function RobotDetailModal({
     registrationDateTime: string;
     returnBattery: number;
     robotType: string;
+    /** 폴링 상태를 이 로봇에 붙이는 키(RobotInfo.RobotIP). 비우면 계속 offline 으로 보인다. */
+    robotIp: string;
     };
 
     const [draft, setDraft] = useState<RobotDraft>({
@@ -156,6 +173,7 @@ export default function RobotDetailModal({
     registrationDateTime: "",
     returnBattery: DEFAULT_RETURN_BATTERY,
     robotType: "",
+    robotIp: "",
     });
 
     const battery = useBatterySlider({ min: 15, max: 30, defaultValue: DEFAULT_RETURN_BATTERY });
@@ -166,6 +184,17 @@ export default function RobotDetailModal({
     const [pathMoveModalOpen, setPathMoveModalOpen] = useState(false);
     const [batteryConfirmOpen, setBatteryConfirmOpen] = useState(false);
     const [stopChargeConfirmOpen, setStopChargeConfirmOpen] = useState(false);
+    const [resumeConfirmOpen, setResumeConfirmOpen] = useState(false);
+
+    // 상시 대기 응대 — 작업명 줄의 상태 칩과 아래 상세가 같은 데이터를 본다
+    const { live: standbyLive, reload: reloadStandby } = useStandbyLive((robotDetail ?? selectedRobot)?.no);
+
+    // 경유지 진행 — 상시 대기는 응대 상태가 이미 단계를 그리므로 폴링하지 않는다
+    const isStandbyWork = (activeSchedule?.ScheduleMode ?? "") === "standby";
+    const navProgress = useNavProgress(
+        (robotDetail ?? selectedRobot)?.no,
+        isOpen && !!activeSchedule && !isStandbyWork,
+    );
 
     // Work schedule states
     const [workScheduleCase, setWorkScheduleCase] = useState<WorkScheduleCase>('none');
@@ -276,6 +305,7 @@ export default function RobotDetailModal({
         registrationDateTime: src?.registrationDateTime ?? "",
         returnBattery: typeof rb === "number" ? rb : DEFAULT_RETURN_BATTERY,
         robotType: src?.type ?? "",
+        robotIp: (src as any)?.robotIp ?? "",
     });
 
     // 2) 배터리 입력 UI도 원복
@@ -307,6 +337,10 @@ export default function RobotDetailModal({
             setFieldErrors(errors);
             return;
         }
+        if (isAdminOrManager && draft.robotIp.trim() && !isValidIPv4(draft.robotIp.trim())) {
+            setFieldErrors({ robotIp: true });
+            return;
+        }
         setFieldErrors({});
 
         const ok = battery.validateAndFix();
@@ -324,6 +358,7 @@ export default function RobotDetailModal({
             site: draft.site,
             limit_battery: rb,
             robot_type: draft.robotType || "기본 4족",
+            ...(isAdminOrManager ? { robot_ip: draft.robotIp.trim() } : {}),
         };
 
         setIsSubmitting(true);
@@ -350,6 +385,7 @@ export default function RobotDetailModal({
                     model: payload.model,
                     group: payload.group,
                     softwareVersion: payload.softwareVersion,
+                    robotIp: payload.robot_ip,
                     site: payload.site,
                     return: rb,
                     type: payload.robot_type as any,
@@ -506,6 +542,21 @@ export default function RobotDetailModal({
       setStopChargeConfirmOpen(false);
     };
 
+    // '오류'로 멈춘 작업을 다시 자동 실행 대상으로 되돌린다.
+    // 자동 재개를 하지 않는 이유는 재기동 시점의 로봇 위치를 모르기 때문이라, 여기서도 확인을 받는다.
+    const handleResumeConfirm = () => {
+      if (!erroredSchedule) return;
+      apiFetch(`/DB/schedule/${erroredSchedule.id}/resume`, { method: "POST" })
+        .then(async (res) => {
+          const body = await res.json().catch(() => null);
+          if (!res.ok) apiAlert.show(body?.detail ?? "작업 재개에 실패했습니다.");
+          else if (body?.message) apiAlert.show(body.message);
+          refreshRobots();
+        })
+        .catch((err) => console.error("작업 재개 실패", err));
+      setResumeConfirmOpen(false);
+    };
+
     return (
         <>
         <div className={styles.modalOverlay} onClick={isSubmitting ? undefined : onClose}>
@@ -576,6 +627,7 @@ export default function RobotDetailModal({
                     setFieldErrors={setFieldErrors}
                     battery={battery}
                     isSubmitting={isSubmitting}
+                    canEditIp={isAdminOrManager}
                     onCancel={handleCancel}
                     onSave={handleSave}
                   />
@@ -591,6 +643,7 @@ export default function RobotDetailModal({
                       onPathMoveOpen={openPathMoveModal}
                       onChargeMoveOpen={handleChargeMove}
                       onStopCharge={handleStopCharge}
+                      canSeeIp={isAdminOrManager}
                     />
                   );
                 })()}
@@ -602,8 +655,38 @@ export default function RobotDetailModal({
                   return (
                     <RobotActiveScheduleSection
                       activeSchedule={activeSchedule}
+                      erroredSchedule={erroredSchedule}
                       isOffline={r.power === "Off"}
-                    />
+                      onResume={() => setResumeConfirmOpen(true)}
+                      headerExtra={<StandbyStatusChip live={standbyLive} />}
+                    >
+                      {/* 요청 내용·오늘 집계·관제 개입 — 상태 칩은 위 작업명 줄에 있다 */}
+                      <StandbyLiveDetail
+                        live={standbyLive}
+                        canControl={isAdminOrManager}
+                        onCalled={reloadStandby}
+                      />
+
+                      {/* 경로 작업의 경유지 진행. 상시 대기는 위 칩이 이미 단계를 그리므로 중복해서 그리지 않는다 */}
+                      {navProgress && navProgress.total > 0 && (
+                        <div className={styles.detailWaypointBox}>
+                          <div className={styles.detailWaypointHead}>
+                            <span>경유지 {navProgress.currentIndex}/{navProgress.total}</span>
+                            {navProgress.loop.infinite ? (
+                              <span className={styles.detailWaypointLoop}>무한 반복 · {navProgress.loop.count}바퀴째</span>
+                            ) : navProgress.loop.total > 1 && (
+                              <span className={styles.detailWaypointLoop}>
+                                {navProgress.loop.count}/{navProgress.loop.total}바퀴
+                              </span>
+                            )}
+                          </div>
+                          <WaypointProgress
+                            waypoints={navProgress.waypoints}
+                            errorMessage={navProgress.error?.message ?? null}
+                          />
+                        </div>
+                      )}
+                    </RobotActiveScheduleSection>
                   );
                 })()}
 
@@ -668,6 +751,7 @@ export default function RobotDetailModal({
             isOpen={placePathModalOpen}
             onClose={() => setPlacePathModalOpen(false)}
             selectedRobotIds={selectedRobotId ? [selectedRobotId] : []}
+            robotFloorId={selectedRobot?.currentFloorId ?? null}
           />
         )}
         {pathMoveModalOpen && (
@@ -702,6 +786,18 @@ export default function RobotDetailModal({
             />
           );
         })()}
+        {resumeConfirmOpen && (
+          <BatteryPathModal
+            isOpen={resumeConfirmOpen}
+            message={
+              (erroredSchedule?.ScheduleMode ?? "") === "standby"
+                ? "작업을 재개하시겠습니까?\n운영 시간대가 남아 있으면 오늘 근무를 이어받고, 로봇이 대기 장소로 돌아간 뒤 호출을 기다립니다."
+                : "작업을 재개하시겠습니까?\n다시 자동 실행 대상이 됩니다."
+            }
+            onConfirm={handleResumeConfirm}
+            onCancel={() => setResumeConfirmOpen(false)}
+          />
+        )}
         {stopChargeConfirmOpen && (
           <BatteryPathModal
             isOpen={stopChargeConfirmOpen}

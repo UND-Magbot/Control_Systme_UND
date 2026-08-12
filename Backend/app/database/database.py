@@ -3,10 +3,15 @@ import os
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 
+from app.database.db_url import resolve_database_url
+
 # Backend/ 루트 디렉토리 (app/Database/database.py → 2단계 상위)
 BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-DATABASE_URL = "mysql+pymysql://root:1234@192.168.0.21:3306/control_system_dev?connect_timeout=5&read_timeout=10&write_timeout=10"
+# DB 접속문자열은 환경변수로만 관리한다(비밀번호 소스 하드코딩 금지).
+# 해석·검증은 db_url 에 위임한다 — APP_ENV(prod|dev)와 스키마명이 어긋나면 여기서 기동이 막힌다.
+DATABASE_URL, _DB_TARGET = resolve_database_url()
+print(f"[DB] 접속 대상: {_DB_TARGET}")
 
 engine = create_engine(
     DATABASE_URL,

@@ -16,6 +16,8 @@ export type RobotEditDraft = {
   registrationDateTime: string;
   returnBattery: number;
   robotType: string;
+  /** 폴링 상태를 이 로봇에 붙이는 키(RobotInfo.RobotIP). 관리자만 보고 바꾼다. */
+  robotIp: string;
 };
 
 type BatterySliderAPI = {
@@ -34,6 +36,8 @@ type Props = {
   setFieldErrors: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   battery: BatterySliderAPI;
   isSubmitting: boolean;
+  /** 로봇 IP 표시·수정 허용 여부(관리자 1·2). 서버도 같은 기준으로 막는다. */
+  canEditIp?: boolean;
   onCancel: () => void;
   onSave: () => void;
 };
@@ -49,6 +53,7 @@ export default function RobotInfoEditSection({
   setFieldErrors,
   battery,
   isSubmitting,
+  canEditIp = false,
   onCancel,
   onSave,
 }: Props) {
@@ -270,10 +275,34 @@ export default function RobotInfoEditSection({
           <div className={styles.insertItemLabel}>S/W 버전</div>
           <div className={styles.insertInputWrap}>
             <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', lineHeight: '36px' }}>
-              {r?.softwareVersion ?? '-'}
+              {r?.softwareVersion?.trim() || '-'}
             </span>
           </div>
         </div>
+        {/* 로봇 IP — 관리자 전용. 폴링 상태를 이 로봇에 붙이는 키라 비우면 계속 offline 이다. */}
+        {canEditIp && (
+          <div className={styles.insertItemBox}>
+            <div className={styles.insertItemLabel}>로봇 IP</div>
+            <div className={styles.insertInputWrap}>
+              <input
+                type="text"
+                maxLength={15}
+                value={draft.robotIp}
+                onChange={(e) => {
+                  setDraft((p) => ({ ...p, robotIp: e.target.value }));
+                  setFieldErrors((p) => ({ ...p, robotIp: false }));
+                }}
+                placeholder="예: 10.21.31.103 (비우면 상태를 받지 못합니다)"
+                className={fieldErrors.robotIp ? styles.inputError : ''}
+                aria-label="로봇 IP"
+                aria-invalid={fieldErrors.robotIp || false}
+              />
+              {fieldErrors.robotIp && (
+                <div className={styles.errorMessage}>IPv4 형식이 올바르지 않습니다.</div>
+              )}
+            </div>
+          </div>
+        )}
         {/* Row 4: 복귀 배터리양 / 등록일시 */}
         <div className={styles.insertItemBox}>
           <div className={styles.insertItemLabel}>

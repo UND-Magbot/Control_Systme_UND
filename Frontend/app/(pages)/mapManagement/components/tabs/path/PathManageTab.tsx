@@ -7,16 +7,18 @@ import { usePaginatedList } from "@/app/hooks/usePaginatedList";
 import type { RobotRowData, Floor } from '@/app/types';
 import type { PlaceRow } from "@/app/types";
 import PathCrudModal from "@/app/(pages)/mapManagement/components/tabs/path/PathCrudModal";
+import type { StopAction } from "@/app/(pages)/mapManagement/components/tabs/path/PathStopOptionsModal";
 import PathDeleteConfirmModal from "@/app/(pages)/mapManagement/components/tabs/path/PathDeleteConfirmModal";
 import PathMapView from "@/app/(pages)/mapManagement/components/tabs/path/PathMapView";
 import PathAlertsModal from "@/app/(pages)/mapManagement/components/tabs/path/PathAlertsModal";
 import FilterSelectBox from "@/app/components/button/FilterSelectBox";
 import { apiFetch } from "@/app/lib/api";
 import { formatPathOrderWithWaits } from "@/app/lib/pathOrder";
+import { WORK_TYPES, resolveTaskTypeLabel } from "@/app/lib/taskType";
 import type { FloorMapRow } from "@/app/(pages)/mapManagement/hooks/useFloorMapConfig";
 
-const PATH_PAGE_SIZE = 6;
-const robotTypes = ["task1", "task2", "task3", "test"];
+const PATH_PAGE_SIZE = 9;
+const robotTypes = WORK_TYPES.map((t) => t.label);
 
 const PATH_API = {
   LIST: `/DB/getpath`,
@@ -32,6 +34,7 @@ export type PathRow = {
   pathName: string;
   pathOrder: string;
   waitSeconds?: number[];
+  stopActions?: (StopAction | null)[]; // 경유지 도착 상호작용
   updatedAt: string;
 };
 
@@ -51,6 +54,7 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
   const [selectedPathRobot, setSelectedPathRobot] = useState<string | null>(null);
   const [selectedPathWorkType, setSelectedPathWorkType] = useState<string | null>(null);
   const [selectedPathFloor, setSelectedPathFloor] = useState<string | null>(null);
+  const [pathSearch, setPathSearch] = useState(""); // G-02: 경로명 검색
   const [mapRows, setMapRows] = useState<FloorMapRow[]>([]);
 
   const [checkedPathIds, setCheckedPathIds] = useState<number[]>([]);
@@ -86,6 +90,8 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
     } catch (e) {
       console.error("장소 목록 로드 실패", e);
       setPlaceRows([]);
+      // 장소 로드 실패 시 경로 수정 모달의 '경로순서'가 조용히 비게 되므로 사용자에게 알린다.
+      setPathAlertMessage("장소 목록을 불러오지 못해 경로 순서를 복원할 수 없습니다. 네트워크 확인 후 다시 시도해 주세요.");
     }
   };
 
@@ -130,24 +136,32 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
 
   // ── 필터 + 정렬 ──
   const filteredPathRows = useMemo(() => {
+    // G-02: 경로명 검색 — 대소문자·띄어쓰기 무시 + 단어(토큰) 단위 AND 매칭.
+    // "약품 배송" 입력 시 "약품배송_3층"처럼 공백이 다르거나 순서만 나뉜 경우도 매칭.
+    const searchTokens = pathSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return pathRows
       .filter((r) => {
         const robotOk = !selectedPathRobot || r.robotNo === selectedPathRobot;
         const typeOk = !selectedPathWorkType || r.workType === selectedPathWorkType;
-        const floorOk = !selectedPathFloor || getPathFloor(r) === selectedPathFloor;
-        return robotOk && typeOk && floorOk;
+        const pathFloor = getPathFloor(r);
+        // E-09: 층을 알 수 없는 경로(장소 미로드/삭제)는 필터에서 조용히 제외하지 않고 표시.
+        const floorOk = !selectedPathFloor || pathFloor === null || pathFloor === selectedPathFloor;
+        // 대상도 소문자+공백 제거 후, 모든 검색 토큰이 포함되면 통과.
+        const target = r.pathName.toLowerCase().replace(/\s+/g, "");
+        const searchOk = searchTokens.length === 0 || searchTokens.every((t) => target.includes(t));
+        return robotOk && typeOk && floorOk && searchOk;
       })
       .sort((a, b) => {
         const ta = new Date(a.updatedAt).getTime() || 0;
         const tb = new Date(b.updatedAt).getTime() || 0;
         return tb - ta;
       });
-  }, [pathRows, placeRows, selectedPathRobot, selectedPathWorkType, selectedPathFloor]);
+  }, [pathRows, placeRows, selectedPathRobot, selectedPathWorkType, selectedPathFloor, pathSearch]);
 
   // ── 페이지네이션 ──
   const { currentPage: pathPage, setPage: setPathPage, resetPage: resetPathPage, pagedItems: currentPathItems, totalItems: pathTotalItems } = usePaginatedList(filteredPathRows, {
     pageSize: PATH_PAGE_SIZE,
-    resetDeps: [selectedPathRobot, selectedPathWorkType, selectedPathFloor],
+    resetDeps: [selectedPathRobot, selectedPathWorkType, selectedPathFloor, pathSearch],
   });
 
   const handlePathPageChange = (page: number) => {
@@ -218,13 +232,23 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
             waitSeconds = undefined;
           }
         }
+        let stopActions: PathRow["stopActions"];
+        if (p.StopActions) {
+          try {
+            const parsed = JSON.parse(p.StopActions);
+            if (Array.isArray(parsed)) stopActions = parsed;
+          } catch {
+            stopActions = undefined;
+          }
+        }
         return {
           id: p.id,
           robotNo: p.RobotName,
-          workType: p.TaskType,
+          workType: resolveTaskTypeLabel(p.TaskType),
           pathName: p.WayName,
           pathOrder: p.WayPoints,
           waitSeconds,
+          stopActions,
           updatedAt: p.UpdateTime
             ? new Date(p.UpdateTime).toLocaleString("ko-KR")
             : "-",
@@ -233,6 +257,7 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
       setPathRows(mapped);
     } catch (err) {
       console.error("경로 목록 로드 실패", err);
+      setPathAlertMessage("경로 목록을 불러오지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.");
     } finally {
       setPathLoading(false);
     }
@@ -252,6 +277,7 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
     pathName: string;
     pathOrder: string;
     waitSeconds?: number[];
+    stopActions?: PathRow["stopActions"];
   }) => {
     setPathLoading(true);
     try {
@@ -270,6 +296,11 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
           WaitSeconds: payload.waitSeconds && payload.waitSeconds.length > 0
             ? JSON.stringify(payload.waitSeconds)
             : null,
+          // 상호작용이 하나라도 설정된 경우에만 저장 (전부 null 이면 기존 동작 유지)
+          StopActions:
+            payload.stopActions && payload.stopActions.some((s) => s != null)
+              ? JSON.stringify(payload.stopActions)
+              : null,
         }),
       });
 
@@ -280,6 +311,10 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
       setCheckedPathIds([]);
       setSelectedPathId(null);
       setPathPage(1);
+      // E-06: 저장/수정한 경로가 현재 필터에 걸려 안 보이면 '실패'로 오인하므로 필터 초기화.
+      setSelectedPathRobot(null);
+      setSelectedPathWorkType(null);
+      setSelectedPathFloor(null);
     } catch (err) {
       console.error("경로 DB 저장 실패", err);
       throw err;
@@ -291,25 +326,35 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
   // ── 삭제 ──
   const confirmDeletePath = async () => {
     if (checkedPathIds.length === 0) return;
+    if (pathLoading) return; // E-05: 진행 중 재진입(더블클릭) 방지
     setPathLoading(true);
     try {
-      await Promise.all(
-        checkedPathIds.map((id) =>
-          apiFetch(PATH_API.DELETE(id), { method: "DELETE" })
+      const ids = [...checkedPathIds];
+      // E-02: allSettled로 부분 실패를 집계하고, 성공/실패 무관하게 재조회로 화면·DB를 동기화한다.
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          apiFetch(PATH_API.DELETE(id), { method: "DELETE" }).then((r) => {
+            if (!r.ok) throw new Error(`삭제 실패 id=${id}`);
+            return id;
+          })
         )
       );
-
-      const del = new Set(checkedPathIds);
-      setPathRows((prev) => prev.filter((p) => !del.has(p.id)));
+      const failed = results.filter((r) => r.status === "rejected").length;
 
       setCheckedPathIds([]);
       setSelectedPathId(null);
       setPathDeleteConfirmOpen(false);
 
       await fetchPathsFromDB();
+      setPathPage(1); // E-07: 삭제 후 페이지 경계 초과로 인한 빈 화면 방지
+
+      if (failed > 0) {
+        setPathAlertMessage(`${ids.length}개 중 ${failed}개 삭제에 실패했습니다. 목록을 다시 확인해 주세요.`);
+      }
     } catch (err) {
       console.error("경로 삭제 실패", err);
       setPathAlertMessage("경로 삭제에 실패했습니다.");
+      await fetchPathsFromDB();
     } finally {
       setPathLoading(false);
     }
@@ -376,6 +421,24 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
                   resetPathSelection();
                 }}
               />
+
+              {/* G-02: 경로명 검색 + 새로고침 */}
+              <input
+                className={styles.pathSearchInput}
+                value={pathSearch}
+                onChange={(e) => { setPathSearch(e.target.value); resetPathSelection(); }}
+                placeholder="경로명 검색"
+                aria-label="경로명 검색"
+              />
+              <button
+                type="button"
+                className={styles.pathRefreshBtn}
+                onClick={() => fetchPathsFromDB()}
+                title="새로고침"
+                aria-label="경로 목록 새로고침"
+              >
+                <img src="/icon/data_update.png" alt="" />
+              </button>
             </div>
           </div>
 
@@ -428,7 +491,17 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
                         key={row.id}
                         className={pathDeleteMode ? (deleteChecked ? styles.selectedRow : undefined) : (isRowSelected ? styles.selectedRow : undefined)}
                         style={{ cursor: "pointer" }}
+                        tabIndex={0}
+                        aria-selected={pathDeleteMode ? deleteChecked : isRowSelected}
                         onClick={() => pathDeleteMode ? togglePathChecked(row.id, !deleteChecked) : setSelectedPathId(isRowSelected ? null : row.id)}
+                        onKeyDown={(e) => {
+                          // A-02: Enter/Space로 행 선택·체크(키보드 조작)
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            if (pathDeleteMode) togglePathChecked(row.id, !deleteChecked);
+                            else setSelectedPathId(isRowSelected ? null : row.id);
+                          }
+                        }}
                       >
                         {pathDeleteMode && (
                           <td>
@@ -499,7 +572,7 @@ export default function PathManageTab({ robots, floors, hideActions }: PathListP
                   </div>
 
                   <div
-                    className={styles.robotWorkCommonBtn}
+                    className={`${styles.robotWorkCommonBtn} ${!isPathEditEnabled ? styles.btnDisabled : ""}`}
                     onClick={openPathEdit}
                     aria-disabled={!isPathEditEnabled}
                   >

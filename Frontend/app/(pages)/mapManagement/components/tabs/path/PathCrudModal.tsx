@@ -6,12 +6,18 @@ import { useCustomScrollbar } from "@/app/hooks/useCustomScrollbar";
 import type { RobotRowData, Floor } from "@/app/types";
 import ResetUpdate from "./PathDeleteConfirmModal";
 import PathAlertsModal from "./PathAlertsModal";
-import PathStopOptionsModal from "./PathStopOptionsModal";
+import PathStopOptionsModal, {
+  type StopAction,
+  type AnnouncementOption,
+} from "./PathStopOptionsModal";
+import { apiFetch } from "@/app/lib/api";
 import PathMapView from "./PathMapView";
 import FilterSelectBox, { type FilterOption } from "@/app/components/button/FilterSelectBox";
 import { Route, Waypoints } from "lucide-react";
+import { WORK_TYPES, resolveTaskTypeLabel } from "@/app/lib/taskType";
 
-export type PathWorkType = "task1" | "task2" | "task3" | "test";
+// 작업 유형 값은 표준 라벨 문자열(길 안내/물품 운반/순찰·점검). @/app/lib/taskType 참조.
+export type PathWorkType = string;
 
 export type PlaceRow = {
   id: number;
@@ -38,10 +44,11 @@ export type PathRow = {
   pathName: string;
   pathOrder: string;
   waitSeconds?: number[];
+  stopActions?: (StopAction | null)[]; // 경유지 도착 상호작용 (정차 지점과 병렬)
   updatedAt: string;
 };
 
-type SelectedStop = PlaceRow & { waitSeconds?: number };
+type SelectedStop = PlaceRow & { waitSeconds?: number; stopAction?: StopAction | null };
 
 type Mode = "create" | "edit";
 
@@ -68,8 +75,6 @@ type Props = {
   onSubmit: (payload: Omit<PathRow, "id" | "updatedAt"> & { id?: number }) => Promise<void>;
 };
 
-const WORK_TYPES: PathWorkType[] = ["task1", "task2", "task3", "test"];
-
 function restorePathOrder(initial: PathRow, placeRows: PlaceRow[]) {
   const raw = initial.pathOrder ?? "";
   const names = raw
@@ -77,6 +82,7 @@ function restorePathOrder(initial: PathRow, placeRows: PlaceRow[]) {
     .map((s) => s.trim())
     .filter(Boolean);
   const waits = initial.waitSeconds ?? [];
+  const actions = initial.stopActions ?? [];
 
   const valid: SelectedStop[] = [];
   const missing: string[] = [];
@@ -88,6 +94,7 @@ function restorePathOrder(initial: PathRow, placeRows: PlaceRow[]) {
       valid.push({
         ...found,
         waitSeconds: typeof w === "number" && w >= 0 ? Math.floor(w) : 0,
+        stopAction: actions[i] ?? null,
       });
     } else {
       missing.push(names[i]);
@@ -147,6 +154,12 @@ export default function PathCrudModal({
   const [selectedOrder, setSelectedOrder] = useState<SelectedStop[]>([]);
   const [activePlaceId, setActivePlaceId] = useState<number | null>(null);
   const [optionsModalIdx, setOptionsModalIdx] = useState<number | null>(null);
+  // 도착 발화 후보 — 선택된 로봇의 안내 멘트(사용 중인 것)
+  const [announcements, setAnnouncements] = useState<AnnouncementOption[]>([]);
+  // 확인 인식어 — 멘트를 쓰는 화면에서 '무슨 말이 통과인지'를 보여줘야
+  // '이동하자고 말씀해주세요' 같은 어긋남이 안 생긴다.
+  const [confirmWords, setConfirmWords] = useState<string[]>([]);
+  const [voiceRobotId, setVoiceRobotId] = useState<number | null>(null);
   const placeScrollRef = useRef<HTMLDivElement>(null);
   const placeTrackRef = useRef<HTMLDivElement>(null);
   const placeThumbRef = useRef<HTMLDivElement>(null);
@@ -175,7 +188,7 @@ export default function PathCrudModal({
     setEditRestored(false);
 
     if (mode === "edit" && initial) {
-      const nextWorkType = (initial.workType as PathWorkType) ?? null;
+      const nextWorkType = resolveTaskTypeLabel(initial.workType) || null;
       const nextPathName = initial.pathName ?? "";
       setWorkType(nextWorkType);
       setPathName(nextPathName);
@@ -221,7 +234,7 @@ export default function PathCrudModal({
     if (!isOpen || mode !== "edit" || !initial) return;
     if (editRestored || placeRows.length === 0) return;
 
-    const nextWorkType = (initial.workType as PathWorkType) ?? null;
+    const nextWorkType = resolveTaskTypeLabel(initial.workType) || null;
     const nextPathName = initial.pathName ?? "";
     const restored = restorePathOrder(initial, placeRows);
 
@@ -250,7 +263,7 @@ export default function PathCrudModal({
     [floors]
   );
   const workTypeFilterItems: FilterOption[] = useMemo(
-    () => WORK_TYPES.map((t) => ({ id: t, label: t })),
+    () => WORK_TYPES.map((t) => ({ id: t.label, label: t.label })),
     []
   );
 
@@ -363,11 +376,56 @@ export default function PathCrudModal({
     });
   };
 
-  const applyStopOptions = (waitSeconds: number) => {
+  // 선택된 로봇(robotNo)의 안내 멘트를 가져온다. 로봇이 없거나 목록이 없어도 경로 편집은 정상.
+  useEffect(() => {
+    const rid = robots.find((r) => r.no === selectedRobot)?.id;
+    setVoiceRobotId(rid ?? null);
+    if (!rid) {
+      setAnnouncements([]);
+      setConfirmWords([]);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch(`/DB/robots/${rid}/voice-announcements`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!alive) return;
+        setAnnouncements(
+          (data.items ?? [])
+            .filter((a: { isActive: boolean }) => a.isActive)
+            .map((a: { id: number; label: string; text: string }) => ({
+              id: a.id,
+              label: a.label,
+              text: a.text,
+            }))
+        );
+      } catch {
+        /* 안내 멘트를 못 불러와도 정지 옵션은 '없음'으로 쓸 수 있다 */
+      }
+      try {
+        const res = await apiFetch(`/DB/robots/${rid}/voice-confirm-words`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!alive) return;
+        // 등록이 없으면 서버가 기본으로 판정한다 → 화면도 기본을 보여준다
+        const items = (data.items ?? []).filter((w: { isActive: boolean }) => w.isActive);
+        setConfirmWords(items.length ? items.map((w: { word: string }) => w.word) : (data.defaults ?? []));
+      } catch {
+        /* 인식어를 못 불러와도 설정은 저장할 수 있다 — 안내만 비워진다 */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [selectedRobot, robots]);
+
+  const applyStopOptions = (waitSeconds: number, stopAction: StopAction) => {
     setSelectedOrder((prev) => {
       if (optionsModalIdx == null) return prev;
       const next = [...prev];
-      next[optionsModalIdx] = { ...next[optionsModalIdx], waitSeconds };
+      next[optionsModalIdx] = { ...next[optionsModalIdx], waitSeconds, stopAction };
       return next;
     });
     setOptionsModalIdx(null);
@@ -441,8 +499,23 @@ export default function PathCrudModal({
     onClose();
   };
 
+  // A-01: Esc로 닫기. 하위 다이얼로그(정차옵션·초기화·닫기확인·알림)가 열려 있으면 그쪽이 우선이라 무시.
+  // 미저장 변경은 handleClose가 확인 모달로 방어. ref로 최신 handleClose 참조(스테일 방지).
+  const handleCloseRef = useRef(handleClose);
+  handleCloseRef.current = handleClose;
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (optionsModalIdx != null || isCloseConfirmOpen || isPathResetConfirmOpen || alertMessage) return;
+      handleCloseRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isOpen, optionsModalIdx, isCloseConfirmOpen, isPathResetConfirmOpen, alertMessage]);
+
   const canSave =
-    !!workType && pathName.trim().length > 0 && selectedOrder.length > 0;
+    !!workType && pathName.trim().length > 0 && selectedOrder.length >= 2;
 
   const handleSave = async () => {
     if (isSubmitting) return;
@@ -460,8 +533,9 @@ export default function PathCrudModal({
       setAlertMessage("경로명에 특수문자를 사용할 수 없습니다.");
       return;
     }
-    if (selectedOrder.length === 0) {
-      setAlertMessage("장소를 1개 이상 선택해 주세요.");
+    if (selectedOrder.length < 2) {
+      // E-03: 이동 구간이 없는 1개짜리 경로는 무의미(미리보기 navPath=null)하므로 2개 이상 요구.
+      setAlertMessage("경로는 출발/도착을 포함해 2개 이상의 경유지가 필요합니다.");
       return;
     }
 
@@ -491,6 +565,7 @@ export default function PathCrudModal({
     setIsSubmitting(true);
     try {
       const waitSeconds = selectedOrder.map((p) => Math.max(0, Math.floor(p.waitSeconds ?? 0)));
+      const stopActions = selectedOrder.map((p) => p.stopAction ?? null);
       await onSubmit({
         id: mode === "edit" && initial ? initial.id : undefined,
         robotNo,
@@ -498,6 +573,7 @@ export default function PathCrudModal({
         pathName: pathName.trim(),
         pathOrder: selectedOrder.map((p) => p.placeName).join(" - "),
         waitSeconds,
+        stopActions,
       });
       onClose();
     } catch {
@@ -512,11 +588,14 @@ export default function PathCrudModal({
     const hasPlaces = placeRows.length > 0;
     if (!hadPlaces && hasPlaces) {
       if (mode === "edit" && initialSnapshot) {
+        // 장소가 늦게 로드된 경우 스냅샷으로 재적용.
         setWorkType(initialSnapshot.workType);
         setPathName(initialSnapshot.pathName);
         setSelectedOrder(initialSnapshot.selectedOrder);
         setActivePlaceId(null);
-      } else {
+      } else if (mode === "create") {
+        // create 모드에서만 초기화. edit 모드는 Effect 1/2가 복원을 담당하므로
+        // 여기서 비우면(같은 커밋에서 initialSnapshot이 아직 null이라) 복원된 순서를 지워버림.
         setWorkType(null);
         setPathName("");
         setSelectedOrder([]);
@@ -531,8 +610,8 @@ export default function PathCrudModal({
   const isPathOrderDisabled = mode === "create" && selectedOrder.length === 0;
 
   return (
-    <div className={styles.backdrop} role="dialog" aria-modal="true">
-      <div className={styles.modal}>
+    <div className={styles.backdrop} role="dialog" aria-modal="true" onClick={handleClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         {/* 헤더 */}
         <div className={styles.header}>
           <div className={styles.headerLeft}>
@@ -557,7 +636,7 @@ export default function PathCrudModal({
                   selectedLabel={mode === "edit" ? (initial?.robotNo ?? selectedRobot) : selectedRobot}
                   placeholder="로봇명"
                   onSelect={(item) => setSelectedRobot(item?.label ?? null)}
-                  width={140}
+                  width={170}
                   className={mode === "edit" ? styles.selecteDisabled : undefined}
                 />
 
@@ -658,6 +737,13 @@ export default function PathCrudModal({
             initialWaitSeconds={
               optionsModalIdx != null ? selectedOrder[optionsModalIdx]?.waitSeconds ?? 0 : 0
             }
+            enableInteraction
+            initialStopAction={
+              optionsModalIdx != null ? selectedOrder[optionsModalIdx]?.stopAction ?? null : null
+            }
+            announcements={announcements}
+            confirmWords={confirmWords}
+            voiceRobotId={voiceRobotId}
             onCancel={() => setOptionsModalIdx(null)}
             onConfirm={applyStopOptions}
           />
@@ -738,7 +824,7 @@ export default function PathCrudModal({
                 className={styles.textInput}
                 value={pathName}
                 onChange={(e) => setPathName(e.target.value)}
-                placeholder="8자(16byte) 이내로 작성하세요"
+                placeholder="경로명 (최대 8자)"
                 maxLength={8}
               />
             </div>
@@ -773,7 +859,7 @@ export default function PathCrudModal({
                             className={styles.orderOptions}
                             onClick={() => setOptionsModalIdx(idx)}
                             aria-label="옵션"
-                            title="정지 옵션 설정"
+                            title="도착 지점 정지·안내 설정"
                           >
                             <span className={styles.optionsCircle}>+</span>
                           </button>
@@ -797,6 +883,12 @@ export default function PathCrudModal({
                               <>
                                 <div className={styles.metaSep} />
                                 <div className={styles.waitBadge}>대기 {p.waitSeconds}s</div>
+                              </>
+                            )}
+                            {p.stopAction?.announceId != null && (
+                              <>
+                                <div className={styles.metaSep} />
+                                <div className={styles.sayBadge}>안내</div>
                               </>
                             )}
                           </div>

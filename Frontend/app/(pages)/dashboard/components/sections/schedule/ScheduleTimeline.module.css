@@ -452,3 +452,11 @@
   font-size: var(--font-size-md);
   color: var(--text-muted);
 }
+
+/* 카드 하단 액션 묶음 — '작업 취소'와 '상세보기'를 오른쪽에 나란히 둔다. */
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}

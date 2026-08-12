@@ -9,6 +9,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.navigation.save_point import point as nav_point
 from app.navigation.send_move import move as nav_move
+from app.navigation.elevator_op import router as elevator_op_router
+from app.navigation.door_op import router as door_op_router
+from app.map.elevator import router as elevator_router
+from app.map.door import router as door_router, facility_router
 from app.database.routes import database as database_function
 from app.map.map_manage import map_manage as map_manage_router
 from app.map.mapping_control import mapping_ctrl as mapping_ctrl_router
@@ -64,16 +68,31 @@ import cv2
 
 app = FastAPI(title="Control API", version="0.1.0")
 
-# allow_origins=["*"] + allow_credentials=True 는 CORS 명세상 충돌 조합이라
-# credentials 동반 요청에서 ACAO 헤더가 누락될 수 있다. origin을 반사하는
-# allow_origin_regex 로 두면 모든 출처를 허용하면서 credentials 와도 호환된다.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=".*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# 허용 출처는 env(CORS_ORIGINS, 콤마구분)로 관리한다.
+# - 설정 시: 화이트리스트 모드(allow_origins) — 프로덕션 권장. 지정 출처만 허용.
+# - 미설정/"*": 모든 출처 반사(개발/하위호환). allow_origins=["*"] + credentials 는
+#   CORS 명세상 충돌이라 ACAO 헤더가 누락되므로, origin 을 반사하는 allow_origin_regex
+#   로 두어 모든 출처를 허용하면서 credentials 와도 호환되게 한다.
+_cors_origins_env = os.getenv("CORS_ORIGINS", "").strip()
+if _cors_origins_env and _cors_origins_env != "*":
+    _allowed_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    print(f"[CORS] 화이트리스트 모드: {_allowed_origins}")
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=".*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    print("[CORS] 전체 허용 모드(allow_origin_regex='.*') — 프로덕션에서는 CORS_ORIGINS 설정 권장")
 
 @app.get("/api")
 def root():
@@ -98,6 +117,11 @@ app.include_router(backup_router)
 app.include_router(statistics_router)
 app.include_router(recording_router)
 app.include_router(robot_control_router)
+app.include_router(elevator_router)
+app.include_router(elevator_op_router)
+app.include_router(door_router)
+app.include_router(door_op_router)
+app.include_router(facility_router)
 
 
 # ======================================================
@@ -144,8 +168,13 @@ def startup_event():
             cached_user["UserName"] = user.UserName
             print(f"[OK] 현재 사용자: {cached_user['UserName']} (id={cached_user['id']})")
 
-        # robot_info에서 첫 번째 로봇 캐싱
-        robot = db.query(RobotInfo).order_by(RobotInfo.id.desc()).first()
+        # 현재 로봇 캐싱 — 폴링 대상(ROBOT_IP)과 같은 로봇을 잡는다.
+        # id.desc() 만 쓰면 시뮬레이터처럼 나중에 등록된 로봇이 잡혀, 상태는 실기를
+        # 보는데 명령은 다른 로봇으로 나가는 갈림이 생긴다. 매칭 실패 시 기존 동작 유지.
+        robot = (
+            db.query(RobotInfo).filter(RobotInfo.RobotIP == ROBOT_IP).first()
+            or db.query(RobotInfo).order_by(RobotInfo.id.desc()).first()
+        )
         if robot:
             cached_robot["id"] = robot.id
             cached_robot["RobotName"] = robot.RobotName
@@ -169,6 +198,23 @@ def startup_event():
         reconcile_is_working_on_boot()
     except Exception as e:
         print(f"[BOOT-RECONCILE] 호출 실패: {e}")
+
+    # 고아 스케줄·회차 복구와 스케줄러 기동은 **seed_all(스키마 마이그레이션) 이후**여야 한다.
+    # 모듈 임포트 시점에 돌리면 컬럼이 추가되기 전에 schedule_info 를 조회해 실패한다.
+    # 로봇 소유권 — 관제가 여러 대 떠 있어도 로봇 하나는 한 대만 몬다.
+    # 스케줄러보다 먼저 켠다(회차 시작이 소유권을 확인하므로).
+    try:
+        from app.cluster import instance
+        from app.robot_control import control_lock as cl
+        from app.scheduler.loop import register_ownership_hooks
+        register_ownership_hooks()
+        cl.start()
+        print(f"[CLUSTER] 인스턴스 역할={instance.role()} db={instance.info()['database']}")
+    except Exception as e:
+        print(f"[CLUSTER] 소유권 초기화 실패(단독 모드로 계속): {e}")
+
+    recover_stale_schedules()
+    threading.Thread(target=scheduler_thread, daemon=True).start()
 
     time.sleep(2)
     #send_init_pose()
@@ -223,6 +269,29 @@ async def _tune_threadpool():
     to_thread.current_default_thread_limiter().total_tokens = 200
 
 
+@app.on_event("startup")
+def _backfill_map_images_on_startup():
+    """기동 시 로컬 static/maps에 누락된 맵 png를 백그라운드로 복구한다.
+
+    여러 백엔드 인스턴스가 DB는 공유하지만 static/maps 파일은 인스턴스별
+    로컬이라, 다른 인스턴스에서 가져온 맵의 png가 이 인스턴스엔 없을 수 있다.
+    로컬 pgm/zip으로 우선 복구하고, 없으면 로봇(NOS)에서 재다운로드한다.
+    SSH가 섞일 수 있어 기동을 막지 않도록 데몬 스레드에서 수행한다.
+    """
+    import threading
+
+    def _run():
+        try:
+            from app.map.map_backfill import backfill_map_images
+            res = backfill_map_images(allow_robot_fetch=True)
+            if res["ok"] or res["failed"]:
+                print(f"[STARTUP] 맵 이미지 백필: {res}")
+        except Exception as e:
+            print(f"[STARTUP] 맵 이미지 백필 실패: {e}")
+
+    threading.Thread(target=_run, daemon=True, name="map-backfill").start()
+
+
 @app.on_event("shutdown")
 def shutdown_event():
     # 폴링/매핑 백그라운드 루프에 종료 신호 (M-9) — 좀비 루프 방지
@@ -247,8 +316,7 @@ def shutdown_event():
 # 백그라운드 스레드 시작
 # ======================================================
 start_polling_threads()
-recover_stale_schedules()
-threading.Thread(target=scheduler_thread, daemon=True).start()
+# 스케줄러 기동은 startup_event 로 옮겼다 — 마이그레이션 이후여야 하기 때문(위 주석 참조).
 
 
 @app.get("/user/current")

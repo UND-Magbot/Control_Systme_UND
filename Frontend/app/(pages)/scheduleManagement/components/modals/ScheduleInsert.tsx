@@ -12,7 +12,7 @@ import TimePicker from '../widgets/TimePicker';
 import RepeatSettings from '../widgets/RepeatSettings';
 import DateField from '../widgets/DateField';
 import CustomCheckbox from '../widgets/CustomCheckbox';
-import { WORK_TYPES, WORK_TYPE_ALL, DOWS, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, type Dow, type ScheduleMode } from '../../constants';
+import { WORK_TYPES, WORK_TYPE_ALL, resolveTaskTypeLabel, DOWS, SCHEDULE_MODE_LABELS, INTERVAL_PRESETS, STANDBY_TRIGGERS, type Dow, type ScheduleMode } from '../../constants';
 import { useToast } from '@/app/components/common/Toast';
 import { useFormDirty } from '@/app/hooks/useFormDirty';
 import {
@@ -31,6 +31,22 @@ type InsertModalProps = {
     onScheduleChanged?: () => Promise<void> | void;
 };
 
+type StopActionPreview = {
+    announceText?: string | null;
+    confirm?: "none" | "button" | "voice" | "gesture";
+} | null;
+
+/** 상시 대기 등록 가능 여부 — 서버(standby_capability)와 같은 판정을 화면에서도 쓴다 */
+type StandbyCapability = {
+    allowed: boolean;
+    reason: string | null;
+    hasVoice: boolean;
+    hasMic: boolean;
+    hasSpeaker: boolean;
+    destinationCount: number;
+    allowedTriggers: string[];
+};
+
 type WorkPathOption = {
     id: number;
     wayName: string;
@@ -38,6 +54,13 @@ type WorkPathOption = {
     wayPoints: string;
     taskType: string;
     floorId: number | null;
+    stopActions?: StopActionPreview[]; // 경유지 도착 안내 미리보기
+};
+
+const CONFIRM_LABEL: Record<string, string> = {
+    button: "버튼",
+    voice: "음성",
+    gesture: "제스처",
 };
 
 const WORK_TYPE_OPTIONS: SelectOption[] = WORK_TYPES.map((t) => ({
@@ -103,6 +126,13 @@ export default function InsertModal({
     const [intervalRepeatDays, setIntervalRepeatDays] = useState<Dow[]>([]);
     const [intervalEveryday, setIntervalEveryday] = useState(false);
 
+    // standby 모드 (운영 시간대·요일은 interval 필드를 재사용한다)
+    const [standbyTrigger, setStandbyTrigger] = useState<string | null>(null);
+    const [standbyPlace, setStandbyPlace] = useState<SelectOption | null>(null);
+    const [standbyMaxSessionMin, setStandbyMaxSessionMin] = useState<number | null>(20);
+    const [standbyCap, setStandbyCap] = useState<StandbyCapability | null>(null);
+    const [standbyPlaces, setStandbyPlaces] = useState<SelectOption[]>([]);
+
     // weekly + interval 공통
     const [seriesStartDate, setSeriesStartDate] = useState('');
     const [seriesEndType, setSeriesEndType] = useState<'none' | 'date'>('none');
@@ -130,27 +160,18 @@ export default function InsertModal({
         [robots]
     );
 
-    // 로봇의 현재 위치한 층 찾기 (경로 필터링에 사용)
-    const selectedRobotFloorId: number | null = useMemo(() => {
-        if (!selectedRobot) return null;
-        const r = robots.find((rb) => rb.id === Number(selectedRobot.id));
-        return r?.currentFloorId ?? null;
-    }, [robots, selectedRobot]);
-
-    // 로봇 + 작업유형 + 현재 층별 경로 필터링
+    // 로봇 + 작업유형별 경로 필터링.
+    // 현재 층 필터는 두지 않는다 — 로봇에 등록된 경로는 층과 무관하게 모두 보여야 한다.
+    // (로봇의 현재 층은 일시적이고, 다른 층/다층 경로도 예약 대상이다.)
     const filteredPathOptions: SelectOption[] = useMemo(() => {
         return allWorkPaths
             .filter((p) => {
                 if (selectedRobot && p.robotName !== selectedRobot.label) return false;
                 if (selectedWorkType && (p.taskType ?? "") !== selectedWorkType.label) return false;
-                // 로봇이 선택됐고 현재 층을 알 수 있으면, 해당 층의 경로만 표시
-                if (selectedRobot && selectedRobotFloorId !== null) {
-                    if (p.floorId !== selectedRobotFloorId) return false;
-                }
                 return true;
             })
             .map((p) => ({ id: p.id, label: p.wayName }));
-    }, [allWorkPaths, selectedRobot, selectedWorkType, selectedRobotFloorId]);
+    }, [allWorkPaths, selectedRobot, selectedWorkType]);
 
     // 바이트 카운터
     const taskNameBytes = useMemo(() => getByteLength(taskName), [taskName]);
@@ -208,14 +229,26 @@ export default function InsertModal({
             .then((res) => res.json())
             .then((data) => {
                 const list = Array.isArray(data) ? data : (data?.paths ?? []);
-                const paths = list.map((row: any) => ({
-                    id: row.id,
-                    wayName: row.WayName,
-                    robotName: row.RobotName,
-                    wayPoints: row.WayPoints ?? '',
-                    taskType: row.TaskType ?? '',
-                    floorId: row.FloorId ?? null,
-                }));
+                const paths = list.map((row: any) => {
+                    let stopActions: WorkPathOption['stopActions'];
+                    if (row.StopActions) {
+                        try {
+                            const parsed = JSON.parse(row.StopActions);
+                            if (Array.isArray(parsed)) stopActions = parsed;
+                        } catch {
+                            stopActions = undefined;
+                        }
+                    }
+                    return {
+                        id: row.id,
+                        wayName: row.WayName,
+                        robotName: row.RobotName,
+                        wayPoints: row.WayPoints ?? '',
+                        taskType: resolveTaskTypeLabel(row.TaskType),
+                        floorId: row.FloorId ?? null,
+                        stopActions,
+                    };
+                });
                 setAllWorkPaths(paths);
             })
             .catch((e) => {
@@ -225,6 +258,40 @@ export default function InsertModal({
             .finally(() => setLoadingPaths(false));
     }, [isOpen]);
 
+    // 대기 장소 후보 (상시 대기 전용)
+    useEffect(() => {
+        if (!isOpen) return;
+        apiFetch(`/DB/places`)
+            .then((res) => res.json())
+            .then((data) => {
+                const list = Array.isArray(data) ? data : (data?.places ?? []);
+                setStandbyPlaces(list.map((p: any) => ({ id: p.id, label: p.LacationName ?? p.name ?? `장소 ${p.id}` })));
+            })
+            .catch(() => setStandbyPlaces([]));
+    }, [isOpen]);
+
+    // 로봇이 바뀌면 상시 대기 가능 여부를 다시 판정한다.
+    // 판정을 서버와 공유해야 "화면에선 고를 수 있는데 저장에서 막히는" 어긋남이 없다.
+    useEffect(() => {
+        if (!isOpen || !selectedRobot) { setStandbyCap(null); return; }
+        const robotName = robots.find((r) => r.id === Number(selectedRobot.id))?.no ?? selectedRobot.label;
+        apiFetch(`/DB/schedule-standby-capability?robot=${encodeURIComponent(robotName)}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((cap: StandbyCapability | null) => {
+                setStandbyCap(cap);
+                // 마이크가 없으면 호출 방식은 버튼으로 고정된다 (PRD §3.6)
+                if (cap && !cap.hasMic) setStandbyTrigger('button');
+            })
+            .catch(() => setStandbyCap(null));
+    }, [isOpen, selectedRobot, robots]);
+
+    // 등록 불가 로봇으로 바꾸면 모드를 되돌린다 — 못 저장할 폼을 띄워두지 않는다
+    useEffect(() => {
+        if (scheduleMode === 'standby' && standbyCap && !standbyCap.allowed) {
+            setScheduleMode('once');
+        }
+    }, [scheduleMode, standbyCap]);
+
     // 로봇/작업유형/층 변경 시, 현재 선택된 경로가 필터에 안 맞으면 초기화
     useEffect(() => {
         if (!selectedWorkPath) return;
@@ -232,11 +299,10 @@ export default function InsertModal({
             if (p.id !== Number(selectedWorkPath.id)) return false;
             if (selectedRobot && p.robotName !== selectedRobot.label) return false;
             if (selectedWorkType && (p.taskType ?? "") !== selectedWorkType.label) return false;
-            if (selectedRobot && selectedRobotFloorId !== null && p.floorId !== selectedRobotFloorId) return false;
             return true;
         });
         if (!match) setSelectedWorkPath(null);
-    }, [selectedRobot, selectedWorkType, selectedRobotFloorId, allWorkPaths, selectedWorkPath]);
+    }, [selectedRobot, selectedWorkType, allWorkPaths, selectedWorkPath]);
 
     // 경로를 먼저 선택하면 로봇/작업유형이 비어있을 때 경로 정보로 자동 세팅.
     // 의존성에 selectedRobot/selectedWorkType을 넣지 않아야 사용자가 이후에 비워도
@@ -301,6 +367,8 @@ export default function InsertModal({
             activeEndMin,
             intervalMinutes,
             intervalRepeatDays,
+            standbyTrigger,
+            standbyMaxSessionMin,
             seriesStartDate,
             seriesEndType,
             seriesEndDate,
@@ -313,7 +381,9 @@ export default function InsertModal({
         }
 
         const selectedRobotData = robots.find((r) => r.id === Number(selectedRobot!.id));
-        const wayName = allWorkPaths.find((p) => p.id === Number(selectedWorkPath!.id))?.wayName ?? selectedWorkPath!.label;
+        const wayName = selectedWorkPath
+            ? (allWorkPaths.find((p) => p.id === Number(selectedWorkPath.id))?.wayName ?? selectedWorkPath.label)
+            : null;
 
         const payload: Record<string, any> = {
             RobotName: selectedRobotData?.no ?? selectedRobot!.label,
@@ -338,6 +408,15 @@ export default function InsertModal({
             payload.RepeatDays = intervalRepeatDays.length ? intervalRepeatDays.join(',') : null;
             payload.SeriesStartDate = seriesStartDate;
             payload.SeriesEndDate = seriesEndType === 'date' ? seriesEndDate : null;
+        } else if (scheduleMode === 'standby') {
+            payload.ActiveStartTime = makeTimeString(activeStartAmpm!, activeStartHour!, activeStartMin!);
+            payload.ActiveEndTime = makeTimeString(activeEndAmpm!, activeEndHour!, activeEndMin!);
+            payload.RepeatDays = intervalRepeatDays.length ? intervalRepeatDays.join(',') : null;
+            payload.SeriesStartDate = seriesStartDate;
+            payload.SeriesEndDate = seriesEndType === 'date' ? seriesEndDate : null;
+            payload.StandbyTrigger = standbyTrigger;
+            payload.ReturnPlaceId = standbyPlace ? Number(standbyPlace.id) : null;
+            payload.StandbyMaxSessionMin = standbyMaxSessionMin;
         }
 
         setSaving(true);
@@ -357,6 +436,13 @@ export default function InsertModal({
                 const body = await res.json().catch(() => null);
                 setApiError(body?.detail || body?.message || '스케줄 저장에 실패했습니다.');
                 return;
+            }
+
+            // 겹침은 차단이 아니라 경고다 — 저장은 됐고 예약 작업이 우선한다(S8)
+            const okBody = await res.json().catch(() => null);
+            const warnings: string[] = okBody?.warnings ?? [];
+            if (warnings.length) {
+                showToast(warnings[0], 'error');
             }
 
             showToast('작업일정이 등록되었습니다.', 'success');
@@ -383,7 +469,7 @@ export default function InsertModal({
                     <div className={styles.detailHeader}>
                         <div className={styles.detailHeaderLeft}>
                             <img src="/icon/robot_schedule_w.png" alt="" className={styles.detailHeaderIcon} />
-                            <h2>작업 등록</h2>
+                            <span className={styles.detailHeaderTitle}>작업 등록</span>
                         </div>
                         <button className={styles.CloseBtn} onClick={handleClose}>✕</button>
                     </div>
@@ -445,17 +531,27 @@ export default function InsertModal({
                                 <div className={styles.itemBox}>
                                     <div>실행 방식</div>
                                     <div className={styles.modeRadioGroup}>
-                                        {(['once', 'weekly', 'interval'] as ScheduleMode[]).map((mode) => (
-                                            <label key={mode} className={styles.modeRadioLabel}>
-                                                <input
-                                                    type="radio"
-                                                    name="scheduleMode"
-                                                    checked={scheduleMode === mode}
-                                                    onChange={() => setScheduleMode(mode)}
-                                                />
-                                                <span>{SCHEDULE_MODE_LABELS[mode]}</span>
-                                            </label>
-                                        ))}
+                                        {(['once', 'weekly', 'interval', 'standby'] as ScheduleMode[]).map((mode) => {
+                                            // 상시 대기는 음성 모듈·스피커·목적지 사전이 있어야 의미가 있다.
+                                            // 등록만 되고 응대를 못 하면 "왜 안 하지"라는 오해만 남는다(S9).
+                                            const blocked = mode === 'standby' && !!standbyCap && !standbyCap.allowed;
+                                            return (
+                                                <label
+                                                    key={mode}
+                                                    className={`${styles.modeRadioLabel} ${blocked ? styles.modeRadioDisabled : ''}`}
+                                                    title={blocked ? standbyCap!.reason ?? '' : undefined}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name="scheduleMode"
+                                                        checked={scheduleMode === mode}
+                                                        disabled={blocked}
+                                                        onChange={() => setScheduleMode(mode)}
+                                                    />
+                                                    <span>{SCHEDULE_MODE_LABELS[mode]}</span>
+                                                </label>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
@@ -730,9 +826,194 @@ export default function InsertModal({
                                     </div>
                                 </>
                             )}
+
+                            {/* === 상시 대기 (standby) === */}
+                            {scheduleMode === 'standby' && (
+                                <>
+                                    {standbyCap && !standbyCap.hasMic && (
+                                        <div className={styles.standbyNotice}>
+                                            이 로봇에 <b>마이크가 등록되어 있지 않습니다</b> — 호출 방식이 <b>버튼</b>으로 고정됩니다.
+                                            대기 · 안내 이동 · 자동 복귀는 그대로 동작합니다.
+                                        </div>
+                                    )}
+
+                                    <TimePicker
+                                        label="운영 시작"
+                                        date={startDate}
+                                        onDateChange={() => {}}
+                                        ampm={activeStartAmpm}
+                                        onAmpmChange={setActiveStartAmpm}
+                                        hour={activeStartHour}
+                                        onHourChange={setActiveStartHour}
+                                        minute={activeStartMin}
+                                        onMinuteChange={setActiveStartMin}
+                                        formatDate={formatDate}
+                                        hideDate
+                                        errors={{
+                                            ampm: fieldErrors.activeStartAmpm,
+                                            hour: fieldErrors.activeStartHour,
+                                            minute: fieldErrors.activeStartMin,
+                                        }}
+                                    />
+                                    <TimePicker
+                                        label="운영 종료"
+                                        date={startDate}
+                                        onDateChange={() => {}}
+                                        ampm={activeEndAmpm}
+                                        onAmpmChange={setActiveEndAmpm}
+                                        hour={activeEndHour}
+                                        onHourChange={setActiveEndHour}
+                                        minute={activeEndMin}
+                                        onMinuteChange={setActiveEndMin}
+                                        formatDate={formatDate}
+                                        hideDate
+                                        errors={{
+                                            ampm: fieldErrors.activeEndAmpm,
+                                            hour: fieldErrors.activeEndHour,
+                                            minute: fieldErrors.activeEndMin,
+                                        }}
+                                    />
+
+                                    {/* 운영 요일 */}
+                                    <div className={styles.itemBoxWrap}>
+                                        <div className={styles.itemBox}>
+                                            <div>운영 요일</div>
+                                            <div className={styles.repeatDayWrap}>
+                                                <div className={styles.repeatDayBtns}>
+                                                    {DOWS.map((d) => (
+                                                        <button
+                                                            key={d}
+                                                            type="button"
+                                                            className={`${styles.repeatDayBtn} ${intervalRepeatDays.includes(d) ? styles.repeatDayBtnActive : ''}`}
+                                                            onClick={() => toggleDay(d, intervalRepeatDays, setIntervalRepeatDays)}
+                                                        >
+                                                            {d}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className={styles.repeatEveryday}>
+                                                    <CustomCheckbox
+                                                        checked={intervalEveryday}
+                                                        onChange={(v) => handleEveryday(v, setIntervalRepeatDays, setIntervalEveryday)}
+                                                        label="매일"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 호출 방식 — 명시 필드라 "마이크로 등록했는데 실제로는 버튼"이 생길 수 없다 */}
+                                    <div className={styles.itemBoxWrap}>
+                                        <div className={styles.itemBox}>
+                                            <div>호출 방식</div>
+                                            <div className={styles.modeRadioGroup}>
+                                                {STANDBY_TRIGGERS.map((t) => {
+                                                    const disabled = !standbyCap?.allowedTriggers?.includes(t.id);
+                                                    return (
+                                                        <label
+                                                            key={t.id}
+                                                            className={`${styles.modeRadioLabel} ${disabled ? styles.modeRadioDisabled : ''}`}
+                                                            title={disabled ? '이 로봇에는 마이크가 등록되어 있지 않습니다' : undefined}
+                                                        >
+                                                            <input
+                                                                type="radio"
+                                                                name="standbyTrigger"
+                                                                checked={standbyTrigger === t.id}
+                                                                disabled={disabled}
+                                                                onChange={() => setStandbyTrigger(t.id)}
+                                                            />
+                                                            <span>{t.label}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                        {fieldErrors.standbyTrigger && <span className={styles.fieldError}>{fieldErrors.standbyTrigger}</span>}
+                                    </div>
+
+                                    {/* 대기 장소 — 응대를 마치면 돌아올 자리 */}
+                                    <div className={styles.itemBoxWrap}>
+                                        <div className={styles.itemBox}>
+                                            <div>대기 장소</div>
+                                            <CustomSelect
+                                                options={standbyPlaces}
+                                                value={standbyPlace}
+                                                onChange={setStandbyPlace}
+                                                placeholder="미지정 시 충전소에서 대기"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* 응대 1건 최대 — 짧게 잡으면 안내 도중 방문객을 두고 돌아선다 */}
+                                    <div className={styles.itemBoxWrap}>
+                                        <div className={styles.itemBox}>
+                                            <div>응대 1건 최대</div>
+                                            <div className={styles.intervalInputRow}>
+                                                <NumberSpinner
+                                                    value={standbyMaxSessionMin}
+                                                    onChange={setStandbyMaxSessionMin}
+                                                    min={1}
+                                                    max={120}
+                                                    placeholder="20"
+                                                    error={!!fieldErrors.standbyMaxSessionMin}
+                                                    pad={1}
+                                                />
+                                                <span className={styles.intervalUnit}>분 · 초과 시 강제 복귀</span>
+                                            </div>
+                                        </div>
+                                        {fieldErrors.standbyMaxSessionMin && <span className={styles.fieldError}>{fieldErrors.standbyMaxSessionMin}</span>}
+                                    </div>
+
+                                    {standbyCap && (
+                                        <div className={styles.standbyHint}>
+                                            응대 목적지는 <b>음성 관리 › 목적지 사전</b>이 단일 출처입니다 (현재 {standbyCap.destinationCount}건 연결됨).
+                                        </div>
+                                    )}
+
+                                    {/* 유효 기간 */}
+                                    <div className={styles.itemBoxWrap}>
+                                        <div className={styles.itemBox}>
+                                            <div>유효 기간</div>
+                                            <div className={styles.seriesDateWrap}>
+                                                <div className={styles.seriesDateRow}>
+                                                    <span className={styles.seriesDateLabel}>시작일</span>
+                                                    <DateField
+                                                        value={seriesStartDate}
+                                                        onChange={setSeriesStartDate}
+                                                        minDate={formatDate(today)}
+                                                    />
+                                                </div>
+                                                <div className={styles.seriesDateRow}>
+                                                    <span className={styles.seriesDateLabel}>종료</span>
+                                                    <label className={styles.seriesEndRadio}>
+                                                        <input type="radio" checked={seriesEndType === 'none'} onChange={() => setSeriesEndType('none')} />
+                                                        무기한
+                                                    </label>
+                                                    <label className={styles.seriesEndRadio}>
+                                                        <input type="radio" checked={seriesEndType === 'date'} onChange={() => setSeriesEndType('date')} />
+                                                        날짜 지정
+                                                    </label>
+                                                </div>
+                                                {seriesEndType === 'date' && (
+                                                    <div className={styles.seriesDateRow}>
+                                                        <span className={styles.seriesDateLabel}>종료일</span>
+                                                        <DateField
+                                                            value={seriesEndDate}
+                                                            onChange={setSeriesEndDate}
+                                                            minDate={seriesStartDate || formatDate(today)}
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {fieldErrors.seriesEndDate && <span className={styles.fieldError}>{fieldErrors.seriesEndDate}</span>}
+                                    </div>
+                                </>
+                            )}
                         </div>
 
-                        {/* === 작업경로 섹션 === */}
+                        {/* === 작업경로 섹션 (상시 대기는 경로가 아니라 대기 장소로 움직인다) === */}
+                        {scheduleMode !== 'standby' && (
                         <div className={`${styles.sectionDivider}`}>
                             <div className={styles.itemBoxWrap}>
                                 <div className={`${styles.itemBox} ${styles.pathBox}`}>
@@ -744,28 +1025,49 @@ export default function InsertModal({
                                             options={filteredPathOptions}
                                             value={selectedWorkPath}
                                             onChange={setSelectedWorkPath}
-                                            placeholder="경로명을 선택하세요"
+                                            placeholder={selectedRobot ? '경로명을 선택하세요' : '로봇을 먼저 선택하세요'}
                                             error={!!fieldErrors.workPath}
                                             overlay
-                                            emptyMessage={
-                                                selectedRobot
-                                                    ? '선택된 로봇의 경로가 없습니다'
-                                                    : '경로가 없습니다'
-                                            }
+                                            disabled={!selectedRobot}
+                                            emptyMessage="선택된 로봇의 경로가 없습니다"
                                         />
                                     )}
                                 </div>
                                 {fieldErrors.workPath && <span className={styles.fieldError}>{fieldErrors.workPath}</span>}
                                 {selectedWorkPath && (() => {
                                     const matched = allWorkPaths.find((p) => p.id === Number(selectedWorkPath.id));
-                                    return matched?.wayPoints ? (
-                                        <div className={styles.itemBoxWrap}>
+                                    if (!matched?.wayPoints) return null;
+                                    const names = matched.wayPoints.split(' - ').map((s) => s.trim());
+                                    const actions = matched.stopActions ?? [];
+                                    const hasAnnounce = actions.some((a) => a && (a.announceText || '').trim());
+                                    return (
+                                        <div className={`${styles.itemBoxWrap} ${styles.pathOrderWrap}`}>
                                             <div className={styles.itemBox}>
                                                 <div>경로순서</div>
                                                 <div className={styles.pathOrderText}>{matched.wayPoints}</div>
                                             </div>
+                                            {/* 도착 안내 미리보기 (읽기 전용) — 편집은 경로 관리에서 */}
+                                            {hasAnnounce && (
+                                                <div style={{ marginTop: 8, border: '1px solid rgba(146,212,244,.22)', background: 'rgba(146,212,244,.05)', borderRadius: 8, padding: '10px 12px' }}>
+                                                    <div style={{ fontSize: 12, fontWeight: 600, color: '#92d4f4', marginBottom: 8 }}>이 경로의 도착 안내</div>
+                                                    {names.map((nm, i) => {
+                                                        const a = actions[i];
+                                                        const text = a && (a.announceText || '').trim();
+                                                        if (!text) return null;
+                                                        const cf = a?.confirm && a.confirm !== 'none' ? (CONFIRM_LABEL[a.confirm] ?? a.confirm) : null;
+                                                        return (
+                                                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 12, color: '#cfd6e6' }}>
+                                                                <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#3B415F', color: '#cfd6e6', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                                                                <span style={{ width: 90, flexShrink: 0, color: '#9DADCB', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={nm}>{nm}</span>
+                                                                <span style={{ flex: 1, minWidth: 0, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={text}>&ldquo;{text}&rdquo;</span>
+                                                                {cf && <span style={{ fontSize: 11, color: '#dceeff', background: '#2568a8', borderRadius: 4, padding: '1px 8px', flexShrink: 0 }}>확인: {cf}</span>}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
-                                    ) : null;
+                                    );
                                 })()}
                             </div>
                             <div className={styles.pathBoxFlex}>
@@ -779,6 +1081,7 @@ export default function InsertModal({
                                 </button>
                             </div>
                         </div>
+                        )}
                     </div>
 
                     {/* 하단 버튼 */}

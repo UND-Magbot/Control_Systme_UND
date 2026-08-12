@@ -2,6 +2,7 @@
 
 import React from "react";
 import styles from "../../../mapManagement.module.css";
+import { useModalBehavior } from "@/app/hooks/useModalBehavior";
 
 type Props = {
   isOpen: boolean;
@@ -12,11 +13,13 @@ type Props = {
  * 맵핑 완료 팝업 — 저장 성공 메시지 + 확인 버튼.
  */
 export default function MappingSuccessModal({ isOpen, onConfirm }: Props) {
+  useModalBehavior({ isOpen, onClose: onConfirm });
+
   if (!isOpen) return null;
 
   return (
     <div className={styles.modalOverlay}>
-      <div className={styles.successPopup}>
+      <div className={styles.successPopup} role="dialog" aria-modal="true" aria-label="맵핑 완료">
         <div className={styles.successIcon}>&#10003;</div>
         <div className={styles.successText}>
           성공적으로 맵이 저장되었습니다.
