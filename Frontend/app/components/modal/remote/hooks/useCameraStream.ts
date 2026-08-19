@@ -6,7 +6,14 @@ import { CAMERA_BASE } from '@/app/config';
 import { createThermalFrameSink, type ThermalFrameSink } from '@/app/components/camera/thermalFrameSink';
 
 const CAM_TIMEOUT_MS = 10_000;
-const CAM_RETRY_MS = 5_000;
+// 재연결 레이트 리미터 — 고정 주기(구 5초 setInterval)는 로봇 두절·전시장 망 불량에서
+// 무한 재시도로 이어져 과부하가 된다. 백엔드 _CameraStream(camera.py:29-33)과 같은
+// 지수 백오프 규약을 쓰고, 연속 실패가 상한을 넘으면 자동 재시도를 끊는다(브레이커).
+// 이후 재시도는 사용자의 '다시 시도' 버튼 또는 카메라 탭 전환으로만 일어난다.
+const BACKOFF_MIN_MS = 1_000;
+const BACKOFF_MAX_MS = 30_000;
+const BACKOFF_FACTOR = 1.8;
+const BREAKER_THRESHOLD = 5;
 // 열화상(WS) 스트림 watchdog — 멈춤/half-open 자동 복구 (대시보드 CameraSlot과 동일)
 const THERMAL_STALL_MS = 6_000;
 const THERMAL_WATCHDOG_MS = 2_000;
@@ -37,7 +44,10 @@ export function useCameraStream({
   const [retryKey, setRetryKey] = useState(0);
 
   const camTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 다음 재시도까지의 대기(ms)와 연속 실패 횟수 — 성공/수동 재시도 시 초기화한다.
+  const backoffRef = useRef(BACKOFF_MIN_MS);
+  const retryCountRef = useRef(0);
   const wsRef = useRef<WebSocket | null>(null);
   const didInitRef = useRef(false);
   const userTouchedRef = useRef(false);
@@ -66,9 +76,15 @@ export function useCameraStream({
 
   const clearRetryTimer = useCallback(() => {
     if (retryTimerRef.current) {
-      clearInterval(retryTimerRef.current);
+      clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     }
+  }, []);
+
+  // 백오프·브레이커 초기화 — 연결 성공 또는 사용자의 명시적 재시도에서만 호출한다.
+  const resetBackoff = useCallback(() => {
+    backoffRef.current = BACKOFF_MIN_MS;
+    retryCountRef.current = 0;
   }, []);
 
   // 연결 성공 시 공통 처리
@@ -76,28 +92,50 @@ export function useCameraStream({
     clearCamTimeout();
     clearRetryTimer();
     errorCountRef.current = 0;
+    resetBackoff();
     setIsCamLoading(false);
     setCamError(false);
-  }, [clearCamTimeout, clearRetryTimer]);
+  }, [clearCamTimeout, clearRetryTimer, resetBackoff]);
+
+  // 재시도 스케줄러 (열화상 WS / MJPEG 공용) — 지수 백오프 + 브레이커.
+  // 보류 사유(로봇 통신 끊김·백그라운드 탭)는 실패가 아니므로 백오프·실패횟수를 올리지 않고
+  // 같은 간격으로 다시 확인한다. 실제 시도를 한 경우에만 간격을 늘리고 횟수를 센다.
+  const scheduleRetryRef = useRef<(action: () => void) => void>(() => {});
+  const scheduleRetry = useCallback((action: () => void) => {
+    clearRetryTimer();
+    // 브레이커 개방 — 자동 재시도를 끊는다. 이후엔 '다시 시도' 버튼/탭 전환으로만 재개.
+    if (retryCountRef.current >= BREAKER_THRESHOLD) return;
+
+    const delay = backoffRef.current;
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null;
+      if (unmountedRef.current) return;
+      if (!enabledRef.current || document.hidden) {
+        scheduleRetryRef.current(action);
+        return;
+      }
+      backoffRef.current = Math.min(delay * BACKOFF_FACTOR, BACKOFF_MAX_MS);
+      retryCountRef.current += 1;
+      action();
+    }, delay);
+  }, [clearRetryTimer]);
+
+  useEffect(() => { scheduleRetryRef.current = scheduleRetry; }, [scheduleRetry]);
 
   const startRetryTimer = useCallback(() => {
-    clearRetryTimer();
-    retryTimerRef.current = setInterval(() => {
-      if (unmountedRef.current) return;
-      if (!enabledRef.current) return; // 로봇 통신 끊김 — 재시도 보류
-      if (document.hidden) return; // 백그라운드 탭에서는 재시도 보류 (M-2)
-      setIsCamLoading(true);
-      setCamError(false);
-
+    scheduleRetry(() => {
       const cam = camera.find((c) => c.id === (selectedCam ?? activeCam)) ?? camera[0];
       if (!cam) return;
+
+      setIsCamLoading(true);
+      setCamError(false);
 
       const url = cam.webrtcUrl || `${CAMERA_BASE}/Video/${cam.id}`;
       const nextUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
       setCameraStream("");
       requestAnimationFrame(() => setCameraStream(nextUrl));
-    }, CAM_RETRY_MS);
-  }, [clearRetryTimer, camera, selectedCam, activeCam]);
+    });
+  }, [scheduleRetry, camera, selectedCam, activeCam]);
 
   const startCamTimeoutInner = useCallback(() => {
     clearCamTimeout();
@@ -119,7 +157,7 @@ export function useCameraStream({
     }
   }, []);
 
-  // 열화상 실패/멈춤 → 재연결(≤2회 조용히) 또는 에러 UI + 주기 재시도
+  // 열화상 실패/멈춤 → 재연결(≤2회 조용히) 또는 에러 UI + 백오프 재시도
   const onThermalFail = useCallback((cam: Camera) => {
     if (wsWatchdogRef.current) { clearInterval(wsWatchdogRef.current); wsWatchdogRef.current = null; }
     clearCamTimeout();
@@ -130,14 +168,10 @@ export function useCameraStream({
       if (!unmountedRef.current) connectThermalRef.current(cam, true);
       return;
     }
-    clearRetryTimer();
     setIsCamLoading(false);
     setCamError(true);
-    retryTimerRef.current = setInterval(() => {
-      if (unmountedRef.current || !enabledRef.current) return;
-      connectThermalRef.current(cam, true);
-    }, CAM_RETRY_MS);
-  }, [clearCamTimeout, clearRetryTimer]);
+    scheduleRetry(() => connectThermalRef.current(cam, true));
+  }, [clearCamTimeout, clearRetryTimer, scheduleRetry]);
 
   // 열화상 WebSocket 연결 (silent=true면 마지막 프레임 유지한 채 조용히 재연결)
   const connectThermal = useCallback((cam: Camera, silent = false) => {
@@ -224,10 +258,19 @@ export function useCameraStream({
     startRetryTimer();
   }, [clearCamTimeout, clearRetryTimer, startRetryTimer, camera, selectedCam, activeCam, startCamTimeoutInner]);
 
+  // 사용자의 명시적 재시도 — 브레이커가 열린 뒤 유일한 복구 수단이므로
+  // 백오프·실패횟수를 초기화하고, 열화상은 WS 재연결로 분기한다(MJPEG 경로로는 복구 불가).
   const handleRetryCamera = useCallback(() => {
     clearRetryTimer();
+    resetBackoff();
+    errorCountRef.current = 0;
+    const cam = camera.find((c) => c.id === (selectedCam ?? activeCam)) ?? camera[0];
+    if (cam && cam.streamType === "ws") {
+      connectThermal(cam);
+      return;
+    }
     retryConnection();
-  }, [clearRetryTimer, retryConnection]);
+  }, [clearRetryTimer, resetBackoff, camera, selectedCam, activeCam, connectThermal, retryConnection]);
 
   // --- 카메라 탭 전환 ---
   const handleCameraTab = useCallback(
@@ -237,6 +280,7 @@ export function useCameraStream({
       clearCamTimeout();
       clearRetryTimer();
       errorCountRef.current = 0;
+      resetBackoff();
       setIsCamLoading(true);
       setCamError(false);
       setSelectedCam(cam.id);
@@ -263,7 +307,7 @@ export function useCameraStream({
       requestAnimationFrame(() => setCameraStream(nextUrl));
       startCamTimeoutInner();
     },
-    [clearCamTimeout, clearRetryTimer, closeThermalWS, startCamTimeoutInner, connectThermal],
+    [clearCamTimeout, clearRetryTimer, closeThermalWS, startCamTimeoutInner, connectThermal, resetBackoff],
   );
 
   // --- 초기화 ---
@@ -307,6 +351,7 @@ export function useCameraStream({
     clearCamTimeout();
     clearRetryTimer();
     errorCountRef.current = 0;
+    resetBackoff();
     setIsCamLoading(true);
     setCamError(false);
     setSelectedCam(baseCam.id);

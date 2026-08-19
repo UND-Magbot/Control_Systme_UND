@@ -8,6 +8,8 @@ with POC')과 무한 끊김/깜빡임을 방지한다. 클라이언트가 모두
 """
 
 import asyncio
+import json
+import os
 import threading
 import time
 from urllib.error import URLError
@@ -272,6 +274,123 @@ async def stream_camera(module_id: int, request: Request):
             "Cache-Control": "no-cache, no-store, must-revalidate",
         },
     )
+
+
+# ── MediaMTX readiness ─────────────────────────────────────────────────
+# 재연결을 "시간이 됐으니"가 아니라 "붙을 가능성이 생겼으니" 시도하도록,
+# MediaMTX가 로봇 RTSP를 실제로 물고 있는지(ready)를 프론트에 알려준다.
+#
+# :9997 은 조회 전용이 아니라 제어 API(path 추가/삭제·config 수정·세션 kick)이며
+# mediamtx.yml 에 인증이 없다. 브라우저에 직접 노출하지 않고 백엔드가 읽기 전용으로 중계한다.
+# 백엔드는 network_mode: host 라 127.0.0.1:9997 에 직접 도달한다.
+MEDIAMTX_API = os.getenv("MEDIAMTX_API", "http://127.0.0.1:9997")
+_MTX_TIMEOUT_SEC = 2.0
+_MTX_CACHE_TTL_SEC = 1.0   # 여러 관제 PC/탭이 동시에 폴링해도 업스트림 조회는 1초 1회
+
+_mtx_cache: "tuple[float, dict] | None" = None
+_mtx_cache_lock = threading.Lock()
+
+
+def _fetch_mtx_paths() -> dict:
+    """MediaMTX path 목록을 name → {ready, readers} 로 정리한다.
+
+    조회 실패를 예외로 올리지 않는다 — '조회 불가'는 '연결 불가'가 아니다.
+    available=False 를 돌려주어 프론트가 게이트를 무시하고 백오프만으로 시도하게 한다.
+    (여기서 연결을 막으면 라이브 화면이 백엔드에 종속되어, 카메라 채널을 관제 폴링에서
+     분리한 설계가 무너진다.)
+    """
+    try:
+        with urlopen(f"{MEDIAMTX_API}/v3/paths/list", timeout=_MTX_TIMEOUT_SEC) as resp:
+            items = json.loads(resp.read().decode("utf-8")).get("items", [])
+    except Exception:
+        return {"available": False, "paths": {}}
+
+    return {
+        "available": True,
+        "paths": {
+            p["name"]: {
+                "ready": bool(p.get("ready")),
+                "readers": len(p.get("readers") or []),
+                # 코덱 확인용 — WebRTC는 H.265를 받지 못하므로 ["H264"] 여야 한다.
+                "tracks": p.get("tracks") or [],
+            }
+            for p in items
+            if p.get("name")
+        },
+    }
+
+
+@router.get("/camera/stream-status")
+def camera_stream_status():
+    """MediaMTX path readiness (읽기 전용).
+
+    paths/list 1회로 전 카메라를 커버한다 — 카메라 대수만큼 폴링이 늘지 않는다.
+    path 이름 규칙은 프론트와 동일: MediaMTX path = 로봇 RTSP path 의 basename
+    (Frontend/app/lib/cameraView.ts).
+    """
+    global _mtx_cache
+    now = time.time()
+
+    with _mtx_cache_lock:
+        cached = _mtx_cache
+    if cached and now - cached[0] < _MTX_CACHE_TTL_SEC:
+        return cached[1]
+
+    result = _fetch_mtx_paths()
+    with _mtx_cache_lock:
+        _mtx_cache = (now, result)
+    return result
+
+
+# ── 검출 메타데이터 중계 ────────────────────────────────────────────────
+# 열화상 오버레이(YOLO 박스 + 온도)를 영상에 굽지 않고 좌표만 전달한다.
+# 영상은 카메라 → MediaMTX → 브라우저로 무재인코딩 통과하고, 박스는 브라우저
+# canvas가 그린다. 덕분에 어디에서도 디코드/인코드 사이클이 생기지 않는다.
+#
+#   GOS(thermal_max_overlay.py) ──POST──► 여기(메모리) ──GET──► 브라우저
+#
+# 좌표는 정규화(0~1)로 받는다 — 검출 해상도와 표시 해상도가 달라도 그대로 쓴다.
+_DETECTIONS_TTL_SEC = 3.0   # 이보다 오래된 결과는 '없음'으로 취급(정지 화면에 유령 박스 방지)
+_detections: dict[str, dict] = {}
+_detections_lock = threading.Lock()
+
+
+@router.post("/camera/detections/{path_name}")
+async def put_detections(path_name: str, request: Request):
+    """검출 결과 수신 (로봇 측 비전 스크립트 → 관제).
+
+    body: {"w":1280,"h":960,"boxes":[{"kind":"person","x":0.1,"y":0.2,"w":0.3,"h":0.4,
+                                      "label":"36.5°C","temp":36.5}]}
+    좌표 x/y/w/h 는 0~1 정규화 값.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "invalid json")
+
+    boxes = payload.get("boxes")
+    if not isinstance(boxes, list):
+        raise HTTPException(400, "boxes must be a list")
+
+    with _detections_lock:
+        _detections[path_name] = {
+            "ts": time.time(),
+            "boxes": boxes,
+        }
+    return {"ok": True}
+
+
+@router.get("/camera/detections")
+def get_detections():
+    """모든 path의 최신 검출 결과. 프론트는 이 하나만 폴링한다(카메라 수와 무관)."""
+    now = time.time()
+    with _detections_lock:
+        fresh = {
+            name: {"boxes": d["boxes"], "age": round(now - d["ts"], 2)}
+            for name, d in _detections.items()
+            if now - d["ts"] <= _DETECTIONS_TTL_SEC
+        }
+    return {"paths": fresh}
 
 
 # ── PTZ ────────────────────────────────────────────────────────────────

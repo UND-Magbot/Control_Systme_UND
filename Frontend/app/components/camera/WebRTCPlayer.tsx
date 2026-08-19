@@ -3,6 +3,8 @@
 import React, { useEffect, useRef } from "react";
 import styles from "./WebRTCPlayer.module.css";
 import { useSharedWebRTCStream } from "./useSharedWebRTCStream";
+import { STREAM_COPY, LIVE_LABEL, RETRY_LABEL, type StreamPhase } from "./streamStatusCopy";
+import DetectionOverlay from "./DetectionOverlay";
 
 type WebRTCPlayerProps = {
   /** MediaMTX WHEP 엔드포인트 URL (예: http://host:8889/video1/whep) */
@@ -42,6 +44,23 @@ export default function WebRTCPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const { stream, status, retry } = useSharedWebRTCStream(whepUrl, enabled);
 
+  // 검출 오버레이(열화상 박스·온도)를 붙일 MediaMTX path.
+  // 해당 path의 검출 결과가 없으면 아무것도 그리지 않으므로, 어떤 카메라에 붙어도 무해하다.
+  const detectionPath = React.useMemo(() => {
+    const m = whepUrl.match(/\/([^/]+)\/whep\/?$/);
+    return m ? m[1] : null;
+  }, [whepUrl]);
+
+  // 훅 상태 → 사용자에게 보여줄 문구. playing이면 오버레이 없음(null).
+  const phase: StreamPhase | null = !enabled
+    ? "disabled"
+    : status === "playing"
+      ? null
+      : status === "idle"
+        ? "connecting"
+        : status;
+  const copy = STREAM_COPY[phase ?? "connecting"];
+
   // 공유 스트림을 <video>에 attach. stream 교체/언마운트 시 명시적 해제로
   // track ref가 남는 것을 막는다.
   useEffect(() => {
@@ -66,38 +85,39 @@ export default function WebRTCPlayer({
         muted={muted}
         playsInline
       />
+      {/* 검출 박스·온도 — 영상에 굽지 않고 좌표만 받아 여기서 그린다 */}
+      {enabled && status === "playing" && <DetectionOverlay pathName={detectionPath} />}
+
       {/* LIVE 배지 */}
       {enabled && status === "playing" && (
         <span className={`${styles.badge} ${styles.badgeLive}`}>
           <span className={`${styles.badgeDot} ${styles.badgeLiveDot}`} />
-          LIVE
+          {LIVE_LABEL}
         </span>
       )}
-      {!enabled ? (
-        <div className={styles.overlay}>
-          <span>{disabledLabel}</span>
+
+      {phase && (
+        // 'recovering'은 마지막 프레임을 살려두고 그 위에 옅게 덮는다 —
+        // 잠깐의 끊김에 화면이 까맣게 되면 사용자는 고장으로 오해한다.
+        <div className={`${styles.overlay} ${phase === "recovering" ? styles.overlaySoft : ""}`}>
+          {copy.spinner ? (
+            <div className={styles.spinner} />
+          ) : phase === "waiting" || phase === "error" ? (
+            <svg className={styles.noSignalIcon} width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /><line x1="2" y1="2" x2="22" y2="22" />
+            </svg>
+          ) : null}
+          <span className={phase === "connecting" || phase === "disabled" ? undefined : styles.msgAmber}>
+            {phase === "disabled" ? disabledLabel : copy.title}
+          </span>
+          {copy.desc && <span className={styles.overlayDesc}>{copy.desc}</span>}
+          {copy.retry && (
+            <button type="button" className={styles.retryBtn} onClick={retry}>
+              {RETRY_LABEL}
+            </button>
+          )}
         </div>
-      ) : status === "error" ? (
-        // 신호 없음(앰버) — 로봇 장애(빨강)와 구분
-        <div className={styles.overlay}>
-          <svg className={styles.noSignalIcon} width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /><line x1="2" y1="2" x2="22" y2="22" />
-          </svg>
-          <span className={styles.msgAmber}>신호 없음</span>
-          <button
-            type="button"
-            className={styles.retryBtn}
-            onClick={retry}
-          >
-            재연결
-          </button>
-        </div>
-      ) : status === "connecting" || status === "idle" ? (
-        <div className={styles.overlay}>
-          <div className={styles.spinner} />
-          <span>연결 중...</span>
-        </div>
-      ) : null}
+      )}
     </div>
   );
 }

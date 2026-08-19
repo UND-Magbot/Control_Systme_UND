@@ -49,3 +49,14 @@ paths:
     source: rtsp://10.21.31.103:8554/video1
   video2:
     source: rtsp://10.21.31.103:8554/video2
+
+  # ── 열화상 (Hikvision 직결) ─────────────────────────────────────────
+  # 카메라 원본을 그대로 중계한다. YOLO 박스·온도는 GOS가 별도 메타데이터로
+  # 보내고 관제 화면(canvas)에서 겹치므로, 여기서는 영상만 다룬다(재인코딩 없음).
+  #
+  # ⚠ 전제: 카메라 설정에서 채널 201을 **H.264** 로 둬야 한다.
+  #    Hikvision 기본값이 H.265(HEVC)인 경우가 많은데, H.265는 브라우저 WebRTC가
+  #    받지 못해 화면이 뜨지 않는다. (웹 UI → Video/Audio → Video Encoding)
+  #    확인법: 백엔드 GET /camera/stream-status 의 thermal.tracks 가 ["H264"] 인지 본다.
+  thermal:
+    source: "rtsp://admin:und12!!!@10.21.31.108:554/ISAPI/Streaming/channels/201"

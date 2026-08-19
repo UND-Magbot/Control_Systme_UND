@@ -7,7 +7,8 @@
 
 사용법:
   python3 thermal_max_overlay.py              # RTSP 오버레이 (기본, 권장)
-  python3 thermal_max_overlay.py --rtsp [port]
+  python3 thermal_max_overlay.py --rtsp [port]   # 기존: 오버레이 구워 MJPEG 재송출
+  python3 thermal_max_overlay.py --meta          # 신규: 검출 좌표만 송신(영상은 MediaMTX)
   python3 thermal_max_overlay.py --snapshot   # 단일 캡처 저장 (테스트용)
   python3 thermal_max_overlay.py --realtime   # ISAPI 단독 (GUI 필요)
 
@@ -1404,6 +1405,112 @@ def fire_thermal_alert_async(temperature):
     ).start()
 
 
+# ── 검출 메타데이터 송신 (--meta 모드) ─────────────────────────────────
+# 영상은 카메라 → MediaMTX → 브라우저로 그대로 흐르고, 여기서는 박스 좌표와 온도만
+# 보낸다. JPEG 인코딩·MJPEG 서버가 사라져 로봇 CPU와 무선 대역폭이 함께 내려간다.
+# 좌표는 정규화(0~1) — 검출 해상도와 표시 해상도가 달라도 그대로 쓸 수 있다.
+MTX_PATH = os.environ.get("MTX_PATH", "thermal")   # MediaMTX path 이름과 일치해야 함
+META_MAX_FPS = 10.0                                # 송신 상한 (박스 움직임엔 충분)
+
+
+def build_detections_payload(img_shape, tracks, registry, measurements, hot_measurements):
+    """화면에 그리던 것과 같은 정보를 좌표(0~1)로 직렬화한다."""
+    h, w = img_shape[:2]
+    if not w or not h:
+        return {"w": 0, "h": 0, "boxes": []}
+
+    def norm(box):
+        x1, y1, x2, y2 = box
+        return {
+            "x": max(0.0, min(1.0, x1 / w)),
+            "y": max(0.0, min(1.0, y1 / h)),
+            "w": max(0.0, min(1.0, (x2 - x1) / w)),
+            "h": max(0.0, min(1.0, (y2 - y1) / h)),
+        }
+
+    boxes = []
+    for (tid, x1, y1, x2, y2) in tracks:
+        rec = registry.get(tid)
+        if rec is None:
+            continue
+        item = {"kind": "person", **norm((x1, y1, x2, y2))}
+        if rec.is_measured:
+            item["label"] = f"{rec.status_text} {rec.display_temp:.1f}°C"
+            item["temp"] = round(float(rec.display_temp), 1)
+        else:
+            item["label"] = f"ID {tid}"
+        boxes.append(item)
+
+    for m in measurements:
+        item = {"kind": "face", **norm(m["box"])}
+        if m.get("temp") is not None:
+            item["label"] = f"{m['temp']:.1f}°C"
+            item["temp"] = round(float(m["temp"]), 1)
+        boxes.append(item)
+
+    for m in hot_measurements:
+        item = {"kind": "hotpack", **norm(m["box"])}
+        if m.get("temp") is not None:
+            item["label"] = f"{m['temp']:.1f}°C"
+            item["temp"] = round(float(m["temp"]), 1)
+        boxes.append(item)
+
+    return {"w": int(w), "h": int(h), "boxes": boxes}
+
+
+class DetectionEmitter:
+    """검출 결과를 백엔드로 보내는 백그라운드 송신기.
+
+    최신 payload 1개만 유지한다 — 관제/네트워크가 느려도 producer 루프를 막지 않는다.
+    (전시장처럼 망이 밀리는 환경에서 송신이 파이프라인을 잡아먹으면 안 된다.)
+    keep-alive 세션을 재사용하므로 초당 10회를 보내도 새 TCP 연결이 생기지 않는다.
+    """
+
+    def __init__(self, url, max_fps=META_MAX_FPS):
+        self.url = url
+        self.min_interval = 1.0 / max_fps if max_fps > 0 else 0.0
+        self._pending = None
+        self._lock = threading.Lock()
+        self._wake = threading.Event()
+        self._stop = threading.Event()
+        self._session = requests.Session()
+        self._thread = None
+
+    def start(self):
+        self._thread = threading.Thread(target=self._run, name="det-emit", daemon=True)
+        self._thread.start()
+
+    def push(self, payload):
+        with self._lock:
+            self._pending = payload      # 최신만 유지 — 밀린 것은 버린다
+        self._wake.set()
+
+    def stop(self):
+        self._stop.set()
+        self._wake.set()
+
+    def _run(self):
+        last_sent = 0.0
+        while not self._stop.is_set():
+            self._wake.wait(timeout=1.0)
+            self._wake.clear()
+            if self._stop.is_set():
+                break
+            with self._lock:
+                payload = self._pending
+                self._pending = None
+            if payload is None:
+                continue
+            gap = time.time() - last_sent
+            if gap < self.min_interval:
+                time.sleep(self.min_interval - gap)
+            try:
+                self._session.post(self.url, json=payload, timeout=2)
+            except Exception:
+                pass   # 송신 실패는 다음 프레임에서 자연히 만회된다 — 재시도하지 않는다
+            last_sent = time.time()
+
+
 def draw_hotpack_overlays(frame, measurements):
     """hot-pack 빨간 박스 + 중앙 핫스팟 마커 + 'hot-pack 38.4C' 라벨."""
     if not measurements:
@@ -1544,9 +1651,21 @@ class RTSPGrabber:
 # ------------------------------------------------------------------
 # 메인 모드: RTSP + 얼굴 검출 + 체온 오버레이 → HTTP MJPEG
 # ------------------------------------------------------------------
-def run_rtsp_overlay(restream_port=8556):
+def run_rtsp_overlay(restream_port=8556, emit="mjpeg"):
+    """열화상 처리 루프.
+
+    emit="mjpeg" (기본, 기존 동작)
+        오버레이를 그려 JPEG로 인코딩하고 HTTP MJPEG(:8556)으로 재송출한다.
+    emit="meta"
+        그리기·인코딩·HTTP 서버를 모두 생략하고 박스 좌표와 온도만 관제로 보낸다.
+        영상은 MediaMTX가 카메라에서 직접 받아 WebRTC로 내보내고, 박스는 브라우저
+        canvas가 겹친다. 로봇 CPU와 무선 대역폭이 함께 내려간다.
+        (온도 알람은 두 모드 모두 동일하게 동작한다.)
+    """
     from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
     from urllib.parse import urlparse, parse_qs
+
+    meta_only = (emit == "meta")
 
     rtsp_url = (f"rtsp://{CAMERA_USER}:{CAMERA_PASS}@{CAMERA_IP}:554"
                 f"/ISAPI/Streaming/channels/{RTSP_CHANNEL}")
@@ -1580,6 +1699,16 @@ def run_rtsp_overlay(restream_port=8556):
     latest_jpeg = [None]
     jpeg_lock = threading.Lock()
     stop_event = threading.Event()
+
+    # meta 모드 송신기 — 최신 payload만 유지해 producer 루프를 막지 않는다.
+    emitter = None
+    if meta_only:
+        emit_url = f"{BACKEND_BASE}/camera/detections/{MTX_PATH}"
+        emitter = DetectionEmitter(emit_url)
+        emitter.start()
+        print(f"[META] 검출 메타데이터 송신: {emit_url} (최대 {META_MAX_FPS:.0f} fps)")
+        print("[META] 영상은 MediaMTX가 카메라에서 직접 받아 WebRTC로 내보낸다 "
+              "— 이 프로세스는 영상을 송출하지 않는다.")
 
     def frame_producer():
         det_counter = 0          # 검출기 프레임 공급 주기용
@@ -1675,8 +1804,10 @@ def run_rtsp_overlay(restream_port=8556):
             registry.cleanup_stale()
 
             # 사람 박스(상태별 색) 먼저, 얼굴 마커 위에
-            frame = draw_person_status(frame, tracks, registry)
-            frame = draw_face_markers(frame, measurements, matched_tids)
+            # meta 모드에서는 그리지 않는다 — 좌표만 보내고 브라우저가 그린다.
+            if not meta_only:
+                frame = draw_person_status(frame, tracks, registry)
+                frame = draw_face_markers(frame, measurements, matched_tids)
 
             # hot-pack: 새 검출 결과가 나오면 트래커 풀 재초기화, 매 프레임은 트래커가 박스를
             # 객체 움직임에 맞춰 갱신 → DETECT_INTERVAL_FRAMES 사이에도 박스가 실시간으로 따라감.
@@ -1694,11 +1825,17 @@ def run_rtsp_overlay(restream_port=8556):
             for fired in alert_tracker.update(hot_measurements):
                 fire_thermal_alert_async(fired['temperature'])
 
-            frame = draw_hotpack_overlays(frame, hot_measurements)
+            if meta_only:
+                # 좌표·온도만 송신 — 그리기도 JPEG 인코딩도 하지 않는다.
+                emitter.push(build_detections_payload(
+                    frame.shape, tracks, registry, measurements, hot_measurements,
+                ))
+            else:
+                frame = draw_hotpack_overlays(frame, hot_measurements)
 
-            _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
-            with jpeg_lock:
-                latest_jpeg[0] = jpeg.tobytes()
+                _, jpeg = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                with jpeg_lock:
+                    latest_jpeg[0] = jpeg.tobytes()
 
             # 송출 프레임 율 제한 — 관제 측 렉 완화
             elapsed_loop = time.time() - loop_start
@@ -1772,6 +1909,32 @@ def run_rtsp_overlay(restream_port=8556):
 
         def log_message(self, format, *args):
             pass
+
+    # meta 모드에서는 영상을 송출하지 않으므로 HTTP 서버를 띄우지 않는다.
+    # (PTZ 핸들러도 함께 사라지므로, PTZ가 필요하면 mjpeg 모드를 쓰거나 별도 경로가 필요하다.)
+    if meta_only:
+        print("\n  ==========================================")
+        print("  meta 모드 — 영상 송출 없음 (MediaMTX가 카메라 직결)")
+        print(f"  검출 메타데이터 → {BACKEND_BASE}/camera/detections/{MTX_PATH}")
+        print("  Ctrl+C로 종료")
+        print("  ==========================================\n")
+        try:
+            while not stop_event.is_set():
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            stop_event.set()
+            if emitter:
+                emitter.stop()
+            grabber.stop()
+            updater.stop()
+            detector.stop()
+            person_detector.stop()
+            hotpack_detector.stop()
+            if producer_thread.is_alive():
+                producer_thread.join(timeout=3.0)
+        return
 
     # ThreadingHTTPServer: 클라이언트별 스레드 분리 — 대시보드 + 모달 + 녹화 등 다중 동시 접속 지원
     server = ThreadingHTTPServer(('0.0.0.0', restream_port), MJPEGHandler)
@@ -1896,6 +2059,10 @@ if __name__ == "__main__":
     if not args or args[0] == "--rtsp":
         port = int(args[1]) if len(args) > 1 else 8556
         run_rtsp_overlay(restream_port=port)
+    elif args[0] == "--meta":
+        # 영상 송출 없이 검출 메타데이터만 관제로 보낸다.
+        # 영상은 MediaMTX가 카메라(채널 201)에서 직접 받아 WebRTC로 내보낸다.
+        run_rtsp_overlay(emit="meta")
     elif args[0] == "--snapshot":
         run_single_shot()
     elif args[0] == "--realtime":

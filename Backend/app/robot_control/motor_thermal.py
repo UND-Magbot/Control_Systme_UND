@@ -2,12 +2,12 @@
 
 receiver STATUS 응답의 DeviceTemperature(관절별 모터 온도)를 임계값과 비교한다.
 운영 로그(m20_motor_temp) 분석 결과 정상 관절 피크는 ~65°C, 이상 관절(RightBackHipY)이
-89°C까지 관측되어 아래 임계를 잡았다.
+89°C까지 관측되었고, 전시장 연속 1시간 가동에서는 90°C까지 도달해 아래 임계를 잡았다.
 
-- 경고(WARN, 85°C): 알림만. RightBackHipY 상시 86~89°C 밴드는 작업을 중단하지 않는다.
-- 보호(DANGER, 90°C): 알림 + 보호 동작. 도킹 루트(ch-N→ch-1)로 이동해 SIT(모터 부하 제거).
+- 경고(WARN, 95°C): 알림만. 장시간 가동 시 상시 도달하는 90°C대는 작업을 중단하지 않는다.
+- 보호(DANGER, 100°C): 알림 + 보호 동작. 도킹 루트(ch-N→ch-1)로 이동해 SIT(모터 부하 제거).
     보호 동작은 charge 모듈에 위임.
-- 회복: 82°C 미만(히스테리시스)으로 떨어지면 정상 복귀(해소 로그).
+- 회복: 92°C 미만(히스테리시스)으로 떨어지면 정상 복귀(해소 로그).
 
 단발 센서 글리치를 거르기 위해 임계 초과/미만을 CONSEC_CONFIRM 회 연속 확인한 뒤에만
 레벨을 전이한다(배터리 오독 필터와 동일 사상).
@@ -16,9 +16,9 @@ receiver STATUS 응답의 DeviceTemperature(관절별 모터 온도)를 임계�
 import threading
 
 # ── 임계값 (운영 로그 기반) ──────────────────────────
-MOTOR_WARN_TEMP = 85.0      # 경고(알림만). RightBackHipY 상시 86~89°C 밴드 도배 방지 상향
-MOTOR_DANGER_TEMP = 90.0    # 보호 동작(도크복귀→SIT). 90°C 초과 런어웨이에서만 개입
-MOTOR_RECOVER_TEMP = 82.0   # 정상 복귀(히스테리시스)
+MOTOR_WARN_TEMP = 95.0      # 경고(알림만). 장시간 가동 시 상시 도달하는 90°C대 도배 방지 상향
+MOTOR_DANGER_TEMP = 100.0   # 보호 동작(도크복귀→SIT). 100°C 초과 런어웨이에서만 개입
+MOTOR_RECOVER_TEMP = 92.0   # 정상 복귀(히스테리시스)
 CONSEC_CONFIRM = 3          # N회 연속 확인 후 레벨 전이(글리치 차단)
 
 _MOTOR_SUFFIX = "Motor"
@@ -101,7 +101,7 @@ def _emit(robot_id, warn_events, danger_events, resolved_events) -> None:
                   f"[모터 과열 해소] {joint} {t:.1f}°C (<{MOTOR_RECOVER_TEMP:.0f}°C)",
                   robot_id=robot_id, robot_name=rname, business_id=rbiz)
 
-    # 보호 동작은 80°C(danger)부터. 75~80°C는 경고만(작업 유지). 급상승으로 warn을 건너뛰고
+    # 보호 동작은 100°C(danger)부터. 95~100°C는 경고만(작업 유지). 급상승으로 warn을 건너뛰고
     # 바로 danger에 도달한 경우에도 danger_events가 발생하므로 보호된다(중복은 charge에서 가드).
     if danger_events:
         try:

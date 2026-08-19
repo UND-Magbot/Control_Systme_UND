@@ -6,6 +6,7 @@ import type { Camera, RobotRowData } from "@/app/types";
 import { CAMERA_BASE } from "@/app/config";
 import WebRTCPlayer from "@/app/components/camera/WebRTCPlayer";
 import { createThermalFrameSink, type ThermalFrameSink } from "@/app/components/camera/thermalFrameSink";
+import { STREAM_COPY, LIVE_LABEL, RETRY_LABEL } from "@/app/components/camera/streamStatusCopy";
 
 type CameraSlotProps = {
   camera: Camera;
@@ -228,37 +229,38 @@ export default function CameraSlot({ camera, robotName, robot, onExpand, lowRes 
 
   return (
     <div className={styles.slotContainer}>
-      {/* 스트림 상태(화면 축) */}
+      {/* 스트림 상태(화면 축) — 문구는 streamStatusCopy 한 곳에서 관리 */}
       {!isWebrtc && enabled && hasError && (
-        // 신호 없음(앰버) — 로봇 장애(빨강)와 구분
         <div className={styles.errorOverlay}>
           <svg className={styles.noSignalIcon} width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /><line x1="2" y1="2" x2="22" y2="22" />
           </svg>
-          <span className={styles.msgAmber}>신호 없음</span>
+          <span className={styles.msgAmber}>{STREAM_COPY.error.title}</span>
+          <span className={styles.overlayDesc}>{STREAM_COPY.error.desc}</span>
           <button className={styles.retryBtn} onClick={handleRetry}>
-            재연결
+            {RETRY_LABEL}
           </button>
         </div>
       )}
       {!isWebrtc && enabled && !hasError && isLoading && (
         hadFrame ? (
-          // 재연결 중(직전 프레임 유지)
+          // 자동 복구 중 — 직전 프레임을 남겨두고 옅게 덮는다
           <div className={styles.reconnectOverlay}>
             <div className={`${styles.spinner} ${styles.spinnerWarn}`} />
-            <span className={styles.msgAmber}>재연결 중...</span>
+            <span className={styles.msgAmber}>{STREAM_COPY.recovering.title}</span>
+            <span className={styles.overlayDesc}>{STREAM_COPY.recovering.desc}</span>
           </div>
         ) : (
           // 연결 중(최초)
           <div className={styles.loadingOverlay}>
             <div className={styles.spinner} />
-            <span>연결 중...</span>
+            <span>{STREAM_COPY.connecting.title}</span>
           </div>
         )
       )}
       {/* LIVE 배지(mjpeg/열화상) */}
       {!isWebrtc && enabled && mjpegStreaming && (
-        <span className={styles.liveBadge}><span className={styles.liveDot} />LIVE</span>
+        <span className={styles.liveBadge}><span className={styles.liveDot} />{LIVE_LABEL}</span>
       )}
 
       {/* 스트림 */}

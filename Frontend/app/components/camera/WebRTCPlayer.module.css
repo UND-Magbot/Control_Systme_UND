@@ -100,6 +100,20 @@
   box-shadow: 0 0 6px rgba(146, 208, 80, 0.55);
 }
 
+/* 자동 복구 중 — 마지막 프레임이 비치도록 옅게 덮는다(까만 화면 = 고장으로 오해) */
+.overlaySoft {
+  background: rgba(20, 22, 30, 0.42);
+}
+
+/* 보조 문구 — "기다리면 되는지 / 눌러야 하는지"를 알려준다 */
+.overlayDesc {
+  max-width: 90%;
+  color: #9aa3b5;
+  font-size: 11.5px;
+  line-height: 1.4;
+  text-align: center;
+}
+
 /* 신호 없음(앰버) */
 .noSignalIcon {
   color: var(--color-warning);
