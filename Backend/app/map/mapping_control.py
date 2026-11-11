@@ -578,6 +578,14 @@ def mapping_cancel(current_user: UserInfo = Depends(require_permission("map-edit
     """
     map_name = mapping_state.get("map_name")
     prev_active = mapping_state.get("prev_active")
+
+    # 진행 중인 매핑도, 종료 실패로 정리할 매핑(map_name 잔존)도 없으면 취소할 대상이 없다.
+    # 이 상태에서 아래 복원 로직을 타면 prev_active 가 비어 있어 정상 active 링크를 제거해 버린다.
+    # (매핑 저장 직후 페이지 이탈 beacon 으로 cancel 이 와서 방금 활성화한 맵이 지워진 사례)
+    if not mapping_state["is_running"] and not map_name:
+        print("[MAP] 매핑 취소 요청 무시 — 진행 중인 매핑 없음 (active 유지)")
+        return {"status": "ok", "message": "진행 중인 매핑이 없습니다."}
+
     client = None
 
     try:

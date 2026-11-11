@@ -1272,6 +1272,9 @@ export default function MapManagementPage() {
         }),
       });
       if (res.ok) {
+        // 저장 완료 = 매핑 종료. 진행 중 플래그를 끄지 않으면 페이지 이탈 시
+        // beforeunload 안전장치가 /map/mapping/cancel 을 보내 active 맵을 지운다.
+        setIsMappingRunning(false);
         setMappingState("success");
       } else {
         // 백엔드가 실제 실패 응답(4xx/5xx)을 준 경우에만 경고
