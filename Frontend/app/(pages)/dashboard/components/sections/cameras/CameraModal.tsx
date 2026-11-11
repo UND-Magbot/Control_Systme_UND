@@ -100,9 +100,13 @@ export default function CameraModal({
                         </span>
                       ) : (
                         <>
-                          L <span style={{ color: getBatteryColor(robot.batteryLeft ?? 0, robot.return) }}>{robot.batteryLeft ?? "-"}%</span>
+                          L {robot.batteryLeft != null
+                            ? <span style={{ color: getBatteryColor(robot.batteryLeft, robot.return) }}>{robot.batteryLeft}%</span>
+                            : "-"}
                           {" / "}
-                          R <span style={{ color: getBatteryColor(robot.batteryRight ?? 0, robot.return) }}>{robot.batteryRight ?? "-"}%</span>
+                          R {robot.batteryRight != null
+                            ? <span style={{ color: getBatteryColor(robot.batteryRight, robot.return) }}>{robot.batteryRight}%</span>
+                            : "-"}
                         </>
                       )
                     ) : (

@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { RobotRowData } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
-import { isDualBatteryType } from "@/app/constants/robotCapabilities";
+import { dualSlotLevel, isDualBatteryType } from "@/app/constants/robotCapabilities";
 import { useVisibilityAwareInterval } from "@/app/hooks/useVisibilityAwareInterval";
 
 const STATUS_API = `/robot/status`;
@@ -136,8 +136,12 @@ export function RobotStatusProvider({ children }: { children: React.ReactNode })
           if (isDualBatteryType(r.type)) {
             return {
               ...r,
-              batteryLeft: (bat.BatteryLevelLeft as number) ?? r.batteryLeft,
-              batteryRight: (bat.BatteryLevelRight as number) ?? r.batteryRight,
+              batteryLeft: bat.BatteryLevelLeft != null
+                ? dualSlotLevel(bat.BatteryLevelLeft as number, bat.VoltageLeft as number)
+                : r.batteryLeft,
+              batteryRight: bat.BatteryLevelRight != null
+                ? dualSlotLevel(bat.BatteryLevelRight as number, bat.VoltageRight as number)
+                : r.batteryRight,
               voltageLeft: (bat.VoltageLeft as number) ?? r.voltageLeft,
               voltageRight: (bat.VoltageRight as number) ?? r.voltageRight,
               batteryTempLeft: (bat.battery_temperatureLeft as number) ?? r.batteryTempLeft,

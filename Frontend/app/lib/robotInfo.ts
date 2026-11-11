@@ -1,6 +1,6 @@
 import type { RobotRowData } from "@/app/types";
 import { apiFetch } from "@/app/lib/api";
-import { isDualBatteryType } from "@/app/constants/robotCapabilities";
+import { dualSlotLevel, isDualBatteryType } from "@/app/constants/robotCapabilities";
 
 export default async function getRobots(): Promise<RobotRowData[]> {
   let raw: any[] = [];
@@ -30,8 +30,8 @@ export default async function getRobots(): Promise<RobotRowData[]> {
 
     // 상태 (DB 마지막 값 → 실시간 폴링으로 덮어씌워짐)
     battery: isDual ? 0 : (item.BatteryLevel1 ?? 0),
-    batteryLeft: isDual ? (item.BatteryLevel1 ?? 0) : undefined,
-    batteryRight: isDual ? (item.BatteryLevel2 ?? 0) : undefined,
+    batteryLeft: isDual ? dualSlotLevel(item.BatteryLevel1 ?? 0, item.Voltage1) : undefined,
+    batteryRight: isDual ? dualSlotLevel(item.BatteryLevel2 ?? 0, item.Voltage2) : undefined,
     voltageLeft: isDual ? (item.Voltage1 ?? undefined) : undefined,
     voltageRight: isDual ? (item.Voltage2 ?? undefined) : undefined,
     batteryTempLeft: isDual ? (item.BatteryTemp1 ?? undefined) : undefined,

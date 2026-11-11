@@ -25,11 +25,26 @@ def _is_dual_battery(robot_type: str) -> bool:
     return (robot_type or "") in _DUAL_BATTERY_TYPES
 
 
+def _is_empty_slot(level, voltage) -> bool:
+    """듀얼 배터리 로봇의 미장착 슬롯 판별.
+
+    배터리를 1개만 꽂으면 빈 슬롯은 잔량·전압이 모두 0으로 보고된다.
+    실제 방전 배터리는 전압이 0이 되지 않으므로 둘 다 0일 때만 미장착으로 본다.
+    """
+    return level == 0 and voltage == 0
+
+
 def battery_percent(battery: dict, robot_type: str) -> Optional[int]:
-    """배터리 잔량(%) 추출. 듀얼은 더 낮은 셀 기준(보수적). 값이 없으면 None."""
+    """배터리 잔량(%) 추출. 듀얼은 장착된 셀 중 더 낮은 값 기준(보수적). 값이 없으면 None."""
     if _is_dual_battery(robot_type):
-        vals = [int(v) for v in (battery.get("BatteryLevelLeft"),
-                                 battery.get("BatteryLevelRight")) if v is not None]
+        vals = [
+            int(level)
+            for level, voltage in (
+                (battery.get("BatteryLevelLeft"), battery.get("VoltageLeft")),
+                (battery.get("BatteryLevelRight"), battery.get("VoltageRight")),
+            )
+            if level is not None and not _is_empty_slot(level, voltage)
+        ]
         return min(vals) if vals else None
     soc = battery.get("SOC")
     return int(soc) if soc is not None else None

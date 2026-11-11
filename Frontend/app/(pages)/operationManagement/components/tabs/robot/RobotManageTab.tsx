@@ -18,7 +18,7 @@ import {
   ROBOT_COLORS,
   getRobotIndexFromNo,
 } from "@/app/constants/robotIcons";
-import { isDualBatteryType } from "@/app/constants/robotCapabilities";
+import { isDualBatteryType, minInstalledBattery } from "@/app/constants/robotCapabilities";
 import ChargingIcon from "@/app/components/common/ChargingIcon";
 import { useAuth } from "@/app/context/AuthContext";
 import { useRobotStatusContext } from "@/app/context/RobotStatusContext";
@@ -75,7 +75,7 @@ function getRobotStatus(r: RobotRowData, hasActiveSchedule = false): { label: st
     // 미완충이면 '전류 없음'이나, 완충 트리클 오실레이션(정상)과 색으로 구분되면 오류로
     // 오인되므로 색은 '충전 중'과 동일(초록)로 두고 라벨/툴팁으로만 구분한다.
     const battPct = isDualBatteryType(r.type)
-      ? Math.min(r.batteryLeft ?? 0, r.batteryRight ?? 0)
+      ? minInstalledBattery(r.batteryLeft, r.batteryRight)
       : (r.battery ?? 0);
     if (battPct >= CHARGE_FULL_PCT) return { label: "충전 중", className: styles.statusCharging, tooltip: "완충 — 충전소 도킹 유지 중" };
     return { label: "전류 없음", className: styles.statusCharging, tooltip: "도크에 있지만 전류가 흐르지 않음" };

@@ -5,7 +5,7 @@ import styles from '@/app/components/modal/Modal.module.css';
 import type { RobotRowData } from '@/app/types';
 import { getBatteryColor } from '@/app/constants/robotIcons';
 
-import { isDualBatteryType } from '@/app/constants/robotCapabilities';
+import { isDualBatteryType, minInstalledBattery } from '@/app/constants/robotCapabilities';
 
 // 완충 판정 임계(%) — charge_state 5(도크·전류없음)를 트리클 off 정상(충전 중)으로 볼 기준. (백엔드 CHARGE_FULL_PCT 와 동일)
 const CHARGE_FULL_PCT = 90;
@@ -41,7 +41,7 @@ export default function RobotRealtimeStatusSection({ robot: r, hasActiveSchedule
     // 완충 트리클 오실레이션(정상)과 색으로 구분되면 오류로 오인되므로 색은 '충전 중'과
     // 동일하게 두고 라벨로만 구분한다.
     const battPct = isDualBatteryType(r.type)
-      ? Math.min(r.batteryLeft ?? 0, r.batteryRight ?? 0)
+      ? minInstalledBattery(r.batteryLeft, r.batteryRight)
       : (r.battery ?? 0);
     if (battPct >= CHARGE_FULL_PCT) {
       statusLabel = '충전 중';
